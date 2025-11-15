@@ -1,4 +1,4 @@
-# Local Transcription Pipeline (ffmpeg + faster-whisper)
+# slower-whisper (ffmpeg + faster-whisper)
 
 This project provides a small, structured codebase for running a fully local
 transcription pipeline on a machine with an NVIDIA GPU.
