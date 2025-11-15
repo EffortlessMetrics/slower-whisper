@@ -1,12 +1,17 @@
+# ===========================
 # Python
+# ===========================
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# C extensions
+*.so
+
+# Distribution / packaging
 .Python
-venv/
-env/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -19,33 +24,143 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# ===========================
+# uv Package Manager
+# ===========================
+# Lock file - COMMIT THIS for applications, ignore for libraries
+# Since this is an application/tool, we should commit uv.lock
+# Uncomment the next line if this becomes a library:
+# uv.lock
+
+# ===========================
+# Testing & Coverage
+# ===========================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+coverage.json
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+nosetests.xml
+test-results/
+junit.xml
+
+# ===========================
+# Code Quality Tools
+# ===========================
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+.pyre/
+.pyright/
+
+# ===========================
+# Linting / Formatting
+# ===========================
+.pylint.d/
+*.log
+
+# ===========================
+# IDEs and Editors
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+.vs/
+
+# ===========================
+# OS Files
+# ===========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.Zone.Identifier
+Desktop.ini
+
+# ===========================
+# Project-Specific
+# ===========================
 # Audio data directories
 raw_audio/
 input_audio/
 whisper_json/
 transcripts/
 
-# Test outputs
-.pytest_cache/
-.coverage
-htmlcov/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-*.Zone.Identifier
-
 # Temporary test files
 test_*.wav
 test_*.json
+
+# Model cache (faster-whisper models)
+models/
+.cache/
+
+# Temporary output
+output/
+temp/
+tmp/
+
+# ===========================
+# Documentation
+# ===========================
+docs/_build/
+docs/.doctrees/
+site/
+.sphinx/
+
+# ===========================
+# Profiling & Debugging
+# ===========================
+*.prof
+*.lprof
+*.pstats
+profile_results/
+.ipynb_checkpoints/
+
+# ===========================
+# CI/CD & Docker
+# ===========================
+.docker/
+docker-compose.override.yml
+
+# ===========================
+# Secrets & Sensitive Data
+# ===========================
+.env
+.env.local
+.env.*.local
+secrets/
+*.key
+*.pem
+credentials.json

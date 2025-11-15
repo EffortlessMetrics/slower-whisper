@@ -17,3 +17,8 @@ praat-parselmouth>=0.4.0
 # Emotion recognition models
 transformers>=4.30.0
 torch>=2.0.0
+
+# ============================================================================
+# Stage 3: Benchmarking (optional, for performance testing)
+# ============================================================================
+psutil>=5.9.0  # System resource monitoring
