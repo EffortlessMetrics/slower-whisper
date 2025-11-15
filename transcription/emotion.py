@@ -6,10 +6,20 @@ classification for audio segments.
 """
 
 import logging
-from typing import Dict, Optional, Tuple
+
 import numpy as np
-import torch
-from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
+
+# Optional emotion dependencies - gracefully handle missing packages
+try:
+    import torch
+    from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
+
+    EMOTION_AVAILABLE = True
+except ImportError:
+    EMOTION_AVAILABLE = False
+    torch = None  # type: ignore
+    AutoModelForAudioClassification = None  # type: ignore
+    Wav2Vec2FeatureExtractor = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +45,11 @@ class EmotionRecognizer:
 
     def __init__(self):
         """Initialize recognizer with lazy loading."""
+        if not EMOTION_AVAILABLE:
+            raise RuntimeError(
+                "Emotion recognition requires torch and transformers. "
+                "Install with: uv sync --extra emotion"
+            )
         self._dimensional_model = None
         self._dimensional_feature_extractor = None
         self._categorical_model = None
@@ -68,7 +83,7 @@ class EmotionRecognizer:
             self._categorical_model.eval()
             logger.info("Categorical model loaded successfully")
 
-    def _validate_audio(self, audio: np.ndarray, sr: int) -> Tuple[np.ndarray, bool]:
+    def _validate_audio(self, audio: np.ndarray, sr: int) -> tuple[np.ndarray, bool]:
         """
         Validate and preprocess audio input.
 
@@ -103,9 +118,7 @@ class EmotionRecognizer:
 
         return audio, True
 
-    def _simple_resample(
-        self, audio: np.ndarray, orig_sr: int, target_sr: int
-    ) -> np.ndarray:
+    def _simple_resample(self, audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
         """
         Simple resampling using linear interpolation.
 
@@ -127,44 +140,39 @@ class EmotionRecognizer:
         """Classify valence score into level."""
         if score < 0.3:
             return "very_negative"
-        elif score < 0.4:
+        if score < 0.4:
             return "negative"
-        elif score < 0.6:
+        if score < 0.6:
             return "neutral"
-        elif score < 0.7:
+        if score < 0.7:
             return "positive"
-        else:
-            return "very_positive"
+        return "very_positive"
 
     def _classify_arousal(self, score: float) -> str:
         """Classify arousal score into level."""
         if score < 0.3:
             return "very_low"
-        elif score < 0.4:
+        if score < 0.4:
             return "low"
-        elif score < 0.6:
+        if score < 0.6:
             return "medium"
-        elif score < 0.7:
+        if score < 0.7:
             return "high"
-        else:
-            return "very_high"
+        return "very_high"
 
     def _classify_dominance(self, score: float) -> str:
         """Classify dominance score into level."""
         if score < 0.3:
             return "very_submissive"
-        elif score < 0.4:
+        if score < 0.4:
             return "submissive"
-        elif score < 0.6:
+        if score < 0.6:
             return "neutral"
-        elif score < 0.7:
+        if score < 0.7:
             return "dominant"
-        else:
-            return "very_dominant"
+        return "very_dominant"
 
-    def extract_emotion_dimensional(
-        self, audio: np.ndarray, sr: int
-    ) -> Dict[str, Dict[str, any]]:
+    def extract_emotion_dimensional(self, audio: np.ndarray, sr: int) -> dict[str, dict[str, any]]:
         """
         Extract dimensional emotion features (valence, arousal, dominance).
 
@@ -193,10 +201,7 @@ class EmotionRecognizer:
         # Process audio through model
         with torch.no_grad():
             inputs = self._dimensional_feature_extractor(
-                audio,
-                sampling_rate=self.TARGET_SAMPLE_RATE,
-                return_tensors="pt",
-                padding=True
+                audio, sampling_rate=self.TARGET_SAMPLE_RATE, return_tensors="pt", padding=True
             )
             inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
@@ -212,24 +217,22 @@ class EmotionRecognizer:
         result = {
             "valence": {
                 "level": self._classify_valence(valence_score),
-                "score": round(valence_score, 3)
+                "score": round(valence_score, 3),
             },
             "arousal": {
                 "level": self._classify_arousal(arousal_score),
-                "score": round(arousal_score, 3)
+                "score": round(arousal_score, 3),
             },
             "dominance": {
                 "level": self._classify_dominance(dominance_score),
-                "score": round(dominance_score, 3)
-            }
+                "score": round(dominance_score, 3),
+            },
         }
 
         logger.debug(f"Dimensional emotion: {result}")
         return result
 
-    def extract_emotion_categorical(
-        self, audio: np.ndarray, sr: int
-    ) -> Dict[str, Dict[str, any]]:
+    def extract_emotion_categorical(self, audio: np.ndarray, sr: int) -> dict[str, dict[str, any]]:
         """
         Extract categorical emotion classification.
 
@@ -270,10 +273,7 @@ class EmotionRecognizer:
         # Process audio through model
         with torch.no_grad():
             inputs = self._categorical_feature_extractor(
-                audio,
-                sampling_rate=self.TARGET_SAMPLE_RATE,
-                return_tensors="pt",
-                padding=True
+                audio, sampling_rate=self.TARGET_SAMPLE_RATE, return_tensors="pt", padding=True
             )
             inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
@@ -287,18 +287,15 @@ class EmotionRecognizer:
         id2label = self._categorical_model.config.id2label
 
         # Create scores dictionary
-        all_scores = {
-            id2label[i]: round(float(probs[i]), 3)
-            for i in range(len(probs))
-        }
+        all_scores = {id2label[i]: round(float(probs[i]), 3) for i in range(len(probs))}
 
         # Sort by confidence
-        sorted_emotions = sorted(
-            all_scores.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_emotions = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)
 
         primary_emotion, primary_conf = sorted_emotions[0]
-        secondary_emotion, secondary_conf = sorted_emotions[1] if len(sorted_emotions) > 1 else (None, 0.0)
+        secondary_emotion, secondary_conf = (
+            sorted_emotions[1] if len(sorted_emotions) > 1 else (None, 0.0)
+        )
 
         result = {
             "categorical": {
@@ -306,7 +303,7 @@ class EmotionRecognizer:
                 "confidence": round(primary_conf, 3),
                 "secondary": secondary_emotion,
                 "secondary_confidence": round(secondary_conf, 3),
-                "all_scores": all_scores
+                "all_scores": all_scores,
             }
         }
 
@@ -315,7 +312,7 @@ class EmotionRecognizer:
 
 
 # Singleton instance for easy access
-_recognizer_instance: Optional[EmotionRecognizer] = None
+_recognizer_instance: EmotionRecognizer | None = None
 
 
 def get_emotion_recognizer() -> EmotionRecognizer:
@@ -326,7 +323,7 @@ def get_emotion_recognizer() -> EmotionRecognizer:
     return _recognizer_instance
 
 
-def extract_emotion_dimensional(audio: np.ndarray, sr: int) -> Dict[str, Dict[str, any]]:
+def extract_emotion_dimensional(audio: np.ndarray, sr: int) -> dict[str, dict[str, any]]:
     """
     Convenience function to extract dimensional emotion features.
 
@@ -351,7 +348,7 @@ def extract_emotion_dimensional(audio: np.ndarray, sr: int) -> Dict[str, Dict[st
     return recognizer.extract_emotion_dimensional(audio, sr)
 
 
-def extract_emotion_categorical(audio: np.ndarray, sr: int) -> Dict[str, Dict[str, any]]:
+def extract_emotion_categorical(audio: np.ndarray, sr: int) -> dict[str, dict[str, any]]:
     """
     Convenience function to extract categorical emotion classification.
 
@@ -383,7 +380,7 @@ def extract_emotion_categorical(audio: np.ndarray, sr: int) -> Dict[str, Dict[st
 # Export public API
 __all__ = [
     "EmotionRecognizer",
-    "get_emotion_recognizer",
-    "extract_emotion_dimensional",
     "extract_emotion_categorical",
+    "extract_emotion_dimensional",
+    "get_emotion_recognizer",
 ]

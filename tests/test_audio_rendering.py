@@ -5,7 +5,7 @@ Demonstrates the render_audio_state function with various audio states
 and feature combinations.
 """
 
-from transcription.audio_rendering import render_audio_state, render_audio_features_detailed
+from transcription.audio_rendering import render_audio_features_detailed, render_audio_state
 
 
 def test_render_neutral_state():
@@ -15,10 +15,9 @@ def test_render_neutral_state():
     print(f"Empty state: {result}")
 
     # Explicitly neutral features
-    result = render_audio_state({
-        "prosody": {"pitch": "neutral", "volume": "medium"},
-        "emotion": {"tone": "normal"}
-    })
+    result = render_audio_state(
+        {"prosody": {"pitch": "neutral", "volume": "medium"}, "emotion": {"tone": "normal"}}
+    )
     assert result == "[audio: neutral]"
     print(f"Explicitly neutral: {result}")
 
@@ -26,15 +25,8 @@ def test_render_neutral_state():
 def test_render_excited_state():
     """Test rendering of excited/energetic audio state."""
     excited = {
-        "prosody": {
-            "pitch": "high",
-            "volume": "loud",
-            "speech_rate": "fast"
-        },
-        "emotion": {
-            "tone": "excited",
-            "confidence": 0.95
-        }
+        "prosody": {"pitch": "high", "volume": "loud", "speech_rate": "fast"},
+        "emotion": {"tone": "excited", "confidence": 0.95},
     }
     result = render_audio_state(excited)
     assert result == "[audio: high pitch, loud volume, fast speech, excited tone]"
@@ -45,13 +37,8 @@ def test_render_excited_state():
 def test_render_hesitant_state():
     """Test rendering of hesitant/uncertain audio state."""
     hesitant = {
-        "prosody": {
-            "pauses": "moderate"
-        },
-        "emotion": {
-            "tone": "hesitant",
-            "confidence": 0.45
-        }
+        "prosody": {"pauses": "moderate"},
+        "emotion": {"tone": "hesitant", "confidence": 0.45},
     }
     result = render_audio_state(hesitant)
     assert "[audio:" in result
@@ -64,15 +51,8 @@ def test_render_hesitant_state():
 def test_render_calm_state():
     """Test rendering of calm/relaxed audio state."""
     calm = {
-        "prosody": {
-            "pitch": "low",
-            "volume": "quiet",
-            "speech_rate": "slow"
-        },
-        "emotion": {
-            "tone": "calm",
-            "confidence": 0.85
-        }
+        "prosody": {"pitch": "low", "volume": "quiet", "speech_rate": "slow"},
+        "emotion": {"tone": "calm", "confidence": 0.85},
     }
     result = render_audio_state(calm)
     assert result == "[audio: low pitch, quiet volume, slow speech, calm tone]"
@@ -87,16 +67,10 @@ def test_render_stressed_state():
             "pitch": "high",
             "volume": "loud",
             "pauses": "frequent",
-            "speech_rate": "rapid"
+            "speech_rate": "rapid",
         },
-        "voice_quality": {
-            "stress_level": "high",
-            "energy": "high"
-        },
-        "emotion": {
-            "tone": "stressed",
-            "confidence": 0.78
-        }
+        "voice_quality": {"stress_level": "high", "energy": "high"},
+        "emotion": {"tone": "stressed", "confidence": 0.78},
     }
     result = render_audio_state(stressed)
     print(f"Stressed state: {result}")
@@ -110,16 +84,8 @@ def test_render_stressed_state():
 def test_render_sad_state():
     """Test rendering of sad/melancholic audio state."""
     sad = {
-        "prosody": {
-            "pitch": "low",
-            "volume": "quiet",
-            "speech_rate": "slow",
-            "pauses": "long"
-        },
-        "emotion": {
-            "tone": "sad",
-            "confidence": 0.82
-        }
+        "prosody": {"pitch": "low", "volume": "quiet", "speech_rate": "slow", "pauses": "long"},
+        "emotion": {"tone": "sad", "confidence": 0.82},
     }
     result = render_audio_state(sad)
     print(f"Sad state: {result}")
@@ -132,12 +98,7 @@ def test_render_sad_state():
 
 def test_render_uncertain_state():
     """Test rendering with low confidence uncertainty."""
-    uncertain = {
-        "emotion": {
-            "tone": "confused",
-            "confidence": 0.35
-        }
-    }
+    uncertain = {"emotion": {"tone": "confused", "confidence": 0.35}}
     result = render_audio_state(uncertain)
     print(f"Uncertain state: {result}")
     assert "confused tone" in result
@@ -146,23 +107,17 @@ def test_render_uncertain_state():
 
 def test_render_partial_features():
     """Test rendering with only some features present."""
-    partial1 = {
-        "prosody": {"pitch": "high"}
-    }
+    partial1 = {"prosody": {"pitch": "high"}}
     result = render_audio_state(partial1)
     assert result == "[audio: high pitch]"
     print(f"Partial (pitch only): {result}")
 
-    partial2 = {
-        "emotion": {"tone": "enthusiastic"}
-    }
+    partial2 = {"emotion": {"tone": "enthusiastic"}}
     result = render_audio_state(partial2)
     assert result == "[audio: enthusiastic tone]"
     print(f"Partial (tone only): {result}")
 
-    partial3 = {
-        "voice_quality": {"clarity": "muffled"}
-    }
+    partial3 = {"voice_quality": {"clarity": "muffled"}}
     result = render_audio_state(partial3)
     assert result == "[audio: muffled clarity]"
     print(f"Partial (clarity only): {result}")
@@ -170,22 +125,12 @@ def test_render_partial_features():
 
 def test_render_mixed_confidence():
     """Test rendering with mixed confidence levels."""
-    low_conf = {
-        "emotion": {
-            "tone": "angry",
-            "confidence": 0.65
-        }
-    }
+    low_conf = {"emotion": {"tone": "angry", "confidence": 0.65}}
     result = render_audio_state(low_conf)
     print(f"Medium confidence: {result}")
     assert "somewhat uncertain" in result
 
-    high_conf = {
-        "emotion": {
-            "tone": "happy",
-            "confidence": 0.92
-        }
-    }
+    high_conf = {"emotion": {"tone": "happy", "confidence": 0.92}}
     result = render_audio_state(high_conf)
     print(f"High confidence: {result}")
     assert "uncertain" not in result
@@ -193,10 +138,7 @@ def test_render_mixed_confidence():
 
 def test_render_none_values():
     """Test that None values are handled gracefully."""
-    with_nones = {
-        "prosody": {"pitch": None, "volume": "loud"},
-        "emotion": {"tone": None}
-    }
+    with_nones = {"prosody": {"pitch": None, "volume": "loud"}, "emotion": {"tone": None}}
     result = render_audio_state(with_nones)
     print(f"With None values: {result}")
     assert result == "[audio: loud volume]"
@@ -207,11 +149,11 @@ def test_detailed_rendering():
     state = {
         "prosody": {"pitch": "high", "volume": "loud", "speech_rate": "fast"},
         "emotion": {"tone": "excited"},
-        "voice_quality": {"energy": "high"}
+        "voice_quality": {"energy": "high"},
     }
     detailed = render_audio_features_detailed(state)
 
-    print(f"\nDetailed rendering:")
+    print("\nDetailed rendering:")
     print(f"  Prosody: {detailed['prosody']}")
     print(f"  Emotion: {detailed['emotion']}")
     print(f"  Voice quality: {detailed['voice_quality']}")
@@ -276,7 +218,7 @@ if __name__ == "__main__":
     test_detailed_rendering()
 
     print("\n12. Length constraint:")
-    test_render_length_constraint()
+    test_length_constraint()
 
     print("\n" + "=" * 60)
     print("All tests passed!")
