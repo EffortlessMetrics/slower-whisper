@@ -1,0 +1,55 @@
+# Pre-commit hooks for slower-whisper project
+# Install: pip install pre-commit
+# Setup: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Ruff - Fast Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.5
+    hooks:
+      # Run the linter with auto-fix
+      - id: ruff
+        args: [--fix]
+        types_or: [python, pyi]
+      # Run the formatter
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Type checking with mypy (only on transcription package)
+  # Note: Mypy is configured to warn but not fail pre-commit
+  # For full strict type checking, run: mypy transcription/
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (optional type checking)
+        entry: bash -c 'mypy transcription/ --ignore-missing-imports --show-error-codes --no-strict-optional --allow-untyped-defs --allow-incomplete-defs || true'
+        language: system
+        types: [python]
+        files: ^transcription/
+        pass_filenames: false
+        verbose: true
+
+# Configuration
+default_language_version:
+  python: python3.12
+
+# Optional: Uncomment to skip mypy entirely in CI
+# ci:
+#   skip: [mypy]

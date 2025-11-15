@@ -1,0 +1,241 @@
+{
+  "benchmark_info": {
+    "timestamp": "2025-11-15T00:59:47.123020",
+    "total_runs": 8,
+    "system_info": {
+      "cpu_count": 16,
+      "cpu_count_logical": 32,
+      "total_ram_gb": 196.572265625,
+      "cuda_available": false,
+      "cuda_device": null,
+      "python_version": "3.12.3",
+      "torch_version": "2.9.1+cu128"
+    }
+  },
+  "results": [
+    {
+      "config": {
+        "duration_seconds": 10,
+        "config_mode": "prosody",
+        "device": "cpu",
+        "description": "Prosody only (pitch, energy, rate, pauses)"
+      },
+      "execution_time_seconds": 0.994971513748169,
+      "peak_memory_mb": 138.75,
+      "avg_memory_mb": 69.375,
+      "segments_processed": 2,
+      "segments_per_second": 2.010107799434153,
+      "time_per_segment_ms": 497.4857568740845,
+      "prosody_time_ms": 497.4372386932373,
+      "emotion_time_ms": null,
+      "success_count": 2,
+      "failure_count": 0,
+      "timestamp": "2025-11-15T00:59:19.338786",
+      "system_info": {
+        "cpu_count": 16,
+        "cpu_count_logical": 32,
+        "total_ram_gb": 196.572265625,
+        "cuda_available": false,
+        "cuda_device": null,
+        "python_version": "3.12.3",
+        "torch_version": "2.9.1+cu128"
+      }
+    },
+    {
+      "config": {
+        "duration_seconds": 10,
+        "config_mode": "emotion",
+        "device": "cpu",
+        "description": "Emotion only (dimensional: valence, arousal, dominance)"
+      },
+      "execution_time_seconds": 1.3012526035308838,
+      "peak_memory_mb": 695.21484375,
+      "avg_memory_mb": 347.607421875,
+      "segments_processed": 2,
+      "segments_per_second": 1.5369805943696866,
+      "time_per_segment_ms": 650.6263017654419,
+      "prosody_time_ms": null,
+      "emotion_time_ms": 650.5690813064575,
+      "success_count": 2,
+      "failure_count": 0,
+      "timestamp": "2025-11-15T00:59:20.756519",
+      "system_info": {
+        "cpu_count": 16,
+        "cpu_count_logical": 32,
+        "total_ram_gb": 196.572265625,
+        "cuda_available": false,
+        "cuda_device": null,
+        "python_version": "3.12.3",
+        "torch_version": "2.9.1+cu128"
+      }
+    },
+    {
+      "config": {
+        "duration_seconds": 10,
+        "config_mode": "full",
+        "device": "cpu",
+        "description": "Prosody + dimensional emotion"
+      },
+      "execution_time_seconds": 0.8293592929840088,
+      "peak_memory_mb": 7.74609375,
+      "avg_memory_mb": 3.873046875,
+      "segments_processed": 2,
+      "segments_per_second": 2.41150007833645,
+      "time_per_segment_ms": 414.6796464920044,
+      "prosody_time_ms": 414.587140083313,
+      "emotion_time_ms": 414.589524269104,
+      "success_count": 2,
+      "failure_count": 0,
+      "timestamp": "2025-11-15T00:59:21.587407",
+      "system_info": {
+        "cpu_count": 16,
+        "cpu_count_logical": 32,
+        "total_ram_gb": 196.572265625,
+        "cuda_available": false,
+        "cuda_device": null,
+        "python_version": "3.12.3",
+        "torch_version": "2.9.1+cu128"
+      }
+    },
+    {
+      "config": {
+        "duration_seconds": 10,
+        "config_mode": "categorical",
+        "device": "cpu",
+        "description": "Full feature set (prosody + dimensional + categorical emotion)"
+      },
+      "execution_time_seconds": 2.160646677017212,
+      "peak_memory_mb": 1203.55859375,
+      "avg_memory_mb": 601.779296875,
+      "segments_processed": 2,
+      "segments_per_second": 0.9256487982389672,
+      "time_per_segment_ms": 1080.323338508606,
+      "prosody_time_ms": 1080.2658796310425,
+      "emotion_time_ms": 1080.2674293518066,
+      "success_count": 2,
+      "failure_count": 0,
+      "timestamp": "2025-11-15T00:59:23.750679",
+      "system_info": {
+        "cpu_count": 16,
+        "cpu_count_logical": 32,
+        "total_ram_gb": 196.572265625,
+        "cuda_available": false,
+        "cuda_device": null,
+        "python_version": "3.12.3",
+        "torch_version": "2.9.1+cu128"
+      }
+    },
+    {
+      "config": {
+        "duration_seconds": 30,
+        "config_mode": "prosody",
+        "device": "cpu",
+        "description": "Prosody only (pitch, energy, rate, pauses)"
+      },
+      "execution_time_seconds": 0.1687784194946289,
+      "peak_memory_mb": 0.25,
+      "avg_memory_mb": 0.07942708333348492,
+      "segments_processed": 6,
+      "segments_per_second": 35.54956858800861,
+      "time_per_segment_ms": 28.129736582438152,
+      "prosody_time_ms": 28.065284093221027,
+      "emotion_time_ms": null,
+      "success_count": 6,
+      "failure_count": 0,
+      "timestamp": "2025-11-15T00:59:23.921197",
+      "system_info": {
+        "cpu_count": 16,
+        "cpu_count_logical": 32,
+        "total_ram_gb": 196.572265625,
+        "cuda_available": false,
+        "cuda_device": null,
+        "python_version": "3.12.3",
+        "torch_version": "2.9.1+cu128"
+      }
+    },
+    {
+      "config": {
+        "duration_seconds": 30,
+        "config_mode": "emotion",
+        "device": "cpu",
+        "description": "Emotion only (dimensional: valence, arousal, dominance)"
+      },
+      "execution_time_seconds": 2.026531219482422,
+      "peak_memory_mb": 0.0625,
+      "avg_memory_mb": -0.2604166666665151,
+      "segments_processed": 6,
+      "segments_per_second": 2.960724188365776,
+      "time_per_segment_ms": 337.7552032470703,
+      "prosody_time_ms": null,
+      "emotion_time_ms": 337.67088254292804,
+      "success_count": 6,
+      "failure_count": 0,
+      "timestamp": "2025-11-15T00:59:25.949544",
+      "system_info": {
+        "cpu_count": 16,
+        "cpu_count_logical": 32,
+        "total_ram_gb": 196.572265625,
+        "cuda_available": false,
+        "cuda_device": null,
+        "python_version": "3.12.3",
+        "torch_version": "2.9.1+cu128"
+      }
+    },
+    {
+      "config": {
+        "duration_seconds": 30,
+        "config_mode": "full",
+        "device": "cpu",
+        "description": "Prosody + dimensional emotion"
+      },
+      "execution_time_seconds": 5.429600715637207,
+      "peak_memory_mb": 0.48046875,
+      "avg_memory_mb": -0.2669270833334849,
+      "segments_processed": 6,
+      "segments_per_second": 1.1050536336346146,
+      "time_per_segment_ms": 904.9334526062012,
+      "prosody_time_ms": 904.8328399658203,
+      "emotion_time_ms": 904.8353036244711,
+      "success_count": 6,
+      "failure_count": 0,
+      "timestamp": "2025-11-15T00:59:31.380935",
+      "system_info": {
+        "cpu_count": 16,
+        "cpu_count_logical": 32,
+        "total_ram_gb": 196.572265625,
+        "cuda_available": false,
+        "cuda_device": null,
+        "python_version": "3.12.3",
+        "torch_version": "2.9.1+cu128"
+      }
+    },
+    {
+      "config": {
+        "duration_seconds": 30,
+        "config_mode": "categorical",
+        "device": "cpu",
+        "description": "Full feature set (prosody + dimensional + categorical emotion)"
+      },
+      "execution_time_seconds": 15.737653017044067,
+      "peak_memory_mb": 0.0,
+      "avg_memory_mb": -0.32421875,
+      "segments_processed": 6,
+      "segments_per_second": 0.3812512573191141,
+      "time_per_segment_ms": 2622.9421695073447,
+      "prosody_time_ms": 2622.8367487589517,
+      "emotion_time_ms": 2622.838815053304,
+      "success_count": 6,
+      "failure_count": 0,
+      "timestamp": "2025-11-15T00:59:47.120914",
+      "system_info": {
+        "cpu_count": 16,
+        "cpu_count_logical": 32,
+        "total_ram_gb": 196.572265625,
+        "cuda_available": false,
+        "cuda_device": null,
+        "python_version": "3.12.3",
+        "torch_version": "2.9.1+cu128"
+      }
+    }
+  ]
+}

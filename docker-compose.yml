@@ -1,0 +1,172 @@
+# Docker Compose configuration for slower-whisper
+# Provides orchestration for different use cases
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # GPU transcription service (recommended for production)
+  # ============================================================================
+  transcribe-gpu:
+    image: slower-whisper:gpu
+    build:
+      context: .
+      target: runtime-gpu
+      args:
+        INSTALL_MODE: enrich
+    container_name: slower-whisper-gpu
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      # Map local directories to container
+      - ./raw_audio:/app/raw_audio:ro
+      - ./input_audio:/app/input_audio
+      - ./transcripts:/app/transcripts
+      - ./whisper_json:/app/whisper_json
+      # Cache model downloads to avoid re-downloading
+      - huggingface-cache:/home/appuser/.cache/huggingface
+      - whisper-cache:/home/appuser/.cache/whisper
+    command: >
+      --model large-v3
+      --language en
+      --skip-existing-json
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # ============================================================================
+  # CPU transcription service (for machines without GPU)
+  # ============================================================================
+  transcribe-cpu:
+    image: slower-whisper:cpu
+    build:
+      context: .
+      target: runtime-cpu
+      args:
+        INSTALL_MODE: enrich
+    container_name: slower-whisper-cpu
+    environment:
+      - CUDA_VISIBLE_DEVICES=""  # Disable GPU
+    volumes:
+      - ./raw_audio:/app/raw_audio:ro
+      - ./input_audio:/app/input_audio
+      - ./transcripts:/app/transcripts
+      - ./whisper_json:/app/whisper_json
+      - huggingface-cache:/home/appuser/.cache/huggingface
+      - whisper-cache:/home/appuser/.cache/whisper
+    command: >
+      --device cpu
+      --model medium
+      --skip-existing-json
+    restart: unless-stopped
+
+  # ============================================================================
+  # Batch processing service (watch folder for new files)
+  # ============================================================================
+  batch-processor:
+    image: slower-whisper:gpu
+    container_name: slower-whisper-batch
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ./raw_audio:/app/raw_audio:ro
+      - ./input_audio:/app/input_audio
+      - ./transcripts:/app/transcripts
+      - ./whisper_json:/app/whisper_json
+      - huggingface-cache:/home/appuser/.cache/huggingface
+      - whisper-cache:/home/appuser/.cache/whisper
+    command: >
+      --model large-v3
+      --skip-existing-json
+      --language auto
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================================================
+  # Development/interactive service
+  # ============================================================================
+  dev:
+    image: slower-whisper:gpu
+    container_name: slower-whisper-dev
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      # Mount source code for development
+      - .:/app
+      - huggingface-cache:/home/appuser/.cache/huggingface
+      - whisper-cache:/home/appuser/.cache/whisper
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+# Shared volumes for caching models
+volumes:
+  huggingface-cache:
+    driver: local
+  whisper-cache:
+    driver: local
+
+# =============================================================================
+# Usage:
+# =============================================================================
+#
+# Build all services:
+#   docker-compose build
+#
+# Run GPU transcription (one-time):
+#   docker-compose run --rm transcribe-gpu
+#
+# Run CPU transcription (one-time):
+#   docker-compose run --rm transcribe-cpu
+#
+# Start batch processor (runs continuously):
+#   docker-compose up -d batch-processor
+#
+# View logs:
+#   docker-compose logs -f batch-processor
+#
+# Stop batch processor:
+#   docker-compose down
+#
+# Interactive development session:
+#   docker-compose run --rm dev
+#
+# Clean up volumes:
+#   docker-compose down -v
+#
+# =============================================================================
+# Custom Configuration:
+# =============================================================================
+#
+# Override settings with docker-compose.override.yml:
+#
+# version: '3.8'
+# services:
+#   transcribe-gpu:
+#     command: >
+#       --model small
+#       --compute-type int8_float16
+#       --language ja
+#

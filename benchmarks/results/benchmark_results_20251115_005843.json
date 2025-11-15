@@ -1,0 +1,45 @@
+{
+  "benchmark_info": {
+    "timestamp": "2025-11-15T00:58:43.327160",
+    "total_runs": 1,
+    "system_info": {
+      "cpu_count": 16,
+      "cpu_count_logical": 32,
+      "total_ram_gb": 196.572265625,
+      "cuda_available": false,
+      "cuda_device": null,
+      "python_version": "3.12.3",
+      "torch_version": "2.9.1+cu128"
+    }
+  },
+  "results": [
+    {
+      "config": {
+        "duration_seconds": 10.0,
+        "config_mode": "prosody",
+        "device": "cpu",
+        "description": "Prosody only (pitch, energy, rate, pauses)"
+      },
+      "execution_time_seconds": 0.9813671112060547,
+      "peak_memory_mb": 138.75,
+      "avg_memory_mb": 69.375,
+      "segments_processed": 2,
+      "segments_per_second": 2.037973330430946,
+      "time_per_segment_ms": 490.68355560302734,
+      "prosody_time_ms": 490.633487701416,
+      "emotion_time_ms": null,
+      "success_count": 2,
+      "failure_count": 0,
+      "timestamp": "2025-11-15T00:58:43.186806",
+      "system_info": {
+        "cpu_count": 16,
+        "cpu_count_logical": 32,
+        "total_ram_gb": 196.572265625,
+        "cuda_available": false,
+        "cuda_device": null,
+        "python_version": "3.12.3",
+        "torch_version": "2.9.1+cu128"
+      }
+    }
+  ]
+}

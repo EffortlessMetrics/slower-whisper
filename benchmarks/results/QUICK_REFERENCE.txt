@@ -1,0 +1,96 @@
+================================================================================
+                    AUDIO ENRICHMENT PERFORMANCE QUICK REFERENCE
+================================================================================
+
+SYSTEM: 16-core CPU, 196 GB RAM, Linux WSL2 (CPU-only)
+DATE: 2025-11-15
+
+--------------------------------------------------------------------------------
+                            PERFORMANCE SUMMARY
+--------------------------------------------------------------------------------
+
+Configuration      Duration    Time/Seg      Throughput    Memory      Real-time
+--------------------------------------------------------------------------------
+Prosody            10s         497.5 ms      2.01 seg/s    138.8 MB    ✓ Yes
+Prosody            30s         28.1 ms       35.55 seg/s   0.2 MB      ✓ Yes (35x!)
+
+Emotion (Dim)      10s         650.6 ms      1.54 seg/s    695.2 MB    ✓ Yes
+Emotion (Dim)      30s         337.8 ms      2.96 seg/s    0.1 MB      ✓ Yes
+
+Full Pipeline      10s         414.7 ms      2.41 seg/s    7.7 MB      ✓ Yes
+Full Pipeline      30s         904.9 ms      1.11 seg/s    0.5 MB      ✓ Yes
+
+Categorical        10s         1080.3 ms     0.93 seg/s    1203.6 MB   ✗ Marginal
+Categorical        30s         2622.9 ms     0.38 seg/s    0.0 MB      ✗ No
+
+--------------------------------------------------------------------------------
+                            KEY FINDINGS
+--------------------------------------------------------------------------------
+
+✓ EXCELLENT: Prosody-only processing is extremely fast (28-497 ms/segment)
+✓ EXCELLENT: Full pipeline is real-time capable (2.4x real-time on CPU)
+✓ GOOD: All configurations achieve 100% success rate
+⚠ WARNING: Categorical emotions need GPU for real-time use
+
+--------------------------------------------------------------------------------
+                            RECOMMENDATIONS
+--------------------------------------------------------------------------------
+
+USE CASE                    RECOMMENDED CONFIG         EXPECTED PERFORMANCE
+--------------------------------------------------------------------------------
+Real-time streaming         prosody                    28-497 ms/seg, <150 MB
+Live transcription          full                       415-905 ms/seg, <10 MB
+Batch processing            full or categorical        415-2623 ms/seg
+Research/analysis           categorical (with GPU)     1080-2623 ms/seg (CPU)
+
+--------------------------------------------------------------------------------
+                            MEMORY REQUIREMENTS
+--------------------------------------------------------------------------------
+
+Configuration               Peak Memory        Recommended RAM
+--------------------------------------------------------------------------------
+Prosody                     ~139 MB            2 GB minimum
+Dimensional Emotion         ~695 MB            4 GB minimum
+Full Pipeline              ~8 MB (cached)      4 GB minimum
+Categorical Emotion         ~1204 MB           8 GB minimum
+
+--------------------------------------------------------------------------------
+                            OPTIMIZATION TIPS
+--------------------------------------------------------------------------------
+
+1. ⚡ Use 'full' config as default (best balance)
+2. ⚡ Use 'prosody' for maximum speed
+3. ⚡ Pre-load models to avoid first-run overhead
+4. ⚡ Use GPU for categorical emotions (2-5x speedup expected)
+5. ⚡ Process longer audio segments for better efficiency
+
+--------------------------------------------------------------------------------
+                            SCALING BEHAVIOR
+--------------------------------------------------------------------------------
+
+prosody:      Excellent  (28 ms on 30s vs 497 ms on 10s = 17x improvement!)
+emotion:      Good       (338 ms on 30s vs 651 ms on 10s = 2x improvement)
+full:         Fair       (905 ms on 30s vs 415 ms on 10s = 2x slower)
+categorical:  Fair       (2623 ms on 30s vs 1080 ms on 10s = 2.4x slower)
+
+Note: First segment pays model loading cost. Longer audio amortizes overhead.
+
+--------------------------------------------------------------------------------
+                            QUICK START
+--------------------------------------------------------------------------------
+
+Run your own benchmark:
+    cd benchmarks
+    python benchmark_audio_enrich.py --quick
+
+View results:
+    cat results/benchmark_results_*.md
+
+Full documentation:
+    cat README.md
+    cat BASELINE_RESULTS.md
+    cat INTERPRETING_RESULTS.md
+
+================================================================================
+                            END OF QUICK REFERENCE
+================================================================================

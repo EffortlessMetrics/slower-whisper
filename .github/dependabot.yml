@@ -1,0 +1,67 @@
+version: 2
+
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Python dependencies (pip)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Group minor and patch updates together
+    groups:
+      dev-dependencies:
+        patterns:
+          - "pytest*"
+          - "ruff"
+          - "mypy"
+          - "coverage"
+        update-types:
+          - "minor"
+          - "patch"
+
+      audio-dependencies:
+        patterns:
+          - "librosa"
+          - "soundfile"
+          - "numpy"
+          - "parselmouth*"
+        update-types:
+          - "minor"
+          - "patch"
+
+      ml-dependencies:
+        patterns:
+          - "torch"
+          - "transformers"
+        update-types:
+          - "minor"
+          - "patch"
+
+    # Ignore specific updates if needed
+    ignore:
+      # Ignore major version updates for ML packages (can be breaking)
+      - dependency-name: "torch"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "transformers"
+        update-types: ["version-update:semver-major"]

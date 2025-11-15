@@ -1,0 +1,103 @@
+# ============================================================================
+# Development Dependencies
+# ============================================================================
+# Install size: ~6.5GB + dev tools (~200MB)
+# Usage: pip install -r requirements-dev.txt
+#
+# Includes everything from requirements-enrich.txt PLUS development tools
+# ============================================================================
+
+# Include all enrichment features
+-r requirements-enrich.txt
+
+# ============================================================================
+# Testing
+# ============================================================================
+pytest>=7.0,<8.0
+pytest-cov>=4.0,<5.0
+pytest-mock>=3.10,<4.0
+pytest-asyncio>=0.21,<1.0
+pytest-xdist>=3.0,<4.0          # parallel test execution
+
+# ============================================================================
+# Code Quality & Formatting
+# ============================================================================
+black>=23.0,<25.0               # code formatter
+flake8>=6.0,<8.0                # linter
+isort>=5.0,<6.0                 # import sorter
+mypy>=1.0,<2.0                  # static type checker
+ruff>=0.1.0,<1.0                # fast linter (alternative to flake8)
+
+# Flake8 plugins
+flake8-docstrings>=1.7,<2.0
+flake8-bugbear>=23.0,<25.0
+flake8-comprehensions>=3.10,<4.0
+
+# Type stubs
+types-requests>=2.31,<3.0
+types-PyYAML>=6.0,<7.0
+
+# ============================================================================
+# Documentation
+# ============================================================================
+sphinx>=5.0,<8.0
+sphinx-rtd-theme>=1.0,<3.0
+sphinx-autodoc-typehints>=1.23,<2.0
+myst-parser>=2.0,<3.0           # markdown support
+
+# ============================================================================
+# Security & Dependency Scanning
+# ============================================================================
+pip-audit>=2.0,<3.0             # vulnerability scanner
+safety>=2.0,<4.0                # dependency security checker
+bandit>=1.7,<2.0                # security linter
+
+# ============================================================================
+# Build & Distribution
+# ============================================================================
+build>=1.0,<2.0                 # PEP 517 build frontend
+twine>=4.0,<6.0                 # PyPI upload
+wheel>=0.42,<1.0                # wheel builder
+
+# ============================================================================
+# Utilities
+# ============================================================================
+pre-commit>=3.0,<4.0            # git hooks
+ipython>=8.0,<9.0               # interactive shell
+ipdb>=0.13,<1.0                 # debugger
+rich>=13.0,<14.0                # rich console output
+
+# ============================================================================
+# Performance Profiling
+# ============================================================================
+memory-profiler>=0.61,<1.0
+line-profiler>=4.0,<5.0
+py-spy>=0.3,<1.0                # sampling profiler
+
+# ============================================================================
+# Notes
+# ============================================================================
+#
+# To set up development environment:
+#   1. Create virtual environment:
+#      python -m venv venv
+#      source venv/bin/activate  # or venv\Scripts\activate on Windows
+#
+#   2. Install dev dependencies:
+#      pip install -r requirements-dev.txt
+#
+#   3. Install pre-commit hooks:
+#      pre-commit install
+#
+#   4. Run tests:
+#      pytest
+#
+#   5. Run code quality checks:
+#      black .
+#      isort .
+#      flake8
+#      mypy transcription/
+#
+#   6. Security scan:
+#      pip-audit
+#      safety check

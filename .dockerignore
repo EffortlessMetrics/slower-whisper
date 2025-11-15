@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+.benchmarks/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Data directories (will be mounted as volumes)
+raw_audio/
+input_audio/
+transcripts/
+whisper_json/
+
+# System files
+.DS_Store
+Thumbs.db
+*.Zone.Identifier
+
+# Development
+.pre-commit-config.yaml
+pytest.ini
+
+# Build artifacts
+*.tar.gz
+*.whl

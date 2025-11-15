@@ -1,0 +1,97 @@
+# ============================================================================
+# Stage 2: Audio Enrichment (Full Feature Set)
+# ============================================================================
+# Install size: ~6.5GB total (includes Stage 1)
+# Usage: pip install -r requirements-enrich.txt
+#
+# This includes everything from requirements-base.txt PLUS:
+# - Prosody extraction (pitch, energy, rate, pauses)
+# - Emotion recognition (dimensional & categorical)
+# - Audio feature analysis
+# ============================================================================
+
+# Include base dependencies
+-r requirements-base.txt
+
+# ============================================================================
+# Audio Processing (required for all enrichment features)
+# ============================================================================
+
+# Audio I/O and basic processing
+soundfile>=0.12.0,<1.0          # 64KB: WAV file I/O
+numpy>=1.24.0,<3.0              # 70MB: numerical arrays (shared)
+
+# Advanced audio analysis
+librosa>=0.11.0,<0.12           # 5.2MB + dependencies below
+# librosa pulls in:
+# - scipy>=1.6.0                (~114MB: scientific computing)
+# - scikit-learn>=1.1.0         (~172MB metadata: ML utilities)
+# - numba>=0.51.0               (~33MB: JIT compilation)
+# - joblib>=1.0                 (parallel processing)
+# - audioread>=2.1.9            (audio file reading)
+# - decorator>=4.3.0            (function decorators)
+# - pooch>=1.1                  (dataset downloads)
+# - soxr>=0.3.2                 (high-quality resampling)
+# - lazy_loader>=0.1            (lazy imports)
+# - msgpack>=1.0                (serialization)
+
+# ============================================================================
+# Prosody Feature Extraction
+# ============================================================================
+
+# Research-grade pitch extraction (Praat integration)
+praat-parselmouth>=0.4.0,<1.0   # 36MB: GPL licensed, high accuracy
+
+# ============================================================================
+# Emotion Recognition (Heavy ML Dependencies)
+# ============================================================================
+
+# Deep learning framework
+torch>=2.0.0,<3.0               # 1.7GB: PyTorch + CUDA libs
+# torch pulls in:
+# - nvidia-cublas-cu12           (CUDA linear algebra)
+# - nvidia-cuda-cupti-cu12       (CUDA profiling)
+# - nvidia-cuda-nvrtc-cu12       (CUDA runtime compilation)
+# - nvidia-cuda-runtime-cu12     (CUDA runtime)
+# - nvidia-cudnn-cu12            (CUDA deep neural networks)
+# - nvidia-cufft-cu12            (CUDA FFT)
+# - nvidia-cufile-cu12           (GPU Direct Storage)
+# - nvidia-curand-cu12           (CUDA random numbers)
+# - nvidia-cusolver-cu12         (CUDA linear solvers)
+# - nvidia-cusparse-cu12         (CUDA sparse matrix)
+# - nvidia-cusparselt-cu12       (CUDA sparse tensor)
+# - nvidia-nccl-cu12             (CUDA collective comms)
+# - nvidia-nvjitlink-cu12        (CUDA JIT linking)
+# - nvidia-nvtx-cu12             (CUDA profiling)
+# - triton                       (GPU compiler)
+# - filelock, fsspec, jinja2, networkx, sympy
+
+# HuggingFace Transformers (wav2vec2 models)
+transformers>=4.30.0,<5.0       # 115MB: model loading & inference
+# transformers pulls in:
+# - huggingface-hub              (shared with faster-whisper)
+# - tokenizers                   (shared with faster-whisper)
+# - safetensors                  (safe tensor serialization)
+# - regex                        (advanced regex)
+# - requests                     (HTTP client)
+# - pyyaml                       (YAML parsing)
+# - packaging                    (version parsing)
+
+# ============================================================================
+# Notes
+# ============================================================================
+#
+# Total install breakdown:
+# - Stage 1 (base):      ~2.5GB
+# - soundfile + numpy:   ~70MB (shared with base)
+# - librosa stack:       ~400MB (scipy, scikit-learn, numba)
+# - praat-parselmouth:   ~36MB
+# - torch + CUDA libs:   ~1.7GB
+# - transformers:        ~115MB
+# - Other transitive:    ~50MB
+# ────────────────────────────────
+# TOTAL:                 ~6.5GB
+#
+# For lighter installs, see:
+# - requirements-base.txt (transcription only)
+# - pyproject.toml optional dependencies (granular control)

@@ -1,0 +1,29 @@
+# ============================================================================
+# Stage 1: Transcription Only (Minimum Dependencies)
+# ============================================================================
+# Install size: ~2.5GB
+# Usage: pip install -r requirements-base.txt
+#
+# This provides:
+# - Audio normalization (via ffmpeg)
+# - Whisper-based transcription
+# - JSON/TXT/SRT output
+# - GPU acceleration (CUDA)
+# - VAD filtering
+#
+# Does NOT include:
+# - Audio enrichment (prosody extraction)
+# - Emotion recognition
+# ============================================================================
+
+# Core transcription engine
+faster-whisper>=1.2.0,<2.0
+
+# Transitive dependencies (auto-installed):
+# - ctranslate2>=4.0,<5         (~130MB: CPU/GPU inference engine)
+# - onnxruntime>=1.14,<2        (~53MB: ONNX model execution)
+# - huggingface-hub>=0.21       (~10MB: model downloads)
+# - tokenizers>=0.13,<1         (~10MB: text tokenization)
+# - av>=11                      (~117MB: audio decoding via ffmpeg)
+# - numpy                       (~70MB: required by all)
+# - tqdm                        (progress bars)

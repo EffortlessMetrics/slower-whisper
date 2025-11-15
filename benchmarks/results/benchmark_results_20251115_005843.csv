@@ -1,0 +1,2 @@
+timestamp,duration_seconds,config_mode,device,execution_time_seconds,peak_memory_mb,avg_memory_mb,segments_processed,segments_per_second,time_per_segment_ms,prosody_time_ms,emotion_time_ms,success_count,failure_count,success_rate
+2025-11-15T00:58:43.186806,10.0,prosody,cpu,0.9813671112060547,138.75,69.375,2,2.037973330430946,490.68355560302734,490.633487701416,,2,0,100.0%
