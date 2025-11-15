@@ -1,0 +1,44 @@
+{
+  "_comment": "Batch Research Processing Configuration Template",
+
+  "transcription": {
+    "model": "large-v3",
+    "language": "auto",
+    "device": "cuda",
+    "compute_type": "float16",
+    "skip_existing": true
+  },
+
+  "enrichment": {
+    "enable_prosody": true,
+    "enable_emotion_dimensional": true,
+    "enable_emotion_categorical": false,
+    "batch_size": 10
+  },
+
+  "batch_settings": {
+    "parallel_workers": 1,
+    "progress_tracking": true,
+    "error_handling": "continue",
+    "checkpoint_interval": 10
+  },
+
+  "output": {
+    "individual_transcripts": true,
+    "aggregated_csv": true,
+    "statistics_report": true,
+    "quality_control_report": true
+  },
+
+  "metadata": {
+    "extract_from_filename": true,
+    "filename_pattern": "{study_id}_{participant_id}_{session}.wav",
+    "custom_fields": ["study_id", "participant_id", "session"]
+  },
+
+  "_pattern_examples": {
+    "simple": "{condition}_{subject}_{trial}.wav",
+    "with_date": "{study}_{participant}_{date}_{session}.mp3",
+    "complex": "{project}_{phase}_{subject_id}_{condition}_{trial_num}.wav"
+  }
+}

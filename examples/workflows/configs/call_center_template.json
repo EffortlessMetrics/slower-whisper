@@ -1,0 +1,34 @@
+{
+  "_comment": "Call Center QA Configuration Template",
+
+  "transcription": {
+    "model": "large-v3",
+    "language": "en",
+    "device": "cuda",
+    "compute_type": "float16",
+    "vad_min_silence_ms": 400
+  },
+
+  "enrichment": {
+    "enable_prosody": true,
+    "enable_emotion_categorical": true,
+    "enable_emotion_dimensional": true
+  },
+
+  "qa_metrics": {
+    "detect_frustration": true,
+    "detect_satisfaction": true,
+    "track_escalation_risk": true,
+    "measure_agent_empathy": true,
+    "call_quality_score": true
+  },
+
+  "thresholds": {
+    "frustration_arousal_threshold": 0.7,
+    "frustration_valence_threshold": 0.3,
+    "satisfaction_valence_threshold": 0.7,
+    "escalation_risk_threshold": 0.8
+  },
+
+  "_empathy_keywords": ["understand", "help", "sorry", "apologize", "appreciate"]
+}

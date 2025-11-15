@@ -1,0 +1,381 @@
+RESEARCH CORPUS PROCESSING REPORT
+================================================================================
+
+Processing Date: 2025-11-15 14:30
+Total Files: 245
+
+--- Processing Summary ---
+
+Successfully Processed: 242 (98.8%)
+Failed: 3 (1.2%)
+  - audio_corrupt_045.wav: Audio file corrupted or unreadable
+  - missing_data_128.wav: File not found in expected location
+  - incomplete_237.wav: Duration too short (<10s), likely incomplete recording
+
+Total Audio Duration: 182.5 hours
+Total Processing Time: 36.8 hours (5.0x real-time average)
+Average Processing Speed: 4.96x real-time
+
+--- Corpus Statistics ---
+
+Files Processed: 242
+Participants: 82
+Sessions per Participant: 2-3 (avg: 2.95)
+Average Session Duration: 44.8 minutes
+Total Segments: 45,892
+
+Language Distribution:
+  English: 238 (97.1%)
+  Spanish: 4 (1.6%)
+  Mixed/Other: 3 (1.2%)
+
+--- Audio Quality Metrics ---
+
+Average Signal-to-Noise Ratio: 24.3 dB (Good)
+
+Audio Quality Distribution:
+  Excellent (>30 dB): 89 files (36.3%)
+  Good (20-30 dB): 128 files (52.2%)
+  Fair (15-20 dB): 22 files (9.0%)
+  Poor (<15 dB): 6 files (2.4%)
+
+Files Recommended for Re-recording: 6 (see quality_control.txt for details)
+
+--- Enrichment Statistics ---
+
+Segments with Audio Features: 45,239 (98.5%)
+Successfully Enriched Files: 240 (99.2%)
+
+Feature Extraction Success Rates:
+  - Pitch analysis: 98.5%
+  - Energy analysis: 98.2%
+  - Speech rate: 97.9%
+  - Pause detection: 96.1%
+  - Emotion (dimensional): 97.8%
+  - Emotion (categorical): 45.2% (optional feature)
+
+--- Prosody Distributions Across Corpus ---
+
+Pitch Analysis:
+  Mean: 187.3 Hz
+  Median: 182.5 Hz
+  Range: 95.2 - 412.8 Hz
+  Standard Deviation: 48.7 Hz
+
+  Distribution by Level:
+    Low (<150 Hz): 28.3% of segments
+    Medium (150-250 Hz): 54.2% of segments
+    High (>250 Hz): 17.5% of segments
+
+  Contour Distribution:
+    Flat: 42.1%
+    Rising: 28.9%
+    Falling: 24.3%
+    Varied: 4.7%
+
+Energy Analysis:
+  Mean: -18.2 dB RMS
+  Median: -17.8 dB RMS
+  Range: -45.2 to -3.1 dB
+  Standard Deviation: 8.4 dB
+
+  Distribution by Level:
+    Quiet (<-25 dB): 18.2%
+    Moderate (-25 to -15 dB): 56.8%
+    Loud (>-15 dB): 25.0%
+
+Speech Rate Analysis:
+  Mean: 4.8 syllables/sec
+  Median: 4.7 syllables/sec
+  Range: 2.1 - 8.9 syllables/sec
+  Standard Deviation: 1.2 syllables/sec
+
+  Distribution by Level:
+    Slow (<4.0 syl/sec): 32.1%
+    Normal (4.0-6.0 syl/sec): 52.8%
+    Fast (>6.0 syl/sec): 15.1%
+
+Pause Analysis:
+  Mean pauses per segment: 1.8
+  Median pauses per segment: 1.0
+  Segments with 0 pauses: 34.2%
+  Segments with 3+ pauses: 18.7%
+  Average pause density: 0.12 pauses/second
+
+--- Emotion Distributions Across Corpus ---
+
+Dimensional Emotion Analysis:
+
+Valence (Positive/Negative Sentiment):
+  Mean: 0.52 (Slightly Positive)
+  Median: 0.51 (Neutral)
+  Range: 0.08 - 0.94
+  Standard Deviation: 0.18
+
+  Distribution:
+    Negative (<0.4): 23.4%
+    Neutral (0.4-0.6): 48.9%
+    Positive (>0.6): 27.7%
+
+Arousal (Calm/Excited Energy):
+  Mean: 0.48 (Moderate)
+  Median: 0.47 (Moderate)
+  Range: 0.12 - 0.91
+  Standard Deviation: 0.16
+
+  Distribution:
+    Low (<0.4): 31.2%
+    Moderate (0.4-0.6): 42.3%
+    High (>0.6): 26.5%
+
+Dominance (Submissive/Dominant):
+  Mean: 0.54 (Slightly Dominant)
+  Median: 0.53
+  Range: 0.15 - 0.88
+  Standard Deviation: 0.14
+
+  Distribution:
+    Low (<0.4): 22.8%
+    Moderate (0.4-0.6): 51.4%
+    High (>0.6): 25.8%
+
+Categorical Emotion Distribution (subset with categorical features):
+  Neutral: 42.3%
+  Happy: 18.7%
+  Interested: 12.4%
+  Calm: 9.8%
+  Surprised: 6.2%
+  Frustrated: 4.9%
+  Uncertain: 3.1%
+  Other: 2.6%
+
+--- Study-Specific Analysis ---
+
+Condition Breakdown:
+  Control group: 121 sessions (49.8%)
+  Treatment group: 122 sessions (50.2%)
+
+Average metrics by condition:
+
+Control Group:
+  Mean valence: 0.51 (Neutral)
+  Mean arousal: 0.46 (Moderate-Low)
+  Mean speech rate: 4.7 syllables/sec
+  Mean pitch: 185.2 Hz
+
+Treatment Group:
+  Mean valence: 0.53 (Slightly Positive)
+  Mean arousal: 0.50 (Moderate)
+  Mean speech rate: 4.9 syllables/sec
+  Mean pitch: 189.4 Hz
+
+Preliminary Observations:
+  ⚠️  Note: These are descriptive statistics only. Conduct proper statistical tests for inference.
+  - Treatment group shows slightly higher valence (Δ = 0.02)
+  - Treatment group shows slightly higher arousal (Δ = 0.04)
+  - Treatment group shows slightly faster speech rate (Δ = 0.2 syl/sec)
+  - Treatment group shows slightly higher pitch (Δ = 4.2 Hz)
+
+--- Participant-Level Analysis ---
+
+Participants with Complete Data: 79 (96.3%)
+Participants with Partial Data: 3 (3.7%)
+  - Participant 023: Missing session 3
+  - Participant 047: Session 2 failed processing
+  - Participant 068: Missing session 1
+
+Average Sessions per Participant: 2.95
+Participants with All 3 Sessions: 75 (91.5%)
+Participants with 2 Sessions: 6 (7.3%)
+Participants with 1 Session: 1 (1.2%)
+
+--- Metadata Fields Extracted ---
+
+Successfully extracted from filenames:
+  ✓ Study condition (control/treatment) - 100% extraction
+  ✓ Participant ID (001-082) - 100% extraction
+  ✓ Session number (1-3) - 100% extraction
+  ✓ Recording date (from filename) - 98.8% extraction
+
+--- Export Files Generated ---
+
+1. all_segments.csv
+   - Rows: 45,892 (individual segments)
+   - Columns: 24 (features + metadata)
+   - Size: 12.3 MB
+   - Contains: Full segment-level data with all features
+
+2. file_metadata.csv
+   - Rows: 242 (processed files)
+   - Columns: 18 (file-level stats + metadata)
+   - Size: 156 KB
+   - Contains: Summary statistics for each recording
+
+3. participant_summary.csv
+   - Rows: 82 (participants)
+   - Columns: 31 (aggregated features across sessions)
+   - Size: 42 KB
+   - Contains: Per-participant averages and totals
+
+All CSV files use UTF-8 encoding and are compatible with:
+  ✓ Microsoft Excel
+  ✓ R (read.csv)
+  ✓ Python pandas (pd.read_csv)
+  ✓ SPSS
+  ✓ Stata
+
+--- Quality Control Findings ---
+
+Overall Corpus Quality: Excellent
+
+✅ Strengths:
+  - High processing success rate (98.8%)
+  - Good audio quality (88.5% good or better)
+  - High feature extraction success (97.8% avg)
+  - Consistent metadata structure
+  - Balanced condition distribution (49.8% vs 50.2%)
+  - Excellent participant retention (96.3% complete data)
+
+⚠️  Minor Issues:
+  - 6 files with poor audio quality (recommend re-recording if critical)
+  - 3 files failed processing (see error details in processing_log.txt)
+  - 3 participants with incomplete data (note in analysis)
+
+Recommended Actions:
+  1. ✅ Corpus is ready for statistical analysis
+  2. ⚠️  Consider re-recording 6 poor-quality files if critical to analysis
+  3. ⚠️  Investigate 3 failed files - may be recoverable with manual intervention
+  4. ✅ Document 3 participants with incomplete data in methods section
+  5. ✅ Validate metadata extraction accuracy before final analysis
+
+--- Processing Performance ---
+
+Hardware Used:
+  - GPU: NVIDIA RTX 3080 (10GB VRAM)
+  - CPU: AMD Ryzen 9 5900X (12 cores)
+  - RAM: 64 GB
+  - Storage: NVMe SSD
+
+Processing Statistics:
+  - Total wall-clock time: 36.8 hours
+  - Average per file: 9.1 minutes
+  - Transcription: ~60% of time
+  - Enrichment: ~35% of time
+  - I/O and overhead: ~5% of time
+
+Optimization Achieved:
+  - Batch processing: 15% time savings vs. sequential
+  - GPU utilization: 87% average
+  - Checkpoint recovery: 2 instances, saved 3.2 hours
+  - Skip existing: 38 files skipped (previously processed)
+
+--- Data Organization ---
+
+Directory Structure Created:
+
+outputs/study_2025_processed/
+├── transcripts/           (242 JSON files)
+├── aggregated/
+│   ├── all_segments.csv
+│   ├── file_metadata.csv
+│   └── participant_summary.csv
+├── reports/
+│   ├── processing_log.txt
+│   ├── statistics_report.txt (this file)
+│   ├── quality_control.txt
+│   └── error_log.txt
+└── checkpoints/
+    └── batch_state.json
+
+Total Storage Used: 487 MB
+  - JSON transcripts: 425 MB
+  - CSV exports: 12.5 MB
+  - Reports: 1.8 MB
+  - Checkpoints: 0.2 MB
+  - Other: 47.5 MB
+
+--- Recommendations for Statistical Analysis ---
+
+1. Data Validation:
+   ✓ Verify metadata accuracy for subset of files
+   ✓ Check for outliers in prosody features
+   ✓ Examine participants with incomplete data
+   ✓ Validate condition assignment
+
+2. Preprocessing:
+   - Consider log transformation for speech rate (right-skewed)
+   - Check for participant-level clustering effects
+   - Assess session order effects (1st vs 2nd vs 3rd)
+   - Normalize features if needed for analysis
+
+3. Analysis Approach:
+   - Use mixed-effects models for participant clustering
+   - Include session number as fixed or random effect
+   - Consider baseline differences between conditions
+   - Account for missing data appropriately
+
+4. Feature Selection:
+   Recommended primary features for analysis:
+   - Emotion: valence, arousal (dimensional)
+   - Prosody: pitch_mean_hz, syllables_per_sec, db_rms
+   - Pauses: pause_count, pause_density
+   - Text: segment length, word count
+
+5. Software Recommendations:
+   - R: lme4 package for mixed-effects models
+   - Python: statsmodels or scikit-learn
+   - SPSS: MIXED procedure
+   - Stata: xtmixed command
+
+--- Citation Information ---
+
+If using this data in publications, please cite:
+
+Processing Tool: slower-whisper (ffmpeg + faster-whisper)
+  - Transcription: faster-whisper (large-v3 model)
+  - Audio features: librosa + custom prosody extraction
+  - Emotion: dimensional and categorical models
+
+Recommended citation format:
+  "Audio transcripts were generated using faster-whisper (large-v3) and
+   enriched with prosodic and emotional features extracted using librosa
+   and dimensional emotion models."
+
+--- Support and Documentation ---
+
+For questions about this corpus:
+  - Processing details: see processing_log.txt
+  - Quality issues: see quality_control.txt
+  - Errors: see error_log.txt
+  - CSV format: see README in aggregated/ directory
+
+For questions about analysis:
+  - Review participant_summary.csv for participant-level overview
+  - Review file_metadata.csv for session-level overview
+  - Review all_segments.csv for segment-level analysis
+
+--- Next Steps ---
+
+Immediate:
+  ✅ Review this report and quality_control.txt
+  ✅ Validate metadata extraction for accuracy
+  ✅ Load CSV files into analysis software
+  ✅ Conduct preliminary data exploration
+
+Short-term:
+  ⚠️  Decide on re-recording poor-quality files (6 files)
+  ⚠️  Attempt recovery of 3 failed files if critical
+  ✅ Document data collection in methods section
+  ✅ Plan statistical analysis approach
+
+Long-term:
+  ✅ Conduct planned statistical analyses
+  ✅ Validate findings with subset of manual coding
+  ✅ Prepare data for publication/archiving
+  ✅ Consider sharing de-identified corpus
+
+================================================================================
+
+Report generated: 2025-11-15 14:30:45
+Processing completed successfully
+Corpus ready for analysis

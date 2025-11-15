@@ -1,0 +1,131 @@
+CALL CENTER QA REPORT
+================================================================================
+
+Call ID: call_20251115_001234
+Agent: agent_042_jennifer_smith
+Duration: 8:42
+Date: 2025-11-15
+
+--- Quality Metrics ---
+
+Overall Call Quality Score: 7.8/10
+
+Customer Satisfaction Indicators:
+  ✓ Issue resolved: Yes
+  ✓ Final sentiment: Positive (0.72)
+  ✓ Escalation: None
+  ⚠ Frustration detected: 3 instances (early in call)
+
+Agent Performance:
+  ✓ Empathy markers: 12 instances
+  ✓ Professional tone: Maintained throughout
+  ⚠ Active listening: Room for improvement (customer repeated concern twice)
+  ✓ Resolution time: Good (8:42 for complex issue)
+
+--- Sentiment Timeline ---
+
+[00:00 - 01:30] Customer: Frustrated (arousal: 0.82, valence: 0.28)
+  Issue: Initial complaint about service outage affecting business operations
+  Emotion: angry, frustrated
+  → Training Note: Customer was highly frustrated at call start. Agent remained calm and professional.
+
+[01:30 - 03:45] Agent: Calm, Empathetic (arousal: 0.35, valence: 0.68)
+  Response: Acknowledgment, apology, and explanation of issue
+  Prosody: slow speech, low pitch, measured pace, reassuring tone
+  Key phrases: "I completely understand", "I sincerely apologize", "Let me help you"
+  → Good example: Effective de-escalation through empathy and acknowledgment
+
+[03:45 - 06:20] Mixed: Problem-Solving (arousal trending down, valence trending up)
+  Collaborative troubleshooting phase
+  Customer sentiment improving: Frustrated (0.82) → Neutral (0.51) → Slightly Positive (0.58)
+  Agent maintained patient, supportive tone throughout
+  → Effective: Agent successfully addressed concerns and built trust
+
+[06:20 - 08:42] Customer: Satisfied (arousal: 0.42, valence: 0.75)
+  Resolution achieved: Service restored, compensation offered
+  Customer emotion: satisfied, relieved, appreciative
+  Final exchange included thanks and positive feedback
+  → Successful: Call concluded with positive resolution and customer satisfaction
+
+--- Strengths ---
+
+  ✅ Excellent empathy and acknowledgment
+     Example [01:35]: "I completely understand how frustrating that must be, especially when it's affecting your business. I sincerely apologize for this inconvenience."
+
+  ✅ Effective de-escalation
+     Successfully reduced customer frustration from 0.82 to 0.28 within 2 minutes through calm, empathetic communication.
+
+  ✅ Successful issue resolution
+     Identified root cause, implemented solution, and offered appropriate compensation within acceptable timeframe.
+
+  ✅ Professional tone maintenance
+     Despite customer frustration, agent maintained calm, respectful, and supportive demeanor throughout entire interaction.
+
+--- Training Opportunities ---
+
+  📚 Active listening and summarization
+     Evidence: Customer repeated primary concern at [04:23]: "Like I said, the connection keeps dropping every few minutes..."
+     Recommendation: Practice verbal summarization techniques to demonstrate understanding and reduce repetition.
+     → "Just to make sure I understand correctly, you're experiencing connection drops approximately every 3-5 minutes, is that right?"
+
+  📚 Proactive updates
+     During troubleshooting phase [04:00-06:00], agent was silent for extended periods while working.
+     Recommendation: Provide periodic updates to reassure customer that work is progressing.
+     → "I'm checking your connection logs now, this will take about 30 seconds..."
+
+--- Key Moments Analysis ---
+
+🎯 [01:45] De-escalation Technique - EXEMPLAR
+  Agent response to frustrated customer demonstrated textbook de-escalation:
+  - Immediate acknowledgment of emotion
+  - Sincere apology without deflection
+  - Assurance of help
+  - Calm vocal prosody (low pitch, slow rate, moderate energy)
+  **Recommendation:** Use this segment for new agent training.
+
+⚠️  [04:23] Missed Active Listening Cue
+  Customer indicated frustration at having to repeat information.
+  Agent continued troubleshooting without acknowledging the repetition.
+  **Coaching Point:** When customers reference repeating themselves, pause to summarize and confirm understanding.
+
+✅ [07:15] Excellent Recovery
+  After identifying issue, agent proactively offered compensation without customer request.
+  Shows good judgment and customer-centric thinking.
+  **Strength:** Demonstrates ownership and initiative.
+
+--- Recommendations ---
+
+1. ✅ Maintain current empathy and de-escalation approach
+   Agent demonstrates strong emotional intelligence and de-escalation skills. Current approach is effective and should be maintained.
+
+2. 📚 Training: Active listening and verbal summarization
+   Schedule 30-minute coaching session on active listening techniques, specifically focusing on:
+   - Periodic summarization of customer concerns
+   - Verbal acknowledgment of understanding
+   - Checking for agreement before proceeding
+
+3. 📚 Training: Providing status updates during silent work periods
+   Brief training on maintaining customer engagement during technical troubleshooting:
+   - Set expectations for wait times
+   - Provide periodic progress updates
+   - Explain what you're doing and why
+
+4. 🔄 Follow-up action: Customer satisfaction survey
+   Given successful resolution and final positive sentiment, recommend sending satisfaction survey within 24 hours to:
+   - Confirm sustained satisfaction
+   - Gather feedback on agent performance
+   - Identify any remaining concerns
+
+5. 💡 Coaching suggestion: Use this call as training example
+   This call demonstrates excellent de-escalation with minor areas for improvement.
+   Recommend using segments [01:30-03:45] in new agent training for de-escalation techniques.
+
+--- Overall Assessment ---
+
+**Performance:** Above Standard
+**Quality Score:** 7.8/10 (Good)
+**Trend:** Positive (agent shows strong foundational skills with clear growth areas)
+
+**Summary:** Agent demonstrated excellent emotional intelligence, professional communication, and successful issue resolution. Minor improvement opportunities in active listening and proactive communication would elevate performance to exemplary level. Recommended for positive recognition and focused coaching on identified development areas.
+
+================================================================================

@@ -1,0 +1,98 @@
+# Meeting Transcript: team_standup_2025-11-15.wav
+# Language: en
+# Duration: 18.5 minutes
+# Generated: 2025-11-15T10:30:00
+
+================================================================================
+
+[00:00 - 00:04]
+Okay, let's get started with today's standup.
+  >> Pitch: medium (rising) | Energy: moderate | Speech: normal pace | Emotion: neutral (75%)
+
+[00:05 - 00:11]
+Sarah, do you want to go first and share what you've been working on?
+  >> Pitch: medium (rising) | Energy: moderate | Speech: normal pace | Emotion: engaged (68%)
+
+[00:12 - 00:18]
+Sure! I finished the authentication module yesterday and it's ready for review.
+  >> Pitch: high (rising) | Energy: loud | Speech: fast pace | Emotion: confident (89%)
+
+[00:19 - 00:24]
+That's great news. Any blockers or issues we should know about?
+  >> Pitch: medium (flat) | Energy: moderate | Speech: normal pace | Emotion: focused (72%)
+
+[00:25 - 00:35]
+Well, I'm a little concerned about the API rate limiting... we might need to discuss that with the backend team.
+  >> Pitch: low (falling) | Energy: quiet | Speech: slow pace | Pauses: 2 | Emotion: concerned (76%)
+
+[00:36 - 00:42]
+Good catch. I'll set up a meeting with them for this afternoon.
+  >> Pitch: medium (rising) | Energy: moderate | Speech: fast pace | Emotion: decisive (81%)
+
+[00:43 - 00:52]
+Thanks! Other than that, I'm moving on to the dashboard components today. Should have the first iteration done by end of week.
+  >> Pitch: high (rising) | Energy: loud | Speech: fast pace | Emotion: enthusiastic (85%)
+
+[00:53 - 00:58]
+Perfect. Mike, how about you? What's your status?
+  >> Pitch: medium (flat) | Energy: moderate | Speech: normal pace | Emotion: neutral (70%)
+
+[00:59 - 01:08]
+I've been working on the database optimization... but honestly, I'm running into some performance issues I wasn't expecting.
+  >> Pitch: low (flat) | Energy: quiet | Speech: slow pace | Pauses: 3 | Emotion: uncertain (73%)
+
+[01:09 - 01:15]
+Hmm, that doesn't sound good. Can you elaborate on what kind of issues?
+  >> Pitch: low (falling) | Energy: moderate | Speech: normal pace | Emotion: concerned (68%)
+
+[01:16 - 01:28]
+The query times are way longer than they should be, even with indexing. I think we might need to reconsider the schema design for the analytics tables.
+  >> Pitch: medium (flat) | Energy: moderate | Speech: normal pace | Emotion: analytical (77%)
+
+[01:29 - 01:35]
+Okay, that's important. Let's make that a priority. Do you need help from anyone?
+  >> Pitch: medium (rising) | Energy: moderate | Speech: fast pace | Emotion: decisive (82%)
+
+[01:36 - 01:42]
+Yeah, if someone could pair with me on this, that would be really helpful.
+  >> Pitch: medium (rising) | Energy: moderate | Speech: normal pace | Emotion: hopeful (71%)
+
+[01:43 - 01:48]
+I can jump in after lunch if that works for you.
+  >> Pitch: high (rising) | Energy: loud | Speech: fast pace | Emotion: supportive (84%)
+
+[01:49 - 01:52]
+That would be amazing, thank you Sarah!
+  >> Pitch: high (rising) | Energy: loud | Speech: fast pace | Emotion: grateful (88%)
+
+[01:53 - 02:00]
+Great! It's good to see the team supporting each other. Let's keep this momentum going.
+  >> Pitch: high (rising) | Energy: loud | Speech: fast pace | Emotion: pleased (86%)
+
+[02:01 - 02:10]
+Now, one more thing before we wrap up. The product team wants us to prioritize the mobile responsive design for the next sprint.
+  >> Pitch: medium (flat) | Energy: moderate | Speech: normal pace | Emotion: informative (74%)
+
+[02:11 - 02:16]
+Wait, I thought we agreed last week that API improvements were the priority?
+  >> Pitch: high (rising) | Energy: loud | Speech: fast pace | Emotion: surprised (79%)
+
+[02:17 - 02:25]
+I know, but they got feedback from a major client yesterday, and mobile is becoming critical for them.
+  >> Pitch: medium (flat) | Energy: moderate | Speech: normal pace | Emotion: explanatory (72%)
+
+[02:26 - 02:32]
+I see. Well, we'll need to adjust our estimates then. That's a pretty big change.
+  >> Pitch: low (falling) | Energy: moderate | Speech: slow pace | Pauses: 2 | Emotion: cautious (70%)
+
+[02:33 - 02:40]
+Absolutely. Let's sync up after this call to replan the sprint and see what we can realistically commit to.
+  >> Pitch: medium (rising) | Energy: moderate | Speech: normal pace | Emotion: practical (75%)
+
+[02:41 - 02:45]
+Sounds good. Anything else we need to cover today?
+  >> Pitch: medium (flat) | Energy: moderate | Speech: normal pace | Emotion: neutral (69%)
+
+[02:46 - 02:50]
+I think that's it. Thanks everyone, have a productive day!
+  >> Pitch: high (rising) | Energy: loud | Speech: fast pace | Emotion: positive (83%)

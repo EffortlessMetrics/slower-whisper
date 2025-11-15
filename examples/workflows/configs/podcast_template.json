@@ -1,0 +1,30 @@
+{
+  "_comment": "Podcast Processing Configuration Template",
+
+  "transcription": {
+    "model": "large-v3",
+    "language": "auto",
+    "device": "cuda",
+    "compute_type": "float16"
+  },
+
+  "enrichment": {
+    "enable_prosody": true,
+    "enable_emotion_categorical": true,
+    "enable_emotion_dimensional": true
+  },
+
+  "podcast_specific": {
+    "generate_show_notes": true,
+    "detect_highlights": true,
+    "extract_quotes": true,
+    "chapter_markers": true,
+
+    "engagement_threshold": 0.7,
+    "min_highlight_duration": 10.0,
+    "max_highlight_duration": 120.0,
+
+    "quote_min_words": 10,
+    "quote_max_words": 50
+  }
+}

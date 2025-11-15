@@ -6,15 +6,16 @@ This script shows how to use the prosody module to extract and analyze
 prosodic features from audio segments.
 """
 
-import numpy as np
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import numpy as np
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from transcription.prosody import extract_prosody, compute_speaker_baseline
+from transcription.prosody import compute_speaker_baseline, extract_prosody
 
 
 def generate_sample_audio(sr=16000, duration=2.0, frequency=200, amplitude=0.3):
@@ -67,15 +68,20 @@ def demo_basic_extraction():
     print(json.dumps(features, indent=2))
 
     print("\nInterpretation:")
-    print(f"  Pitch: {features['pitch']['level']} "
-          f"({features['pitch']['mean_hz']:.1f} Hz) - "
-          f"{features['pitch']['contour']} contour")
-    print(f"  Energy: {features['energy']['level']} "
-          f"({features['energy']['db_rms']:.1f} dB)")
-    print(f"  Speech Rate: {features['rate']['level']} "
-          f"({features['rate']['syllables_per_sec']:.1f} syllables/sec)")
-    print(f"  Pauses: {features['pauses']['count']} pauses, "
-          f"{features['pauses']['density']} density")
+    print(
+        f"  Pitch: {features['pitch']['level']} "
+        f"({features['pitch']['mean_hz']:.1f} Hz) - "
+        f"{features['pitch']['contour']} contour"
+    )
+    print(f"  Energy: {features['energy']['level']} " f"({features['energy']['db_rms']:.1f} dB)")
+    print(
+        f"  Speech Rate: {features['rate']['level']} "
+        f"({features['rate']['syllables_per_sec']:.1f} syllables/sec)"
+    )
+    print(
+        f"  Pauses: {features['pauses']['count']} pauses, "
+        f"{features['pauses']['density']} density"
+    )
 
 
 def demo_baseline_normalization():
@@ -94,13 +100,11 @@ def demo_baseline_normalization():
             sr=sr,
             duration=1.5,
             frequency=np.random.uniform(170, 190),  # Vary pitch slightly
-            amplitude=np.random.uniform(0.25, 0.35)
+            amplitude=np.random.uniform(0.25, 0.35),
         )
-        baseline_segments.append({
-            'audio': audio,
-            'sr': sr,
-            'text': f"This is baseline segment number {i + 1}."
-        })
+        baseline_segments.append(
+            {"audio": audio, "sr": sr, "text": f"This is baseline segment number {i + 1}."}
+        )
 
     # Compute baseline
     baseline = compute_speaker_baseline(baseline_segments)
@@ -145,39 +149,40 @@ def demo_speech_variations():
     print("\n" + "-" * 70)
     print("Scenario 1: Calm, slow speech")
     print("-" * 70)
-    audio_calm = generate_sample_audio(
-        sr=sr,
-        duration=3.0,
-        frequency=160,
-        amplitude=0.2
-    )
+    audio_calm = generate_sample_audio(sr=sr, duration=3.0, frequency=160, amplitude=0.2)
     text_calm = "This is calm slow speech."
     features_calm = extract_prosody(audio_calm, sr, text_calm)
-    print(f"Pitch: {features_calm['pitch']['level']} "
-          f"({features_calm['pitch']['mean_hz']:.1f} Hz)")
-    print(f"Energy: {features_calm['energy']['level']} "
-          f"({features_calm['energy']['db_rms']:.1f} dB)")
-    print(f"Rate: {features_calm['rate']['level']} "
-          f"({features_calm['rate']['syllables_per_sec']:.1f} syl/sec)")
+    print(
+        f"Pitch: {features_calm['pitch']['level']} " f"({features_calm['pitch']['mean_hz']:.1f} Hz)"
+    )
+    print(
+        f"Energy: {features_calm['energy']['level']} "
+        f"({features_calm['energy']['db_rms']:.1f} dB)"
+    )
+    print(
+        f"Rate: {features_calm['rate']['level']} "
+        f"({features_calm['rate']['syllables_per_sec']:.1f} syl/sec)"
+    )
 
     # Scenario 2: Excited, fast speech
     print("\n" + "-" * 70)
     print("Scenario 2: Excited, fast speech")
     print("-" * 70)
-    audio_excited = generate_sample_audio(
-        sr=sr,
-        duration=1.0,
-        frequency=250,
-        amplitude=0.5
-    )
+    audio_excited = generate_sample_audio(sr=sr, duration=1.0, frequency=250, amplitude=0.5)
     text_excited = "This is excited fast speech wow!"
     features_excited = extract_prosody(audio_excited, sr, text_excited)
-    print(f"Pitch: {features_excited['pitch']['level']} "
-          f"({features_excited['pitch']['mean_hz']:.1f} Hz)")
-    print(f"Energy: {features_excited['energy']['level']} "
-          f"({features_excited['energy']['db_rms']:.1f} dB)")
-    print(f"Rate: {features_excited['rate']['level']} "
-          f"({features_excited['rate']['syllables_per_sec']:.1f} syl/sec)")
+    print(
+        f"Pitch: {features_excited['pitch']['level']} "
+        f"({features_excited['pitch']['mean_hz']:.1f} Hz)"
+    )
+    print(
+        f"Energy: {features_excited['energy']['level']} "
+        f"({features_excited['energy']['db_rms']:.1f} dB)"
+    )
+    print(
+        f"Rate: {features_excited['rate']['level']} "
+        f"({features_excited['rate']['syllables_per_sec']:.1f} syl/sec)"
+    )
 
     # Scenario 3: Question (rising intonation)
     print("\n" + "-" * 70)
@@ -191,8 +196,10 @@ def demo_speech_variations():
         audio_question[i] = 0.3 * np.sin(2 * np.pi * f * t[i])
     text_question = "Are you asking a question here?"
     features_question = extract_prosody(audio_question.astype(np.float32), sr, text_question)
-    print(f"Pitch: {features_question['pitch']['level']} - "
-          f"Contour: {features_question['pitch']['contour']}")
+    print(
+        f"Pitch: {features_question['pitch']['level']} - "
+        f"Contour: {features_question['pitch']['contour']}"
+    )
     print(f"Energy: {features_question['energy']['level']}")
 
 
@@ -245,5 +252,5 @@ def main():
         print("\nInstall with: pip install praat-parselmouth librosa")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

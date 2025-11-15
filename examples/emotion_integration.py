@@ -7,9 +7,11 @@ This example shows how to add emotion analysis to transcribed segments.
 import json
 import logging
 from pathlib import Path
-import soundfile as sf
+
 import numpy as np
-from transcription.emotion import extract_emotion_dimensional, extract_emotion_categorical
+import soundfile as sf
+
+from transcription.emotion import extract_emotion_categorical, extract_emotion_dimensional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,16 +58,16 @@ def enrich_transcript_with_emotions(json_file: Path, audio_file: Path, output_fi
 
     # Load transcript
     logger.info(f"Loading transcript: {json_file}")
-    with open(json_file, 'r', encoding='utf-8') as f:
+    with open(json_file, encoding="utf-8") as f:
         transcript = json.load(f)
 
     # Process each segment
-    total_segments = len(transcript['segments'])
+    total_segments = len(transcript["segments"])
     logger.info(f"Processing {total_segments} segments...")
 
-    for i, segment in enumerate(transcript['segments'], 1):
-        start = segment['start']
-        end = segment['end']
+    for i, segment in enumerate(transcript["segments"], 1):
+        start = segment["start"]
+        end = segment["end"]
         duration = end - start
 
         logger.info(f"Segment {i}/{total_segments}: {start:.1f}s - {end:.1f}s ({duration:.1f}s)")
@@ -79,16 +81,16 @@ def enrich_transcript_with_emotions(json_file: Path, audio_file: Path, output_fi
             cat_emotions = extract_emotion_categorical(audio, sr)
 
             # Add to segment
-            segment['emotion'] = {
-                'dimensional': dim_emotions,
-                'categorical': cat_emotions['categorical']
+            segment["emotion"] = {
+                "dimensional": dim_emotions,
+                "categorical": cat_emotions["categorical"],
             }
 
             # Log primary emotion
-            primary = cat_emotions['categorical']['primary']
-            confidence = cat_emotions['categorical']['confidence']
-            valence = dim_emotions['valence']['level']
-            arousal = dim_emotions['arousal']['level']
+            primary = cat_emotions["categorical"]["primary"]
+            confidence = cat_emotions["categorical"]["confidence"]
+            valence = dim_emotions["valence"]["level"]
+            arousal = dim_emotions["arousal"]["level"]
 
             logger.info(
                 f"  Emotion: {primary} ({confidence:.2f}) | "
@@ -97,15 +99,15 @@ def enrich_transcript_with_emotions(json_file: Path, audio_file: Path, output_fi
 
         except Exception as e:
             logger.error(f"  Failed to extract emotion: {e}")
-            segment['emotion'] = None
+            segment["emotion"] = None
 
     # Update schema version to indicate enrichment
-    transcript['schema_version'] = 2
-    transcript['meta']['enriched_with'] = ['emotion_dimensional', 'emotion_categorical']
+    transcript["schema_version"] = 2
+    transcript["meta"]["enriched_with"] = ["emotion_dimensional", "emotion_categorical"]
 
     # Save enriched transcript
     logger.info(f"Saving enriched transcript: {output_file}")
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(transcript, f, indent=2, ensure_ascii=False)
 
     logger.info("Done!")
@@ -118,11 +120,11 @@ def analyze_transcript_emotions(json_file: Path):
     Args:
         json_file: Path to enriched transcript JSON
     """
-    with open(json_file, 'r', encoding='utf-8') as f:
+    with open(json_file, encoding="utf-8") as f:
         transcript = json.load(f)
 
     # Check if enriched
-    if 'enriched_with' not in transcript.get('meta', {}):
+    if "enriched_with" not in transcript.get("meta", {}):
         logger.warning("Transcript has not been enriched with emotions")
         return
 
@@ -131,20 +133,20 @@ def analyze_transcript_emotions(json_file: Path):
     valence_scores = []
     arousal_scores = []
 
-    for segment in transcript['segments']:
-        if segment.get('emotion'):
+    for segment in transcript["segments"]:
+        if segment.get("emotion"):
             # Categorical
-            primary = segment['emotion']['categorical']['primary']
+            primary = segment["emotion"]["categorical"]["primary"]
             emotions_count[primary] = emotions_count.get(primary, 0) + 1
 
             # Dimensional
-            valence_scores.append(segment['emotion']['dimensional']['valence']['score'])
-            arousal_scores.append(segment['emotion']['dimensional']['arousal']['score'])
+            valence_scores.append(segment["emotion"]["dimensional"]["valence"]["score"])
+            arousal_scores.append(segment["emotion"]["dimensional"]["arousal"]["score"])
 
     # Print summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("EMOTION ANALYSIS SUMMARY")
-    print("="*60)
+    print("=" * 60)
 
     print(f"\nFile: {transcript['file']}")
     print(f"Duration: {transcript['meta']['audio_duration_sec']:.1f}s")
@@ -163,10 +165,14 @@ def analyze_transcript_emotions(json_file: Path):
         avg_arousal = sum(arousal_scores) / len(arousal_scores)
 
         print("\nDimensional Averages:")
-        print(f"  Average Valence: {avg_valence:.3f} ({'positive' if avg_valence > 0.5 else 'negative'})")
-        print(f"  Average Arousal: {avg_arousal:.3f} ({'high energy' if avg_arousal > 0.5 else 'low energy'})")
+        print(
+            f"  Average Valence: {avg_valence:.3f} ({'positive' if avg_valence > 0.5 else 'negative'})"
+        )
+        print(
+            f"  Average Arousal: {avg_arousal:.3f} ({'high energy' if avg_arousal > 0.5 else 'low energy'})"
+        )
 
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
 
 def main():

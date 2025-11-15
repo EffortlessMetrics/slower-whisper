@@ -1,0 +1,36 @@
+{
+  "_comment": "Meeting Transcription Configuration Template",
+  "_usage": "Copy this file and customize for your meeting processing needs",
+
+  "transcription": {
+    "model": "large-v3",
+    "language": "en",
+    "device": "cuda",
+    "compute_type": "float16",
+    "vad_min_silence_ms": 500,
+    "beam_size": 5
+  },
+
+  "enrichment": {
+    "enable_prosody": true,
+    "enable_emotion_dimensional": true,
+    "enable_emotion_categorical": true,
+    "device": "cuda"
+  },
+
+  "analysis": {
+    "detect_key_moments": true,
+    "engagement_tracking": true,
+    "detect_action_items": true,
+    "detect_decisions": true,
+    "export_formats": ["json", "txt", "csv", "annotated"]
+  },
+
+  "_notes": {
+    "model_options": ["tiny", "base", "small", "medium", "large-v3"],
+    "language_options": ["auto", "en", "es", "fr", "de", "it", "pt", "..."],
+    "compute_type_options": ["int8", "int8_float16", "float16", "float32"],
+    "device_options": ["cuda", "cpu"],
+    "export_formats": ["json", "txt", "srt", "csv", "annotated"]
+  }
+}

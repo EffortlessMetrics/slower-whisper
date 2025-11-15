@@ -5,9 +5,10 @@ Quick Start Guide for Prosody Feature Extraction
 This script shows the minimal code needed to extract prosody features.
 """
 
-import numpy as np
 import sys
 from pathlib import Path
+
+import numpy as np
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -52,7 +53,7 @@ def quickstart_example():
     return features
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("\n" + "=" * 50)
     print("Prosody Extraction - Quick Start")
     print("=" * 50 + "\n")
