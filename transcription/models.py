@@ -1,13 +1,18 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 
-SCHEMA_VERSION: int = 1
+SCHEMA_VERSION: int = 2
+AUDIO_STATE_VERSION: str = "1.0.0"
 
 
 @dataclass
 class Segment:
     """
     A single segment of transcribed audio.
+
+    This dataclass represents a discrete unit of transcribed speech with optional
+    enriched audio feature information. The audio_state field enables storage of
+    prosodic, emotional, and voice quality features extracted during preprocessing.
 
     Attributes:
         id: Integer index of the segment within the transcript.
@@ -16,6 +21,16 @@ class Segment:
         text: Transcribed text for this segment.
         speaker: Optional speaker label (for future diarization).
         tone: Optional tone label (for future tone tagging).
+        audio_state: Optional dictionary containing enriched audio features and
+                     prosodic information for this segment. This field supports
+                     storage of features such as:
+                     - prosody features (pitch, energy, duration)
+                     - emotional indicators
+                     - voice quality metrics
+                     - speaker characteristics
+                     The structure and content of this dictionary is defined by
+                     AUDIO_STATE_VERSION. When None, indicates no audio features
+                     have been extracted or enriched for this segment.
     """
     id: int
     start: float
@@ -23,6 +38,7 @@ class Segment:
     text: str
     speaker: Optional[str] = None
     tone: Optional[str] = None
+    audio_state: Optional[Dict[str, Any]] = None
 
 
 @dataclass
