@@ -61,3 +61,36 @@ def write_srt(transcript: Transcript, out_path: Path) -> None:
             f.write(f"{idx}\n")
             f.write(f"{_fmt_srt_ts(s.start)} --> {_fmt_srt_ts(s.end)}\n")
             f.write(s.text + "\n\n")
+
+
+def _fmt_vtt_ts(t: float) -> str:
+    """
+    Format seconds as WebVTT timestamp (HH:MM:SS.mmm).
+    """
+    h = int(t // 3600)
+    m = int((t % 3600) // 60)
+    s = int(t % 60)
+    ms = int((t * 1000) % 1000)
+    return f"{h:02}:{m:02}:{s:02}.{ms:03}"
+
+
+def write_vtt(transcript: Transcript, out_path: Path) -> None:
+    """
+    Write a WebVTT subtitle file for the transcript.
+
+    WebVTT is a web-friendly subtitle format with better browser support
+    than SRT. It's ideal for HTML5 video players.
+    """
+    with out_path.open("w", encoding="utf-8") as f:
+        f.write("WEBVTT\n\n")
+        for idx, s in enumerate(transcript.segments, start=1):
+            # Optional: include speaker and tone as cue identifiers
+            cue_id = f"{idx}"
+            if s.speaker:
+                cue_id += f" [{s.speaker}]"
+            if s.tone:
+                cue_id += f" ({s.tone})"
+
+            f.write(f"{cue_id}\n")
+            f.write(f"{_fmt_vtt_ts(s.start)} --> {_fmt_vtt_ts(s.end)}\n")
+            f.write(s.text + "\n\n")

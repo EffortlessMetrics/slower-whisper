@@ -1,1 +1,10 @@
+# Stage 1: Transcription
 faster-whisper>=1.0.0
+
+# Stage 2: Enrichment (optional - install as needed)
+# For tone analysis with LLMs
+anthropic>=0.40.0  # For Claude API
+openai>=1.0.0      # For OpenAI API (optional alternative)
+
+# For speaker diarization
+pyannote.audio>=3.0.0  # Requires HuggingFace token

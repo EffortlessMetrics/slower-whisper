@@ -51,7 +51,7 @@ def run_pipeline(cfg: AppConfig) -> None:
     1) Ensure directories.
     2) Normalize raw audio to 16 kHz mono WAV.
     3) Transcribe normalized audio with Whisper.
-    4) Write JSON, TXT, and SRT outputs per file.
+    4) Write JSON, TXT, SRT, and VTT outputs per file.
 
     If cfg.skip_existing_json is True, files that already have a JSON
     output will be skipped at the transcription step.
@@ -80,6 +80,7 @@ def run_pipeline(cfg: AppConfig) -> None:
         json_path = paths.json_dir / f"{stem}.json"
         txt_path = paths.transcripts_dir / f"{stem}.txt"
         srt_path = paths.transcripts_dir / f"{stem}.srt"
+        vtt_path = paths.transcripts_dir / f"{stem}.vtt"
 
         if cfg.skip_existing_json and json_path.exists():
             print(f"[skip-transcribe] {wav.name} because {json_path.name} already exists")
@@ -108,10 +109,12 @@ def run_pipeline(cfg: AppConfig) -> None:
         writers.write_json(transcript, json_path)
         writers.write_txt(transcript, txt_path)
         writers.write_srt(transcript, srt_path)
+        writers.write_vtt(transcript, vtt_path)
 
         print(f"  → JSON: {json_path}")
         print(f"  → TXT:  {txt_path}")
         print(f"  → SRT:  {srt_path}")
+        print(f"  → VTT:  {vtt_path}")
 
         processed += 1
 
