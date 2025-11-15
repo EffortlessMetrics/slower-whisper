@@ -15,24 +15,131 @@ It:
 JSON is the canonical output format and is designed to be extended later
 with tone, speaker, and other annotations.
 
-## Requirements
+## Quick Start
 
-- Windows (or any OS with Python and ffmpeg).
-- Python 3.9+.
-- NVIDIA GPU with a recent CUDA-capable driver (for GPU acceleration).
-- `ffmpeg` on PATH.
-- Python package: `faster-whisper`.
-
-Install Python dependencies:
+Get started in 3 steps:
 
 ```bash
-pip install -r requirements.txt
+# 1. Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh  # macOS/Linux
+# or: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+
+# 2. Install dependencies (choose your level)
+uv sync              # Basic transcription only (~2.5GB)
+# or: uv sync --extra full  # Full audio enrichment (~6.5GB total)
+
+# 3. Run transcription
+uv run slower-whisper
 ```
 
-Install ffmpeg on Windows (PowerShell, elevated):
+Place your audio files in `raw_audio/` and find transcripts in `whisper_json/`, `transcripts/`.
 
-```powershell
-choco install ffmpeg -y
+See detailed instructions below for setup, configuration, and advanced features.
+
+## Requirements
+
+- Windows, Linux, or macOS (any OS with Python and ffmpeg).
+- Python 3.10+.
+- NVIDIA GPU with a recent CUDA-capable driver (for GPU acceleration).
+- `ffmpeg` on PATH.
+- [uv](https://docs.astral.sh/uv/) for package management (recommended).
+
+### Installing System Dependencies
+
+**Install ffmpeg:**
+
+- **Windows (PowerShell, elevated):**
+  ```powershell
+  choco install ffmpeg -y
+  ```
+- **macOS:**
+  ```bash
+  brew install ffmpeg
+  ```
+- **Linux (Ubuntu/Debian):**
+  ```bash
+  sudo apt-get update && sudo apt-get install -y ffmpeg
+  ```
+
+**Install uv (recommended package manager):**
+
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Or visit [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+
+### Installing Python Dependencies
+
+This project uses `pyproject.toml` with dependency groups for flexible installation. Choose the installation that matches your needs:
+
+**Base install (Stage 1: Transcription only, ~2.5GB):**
+
+Just faster-whisper for basic transcription. Lightweight and fast.
+
+```bash
+uv sync
+```
+
+**Full install (Stage 2: All audio enrichment features, ~4GB additional):**
+
+Includes prosody extraction and emotion recognition capabilities.
+
+```bash
+uv sync --extra full
+```
+
+**Development install (for contributors):**
+
+Includes all features plus testing, linting, and documentation tools.
+
+```bash
+uv sync --extra dev
+```
+
+### Understanding Dependency Groups
+
+The project offers modular dependencies based on what you need:
+
+| Group | Size | What's Included | When to Use |
+|-------|------|----------------|-------------|
+| **base** (default) | ~2.5GB | faster-whisper only | Just need transcription |
+| **enrich-basic** | +1GB | soundfile, numpy, librosa | Basic prosody features |
+| **enrich-prosody** | +36MB | Praat/Parselmouth | Research-grade pitch analysis |
+| **emotion** | +4GB | torch, transformers | Emotion recognition |
+| **full** | +4GB total | All enrichment features | Complete audio analysis |
+| **dev** | +full + tools | Testing, linting, docs | Contributing to project |
+
+**Install specific groups:**
+
+```bash
+# Just prosody (no emotion)
+uv sync --extra enrich-prosody
+
+# Just emotion (no prosody)
+uv sync --extra emotion
+
+# Basic enrichment only
+uv sync --extra enrich-basic
+```
+
+### Alternative: pip Installation
+
+If you prefer traditional pip:
+
+```bash
+# Base install
+pip install -e .
+
+# Full install
+pip install -e ".[full]"
+
+# Development install
+pip install -e ".[dev]"
 ```
 
 ## Directory layout
@@ -59,10 +166,18 @@ The code will create the directories if they do not exist.
 
 ## Usage
 
-From the root directory:
+### Quick Start
 
-```powershell
-python transcribe_pipeline.py
+From the project directory:
+
+```bash
+uv run slower-whisper
+```
+
+Or using the direct script:
+
+```bash
+uv run python transcribe_pipeline.py
 ```
 
 This uses defaults:
@@ -75,25 +190,35 @@ This uses defaults:
 - language: auto-detect
 - task: transcribe
 
-You can override these with CLI options:
+### Command-Line Options
 
-```powershell
+You can override defaults with CLI options:
+
+```bash
 # Force English and skip files already transcribed
-python transcribe_pipeline.py --language en --skip-existing-json
+uv run slower-whisper --language en --skip-existing-json
 
 # Use a lighter model and quantized weights
-python transcribe_pipeline.py --model medium --compute-type int8_float16
-```
+uv run slower-whisper --model medium --compute-type int8_float16
 
-To skip files that have already been transcribed (i.e. where a JSON output
-already exists), add `--skip-existing-json`:
-
-```powershell
-python transcribe_pipeline.py --skip-existing-json
+# Skip files that already have JSON output
+uv run slower-whisper --skip-existing-json
 ```
 
 The pipeline prints per-file progress, basic timing statistics (per-file and
 overall), and a summary at the end.
+
+### Alternative: Without uv
+
+If you installed with pip, you can run directly:
+
+```bash
+# If installed as package
+slower-whisper
+
+# Or using python directly
+python transcribe_pipeline.py
+```
 
 ## Model download & privacy
 
@@ -191,13 +316,20 @@ After transcription, enrich with audio features:
 
 ```bash
 # Enrich existing transcript with emotion analysis
-python examples/emotion_integration.py enrich whisper_json/meeting1.json input_audio/meeting1.wav
+uv run python examples/emotion_integration.py enrich whisper_json/meeting1.json input_audio/meeting1.wav
 
 # View enriched transcript
 cat whisper_json/meeting1.json  # Now includes audio_state in segments
 
 # Analyze emotions across the file
-python examples/emotion_integration.py analyze whisper_json/meeting1.json
+uv run python examples/emotion_integration.py analyze whisper_json/meeting1.json
+```
+
+Or use the CLI command:
+
+```bash
+# Enrich using the CLI tool
+uv run slower-whisper-enrich whisper_json/meeting1.json input_audio/meeting1.wav
 ```
 
 Output JSON will have segments like:
@@ -244,14 +376,26 @@ Output JSON will have segments like:
 The base pipeline requires only `faster-whisper` and audio tools. Audio enrichment is optional:
 
 ```bash
-# Install base dependencies (Stage 1: transcription)
-pip install faster-whisper>=1.0.0
+# Install base dependencies (Stage 1: transcription only)
+uv sync
 
 # Install audio enrichment dependencies (Stage 2: optional)
-pip install -r requirements.txt
+uv sync --extra full
 ```
 
-See [docs/AUDIO_ENRICHMENT.md](docs/AUDIO_ENRICHMENT.md) for detailed setup instructions, including model downloads for emotion recognition.
+Or install specific enrichment features:
+
+```bash
+# Just prosody analysis (lightweight)
+uv sync --extra enrich-prosody
+
+# Just emotion recognition (heavier, requires torch)
+uv sync --extra emotion
+```
+
+See the **Understanding Dependency Groups** section above for details on what each group includes.
+
+For detailed setup instructions, including model downloads for emotion recognition, see [docs/AUDIO_ENRICHMENT.md](docs/AUDIO_ENRICHMENT.md).
 
 ## Extending
 
@@ -270,14 +414,113 @@ To add tone tagging, diarization, or other analysis, write separate modules
 (or expand `transcription.enrich`) that read and modify the JSON or
 `Transcript` objects without changing the core pipeline.
 
-## Tests (optional)
+## Running Tests
 
-A minimal `tests/` directory can be added to validate the JSON schema and
-SRT formatting. For example:
+The project includes a comprehensive test suite for validating the JSON schema, SRT formatting, and audio enrichment features.
 
-- Test that `write_json` produces the documented structure for a simple
-  `Transcript`.
-- Test that the SRT timestamp formatter produces valid strings.
+### Running Tests with uv
 
-These are not required for running the pipeline but are useful if you start
-evolving the code further.
+```bash
+# Install dev dependencies (includes pytest and other testing tools)
+uv sync --extra dev
+
+# Run all tests
+uv run pytest
+
+# Run with coverage report
+uv run pytest --cov=transcription --cov-report=term-missing
+
+# Run specific test categories
+uv run pytest -m "not slow"              # Skip slow tests
+uv run pytest -m "not requires_gpu"      # Skip GPU-dependent tests
+uv run pytest tests/test_prosody.py      # Run specific test file
+```
+
+### Test Organization
+
+The test suite covers:
+
+- **JSON schema validation**: Ensures `write_json` produces the documented structure
+- **SRT formatting**: Validates timestamp formatting and subtitle generation
+- **Audio enrichment**: Tests prosody and emotion extraction features
+- **Integration tests**: End-to-end pipeline validation
+
+Tests are not required for running the pipeline but are useful if you're contributing or extending the code.
+
+## Development Workflow
+
+### Setting Up Development Environment
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/slower-whisper.git
+cd slower-whisper
+
+# Install with dev dependencies
+uv sync --extra dev
+
+# Run tests to verify setup
+uv run pytest
+```
+
+### Code Quality Tools
+
+The project uses modern Python tooling for code quality:
+
+```bash
+# Format code with black
+uv run black transcription/ tests/
+
+# Sort imports with isort
+uv run isort transcription/ tests/
+
+# Lint with ruff
+uv run ruff check transcription/ tests/
+
+# Type check with mypy
+uv run mypy transcription/
+
+# Run all quality checks
+uv run black . && uv run isort . && uv run ruff check . && uv run mypy transcription/
+```
+
+### Making Changes
+
+1. Create a new branch for your feature/fix
+2. Make your changes
+3. Run tests and quality checks
+4. Submit a pull request
+
+## Troubleshooting
+
+### Common Issues
+
+**uv not found after installation:**
+
+Restart your terminal or source your shell profile:
+```bash
+source ~/.bashrc  # or ~/.zshrc on macOS
+```
+
+**CUDA/GPU not detected:**
+
+Ensure you have NVIDIA drivers installed and CUDA toolkit available. The pipeline will fall back to CPU if CUDA is unavailable, but transcription will be slower.
+
+**ffmpeg not found:**
+
+Add ffmpeg to your system PATH. On Windows, you may need to restart PowerShell after installing.
+
+**Model download fails:**
+
+Check your internet connection. Models are downloaded from Hugging Face on first use and cached locally.
+
+## Additional Resources
+
+- **[Installation Guide](INSTALL.md)**: Detailed setup instructions
+- **[Audio Enrichment Guide](docs/AUDIO_ENRICHMENT.md)**: Deep dive into prosody and emotion features
+- **[Contributing Guide](CONTRIBUTING.md)**: How to contribute to the project
+- **[Changelog](CHANGELOG.md)**: Version history and updates
+
+## License
+
+Apache License 2.0 - see LICENSE file for details.
