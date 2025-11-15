@@ -1,4 +1,4 @@
-# Local Transcription & Enrichment Pipeline
+# slower-whisper (ffmpeg + faster-whisper)
 
 A fully local, GPU-accelerated transcription and analysis toolkit for audio files.
 
