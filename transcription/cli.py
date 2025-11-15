@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
-from .config import AppConfig, Paths, AsrConfig
+
+from .config import AppConfig, AsrConfig, Paths
 from .pipeline import run_pipeline
 
 
@@ -11,7 +12,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path("."),
+        default=Path(),
         help="Root directory containing raw_audio/ etc. (default: current directory)",
     )
     parser.add_argument(

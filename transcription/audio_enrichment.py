@@ -13,15 +13,15 @@ returns partial results when some features cannot be extracted.
 """
 
 import logging
-from pathlib import Path
-from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
-from .models import Segment, Transcript
-from .audio_utils import AudioSegmentExtractor
-from .prosody import extract_prosody, compute_speaker_baseline
-from .emotion import extract_emotion_dimensional, extract_emotion_categorical
 from .audio_rendering import render_audio_state
+from .audio_utils import AudioSegmentExtractor
+from .emotion import extract_emotion_categorical, extract_emotion_dimensional
+from .models import Segment, Transcript
+from .prosody import compute_speaker_baseline, extract_prosody
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,8 @@ def enrich_segment_audio(
     enable_prosody: bool = True,
     enable_emotion: bool = True,
     enable_categorical_emotion: bool = False,
-    speaker_baseline: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    speaker_baseline: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Enrich a single segment with audio features.
 
@@ -79,7 +79,7 @@ def enrich_segment_audio(
         ValueError: If segment times are invalid.
     """
     # Initialize result structure
-    audio_state: Dict[str, Any] = {
+    audio_state: dict[str, Any] = {
         "prosody": None,
         "emotion": None,
         "rendering": "[audio: neutral]",
@@ -87,8 +87,8 @@ def enrich_segment_audio(
             "prosody": "skipped",
             "emotion_dimensional": "skipped",
             "emotion_categorical": "skipped",
-            "errors": []
-        }
+            "errors": [],
+        },
     }
 
     try:
@@ -98,7 +98,7 @@ def enrich_segment_audio(
             segment.start,
             segment.end,
             clamp=True,
-            min_duration=0.0  # Allow very short segments
+            min_duration=0.0,  # Allow very short segments
         )
 
         logger.debug(
@@ -121,7 +121,7 @@ def enrich_segment_audio(
                 segment.text,
                 speaker_baseline=speaker_baseline,
                 start_time=segment.start,
-                end_time=segment.end
+                end_time=segment.end,
             )
             audio_state["prosody"] = prosody_result
             audio_state["extraction_status"]["prosody"] = "success"
@@ -189,7 +189,7 @@ def enrich_transcript_audio(
     enable_prosody: bool = True,
     enable_emotion: bool = True,
     enable_categorical_emotion: bool = False,
-    compute_baseline: bool = True
+    compute_baseline: bool = True,
 ) -> Transcript:
     """
     Enrich an entire transcript with audio features for all segments.
@@ -244,7 +244,7 @@ def enrich_transcript_audio(
     )
 
     # Compute speaker baseline if requested
-    speaker_baseline: Optional[Dict[str, Any]] = None
+    speaker_baseline: dict[str, Any] | None = None
     if compute_baseline and enable_prosody:
         try:
             logger.info("Computing speaker baseline statistics...")
@@ -252,19 +252,16 @@ def enrich_transcript_audio(
 
             # Sample up to 20 segments for baseline (or all if fewer)
             sample_size = min(20, len(transcript.segments))
-            sample_indices = range(0, len(transcript.segments),
-                                 max(1, len(transcript.segments) // sample_size))
+            sample_indices = range(
+                0, len(transcript.segments), max(1, len(transcript.segments) // sample_size)
+            )
 
             segments_data = []
             for idx in sample_indices:
                 seg = transcript.segments[idx]
                 try:
                     audio, sr = extractor.extract_segment(seg.start, seg.end, clamp=True)
-                    segments_data.append({
-                        'audio': audio,
-                        'sr': sr,
-                        'text': seg.text
-                    })
+                    segments_data.append({"audio": audio, "sr": sr, "text": seg.text})
                 except Exception as e:
                     logger.warning(f"Failed to extract segment {idx} for baseline: {e}")
                     continue
@@ -294,7 +291,7 @@ def enrich_transcript_audio(
                 enable_prosody=enable_prosody,
                 enable_emotion=enable_emotion,
                 enable_categorical_emotion=enable_categorical_emotion,
-                speaker_baseline=speaker_baseline
+                speaker_baseline=speaker_baseline,
             )
 
             # Attach audio_state to segment
@@ -321,8 +318,8 @@ def enrich_transcript_audio(
                     "prosody": "failed",
                     "emotion_dimensional": "failed",
                     "emotion_categorical": "failed",
-                    "errors": [str(e)]
-                }
+                    "errors": [str(e)],
+                },
             }
             failed_count += 1
 
@@ -339,10 +336,10 @@ def enrich_transcript_audio(
         "features_enabled": {
             "prosody": enable_prosody,
             "emotion_dimensional": enable_emotion,
-            "emotion_categorical": enable_categorical_emotion
+            "emotion_categorical": enable_categorical_emotion,
         },
         "speaker_baseline_computed": speaker_baseline is not None,
-        "speaker_baseline": speaker_baseline
+        "speaker_baseline": speaker_baseline,
     }
 
     logger.info(
@@ -353,7 +350,7 @@ def enrich_transcript_audio(
     return transcript
 
 
-def _build_render_input(audio_state: Dict[str, Any]) -> Dict[str, Any]:
+def _build_render_input(audio_state: dict[str, Any]) -> dict[str, Any]:
     """
     Build a simplified audio state dict for rendering.
 
@@ -378,7 +375,7 @@ def _build_render_input(audio_state: Dict[str, Any]) -> Dict[str, Any]:
             }
         }
     """
-    render_input: Dict[str, Any] = {}
+    render_input: dict[str, Any] = {}
 
     # Map prosody features
     prosody = audio_state.get("prosody")
@@ -398,7 +395,7 @@ def _build_render_input(audio_state: Dict[str, Any]) -> Dict[str, Any]:
                 "quiet": "quiet",
                 "normal": "normal",
                 "loud": "loud",
-                "very_loud": "very_loud"
+                "very_loud": "very_loud",
             }
             render_prosody["volume"] = volume_map.get(energy_level, energy_level)
 
@@ -411,7 +408,7 @@ def _build_render_input(audio_state: Dict[str, Any]) -> Dict[str, Any]:
                 "slow": "slow",
                 "normal": "normal",
                 "fast": "fast",
-                "very_fast": "very_fast"
+                "very_fast": "very_fast",
             }
             render_prosody["speech_rate"] = rate_map.get(rate_level, rate_level)
 

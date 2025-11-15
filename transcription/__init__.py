@@ -13,23 +13,24 @@ Provides:
 # Must be defined before other imports to avoid circular imports
 __version__ = "1.0.0"
 
-from .models import Segment, Transcript
 from .config import AppConfig, AsrConfig, Paths
+from .models import Segment, Transcript
 
 
 def __getattr__(name):
     """Lazy import for run_pipeline to avoid circular imports."""
     if name == "run_pipeline":
         from .pipeline import run_pipeline
+
         return run_pipeline
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
-    "Segment",
-    "Transcript",
     "AppConfig",
     "AsrConfig",
     "Paths",
+    "Segment",
+    "Transcript",
     "run_pipeline",
 ]

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 SCHEMA_VERSION: int = 2
 AUDIO_STATE_VERSION: str = "1.0.0"
@@ -32,13 +32,14 @@ class Segment:
                      AUDIO_STATE_VERSION. When None, indicates no audio features
                      have been extracted or enriched for this segment.
     """
+
     id: int
     start: float
     end: float
     text: str
-    speaker: Optional[str] = None
-    tone: Optional[str] = None
-    audio_state: Optional[Dict[str, Any]] = None
+    speaker: str | None = None
+    tone: str | None = None
+    audio_state: dict[str, Any] | None = None
 
 
 @dataclass
@@ -53,7 +54,8 @@ class Transcript:
         meta: Optional metadata dictionary describing how/when this
               transcript was generated (model, device, etc.).
     """
+
     file_name: str
     language: str
-    segments: List[Segment] = field(default_factory=list)
-    meta: Optional[Dict[str, Any]] = None
+    segments: list[Segment] = field(default_factory=list)
+    meta: dict[str, Any] | None = None

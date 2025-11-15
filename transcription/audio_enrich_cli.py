@@ -9,13 +9,12 @@ import argparse
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
-from .config import Paths
-from .models import Transcript, AUDIO_STATE_VERSION
-from .writers import load_transcript_from_json, write_json
-from .audio_enrichment import enrich_transcript_audio as enrich_transcript_comprehensive
 from . import __version__ as PIPELINE_VERSION
+from .audio_enrichment import enrich_transcript_audio as enrich_transcript_comprehensive
+from .config import Paths
+from .models import AUDIO_STATE_VERSION, Transcript
+from .writers import load_transcript_from_json, write_json
 
 
 class EnrichmentConfig:
@@ -29,7 +28,7 @@ class EnrichmentConfig:
         enable_emotion: bool = True,
         enable_categorical_emotion: bool = False,
         device: str = "cuda",
-        single_file: Optional[str] = None,
+        single_file: str | None = None,
     ):
         self.paths = Paths(root=root)
         self.skip_existing = skip_existing
@@ -66,7 +65,7 @@ def enrich_transcript_audio(
         enable_prosody=config.enable_prosody,
         enable_emotion=config.enable_emotion,
         enable_categorical_emotion=config.enable_categorical_emotion,
-        compute_baseline=True  # Enable speaker normalization
+        compute_baseline=True,  # Enable speaker normalization
     )
 
     # Count enriched segments for logging
@@ -117,7 +116,7 @@ def run_enrichment_pipeline(config: EnrichmentConfig) -> None:
         print(f"\n=== Enriching single file: {config.single_file} ===")
     else:
         json_files = sorted(paths.json_dir.glob("*.json"))
-        print(f"\n=== Audio Enrichment Pipeline ===")
+        print("\n=== Audio Enrichment Pipeline ===")
         print(f"Root: {paths.root}")
         print(f"JSON directory: {paths.json_dir}")
         print(f"Audio directory: {paths.norm_dir}")
@@ -158,11 +157,11 @@ def run_enrichment_pipeline(config: EnrichmentConfig) -> None:
 
             # Check if already enriched
             if config.skip_existing:
-                has_audio_state = any(
-                    seg.audio_state is not None for seg in transcript.segments
-                )
+                has_audio_state = any(seg.audio_state is not None for seg in transcript.segments)
                 if has_audio_state:
-                    print(f"  [skip] Transcript already has audio_state (use --no-skip-existing to re-enrich)")
+                    print(
+                        "  [skip] Transcript already has audio_state (use --no-skip-existing to re-enrich)"
+                    )
                     skipped += 1
                     continue
 
@@ -198,7 +197,7 @@ def run_enrichment_pipeline(config: EnrichmentConfig) -> None:
     print("\n=== Summary ===")
     print(f"  processed={processed}, skipped={skipped}, failed={failed}, total={total}")
     if total_time > 0:
-        print(f"  total_time={total_time:.1f}s, avg={total_time/max(processed, 1):.1f}s per file")
+        print(f"  total_time={total_time:.1f}s, avg={total_time / max(processed, 1):.1f}s per file")
     print("All done.")
 
 
@@ -210,7 +209,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path("."),
+        default=Path(),
         help="Root directory containing whisper_json/ and input_audio/ (default: current directory)",
     )
     parser.add_argument(

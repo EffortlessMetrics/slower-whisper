@@ -2,11 +2,12 @@ import time
 import wave
 from datetime import datetime, timezone
 from pathlib import Path
-from .config import AppConfig
+
+from . import __version__ as PIPELINE_VERSION
 from . import audio_io, writers
 from .asr_engine import TranscriptionEngine
+from .config import AppConfig
 from .models import Transcript
-from . import __version__ as PIPELINE_VERSION
 
 
 def _get_duration_seconds(path: Path) -> float:
@@ -25,7 +26,9 @@ def _get_duration_seconds(path: Path) -> float:
         return 0.0
 
 
-def _build_meta(cfg: AppConfig, transcript: Transcript, audio_path: Path, duration_sec: float) -> dict:
+def _build_meta(
+    cfg: AppConfig, transcript: Transcript, audio_path: Path, duration_sec: float
+) -> dict:
     """
     Build a metadata dictionary describing this transcript generation run.
     """
@@ -100,7 +103,7 @@ def run_pipeline(cfg: AppConfig) -> None:
         total_time += elapsed
 
         rtf = elapsed / duration if duration > 0 else 0.0
-        print(f"  [stats] audio={duration/60:.1f} min, wall={elapsed:.1f}s, RTF={rtf:.2f}x")
+        print(f"  [stats] audio={duration / 60:.1f} min, wall={elapsed:.1f}s, RTF={rtf:.2f}x")
 
         # Attach metadata to transcript before writing JSON.
         transcript.meta = _build_meta(cfg, transcript, wav, duration)
@@ -119,5 +122,7 @@ def run_pipeline(cfg: AppConfig) -> None:
     print(f"  processed={processed}, skipped={skipped}, failed={failed}, total={total}")
     if total_audio > 0 and total_time > 0:
         overall_rtf = total_time / total_audio
-        print(f"  audio={total_audio/60:.1f} min, wall={total_time/60:.1f} min, RTF={overall_rtf:.2f}x")
+        print(
+            f"  audio={total_audio / 60:.1f} min, wall={total_time / 60:.1f} min, RTF={overall_rtf:.2f}x"
+        )
     print("All done.")

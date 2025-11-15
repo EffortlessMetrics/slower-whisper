@@ -8,12 +8,12 @@ This module provides:
 """
 
 import sys
-from unittest.mock import Mock, MagicMock
-
+from unittest.mock import MagicMock
 
 # ============================================================================
 # Mock unavailable dependencies to allow tests to run
 # ============================================================================
+
 
 def mock_module(module_name, attrs=None):
     """Create a mock module with optional attributes."""
@@ -26,73 +26,79 @@ def mock_module(module_name, attrs=None):
 
 # Mock faster_whisper if not available
 try:
-    import faster_whisper
+    import faster_whisper  # noqa: F401
 except ImportError:
-    sys.modules['faster_whisper'] = mock_module('faster_whisper', {
-        'WhisperModel': MagicMock
-    })
+    sys.modules["faster_whisper"] = mock_module("faster_whisper", {"WhisperModel": MagicMock})
 
 
 # Mock transformers if not available (for emotion tests)
 try:
-    import transformers
+    import transformers  # noqa: F401
 except ImportError:
-    sys.modules['transformers'] = mock_module('transformers', {
-        'AutoModelForAudioClassification': MagicMock,
-        'Wav2Vec2Processor': MagicMock,
-        'pipeline': MagicMock
-    })
+    sys.modules["transformers"] = mock_module(
+        "transformers",
+        {
+            "AutoModelForAudioClassification": MagicMock,
+            "Wav2Vec2Processor": MagicMock,
+            "pipeline": MagicMock,
+        },
+    )
 
 
 # Mock torch if not available (for emotion tests)
 try:
-    import torch
+    import torch  # noqa: F401
 except ImportError:
-    sys.modules['torch'] = mock_module('torch', {
-        'cuda': mock_module('torch.cuda', {'is_available': lambda: False}),
-        'no_grad': lambda: MagicMock(__enter__=lambda x: None, __exit__=lambda *args: None),
-        'nn': mock_module('torch.nn', {
-            'functional': mock_module('torch.nn.functional', {
-                'softmax': lambda x, dim: x
-            })
-        })
-    })
+    sys.modules["torch"] = mock_module(
+        "torch",
+        {
+            "cuda": mock_module("torch.cuda", {"is_available": lambda: False}),
+            "no_grad": lambda: MagicMock(__enter__=lambda x: None, __exit__=lambda *args: None),
+            "nn": mock_module(
+                "torch.nn",
+                {"functional": mock_module("torch.nn.functional", {"softmax": lambda x, dim: x})},
+            ),
+        },
+    )
 
 
 # Mock parselmouth if not available (for prosody tests)
 try:
-    import parselmouth
+    import parselmouth  # noqa: F401
 except ImportError:
-    sys.modules['parselmouth'] = mock_module('parselmouth', {
-        'Sound': MagicMock,
-        'praat': mock_module('parselmouth.praat', {
-            'call': MagicMock(return_value=None)
-        })
-    })
+    sys.modules["parselmouth"] = mock_module(
+        "parselmouth",
+        {
+            "Sound": MagicMock,
+            "praat": mock_module("parselmouth.praat", {"call": MagicMock(return_value=None)}),
+        },
+    )
 
 
 # Mock librosa if not available (for prosody tests)
 try:
-    import librosa
+    import librosa  # noqa: F401
 except ImportError:
-    sys.modules['librosa'] = mock_module('librosa', {
-        'feature': mock_module('librosa.feature', {
-            'rms': MagicMock(return_value=[[0.1]])
-        }),
-        'frames_to_time': lambda frames, sr, hop_length: frames * hop_length / sr
-    })
+    sys.modules["librosa"] = mock_module(
+        "librosa",
+        {
+            "feature": mock_module("librosa.feature", {"rms": MagicMock(return_value=[[0.1]])}),
+            "frames_to_time": lambda frames, sr, hop_length: frames * hop_length / sr,
+        },
+    )
 
 
 # Mock soundfile if not available
 SOUNDFILE_AVAILABLE = False
 try:
-    import soundfile
+    import soundfile  # noqa: F401
+
     SOUNDFILE_AVAILABLE = True
 except ImportError:
     import numpy as np
 
     class MockSoundFile:
-        def __init__(self, path, mode='r'):
+        def __init__(self, path, mode="r"):
             self.samplerate = 16000
             self.channels = 1
 
@@ -108,30 +114,28 @@ except ImportError:
         def seek(self, frame):
             pass
 
-        def read(self, frames, dtype='float32'):
+        def read(self, frames, dtype="float32"):
             return np.zeros(frames, dtype=dtype)
 
-    def mock_read(path, dtype='float32'):
+    def mock_read(path, dtype="float32"):
         return (np.zeros(16000, dtype=dtype), 16000)
 
     def mock_write(path, data, sr):
         # Create an empty file so file existence checks pass
         import pathlib
+
         pathlib.Path(path).touch()
 
-    sys.modules['soundfile'] = mock_module('soundfile', {
-        'SoundFile': MockSoundFile,
-        'read': mock_read,
-        'write': mock_write
-    })
+    sys.modules["soundfile"] = mock_module(
+        "soundfile", {"SoundFile": MockSoundFile, "read": mock_read, "write": mock_write}
+    )
 
 
 # Make sure numpy is available (it's usually in the base system)
 try:
-    import numpy
+    import numpy  # noqa: F401
 except ImportError:
     # If numpy is not available, we can't really run tests
     raise ImportError(
-        "numpy is required for tests. "
-        "Please install with: pip install numpy"
-    )
+        "numpy is required for tests. Please install with: pip install numpy"
+    ) from None

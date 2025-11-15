@@ -8,27 +8,28 @@ End-to-end tests covering:
 """
 
 import json
-import pytest
+
 import numpy as np
-from pathlib import Path
-from transcription.models import Segment, Transcript, SCHEMA_VERSION
-from transcription.writers import write_json, load_transcript_from_json
+import pytest
+
 from transcription.audio_utils import AudioSegmentExtractor
+from transcription.models import SCHEMA_VERSION, Segment, Transcript
+from transcription.writers import load_transcript_from_json, write_json
 
 # Check for optional dependencies
 EMOTION_AVAILABLE = True
 PROSODY_AVAILABLE = True
 
 try:
-    from transcription.emotion import extract_emotion_dimensional, extract_emotion_categorical
-except (ImportError, ValueError) as e:
+    from transcription.emotion import extract_emotion_categorical, extract_emotion_dimensional
+except (ImportError, ValueError):
     EMOTION_AVAILABLE = False
     extract_emotion_dimensional = None
     extract_emotion_categorical = None
 
 try:
     from transcription.prosody import extract_prosody
-except (ImportError, ValueError) as e:
+except (ImportError, ValueError):
     PROSODY_AVAILABLE = False
     extract_prosody = None
 
@@ -36,6 +37,7 @@ except (ImportError, ValueError) as e:
 # ============================================================================
 # Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def test_audio_file(tmp_path):
@@ -80,24 +82,21 @@ def test_transcript():
     segments = [
         Segment(id=0, start=0.0, end=1.0, text="Hello world"),
         Segment(id=1, start=1.0, end=2.0, text="This is a test"),
-        Segment(id=2, start=2.0, end=3.0, text="Audio transcription")
+        Segment(id=2, start=2.0, end=3.0, text="Audio transcription"),
     ]
 
     return Transcript(
         file_name="test_speech.wav",
         language="en",
         segments=segments,
-        meta={
-            "model_name": "faster-whisper-base",
-            "device": "cpu",
-            "pipeline_version": "0.1.0"
-        }
+        meta={"model_name": "faster-whisper-base", "device": "cpu", "pipeline_version": "0.1.0"},
     )
 
 
 # ============================================================================
 # End-to-End Tests
 # ============================================================================
+
 
 def test_e2e_transcribe_enrich_verify(test_audio_file, test_transcript, tmp_path):
     """
@@ -135,7 +134,7 @@ def test_e2e_transcribe_enrich_verify(test_audio_file, test_transcript, tmp_path
                 emotion_cat = extract_emotion_categorical(audio, sr)
                 audio_state["emotion"] = {
                     "dimensional": emotion_dim,
-                    "categorical": emotion_cat["categorical"]
+                    "categorical": emotion_cat["categorical"],
                 }
 
             # Create enriched segment
@@ -146,11 +145,11 @@ def test_e2e_transcribe_enrich_verify(test_audio_file, test_transcript, tmp_path
                 text=seg.text,
                 speaker=seg.speaker,
                 tone=seg.tone,
-                audio_state=audio_state if audio_state else None
+                audio_state=audio_state if audio_state else None,
             )
             enriched_segments.append(enriched_seg)
 
-        except Exception as e:
+        except Exception:
             # Keep original segment on error
             enriched_segments.append(seg)
 
@@ -158,7 +157,7 @@ def test_e2e_transcribe_enrich_verify(test_audio_file, test_transcript, tmp_path
         file_name=transcript.file_name,
         language=transcript.language,
         segments=enriched_segments,
-        meta=transcript.meta
+        meta=transcript.meta,
     )
 
     # Step 3: Write to JSON
@@ -168,7 +167,7 @@ def test_e2e_transcribe_enrich_verify(test_audio_file, test_transcript, tmp_path
     # Step 4: Verify JSON structure
     assert json_path.exists()
 
-    with open(json_path, 'r', encoding='utf-8') as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
     # Verify top-level fields
@@ -225,39 +224,24 @@ def test_roundtrip_consistency(test_transcript, tmp_path):
         "prosody": {
             "pitch": {"level": "high", "mean_hz": 245.3, "contour": "rising"},
             "energy": {"level": "normal", "db_rms": -12.5},
-            "rate": {"level": "fast", "syllables_per_sec": 6.2}
+            "rate": {"level": "fast", "syllables_per_sec": 6.2},
         },
         "emotion": {
             "categorical": {"primary": "neutral", "confidence": 0.85},
             "dimensional": {
                 "valence": {"level": "neutral", "score": 0.52},
-                "arousal": {"level": "medium", "score": 0.48}
-            }
-        }
+                "arousal": {"level": "medium", "score": 0.48},
+            },
+        },
     }
 
     segments = [
-        Segment(
-            id=0,
-            start=0.0,
-            end=1.5,
-            text="First segment",
-            audio_state=audio_state
-        ),
-        Segment(
-            id=1,
-            start=1.5,
-            end=3.0,
-            text="Second segment",
-            speaker="Speaker A"
-        )
+        Segment(id=0, start=0.0, end=1.5, text="First segment", audio_state=audio_state),
+        Segment(id=1, start=1.5, end=3.0, text="Second segment", speaker="Speaker A"),
     ]
 
     transcript = Transcript(
-        file_name="test.wav",
-        language="en",
-        segments=segments,
-        meta={"test": "data"}
+        file_name="test.wav", language="en", segments=segments, meta={"test": "data"}
     )
 
     # First write
@@ -272,10 +256,10 @@ def test_roundtrip_consistency(test_transcript, tmp_path):
     write_json(loaded_transcript, json_path_2)
 
     # Compare JSON files
-    with open(json_path_1, 'r', encoding='utf-8') as f:
+    with open(json_path_1, encoding="utf-8") as f:
         data1 = json.load(f)
 
-    with open(json_path_2, 'r', encoding='utf-8') as f:
+    with open(json_path_2, encoding="utf-8") as f:
         data2 = json.load(f)
 
     # Should be identical
@@ -289,7 +273,9 @@ def test_roundtrip_consistency(test_transcript, tmp_path):
     # Verify audio_state survived the round-trip
     assert loaded_transcript.segments[0].audio_state is not None
     assert loaded_transcript.segments[0].audio_state["prosody"]["pitch"]["level"] == "high"
-    assert loaded_transcript.segments[0].audio_state["emotion"]["categorical"]["primary"] == "neutral"
+    assert (
+        loaded_transcript.segments[0].audio_state["emotion"]["categorical"]["primary"] == "neutral"
+    )
 
 
 def test_full_pipeline_with_all_features(test_audio_file, tmp_path):
@@ -308,10 +294,7 @@ def test_full_pipeline_with_all_features(test_audio_file, tmp_path):
     ]
 
     transcript = Transcript(
-        file_name=test_audio_file.name,
-        language="en",
-        segments=segments,
-        meta={"model": "test"}
+        file_name=test_audio_file.name, language="en", segments=segments, meta={"model": "test"}
     )
 
     # Enrich with all features
@@ -328,18 +311,11 @@ def test_full_pipeline_with_all_features(test_audio_file, tmp_path):
 
         audio_state = {
             "prosody": prosody,
-            "emotion": {
-                "dimensional": emotion_dim,
-                "categorical": emotion_cat["categorical"]
-            }
+            "emotion": {"dimensional": emotion_dim, "categorical": emotion_cat["categorical"]},
         }
 
         enriched_seg = Segment(
-            id=seg.id,
-            start=seg.start,
-            end=seg.end,
-            text=seg.text,
-            audio_state=audio_state
+            id=seg.id, start=seg.start, end=seg.end, text=seg.text, audio_state=audio_state
         )
         enriched_segments.append(enriched_seg)
 
@@ -347,7 +323,7 @@ def test_full_pipeline_with_all_features(test_audio_file, tmp_path):
         file_name=transcript.file_name,
         language=transcript.language,
         segments=enriched_segments,
-        meta=transcript.meta
+        meta=transcript.meta,
     )
 
     # Write to JSON
@@ -393,11 +369,7 @@ def test_full_pipeline_with_all_features(test_audio_file, tmp_path):
 
 def test_empty_transcript(tmp_path):
     """Test handling of empty transcript."""
-    transcript = Transcript(
-        file_name="empty.wav",
-        language="en",
-        segments=[]
-    )
+    transcript = Transcript(file_name="empty.wav", language="en", segments=[])
 
     json_path = tmp_path / "empty_transcript.json"
     write_json(transcript, json_path)
@@ -418,16 +390,12 @@ def test_large_transcript(tmp_path):
             start=float(i),
             end=float(i + 1),
             text=f"Segment {i}",
-            audio_state={"test": f"data_{i}"}
+            audio_state={"test": f"data_{i}"},
         )
         for i in range(100)
     ]
 
-    transcript = Transcript(
-        file_name="large.wav",
-        language="en",
-        segments=segments
-    )
+    transcript = Transcript(file_name="large.wav", language="en", segments=segments)
 
     json_path = tmp_path / "large_transcript.json"
     write_json(transcript, json_path)
@@ -454,14 +422,10 @@ def test_unicode_text(tmp_path):
         Segment(id=0, start=0.0, end=1.0, text="Hello 世界"),
         Segment(id=1, start=1.0, end=2.0, text="Привет мир"),
         Segment(id=2, start=2.0, end=3.0, text="مرحبا بالعالم"),
-        Segment(id=3, start=3.0, end=4.0, text="🎉 Emoji test 🚀")
+        Segment(id=3, start=3.0, end=4.0, text="🎉 Emoji test 🚀"),
     ]
 
-    transcript = Transcript(
-        file_name="unicode.wav",
-        language="multi",
-        segments=segments
-    )
+    transcript = Transcript(file_name="unicode.wav", language="multi", segments=segments)
 
     json_path = tmp_path / "unicode_transcript.json"
     write_json(transcript, json_path)
@@ -482,9 +446,9 @@ def test_special_characters_in_metadata(tmp_path):
         segments=[Segment(id=0, start=0.0, end=1.0, text="test")],
         meta={
             "path": "/home/user/audio files/test.wav",
-            "command": "python transcribe.py --model \"base\" --device cuda",
-            "notes": "Testing: special & chars < > \" '"
-        }
+            "command": 'python transcribe.py --model "base" --device cuda',
+            "notes": "Testing: special & chars < > \" '",
+        },
     )
 
     json_path = tmp_path / "special_meta.json"
@@ -493,7 +457,7 @@ def test_special_characters_in_metadata(tmp_path):
     loaded = load_transcript_from_json(json_path)
 
     assert loaded.meta["path"] == "/home/user/audio files/test.wav"
-    assert loaded.meta["command"] == "python transcribe.py --model \"base\" --device cuda"
+    assert loaded.meta["command"] == 'python transcribe.py --model "base" --device cuda'
     assert loaded.meta["notes"] == "Testing: special & chars < > \" '"
 
 
@@ -508,58 +472,31 @@ def test_deeply_nested_audio_state(tmp_path):
                 "min_hz": 180.0,
                 "max_hz": 310.2,
                 "variation": "moderate",
-                "contour": "rising"
+                "contour": "rising",
             },
-            "energy": {
-                "level": "loud",
-                "db_rms": -8.2,
-                "variation": "low"
-            },
-            "rate": {
-                "level": "fast",
-                "syllables_per_sec": 6.3,
-                "words_per_sec": 3.1
-            },
-            "pauses": {
-                "count": 2,
-                "longest_ms": 320,
-                "density": "sparse"
-            }
+            "energy": {"level": "loud", "db_rms": -8.2, "variation": "low"},
+            "rate": {"level": "fast", "syllables_per_sec": 6.3, "words_per_sec": 3.1},
+            "pauses": {"count": 2, "longest_ms": 320, "density": "sparse"},
         },
         "emotion": {
             "dimensional": {
                 "valence": {"level": "positive", "score": 0.72},
                 "arousal": {"level": "high", "score": 0.68},
-                "dominance": {"level": "neutral", "score": 0.51}
+                "dominance": {"level": "neutral", "score": 0.51},
             },
             "categorical": {
                 "primary": "excited",
                 "confidence": 0.81,
                 "secondary": "happy",
                 "secondary_confidence": 0.12,
-                "all_scores": {
-                    "excited": 0.81,
-                    "happy": 0.12,
-                    "neutral": 0.05,
-                    "sad": 0.02
-                }
-            }
-        }
+                "all_scores": {"excited": 0.81, "happy": 0.12, "neutral": 0.05, "sad": 0.02},
+            },
+        },
     }
 
-    segment = Segment(
-        id=0,
-        start=0.0,
-        end=2.0,
-        text="deeply nested test",
-        audio_state=audio_state
-    )
+    segment = Segment(id=0, start=0.0, end=2.0, text="deeply nested test", audio_state=audio_state)
 
-    transcript = Transcript(
-        file_name="nested.wav",
-        language="en",
-        segments=[segment]
-    )
+    transcript = Transcript(file_name="nested.wav", language="en", segments=[segment])
 
     json_path = tmp_path / "nested_audio_state.json"
     write_json(transcript, json_path)

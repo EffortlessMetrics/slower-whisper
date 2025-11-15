@@ -13,7 +13,8 @@ categorical levels for easier interpretation.
 
 import logging
 import re
-from typing import Optional, Dict, Any, Tuple, List
+from typing import Any
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 try:
     import parselmouth
     from parselmouth.praat import call
+
     PARSELMOUTH_AVAILABLE = True
 except ImportError:
     PARSELMOUTH_AVAILABLE = False
@@ -29,6 +31,7 @@ except ImportError:
 
 try:
     import librosa
+
     LIBROSA_AVAILABLE = True
 except ImportError:
     LIBROSA_AVAILABLE = False
@@ -37,39 +40,39 @@ except ImportError:
 
 # Threshold constants for categorical mapping (based on typical speech)
 PITCH_THRESHOLDS = {
-    'very_low': 80,    # Hz
-    'low': 120,
-    'neutral': 180,
-    'high': 250,
-    'very_high': float('inf')
+    "very_low": 80,  # Hz
+    "low": 120,
+    "neutral": 180,
+    "high": 250,
+    "very_high": float("inf"),
 }
 
 ENERGY_THRESHOLDS = {
-    'very_quiet': -35,  # dB RMS
-    'quiet': -25,
-    'normal': -15,
-    'loud': -8,
-    'very_loud': float('inf')
+    "very_quiet": -35,  # dB RMS
+    "quiet": -25,
+    "normal": -15,
+    "loud": -8,
+    "very_loud": float("inf"),
 }
 
 RATE_THRESHOLDS = {
-    'very_slow': 3.0,   # syllables per second
-    'slow': 4.5,
-    'normal': 5.5,
-    'fast': 7.0,
-    'very_fast': float('inf')
+    "very_slow": 3.0,  # syllables per second
+    "slow": 4.5,
+    "normal": 5.5,
+    "fast": 7.0,
+    "very_fast": float("inf"),
 }
 
 PAUSE_DENSITY_THRESHOLDS = {
-    'very_sparse': 0.5,  # pauses per second
-    'sparse': 1.0,
-    'moderate': 1.5,
-    'frequent': 2.5,
-    'very_frequent': float('inf')
+    "very_sparse": 0.5,  # pauses per second
+    "sparse": 1.0,
+    "moderate": 1.5,
+    "frequent": 2.5,
+    "very_frequent": float("inf"),
 }
 
 
-def categorize_value(value: float, thresholds: Dict[str, float]) -> str:
+def categorize_value(value: float, thresholds: dict[str, float]) -> str:
     """
     Map a numeric value to a categorical level based on thresholds.
 
@@ -86,8 +89,7 @@ def categorize_value(value: float, thresholds: Dict[str, float]) -> str:
     return list(thresholds.keys())[-1]
 
 
-def normalize_to_baseline(value: float, baseline_median: float,
-                         baseline_std: float = None) -> str:
+def normalize_to_baseline(value: float, baseline_median: float, baseline_std: float = None) -> str:
     """
     Normalize a value relative to speaker baseline and categorize.
 
@@ -103,31 +105,28 @@ def normalize_to_baseline(value: float, baseline_median: float,
         # Use z-score if we have std
         z_score = (value - baseline_median) / baseline_std
         if z_score < -1.5:
-            return 'very_low'
-        elif z_score < -0.5:
-            return 'low'
-        elif z_score < 0.5:
-            return 'neutral'
-        elif z_score < 1.5:
-            return 'high'
-        else:
-            return 'very_high'
-    else:
-        # Use percentage difference if no std
-        ratio = value / baseline_median if baseline_median > 0 else 1.0
-        if ratio < 0.7:
-            return 'very_low'
-        elif ratio < 0.9:
-            return 'low'
-        elif ratio < 1.1:
-            return 'neutral'
-        elif ratio < 1.3:
-            return 'high'
-        else:
-            return 'very_high'
+            return "very_low"
+        if z_score < -0.5:
+            return "low"
+        if z_score < 0.5:
+            return "neutral"
+        if z_score < 1.5:
+            return "high"
+        return "very_high"
+    # Use percentage difference if no std
+    ratio = value / baseline_median if baseline_median > 0 else 1.0
+    if ratio < 0.7:
+        return "very_low"
+    if ratio < 0.9:
+        return "low"
+    if ratio < 1.1:
+        return "neutral"
+    if ratio < 1.3:
+        return "high"
+    return "very_high"
 
 
-def extract_pitch_features(audio: np.ndarray, sr: int) -> Dict[str, Any]:
+def extract_pitch_features(audio: np.ndarray, sr: int) -> dict[str, Any]:
     """
     Extract pitch-related features using Parselmouth.
 
@@ -141,11 +140,11 @@ def extract_pitch_features(audio: np.ndarray, sr: int) -> Dict[str, Any]:
     if not PARSELMOUTH_AVAILABLE:
         logger.warning("Parselmouth not available, returning default pitch features")
         return {
-            'mean_hz': None,
-            'std_hz': None,
-            'contour': 'unknown',
-            'min_hz': None,
-            'max_hz': None
+            "mean_hz": None,
+            "std_hz": None,
+            "contour": "unknown",
+            "min_hz": None,
+            "max_hz": None,
         }
 
     try:
@@ -164,11 +163,11 @@ def extract_pitch_features(audio: np.ndarray, sr: int) -> Dict[str, Any]:
 
         if not pitch_values:
             return {
-                'mean_hz': None,
-                'std_hz': None,
-                'contour': 'flat',
-                'min_hz': None,
-                'max_hz': None
+                "mean_hz": None,
+                "std_hz": None,
+                "contour": "flat",
+                "min_hz": None,
+                "max_hz": None,
             }
 
         pitch_array = np.array(pitch_values)
@@ -185,34 +184,34 @@ def extract_pitch_features(audio: np.ndarray, sr: int) -> Dict[str, Any]:
 
             # Threshold: >0.5 Hz per 10ms interval = rising
             if slope > 0.5:
-                contour = 'rising'
+                contour = "rising"
             elif slope < -0.5:
-                contour = 'falling'
+                contour = "falling"
             else:
-                contour = 'flat'
+                contour = "flat"
         else:
-            contour = 'flat'
+            contour = "flat"
 
         return {
-            'mean_hz': mean_pitch,
-            'std_hz': std_pitch,
-            'contour': contour,
-            'min_hz': min_pitch,
-            'max_hz': max_pitch
+            "mean_hz": mean_pitch,
+            "std_hz": std_pitch,
+            "contour": contour,
+            "min_hz": min_pitch,
+            "max_hz": max_pitch,
         }
 
     except Exception as e:
         logger.error(f"Error extracting pitch features: {e}")
         return {
-            'mean_hz': None,
-            'std_hz': None,
-            'contour': 'unknown',
-            'min_hz': None,
-            'max_hz': None
+            "mean_hz": None,
+            "std_hz": None,
+            "contour": "unknown",
+            "min_hz": None,
+            "max_hz": None,
         }
 
 
-def extract_energy_features(audio: np.ndarray, sr: int) -> Dict[str, Any]:
+def extract_energy_features(audio: np.ndarray, sr: int) -> dict[str, Any]:
     """
     Extract energy/intensity features using librosa.
 
@@ -227,31 +226,19 @@ def extract_energy_features(audio: np.ndarray, sr: int) -> Dict[str, Any]:
         logger.warning("Librosa not available, using numpy for energy extraction")
         # Fallback to simple RMS calculation
         try:
-            rms = np.sqrt(np.mean(audio ** 2))
+            rms = np.sqrt(np.mean(audio**2))
             db_rms = 20 * np.log10(rms + 1e-10) if rms > 0 else -100
-            return {
-                'rms_mean': float(rms),
-                'rms_std': 0.0,
-                'db_rms': float(db_rms)
-            }
+            return {"rms_mean": float(rms), "rms_std": 0.0, "db_rms": float(db_rms)}
         except Exception as e:
             logger.error(f"Error in fallback energy extraction: {e}")
-            return {
-                'rms_mean': None,
-                'rms_std': None,
-                'db_rms': None
-            }
+            return {"rms_mean": None, "rms_std": None, "db_rms": None}
 
     try:
         # Extract RMS energy with frame length of 2048 samples
         frame_length = min(2048, len(audio))
         hop_length = frame_length // 4
 
-        rms = librosa.feature.rms(
-            y=audio,
-            frame_length=frame_length,
-            hop_length=hop_length
-        )[0]
+        rms = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop_length)[0]
 
         rms_mean = float(np.mean(rms))
         rms_std = float(np.std(rms))
@@ -259,19 +246,11 @@ def extract_energy_features(audio: np.ndarray, sr: int) -> Dict[str, Any]:
         # Convert to dB
         db_rms = 20 * np.log10(rms_mean + 1e-10)
 
-        return {
-            'rms_mean': rms_mean,
-            'rms_std': rms_std,
-            'db_rms': float(db_rms)
-        }
+        return {"rms_mean": rms_mean, "rms_std": rms_std, "db_rms": float(db_rms)}
 
     except Exception as e:
         logger.error(f"Error extracting energy features: {e}")
-        return {
-            'rms_mean': None,
-            'rms_std': None,
-            'db_rms': None
-        }
+        return {"rms_mean": None, "rms_std": None, "db_rms": None}
 
 
 def count_syllables(text: str) -> int:
@@ -293,10 +272,10 @@ def count_syllables(text: str) -> int:
     text = text.lower().strip()
 
     # Remove punctuation
-    text = re.sub(r'[^a-z\s]', '', text)
+    text = re.sub(r"[^a-z\s]", "", text)
 
     # Count vowel groups
-    vowels = 'aeiouy'
+    vowels = "aeiouy"
     syllable_count = 0
     previous_was_vowel = False
 
@@ -310,7 +289,7 @@ def count_syllables(text: str) -> int:
     # Remove silent 'e' at end of words
     words = text.split()
     for word in words:
-        if len(word) > 2 and word.endswith('e'):
+        if len(word) > 2 and word.endswith("e"):
             syllable_count -= 1
 
     # At least one syllable per word
@@ -319,9 +298,9 @@ def count_syllables(text: str) -> int:
     return syllable_count
 
 
-def detect_pauses(audio: np.ndarray, sr: int,
-                 silence_threshold: float = -40,
-                 min_pause_duration: float = 0.15) -> List[Tuple[float, float]]:
+def detect_pauses(
+    audio: np.ndarray, sr: int, silence_threshold: float = -40, min_pause_duration: float = 0.15
+) -> list[tuple[float, float]]:
     """
     Detect pauses (silence regions) in audio.
 
@@ -340,11 +319,7 @@ def detect_pauses(audio: np.ndarray, sr: int,
         hop_length = frame_length // 4
 
         if LIBROSA_AVAILABLE:
-            rms = librosa.feature.rms(
-                y=audio,
-                frame_length=frame_length,
-                hop_length=hop_length
-            )[0]
+            rms = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop_length)[0]
         else:
             # Fallback: manual frame-based RMS
             num_frames = 1 + (len(audio) - frame_length) // hop_length
@@ -353,7 +328,7 @@ def detect_pauses(audio: np.ndarray, sr: int,
                 start = i * hop_length
                 end = start + frame_length
                 frame = audio[start:end]
-                rms[i] = np.sqrt(np.mean(frame ** 2))
+                rms[i] = np.sqrt(np.mean(frame**2))
 
         # Convert to dB
         db = 20 * np.log10(rms + 1e-10)
@@ -362,18 +337,18 @@ def detect_pauses(audio: np.ndarray, sr: int,
         is_silent = db < silence_threshold
 
         # Convert frame indices to time
-        times = librosa.frames_to_time(
-            np.arange(len(is_silent)),
-            sr=sr,
-            hop_length=hop_length
-        ) if LIBROSA_AVAILABLE else np.arange(len(is_silent)) * hop_length / sr
+        times = (
+            librosa.frames_to_time(np.arange(len(is_silent)), sr=sr, hop_length=hop_length)
+            if LIBROSA_AVAILABLE
+            else np.arange(len(is_silent)) * hop_length / sr
+        )
 
         # Find continuous silent regions
         pauses = []
         in_pause = False
         pause_start = 0
 
-        for i, (t, silent) in enumerate(zip(times, is_silent)):
+        for _i, (t, silent) in enumerate(zip(times, is_silent, strict=False)):
             if silent and not in_pause:
                 # Start of pause
                 in_pause = True
@@ -398,8 +373,7 @@ def detect_pauses(audio: np.ndarray, sr: int,
         return []
 
 
-def extract_speech_rate(audio: np.ndarray, sr: int, text: str,
-                       duration: float) -> Dict[str, Any]:
+def extract_speech_rate(audio: np.ndarray, sr: int, text: str, duration: float) -> dict[str, Any]:
     """
     Extract speech rate features.
 
@@ -413,10 +387,7 @@ def extract_speech_rate(audio: np.ndarray, sr: int, text: str,
         Dict with rate features: syllables_per_sec, words_per_sec
     """
     if duration <= 0:
-        return {
-            'syllables_per_sec': None,
-            'words_per_sec': None
-        }
+        return {"syllables_per_sec": None, "words_per_sec": None}
 
     try:
         # Count syllables and words
@@ -428,20 +399,16 @@ def extract_speech_rate(audio: np.ndarray, sr: int, text: str,
         words_per_sec = word_count / duration
 
         return {
-            'syllables_per_sec': float(syllables_per_sec),
-            'words_per_sec': float(words_per_sec)
+            "syllables_per_sec": float(syllables_per_sec),
+            "words_per_sec": float(words_per_sec),
         }
 
     except Exception as e:
         logger.error(f"Error extracting speech rate: {e}")
-        return {
-            'syllables_per_sec': None,
-            'words_per_sec': None
-        }
+        return {"syllables_per_sec": None, "words_per_sec": None}
 
 
-def extract_pause_features(audio: np.ndarray, sr: int,
-                          duration: float) -> Dict[str, Any]:
+def extract_pause_features(audio: np.ndarray, sr: int, duration: float) -> dict[str, Any]:
     """
     Extract pause-related features.
 
@@ -456,12 +423,7 @@ def extract_pause_features(audio: np.ndarray, sr: int,
     pauses = detect_pauses(audio, sr)
 
     if not pauses:
-        return {
-            'count': 0,
-            'longest_ms': 0,
-            'total_duration_ms': 0,
-            'density_per_sec': 0.0
-        }
+        return {"count": 0, "longest_ms": 0, "total_duration_ms": 0, "density_per_sec": 0.0}
 
     pause_durations = [(end - start) for start, end in pauses]
     longest_pause = max(pause_durations)
@@ -471,17 +433,21 @@ def extract_pause_features(audio: np.ndarray, sr: int,
     density = pause_count / duration if duration > 0 else 0.0
 
     return {
-        'count': pause_count,
-        'longest_ms': int(longest_pause * 1000),
-        'total_duration_ms': int(total_pause_duration * 1000),
-        'density_per_sec': float(density)
+        "count": pause_count,
+        "longest_ms": int(longest_pause * 1000),
+        "total_duration_ms": int(total_pause_duration * 1000),
+        "density_per_sec": float(density),
     }
 
 
-def extract_prosody(audio: np.ndarray, sr: int, text: str,
-                   speaker_baseline: Optional[Dict[str, Any]] = None,
-                   start_time: float = 0.0,
-                   end_time: Optional[float] = None) -> Dict[str, Any]:
+def extract_prosody(
+    audio: np.ndarray,
+    sr: int,
+    text: str,
+    speaker_baseline: dict[str, Any] | None = None,
+    start_time: float = 0.0,
+    end_time: float | None = None,
+) -> dict[str, Any]:
     """
     Extract comprehensive prosodic features from an audio segment.
 
@@ -530,118 +496,106 @@ def extract_prosody(audio: np.ndarray, sr: int, text: str,
 
     # Initialize result with defaults
     result = {
-        'pitch': {
-            'level': 'unknown',
-            'mean_hz': None,
-            'std_hz': None,
-            'variation': 'unknown',
-            'contour': 'unknown'
+        "pitch": {
+            "level": "unknown",
+            "mean_hz": None,
+            "std_hz": None,
+            "variation": "unknown",
+            "contour": "unknown",
         },
-        'energy': {
-            'level': 'unknown',
-            'db_rms': None,
-            'variation': 'unknown'
-        },
-        'rate': {
-            'level': 'unknown',
-            'syllables_per_sec': None,
-            'words_per_sec': None
-        },
-        'pauses': {
-            'count': 0,
-            'longest_ms': 0,
-            'density': 'unknown'
-        }
+        "energy": {"level": "unknown", "db_rms": None, "variation": "unknown"},
+        "rate": {"level": "unknown", "syllables_per_sec": None, "words_per_sec": None},
+        "pauses": {"count": 0, "longest_ms": 0, "density": "unknown"},
     }
 
     try:
         # Extract pitch features
         pitch_features = extract_pitch_features(audio, sr)
-        result['pitch']['mean_hz'] = pitch_features['mean_hz']
-        result['pitch']['std_hz'] = pitch_features['std_hz']
-        result['pitch']['contour'] = pitch_features['contour']
+        result["pitch"]["mean_hz"] = pitch_features["mean_hz"]
+        result["pitch"]["std_hz"] = pitch_features["std_hz"]
+        result["pitch"]["contour"] = pitch_features["contour"]
 
         # Categorize pitch level
-        if pitch_features['mean_hz'] is not None:
-            if speaker_baseline and 'pitch_median' in speaker_baseline:
-                result['pitch']['level'] = normalize_to_baseline(
-                    pitch_features['mean_hz'],
-                    speaker_baseline['pitch_median'],
-                    speaker_baseline.get('pitch_std')
+        if pitch_features["mean_hz"] is not None:
+            if speaker_baseline and "pitch_median" in speaker_baseline:
+                result["pitch"]["level"] = normalize_to_baseline(
+                    pitch_features["mean_hz"],
+                    speaker_baseline["pitch_median"],
+                    speaker_baseline.get("pitch_std"),
                 )
             else:
-                result['pitch']['level'] = categorize_value(
-                    pitch_features['mean_hz'],
-                    PITCH_THRESHOLDS
+                result["pitch"]["level"] = categorize_value(
+                    pitch_features["mean_hz"], PITCH_THRESHOLDS
                 )
 
         # Categorize pitch variation
-        if pitch_features['std_hz'] is not None:
-            if pitch_features['std_hz'] < 15:
-                result['pitch']['variation'] = 'low'
-            elif pitch_features['std_hz'] < 30:
-                result['pitch']['variation'] = 'moderate'
+        if pitch_features["std_hz"] is not None:
+            if pitch_features["std_hz"] < 15:
+                result["pitch"]["variation"] = "low"
+            elif pitch_features["std_hz"] < 30:
+                result["pitch"]["variation"] = "moderate"
             else:
-                result['pitch']['variation'] = 'high'
+                result["pitch"]["variation"] = "high"
 
         # Extract energy features
         energy_features = extract_energy_features(audio, sr)
-        result['energy']['db_rms'] = energy_features['db_rms']
+        result["energy"]["db_rms"] = energy_features["db_rms"]
 
         # Categorize energy level
-        if energy_features['db_rms'] is not None:
-            if speaker_baseline and 'energy_median' in speaker_baseline:
-                result['energy']['level'] = normalize_to_baseline(
-                    energy_features['db_rms'],
-                    speaker_baseline['energy_median'],
-                    speaker_baseline.get('energy_std')
+        if energy_features["db_rms"] is not None:
+            if speaker_baseline and "energy_median" in speaker_baseline:
+                result["energy"]["level"] = normalize_to_baseline(
+                    energy_features["db_rms"],
+                    speaker_baseline["energy_median"],
+                    speaker_baseline.get("energy_std"),
                 )
             else:
-                result['energy']['level'] = categorize_value(
-                    energy_features['db_rms'],
-                    ENERGY_THRESHOLDS
+                result["energy"]["level"] = categorize_value(
+                    energy_features["db_rms"], ENERGY_THRESHOLDS
                 )
 
         # Categorize energy variation
-        if energy_features['rms_std'] is not None and energy_features['rms_mean'] is not None:
+        if energy_features["rms_std"] is not None and energy_features["rms_mean"] is not None:
             # Coefficient of variation
-            cv = energy_features['rms_std'] / energy_features['rms_mean'] if energy_features['rms_mean'] > 0 else 0
+            cv = (
+                energy_features["rms_std"] / energy_features["rms_mean"]
+                if energy_features["rms_mean"] > 0
+                else 0
+            )
             if cv < 0.2:
-                result['energy']['variation'] = 'low'
+                result["energy"]["variation"] = "low"
             elif cv < 0.4:
-                result['energy']['variation'] = 'moderate'
+                result["energy"]["variation"] = "moderate"
             else:
-                result['energy']['variation'] = 'high'
+                result["energy"]["variation"] = "high"
 
         # Extract speech rate
         rate_features = extract_speech_rate(audio, sr, text, duration)
-        result['rate']['syllables_per_sec'] = rate_features['syllables_per_sec']
-        result['rate']['words_per_sec'] = rate_features['words_per_sec']
+        result["rate"]["syllables_per_sec"] = rate_features["syllables_per_sec"]
+        result["rate"]["words_per_sec"] = rate_features["words_per_sec"]
 
         # Categorize speech rate
-        if rate_features['syllables_per_sec'] is not None:
-            if speaker_baseline and 'rate_median' in speaker_baseline:
-                result['rate']['level'] = normalize_to_baseline(
-                    rate_features['syllables_per_sec'],
-                    speaker_baseline['rate_median'],
-                    speaker_baseline.get('rate_std')
+        if rate_features["syllables_per_sec"] is not None:
+            if speaker_baseline and "rate_median" in speaker_baseline:
+                result["rate"]["level"] = normalize_to_baseline(
+                    rate_features["syllables_per_sec"],
+                    speaker_baseline["rate_median"],
+                    speaker_baseline.get("rate_std"),
                 )
             else:
-                result['rate']['level'] = categorize_value(
-                    rate_features['syllables_per_sec'],
-                    RATE_THRESHOLDS
+                result["rate"]["level"] = categorize_value(
+                    rate_features["syllables_per_sec"], RATE_THRESHOLDS
                 )
 
         # Extract pause features
         pause_features = extract_pause_features(audio, sr, duration)
-        result['pauses']['count'] = pause_features['count']
-        result['pauses']['longest_ms'] = pause_features['longest_ms']
+        result["pauses"]["count"] = pause_features["count"]
+        result["pauses"]["longest_ms"] = pause_features["longest_ms"]
 
         # Categorize pause density
-        if pause_features['density_per_sec'] is not None:
-            result['pauses']['density'] = categorize_value(
-                pause_features['density_per_sec'],
-                PAUSE_DENSITY_THRESHOLDS
+        if pause_features["density_per_sec"] is not None:
+            result["pauses"]["density"] = categorize_value(
+                pause_features["density_per_sec"], PAUSE_DENSITY_THRESHOLDS
             )
 
     except Exception as e:
@@ -650,7 +604,7 @@ def extract_prosody(audio: np.ndarray, sr: int, text: str,
     return result
 
 
-def compute_speaker_baseline(segments_data: List[Dict[str, Any]]) -> Dict[str, float]:
+def compute_speaker_baseline(segments_data: list[dict[str, Any]]) -> dict[str, float]:
     """
     Compute baseline statistics across multiple segments for a speaker.
 
@@ -677,36 +631,36 @@ def compute_speaker_baseline(segments_data: List[Dict[str, Any]]) -> Dict[str, f
     rate_values = []
 
     for segment in segments_data:
-        audio = segment['audio']
-        sr = segment['sr']
-        text = segment.get('text', '')
+        audio = segment["audio"]
+        sr = segment["sr"]
+        text = segment.get("text", "")
         duration = len(audio) / sr
 
         # Extract features
         pitch_features = extract_pitch_features(audio, sr)
-        if pitch_features['mean_hz'] is not None:
-            pitch_values.append(pitch_features['mean_hz'])
+        if pitch_features["mean_hz"] is not None:
+            pitch_values.append(pitch_features["mean_hz"])
 
         energy_features = extract_energy_features(audio, sr)
-        if energy_features['db_rms'] is not None:
-            energy_values.append(energy_features['db_rms'])
+        if energy_features["db_rms"] is not None:
+            energy_values.append(energy_features["db_rms"])
 
         rate_features = extract_speech_rate(audio, sr, text, duration)
-        if rate_features['syllables_per_sec'] is not None:
-            rate_values.append(rate_features['syllables_per_sec'])
+        if rate_features["syllables_per_sec"] is not None:
+            rate_values.append(rate_features["syllables_per_sec"])
 
     baseline = {}
 
     if pitch_values:
-        baseline['pitch_median'] = float(np.median(pitch_values))
-        baseline['pitch_std'] = float(np.std(pitch_values))
+        baseline["pitch_median"] = float(np.median(pitch_values))
+        baseline["pitch_std"] = float(np.std(pitch_values))
 
     if energy_values:
-        baseline['energy_median'] = float(np.median(energy_values))
-        baseline['energy_std'] = float(np.std(energy_values))
+        baseline["energy_median"] = float(np.median(energy_values))
+        baseline["energy_std"] = float(np.std(energy_values))
 
     if rate_values:
-        baseline['rate_median'] = float(np.median(rate_values))
-        baseline['rate_std'] = float(np.std(rate_values))
+        baseline["rate_median"] = float(np.median(rate_values))
+        baseline["rate_std"] = float(np.std(rate_values))
 
     return baseline

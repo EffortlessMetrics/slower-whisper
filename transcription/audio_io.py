@@ -1,6 +1,6 @@
-from pathlib import Path
-import subprocess
 import shutil
+import subprocess
+
 from .config import Paths
 
 
@@ -49,10 +49,13 @@ def normalize_all(paths: Paths) -> None:
         print(f"[ffmpeg] {src.name} → {dst.name}")
         cmd = [
             "ffmpeg",
-            "-y",               # overwrite
-            "-i", str(src),
-            "-ac", "1",         # mono
-            "-ar", "16000",     # 16 kHz
+            "-y",  # overwrite
+            "-i",
+            str(src),
+            "-ac",
+            "1",  # mono
+            "-ar",
+            "16000",  # 16 kHz
             str(dst),
         ]
         try:

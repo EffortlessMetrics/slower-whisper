@@ -1,6 +1,8 @@
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List
+
 from faster_whisper import WhisperModel
+
 from .config import AsrConfig
 from .models import Segment, Transcript
 
@@ -42,14 +44,12 @@ class TranscriptionEngine:
             str(audio_path),
             beam_size=self.cfg.beam_size,
             vad_filter=True,
-            vad_parameters={
-                "min_silence_duration_ms": self.cfg.vad_min_silence_ms
-            },
+            vad_parameters={"min_silence_duration_ms": self.cfg.vad_min_silence_ms},
             language=self.cfg.language,
             task=self.cfg.task,
         )
 
-        seg_objs: List[Segment] = []
+        seg_objs: list[Segment] = []
         for idx, seg in enumerate(segments):
             seg_objs.append(
                 Segment(

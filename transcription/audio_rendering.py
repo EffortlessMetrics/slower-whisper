@@ -6,10 +6,10 @@ human/LLM-friendly text annotations. The annotations capture prosodic,
 emotional, and voice quality features in a compact, natural language format.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 
-def render_audio_state(audio_state: Dict[str, Any]) -> str:
+def render_audio_state(audio_state: dict[str, Any]) -> str:
     """
     Render an audio_state dictionary as a human-friendly text annotation.
 
@@ -36,7 +36,7 @@ def render_audio_state(audio_state: Dict[str, Any]) -> str:
         >>> render_audio_state({'prosody': {'pauses': 'moderate'}, 'emotion': {'tone': 'hesitant', 'confidence': 0.6}})
         '[audio: moderate pauses, hesitant tone]'
     """
-    features: List[str] = []
+    features: list[str] = []
 
     # Extract prosody features
     prosody = audio_state.get("prosody") or {}
@@ -86,7 +86,7 @@ def render_audio_state(audio_state: Dict[str, Any]) -> str:
 
         # Confidence indicator (only if confidence is low, indicating uncertainty)
         confidence = emotion.get("confidence")
-        if confidence is not None and isinstance(confidence, (int, float)):
+        if confidence is not None and isinstance(confidence, int | float):
             if confidence < 0.5:
                 features.append("possibly uncertain")
             elif confidence < 0.7:
@@ -96,17 +96,32 @@ def render_audio_state(audio_state: Dict[str, Any]) -> str:
     voice_quality = audio_state.get("voice_quality") or {}
     if isinstance(voice_quality, dict):
         # Clarity descriptor
-        if "clarity" in voice_quality and voice_quality["clarity"] not in (None, "neutral", "clear", "normal"):
+        if "clarity" in voice_quality and voice_quality["clarity"] not in (
+            None,
+            "neutral",
+            "clear",
+            "normal",
+        ):
             clarity = voice_quality["clarity"].lower()
             features.append(f"{clarity} clarity")
 
         # Energy descriptor
-        if "energy" in voice_quality and voice_quality["energy"] not in (None, "neutral", "normal", "moderate"):
+        if "energy" in voice_quality and voice_quality["energy"] not in (
+            None,
+            "neutral",
+            "normal",
+            "moderate",
+        ):
             energy = voice_quality["energy"].lower()
             features.append(f"{energy} energy")
 
         # Stress level descriptor
-        if "stress_level" in voice_quality and voice_quality["stress_level"] not in (None, "neutral", "normal", "low"):
+        if "stress_level" in voice_quality and voice_quality["stress_level"] not in (
+            None,
+            "neutral",
+            "normal",
+            "low",
+        ):
             stress = voice_quality["stress_level"].lower()
             if stress == "high":
                 features.append("high stress")
@@ -124,7 +139,7 @@ def render_audio_state(audio_state: Dict[str, Any]) -> str:
     return f"[audio: {annotation}]"
 
 
-def render_audio_features_detailed(audio_state: Dict[str, Any]) -> Dict[str, List[str]]:
+def render_audio_features_detailed(audio_state: dict[str, Any]) -> dict[str, list[str]]:
     """
     Render audio features in a structured, detailed format for analysis.
 
@@ -180,7 +195,7 @@ def render_audio_features_detailed(audio_state: Dict[str, Any]) -> Dict[str, Lis
         if "tone" in emotion and emotion["tone"] not in (None, "neutral", "normal"):
             result["emotion"].append(f"{emotion['tone'].lower()} tone")
         confidence = emotion.get("confidence")
-        if confidence is not None and isinstance(confidence, (int, float)):
+        if confidence is not None and isinstance(confidence, int | float):
             if confidence < 0.5:
                 result["emotion"].append("possibly uncertain")
             elif confidence < 0.7:
@@ -189,11 +204,26 @@ def render_audio_features_detailed(audio_state: Dict[str, Any]) -> Dict[str, Lis
     # Process voice quality features
     voice_quality = audio_state.get("voice_quality") or {}
     if isinstance(voice_quality, dict):
-        if "clarity" in voice_quality and voice_quality["clarity"] not in (None, "neutral", "clear", "normal"):
+        if "clarity" in voice_quality and voice_quality["clarity"] not in (
+            None,
+            "neutral",
+            "clear",
+            "normal",
+        ):
             result["voice_quality"].append(f"{voice_quality['clarity'].lower()} clarity")
-        if "energy" in voice_quality and voice_quality["energy"] not in (None, "neutral", "normal", "moderate"):
+        if "energy" in voice_quality and voice_quality["energy"] not in (
+            None,
+            "neutral",
+            "normal",
+            "moderate",
+        ):
             result["voice_quality"].append(f"{voice_quality['energy'].lower()} energy")
-        if "stress_level" in voice_quality and voice_quality["stress_level"] not in (None, "neutral", "normal", "low"):
+        if "stress_level" in voice_quality and voice_quality["stress_level"] not in (
+            None,
+            "neutral",
+            "normal",
+            "low",
+        ):
             stress = voice_quality["stress_level"].lower()
             if stress == "high":
                 result["voice_quality"].append("high stress")

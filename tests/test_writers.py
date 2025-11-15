@@ -1,10 +1,13 @@
-from pathlib import Path
 import json
-from transcription.models import Segment, Transcript, SCHEMA_VERSION
-from transcription import __version__
+from pathlib import Path
+
+from transcription import (
+    __version__,
+    writers,  # type: ignore[attr-defined]
+)
 from transcription.config import AppConfig
+from transcription.models import SCHEMA_VERSION, Segment, Transcript
 from transcription.pipeline import _build_meta
-from transcription import writers  # type: ignore[attr-defined]
 
 
 def test_write_json_shape(tmp_path: Path) -> None:
@@ -37,17 +40,9 @@ def test_audio_state_serialization(tmp_path: Path) -> None:
             "pitch": {"level": "high", "mean_hz": 245.3},
             "energy": {"level": "normal", "db_rms": -12.5},
         },
-        "emotion": {
-            "categorical": {"primary": "neutral", "confidence": 0.85}
-        }
+        "emotion": {"categorical": {"primary": "neutral", "confidence": 0.85}},
     }
-    seg = Segment(
-        id=0,
-        start=0.0,
-        end=1.5,
-        text="hello world",
-        audio_state=audio_state
-    )
+    seg = Segment(id=0, start=0.0, end=1.5, text="hello world", audio_state=audio_state)
     t = Transcript(file_name="test.wav", language="en", segments=[seg])
     cfg = AppConfig()
     t.meta = _build_meta(cfg, t, Path("test.wav"), duration_sec=1.5)
@@ -84,18 +79,13 @@ def test_load_transcript_from_json(tmp_path: Path) -> None:
     # Create and write a transcript
     seg1 = Segment(id=0, start=0.0, end=1.5, text="first segment")
     seg2 = Segment(
-        id=1,
-        start=1.5,
-        end=3.0,
-        text="second segment",
-        speaker="Speaker A",
-        tone="positive"
+        id=1, start=1.5, end=3.0, text="second segment", speaker="Speaker A", tone="positive"
     )
     original_transcript = Transcript(
         file_name="test_audio.wav",
         language="en",
         segments=[seg1, seg2],
-        meta={"model": "test-model", "version": "1.0"}
+        meta={"model": "test-model", "version": "1.0"},
     )
 
     json_path = tmp_path / "test_transcript.json"
@@ -129,20 +119,10 @@ def test_load_transcript_with_audio_state(tmp_path: Path) -> None:
     """Test loading transcript with audio_state from JSON."""
     audio_state = {
         "prosody": {"pitch": {"level": "high"}},
-        "emotion": {"categorical": {"primary": "happy", "confidence": 0.9}}
+        "emotion": {"categorical": {"primary": "happy", "confidence": 0.9}},
     }
-    seg = Segment(
-        id=0,
-        start=0.0,
-        end=2.0,
-        text="enriched segment",
-        audio_state=audio_state
-    )
-    original_transcript = Transcript(
-        file_name="enriched.wav",
-        language="en",
-        segments=[seg]
-    )
+    seg = Segment(id=0, start=0.0, end=2.0, text="enriched segment", audio_state=audio_state)
+    original_transcript = Transcript(file_name="enriched.wav", language="en", segments=[seg])
 
     json_path = tmp_path / "enriched_transcript.json"
     writers.write_json(original_transcript, json_path)
@@ -172,10 +152,10 @@ def test_load_transcript_backward_compatibility(tmp_path: Path) -> None:
                 "end": 1.0,
                 "text": "old segment",
                 "speaker": None,
-                "tone": None
+                "tone": None,
                 # Note: no audio_state field
             }
-        ]
+        ],
     }
 
     json_path = tmp_path / "old_format.json"

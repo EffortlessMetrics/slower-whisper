@@ -6,7 +6,7 @@ seeking capabilities. Designed for 16kHz mono WAV files normalized by the pipeli
 """
 
 from pathlib import Path
-from typing import Tuple, Optional
+
 import numpy as np
 import soundfile as sf
 
@@ -41,34 +41,28 @@ class AudioSegmentExtractor:
 
         # Validate file exists
         if not self.wav_path.exists():
-            raise FileNotFoundError(
-                f"Audio file not found: {self.wav_path}"
-            )
+            raise FileNotFoundError(f"Audio file not found: {self.wav_path}")
 
         if not self.wav_path.is_file():
-            raise ValueError(
-                f"Path is not a file: {self.wav_path}"
-            )
+            raise ValueError(f"Path is not a file: {self.wav_path}")
 
         # Probe the file to get metadata and validate readability
         try:
-            with sf.SoundFile(str(self.wav_path), 'r') as audio_file:
+            with sf.SoundFile(str(self.wav_path), "r") as audio_file:
                 self.sample_rate = audio_file.samplerate
                 self.total_frames = len(audio_file)
                 self.channels = audio_file.channels
                 self.duration_seconds = self.total_frames / self.sample_rate
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to open audio file '{self.wav_path}': {e}"
-            ) from e
+            raise RuntimeError(f"Failed to open audio file '{self.wav_path}': {e}") from e
 
     def extract_segment(
         self,
         start_seconds: float,
         end_seconds: float,
         clamp: bool = True,
-        min_duration: float = 0.0
-    ) -> Tuple[np.ndarray, int]:
+        min_duration: float = 0.0,
+    ) -> tuple[np.ndarray, int]:
         """
         Extract an audio segment between start and end timestamps.
 
@@ -94,26 +88,20 @@ class AudioSegmentExtractor:
         """
         # Validate timestamp ordering
         if start_seconds > end_seconds:
-            raise ValueError(
-                f"Start time ({start_seconds}s) must be <= end time ({end_seconds}s)"
-            )
+            raise ValueError(f"Start time ({start_seconds}s) must be <= end time ({end_seconds}s)")
 
         # Handle negative timestamps
         if start_seconds < 0:
             if clamp:
                 start_seconds = 0.0
             else:
-                raise ValueError(
-                    f"Start time cannot be negative: {start_seconds}s"
-                )
+                raise ValueError(f"Start time cannot be negative: {start_seconds}s")
 
         if end_seconds < 0:
             if clamp:
                 end_seconds = 0.0
             else:
-                raise ValueError(
-                    f"End time cannot be negative: {end_seconds}s"
-                )
+                raise ValueError(f"End time cannot be negative: {end_seconds}s")
 
         # Handle timestamps beyond file duration
         if start_seconds > self.duration_seconds:
@@ -159,12 +147,12 @@ class AudioSegmentExtractor:
 
         # Extract the segment using seek
         try:
-            with sf.SoundFile(str(self.wav_path), 'r') as audio_file:
+            with sf.SoundFile(str(self.wav_path), "r") as audio_file:
                 # Seek to start position
                 audio_file.seek(start_frame)
 
                 # Read the required number of frames
-                audio_data = audio_file.read(num_frames, dtype='float32')
+                audio_data = audio_file.read(num_frames, dtype="float32")
 
                 # Handle multi-channel audio by taking first channel
                 # (should be mono for normalized files, but be defensive)
@@ -180,11 +168,8 @@ class AudioSegmentExtractor:
             ) from e
 
     def extract_segment_by_frames(
-        self,
-        start_frame: int,
-        end_frame: int,
-        clamp: bool = True
-    ) -> Tuple[np.ndarray, int]:
+        self, start_frame: int, end_frame: int, clamp: bool = True
+    ) -> tuple[np.ndarray, int]:
         """
         Extract an audio segment by frame indices (for advanced use).
 
@@ -200,9 +185,7 @@ class AudioSegmentExtractor:
             ValueError: If frame indices are invalid.
         """
         if start_frame > end_frame:
-            raise ValueError(
-                f"Start frame ({start_frame}) must be <= end frame ({end_frame})"
-            )
+            raise ValueError(f"Start frame ({start_frame}) must be <= end frame ({end_frame})")
 
         if start_frame < 0:
             if clamp:
@@ -219,16 +202,14 @@ class AudioSegmentExtractor:
                 )
 
         if start_frame >= end_frame:
-            raise ValueError(
-                f"Invalid frame range: [{start_frame}, {end_frame})"
-            )
+            raise ValueError(f"Invalid frame range: [{start_frame}, {end_frame})")
 
         num_frames = end_frame - start_frame
 
         try:
-            with sf.SoundFile(str(self.wav_path), 'r') as audio_file:
+            with sf.SoundFile(str(self.wav_path), "r") as audio_file:
                 audio_file.seek(start_frame)
-                audio_data = audio_file.read(num_frames, dtype='float32')
+                audio_data = audio_file.read(num_frames, dtype="float32")
 
                 if audio_data.ndim > 1:
                     audio_data = audio_data[:, 0]
@@ -259,11 +240,11 @@ class AudioSegmentExtractor:
             'duration_seconds', 'file_path'.
         """
         return {
-            'sample_rate': self.sample_rate,
-            'total_frames': self.total_frames,
-            'channels': self.channels,
-            'duration_seconds': self.duration_seconds,
-            'file_path': str(self.wav_path)
+            "sample_rate": self.sample_rate,
+            "total_frames": self.total_frames,
+            "channels": self.channels,
+            "duration_seconds": self.duration_seconds,
+            "file_path": str(self.wav_path),
         }
 
     def __repr__(self) -> str:
@@ -276,7 +257,7 @@ class AudioSegmentExtractor:
         )
 
 
-def load_full_audio(wav_path: Path | str) -> Tuple[np.ndarray, int]:
+def load_full_audio(wav_path: Path | str) -> tuple[np.ndarray, int]:
     """
     Load an entire audio file into memory.
 
@@ -299,7 +280,7 @@ def load_full_audio(wav_path: Path | str) -> Tuple[np.ndarray, int]:
         raise FileNotFoundError(f"Audio file not found: {wav_path}")
 
     try:
-        audio_data, sample_rate = sf.read(str(wav_path), dtype='float32')
+        audio_data, sample_rate = sf.read(str(wav_path), dtype="float32")
 
         # Convert to mono if needed
         if audio_data.ndim > 1:
@@ -308,9 +289,7 @@ def load_full_audio(wav_path: Path | str) -> Tuple[np.ndarray, int]:
         return audio_data, sample_rate
 
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to load audio file '{wav_path}': {e}"
-        ) from e
+        raise RuntimeError(f"Failed to load audio file '{wav_path}': {e}") from e
 
 
 def validate_wav_file(wav_path: Path | str) -> bool:
@@ -330,7 +309,7 @@ def validate_wav_file(wav_path: Path | str) -> bool:
             return False
 
         # Try to open and read metadata
-        with sf.SoundFile(str(wav_path), 'r') as audio_file:
+        with sf.SoundFile(str(wav_path), "r") as audio_file:
             # Just accessing these will validate the file
             _ = audio_file.samplerate
             _ = len(audio_file)

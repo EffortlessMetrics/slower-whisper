@@ -7,27 +7,26 @@ This module tests the enrichment of transcripts with audio features including:
 - Error handling and edge cases
 """
 
-import json
-import pytest
 import numpy as np
-from pathlib import Path
-from transcription.models import Segment, Transcript
+import pytest
+
 from transcription.audio_utils import AudioSegmentExtractor
+from transcription.models import Segment, Transcript
 
 # Check for optional dependencies
 EMOTION_AVAILABLE = True
 PROSODY_AVAILABLE = True
 
 try:
-    from transcription.emotion import extract_emotion_dimensional, extract_emotion_categorical
-except (ImportError, ValueError) as e:
+    from transcription.emotion import extract_emotion_categorical, extract_emotion_dimensional
+except (ImportError, ValueError):
     EMOTION_AVAILABLE = False
     extract_emotion_dimensional = None
     extract_emotion_categorical = None
 
 try:
     from transcription.prosody import extract_prosody
-except (ImportError, ValueError) as e:
+except (ImportError, ValueError):
     PROSODY_AVAILABLE = False
     extract_prosody = None
 
@@ -35,6 +34,7 @@ except (ImportError, ValueError) as e:
 # ============================================================================
 # Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def synthetic_audio():
@@ -51,6 +51,7 @@ def synthetic_audio():
 def synthetic_audio_file(tmp_path, synthetic_audio):
     """Create a temporary WAV file with synthetic audio."""
     import soundfile as sf
+
     audio, sr = synthetic_audio
     wav_path = tmp_path / "synthetic_test.wav"
     sf.write(wav_path, audio, sr)
@@ -63,18 +64,15 @@ def sample_transcript():
     segments = [
         Segment(id=0, start=0.0, end=1.0, text="Hello world"),
         Segment(id=1, start=1.0, end=2.0, text="This is a test"),
-        Segment(id=2, start=2.0, end=3.0, text="Audio enrichment")
+        Segment(id=2, start=2.0, end=3.0, text="Audio enrichment"),
     ]
-    return Transcript(
-        file_name="test.wav",
-        language="en",
-        segments=segments
-    )
+    return Transcript(file_name="test.wav", language="en", segments=segments)
 
 
 # ============================================================================
 # Prosody Tests
 # ============================================================================
+
 
 @pytest.mark.skipif(not PROSODY_AVAILABLE, reason="parselmouth or librosa not installed")
 def test_extract_prosody_basic(synthetic_audio):
@@ -115,7 +113,7 @@ def test_extract_prosody_with_baseline(synthetic_audio):
         "pitch_median": 180.0,
         "pitch_std": 30.0,
         "energy_median": -15.0,
-        "rate_median": 5.0
+        "rate_median": 5.0,
     }
 
     result = extract_prosody(audio, sr, text, speaker_baseline=baseline)
@@ -123,7 +121,14 @@ def test_extract_prosody_with_baseline(synthetic_audio):
     # Should still return valid structure
     assert "pitch" in result
     assert "energy" in result
-    assert result["pitch"]["level"] in ["very_low", "low", "neutral", "high", "very_high", "unknown"]
+    assert result["pitch"]["level"] in [
+        "very_low",
+        "low",
+        "neutral",
+        "high",
+        "very_high",
+        "unknown",
+    ]
 
 
 @pytest.mark.skipif(not PROSODY_AVAILABLE, reason="parselmouth or librosa not installed")
@@ -143,6 +148,7 @@ def test_extract_prosody_empty_audio():
 # ============================================================================
 # Emotion Tests
 # ============================================================================
+
 
 @pytest.mark.skipif(not EMOTION_AVAILABLE, reason="transformers not installed")
 def test_extract_emotion_dimensional(synthetic_audio):
@@ -217,6 +223,7 @@ def test_emotion_short_audio():
 # Audio Segment Extraction Tests
 # ============================================================================
 
+
 def test_audio_segment_extractor_basic(synthetic_audio_file):
     """Test basic audio segment extraction."""
     extractor = AudioSegmentExtractor(synthetic_audio_file)
@@ -272,6 +279,7 @@ def test_audio_segment_extractor_missing_file():
 # Integration Tests for Enrichment
 # ============================================================================
 
+
 def test_enrich_segment_with_audio_state(synthetic_audio):
     """Test enriching a segment with audio_state (if dependencies available)."""
     audio, sr = synthetic_audio
@@ -290,7 +298,7 @@ def test_enrich_segment_with_audio_state(synthetic_audio):
         emotion_cat = extract_emotion_categorical(audio, sr)
         audio_state["emotion"] = {
             "dimensional": emotion_dim,
-            "categorical": emotion_cat["categorical"]
+            "categorical": emotion_cat["categorical"],
         }
 
     # Attach to segment
@@ -311,6 +319,7 @@ def test_enrich_transcript_full(synthetic_audio_file, sample_transcript, tmp_pat
 
     # First, create a longer audio file with multiple segments
     import soundfile as sf
+
     sr = 16000
     duration = 3.0
     t = np.linspace(0, duration, int(sr * duration))
@@ -340,7 +349,7 @@ def test_enrich_transcript_full(synthetic_audio_file, sample_transcript, tmp_pat
                 emotion_cat = extract_emotion_categorical(audio_seg, sr)
                 audio_state["emotion"] = {
                     "dimensional": emotion_dim,
-                    "categorical": emotion_cat["categorical"]
+                    "categorical": emotion_cat["categorical"],
                 }
 
             # Create new segment with audio_state
@@ -351,11 +360,11 @@ def test_enrich_transcript_full(synthetic_audio_file, sample_transcript, tmp_pat
                 text=seg.text,
                 speaker=seg.speaker,
                 tone=seg.tone,
-                audio_state=audio_state if audio_state else None
+                audio_state=audio_state if audio_state else None,
             )
             enriched_segments.append(enriched_seg)
 
-        except Exception as e:
+        except Exception:
             # If extraction fails, keep original segment
             enriched_segments.append(seg)
 
@@ -364,7 +373,7 @@ def test_enrich_transcript_full(synthetic_audio_file, sample_transcript, tmp_pat
         file_name=sample_transcript.file_name,
         language=sample_transcript.language,
         segments=enriched_segments,
-        meta=sample_transcript.meta
+        meta=sample_transcript.meta,
     )
 
     # Verify at least structure is correct
@@ -381,6 +390,7 @@ def test_enrich_transcript_full(synthetic_audio_file, sample_transcript, tmp_pat
 # ============================================================================
 # Error Handling Tests
 # ============================================================================
+
 
 def test_segment_extraction_with_invalid_times(synthetic_audio_file):
     """Test that invalid time ranges are handled properly."""
@@ -406,6 +416,7 @@ def test_segment_extraction_zero_duration(synthetic_audio_file):
 # Partial Enrichment Tests
 # ============================================================================
 
+
 def test_partial_enrichment_prosody_only(synthetic_audio):
     """Test enrichment with only prosody (no emotion)."""
     if not PROSODY_AVAILABLE:
@@ -415,9 +426,7 @@ def test_partial_enrichment_prosody_only(synthetic_audio):
     segment = Segment(id=0, start=0.0, end=1.0, text="Test")
 
     # Enrich with only prosody
-    audio_state = {
-        "prosody": extract_prosody(audio, sr, segment.text)
-    }
+    audio_state = {"prosody": extract_prosody(audio, sr, segment.text)}
     segment.audio_state = audio_state
 
     assert segment.audio_state is not None
@@ -435,11 +444,7 @@ def test_partial_enrichment_emotion_only(synthetic_audio):
 
     # Enrich with only emotion
     emotion_cat = extract_emotion_categorical(audio, sr)
-    audio_state = {
-        "emotion": {
-            "categorical": emotion_cat["categorical"]
-        }
-    }
+    audio_state = {"emotion": {"categorical": emotion_cat["categorical"]}}
     segment.audio_state = audio_state
 
     assert segment.audio_state is not None
@@ -451,19 +456,14 @@ def test_partial_enrichment_emotion_only(synthetic_audio):
 # Skip-existing Logic Tests
 # ============================================================================
 
+
 def test_skip_existing_audio_state(synthetic_audio):
     """Test that existing audio_state is not overwritten when skip_existing=True."""
     audio, sr = synthetic_audio
 
     # Create segment with existing audio_state
     existing_state = {"prosody": {"pitch": {"level": "existing"}}}
-    segment = Segment(
-        id=0,
-        start=0.0,
-        end=1.0,
-        text="Test",
-        audio_state=existing_state
-    )
+    segment = Segment(id=0, start=0.0, end=1.0, text="Test", audio_state=existing_state)
 
     # Simulate skip-existing logic
     if segment.audio_state is None:
@@ -480,13 +480,7 @@ def test_overwrite_audio_state(synthetic_audio):
 
     # Create segment with existing audio_state
     existing_state = {"prosody": {"pitch": {"level": "existing"}}}
-    segment = Segment(
-        id=0,
-        start=0.0,
-        end=1.0,
-        text="Test",
-        audio_state=existing_state
-    )
+    segment = Segment(id=0, start=0.0, end=1.0, text="Test", audio_state=existing_state)
 
     # Simulate overwrite logic (skip_existing=False)
     segment.audio_state = {"new": "data"}

@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -11,7 +10,8 @@ class Paths:
     By default, the root is the current working directory. Subdirectories
     are derived properties to avoid mutable default pitfalls.
     """
-    root: Path = Path(".")
+
+    root: Path = Path()
 
     @property
     def raw_dir(self) -> Path:
@@ -35,14 +35,15 @@ class AsrConfig:
     """
     Configuration for the ASR engine (faster-whisper).
     """
+
     model_name: str = "large-v3"
     device: str = "cuda"
     compute_type: str = "float16"
     vad_min_silence_ms: int = 500
     beam_size: int = 5
     # Optional language and task; if language is None, auto-detect is used.
-    language: Optional[str] = None        # e.g. "en"
-    task: str = "transcribe"              # or "translate"
+    language: str | None = None  # e.g. "en"
+    task: str = "transcribe"  # or "translate"
 
 
 @dataclass
@@ -56,6 +57,7 @@ class AppConfig:
         skip_existing_json: If True, skip transcription for files that
             already have a JSON output.
     """
+
     paths: Paths = field(default_factory=Paths)
     asr: AsrConfig = field(default_factory=AsrConfig)
     skip_existing_json: bool = False

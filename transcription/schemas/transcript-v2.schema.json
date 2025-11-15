@@ -1,0 +1,568 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/yourusername/slower-whisper/schemas/transcript-v2.json",
+  "title": "Slower-Whisper Transcript Schema v2",
+  "description": "Schema for transcribed audio with optional enriched audio features including prosody and emotion analysis",
+  "type": "object",
+  "required": ["schema_version", "file", "language", "segments"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Schema version number - must be 2 for this schema"
+    },
+    "file": {
+      "type": "string",
+      "description": "Name of the audio file (e.g., 'meeting.wav')",
+      "minLength": 1
+    },
+    "language": {
+      "type": "string",
+      "description": "Language code reported by ASR (e.g., 'en', 'es', 'fr')",
+      "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+      "examples": ["en", "es", "fr", "zh", "en-US"]
+    },
+    "meta": {
+      "type": ["object", "null"],
+      "description": "Optional metadata about transcript generation and enrichment",
+      "properties": {
+        "model_name": {
+          "type": "string",
+          "description": "ASR model name (e.g., 'faster-whisper-large-v2')"
+        },
+        "model_size": {
+          "type": "string",
+          "description": "Model size variant (e.g., 'large-v2', 'medium')"
+        },
+        "device": {
+          "type": "string",
+          "description": "Compute device used (e.g., 'cuda', 'cpu')"
+        },
+        "compute_type": {
+          "type": "string",
+          "description": "Computation precision (e.g., 'float16', 'int8')"
+        },
+        "beam_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Beam search size"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Sampling temperature"
+        },
+        "duration_sec": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total audio duration in seconds"
+        },
+        "pipeline_version": {
+          "type": "string",
+          "description": "Version of slower-whisper pipeline"
+        },
+        "transcribed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of transcription"
+        },
+        "audio_enrichment": {
+          "type": "object",
+          "description": "Metadata about audio feature enrichment",
+          "properties": {
+            "enriched_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "total_segments": {"type": "integer"},
+            "success_count": {"type": "integer"},
+            "partial_count": {"type": "integer"},
+            "failed_count": {"type": "integer"},
+            "features_enabled": {
+              "type": "object",
+              "properties": {
+                "prosody": {"type": "boolean"},
+                "emotion_dimensional": {"type": "boolean"},
+                "emotion_categorical": {"type": "boolean"}
+              }
+            },
+            "speaker_baseline_computed": {"type": "boolean"},
+            "speaker_baseline": {
+              "type": ["object", "null"],
+              "properties": {
+                "pitch_median": {"type": "number"},
+                "pitch_std": {"type": "number"},
+                "energy_median": {"type": "number"},
+                "energy_std": {"type": "number"},
+                "rate_median": {"type": "number"},
+                "rate_std": {"type": "number"}
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "segments": {
+      "type": "array",
+      "description": "Ordered list of transcript segments",
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    }
+  },
+  "$defs": {
+    "segment": {
+      "type": "object",
+      "description": "A single segment of transcribed audio with optional enriched features",
+      "required": ["id", "start", "end", "text"],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unique segment ID (usually sequential index)"
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Start time in seconds"
+        },
+        "end": {
+          "type": "number",
+          "minimum": 0,
+          "description": "End time in seconds (must be > start)"
+        },
+        "text": {
+          "type": "string",
+          "description": "Transcribed text for this segment"
+        },
+        "speaker": {
+          "type": ["string", "null"],
+          "description": "Optional speaker label for future diarization support"
+        },
+        "tone": {
+          "type": ["string", "null"],
+          "description": "Optional tone annotation for future tone tagging"
+        },
+        "audio_state": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/audio_state"}
+          ],
+          "description": "Enriched audio features - null if not enriched"
+        }
+      }
+    },
+    "audio_state": {
+      "type": "object",
+      "description": "Complete audio feature state for a segment including prosody, emotion, and metadata",
+      "properties": {
+        "prosody": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/prosody_features"}
+          ],
+          "description": "Prosodic features (pitch, energy, rate, pauses) - null if not extracted"
+        },
+        "emotion": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/emotion_features"}
+          ],
+          "description": "Emotional features (valence, arousal, dominance, categorical) - null if not extracted"
+        },
+        "rendering": {
+          "type": "string",
+          "description": "Human-readable text rendering of audio features",
+          "default": "[audio: neutral]",
+          "examples": [
+            "[audio: neutral]",
+            "[audio: high pitch, loud volume, fast speech, excited tone]",
+            "[audio: low pitch, quiet volume, slow speech, calm tone]"
+          ]
+        },
+        "extraction_status": {
+          "$ref": "#/$defs/extraction_status",
+          "description": "Status information about feature extraction"
+        }
+      }
+    },
+    "prosody_features": {
+      "type": "object",
+      "description": "Prosodic features for a segment",
+      "required": ["pitch", "energy", "rate", "pauses"],
+      "properties": {
+        "pitch": {
+          "$ref": "#/$defs/pitch_features"
+        },
+        "energy": {
+          "$ref": "#/$defs/energy_features"
+        },
+        "rate": {
+          "$ref": "#/$defs/rate_features"
+        },
+        "pauses": {
+          "$ref": "#/$defs/pause_features"
+        }
+      }
+    },
+    "pitch_features": {
+      "type": "object",
+      "description": "Fundamental frequency (F0) features",
+      "required": ["level"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["very_low", "low", "neutral", "high", "very_high", "unknown"],
+          "description": "Categorical pitch level"
+        },
+        "mean_hz": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Mean pitch in Hertz (null if extraction failed)"
+        },
+        "std_hz": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Pitch standard deviation in Hertz"
+        },
+        "variation": {
+          "type": ["string", "null"],
+          "enum": ["low", "moderate", "high", "unknown", null],
+          "description": "Pitch variation intensity"
+        },
+        "contour": {
+          "type": ["string", "null"],
+          "enum": ["rising", "falling", "flat", "unknown", null],
+          "description": "Overall pitch movement pattern"
+        }
+      }
+    },
+    "energy_features": {
+      "type": "object",
+      "description": "Acoustic energy/intensity features",
+      "required": ["level"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["very_quiet", "quiet", "normal", "loud", "very_loud", "unknown"],
+          "description": "Categorical energy level"
+        },
+        "db_rms": {
+          "type": ["number", "null"],
+          "description": "RMS energy in decibels (null if extraction failed)"
+        },
+        "variation": {
+          "type": ["string", "null"],
+          "enum": ["low", "moderate", "high", "unknown", null],
+          "description": "Energy variation intensity"
+        }
+      }
+    },
+    "rate_features": {
+      "type": "object",
+      "description": "Speech articulation rate features",
+      "required": ["level"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["very_slow", "slow", "normal", "fast", "very_fast", "unknown"],
+          "description": "Categorical speech rate level"
+        },
+        "syllables_per_sec": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Syllable articulation rate (null if extraction failed)"
+        },
+        "words_per_sec": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Word articulation rate"
+        }
+      }
+    },
+    "pause_features": {
+      "type": "object",
+      "description": "Silence/pause features within segment",
+      "required": ["count"],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of detected pauses"
+        },
+        "longest_ms": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Duration of longest pause in milliseconds"
+        },
+        "density": {
+          "type": ["string", "null"],
+          "enum": ["very_sparse", "sparse", "moderate", "frequent", "very_frequent", "unknown", null],
+          "description": "Categorical pause frequency"
+        },
+        "density_per_sec": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Pauses per second"
+        }
+      }
+    },
+    "emotion_features": {
+      "type": "object",
+      "description": "Emotional features in dimensional and/or categorical space",
+      "properties": {
+        "valence": {
+          "$ref": "#/$defs/dimensional_emotion_valence",
+          "description": "Positive/negative emotion dimension"
+        },
+        "arousal": {
+          "$ref": "#/$defs/dimensional_emotion_arousal",
+          "description": "Excited/calm emotion dimension"
+        },
+        "dominance": {
+          "$ref": "#/$defs/dimensional_emotion_dominance",
+          "description": "Dominant/submissive emotion dimension"
+        },
+        "categorical": {
+          "$ref": "#/$defs/categorical_emotion",
+          "description": "Discrete emotion classification"
+        }
+      },
+      "anyOf": [
+        {"required": ["valence"]},
+        {"required": ["arousal"]},
+        {"required": ["dominance"]},
+        {"required": ["categorical"]}
+      ]
+    },
+    "dimensional_emotion_valence": {
+      "type": "object",
+      "description": "Valence dimension (positive/negative affect)",
+      "required": ["level", "score"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["very_negative", "negative", "neutral", "positive", "very_positive"],
+          "description": "Categorical valence level"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Continuous valence score: 0 (very negative) to 1 (very positive)"
+        }
+      }
+    },
+    "dimensional_emotion_arousal": {
+      "type": "object",
+      "description": "Arousal dimension (excited/calm)",
+      "required": ["level", "score"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["very_low", "low", "medium", "high", "very_high"],
+          "description": "Categorical arousal level"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Continuous arousal score: 0 (very calm) to 1 (very excited)"
+        }
+      }
+    },
+    "dimensional_emotion_dominance": {
+      "type": "object",
+      "description": "Dominance dimension (assertive/submissive)",
+      "required": ["level", "score"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["very_submissive", "submissive", "neutral", "dominant", "very_dominant"],
+          "description": "Categorical dominance level"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Continuous dominance score: 0 (very submissive) to 1 (very dominant)"
+        }
+      }
+    },
+    "categorical_emotion": {
+      "type": "object",
+      "description": "Discrete emotion classification with confidence scores",
+      "required": ["primary", "confidence"],
+      "properties": {
+        "primary": {
+          "type": "string",
+          "description": "Primary predicted emotion label",
+          "examples": ["angry", "disgusted", "fearful", "happy", "neutral", "sad", "surprised"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Confidence score for primary emotion"
+        },
+        "secondary": {
+          "type": ["string", "null"],
+          "description": "Second most likely emotion (optional)"
+        },
+        "secondary_confidence": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Confidence score for secondary emotion"
+        },
+        "all_scores": {
+          "type": "object",
+          "description": "Confidence scores for all emotion categories",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "examples": [
+            {
+              "angry": 0.05,
+              "disgusted": 0.02,
+              "fearful": 0.01,
+              "happy": 0.78,
+              "neutral": 0.10,
+              "sad": 0.02,
+              "surprised": 0.02
+            }
+          ]
+        }
+      }
+    },
+    "extraction_status": {
+      "type": "object",
+      "description": "Status information tracking success/failure of feature extraction",
+      "required": ["prosody", "emotion_dimensional", "emotion_categorical", "errors"],
+      "properties": {
+        "prosody": {
+          "type": "string",
+          "enum": ["success", "failed", "skipped"],
+          "description": "Prosody extraction status"
+        },
+        "emotion_dimensional": {
+          "type": "string",
+          "enum": ["success", "failed", "skipped"],
+          "description": "Dimensional emotion extraction status"
+        },
+        "emotion_categorical": {
+          "type": "string",
+          "enum": ["success", "failed", "skipped"],
+          "description": "Categorical emotion extraction status"
+        },
+        "errors": {
+          "type": "array",
+          "description": "List of error messages encountered during extraction",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": 2,
+      "file": "meeting.wav",
+      "language": "en",
+      "meta": {
+        "model_name": "faster-whisper-large-v2",
+        "device": "cuda",
+        "duration_sec": 120.5,
+        "pipeline_version": "0.1.0",
+        "transcribed_at": "2025-01-15T10:30:00Z"
+      },
+      "segments": [
+        {
+          "id": 0,
+          "start": 0.0,
+          "end": 2.5,
+          "text": "Hello everyone, welcome to the meeting.",
+          "speaker": null,
+          "tone": null,
+          "audio_state": {
+            "prosody": {
+              "pitch": {
+                "level": "high",
+                "mean_hz": 245.3,
+                "std_hz": 32.1,
+                "variation": "moderate",
+                "contour": "rising"
+              },
+              "energy": {
+                "level": "loud",
+                "db_rms": -8.2,
+                "variation": "low"
+              },
+              "rate": {
+                "level": "normal",
+                "syllables_per_sec": 5.3,
+                "words_per_sec": 2.8
+              },
+              "pauses": {
+                "count": 1,
+                "longest_ms": 250,
+                "density": "sparse",
+                "density_per_sec": 0.4
+              }
+            },
+            "emotion": {
+              "valence": {
+                "level": "positive",
+                "score": 0.72
+              },
+              "arousal": {
+                "level": "high",
+                "score": 0.68
+              },
+              "dominance": {
+                "level": "neutral",
+                "score": 0.51
+              },
+              "categorical": {
+                "primary": "happy",
+                "confidence": 0.89,
+                "secondary": "neutral",
+                "secondary_confidence": 0.08,
+                "all_scores": {
+                  "angry": 0.01,
+                  "disgusted": 0.00,
+                  "fearful": 0.00,
+                  "happy": 0.89,
+                  "neutral": 0.08,
+                  "sad": 0.01,
+                  "surprised": 0.01
+                }
+              }
+            },
+            "rendering": "[audio: high pitch, loud volume, normal speech rate, excited tone]",
+            "extraction_status": {
+              "prosody": "success",
+              "emotion_dimensional": "success",
+              "emotion_categorical": "success",
+              "errors": []
+            }
+          }
+        },
+        {
+          "id": 1,
+          "start": 2.5,
+          "end": 5.0,
+          "text": "Let's begin with the first topic.",
+          "speaker": null,
+          "tone": null,
+          "audio_state": null
+        }
+      ]
+    }
+  ]
+}

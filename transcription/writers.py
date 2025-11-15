@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-from .models import Transcript, Segment, SCHEMA_VERSION
+
+from .models import SCHEMA_VERSION, Segment, Transcript
 
 
 def write_json(transcript: Transcript, out_path: Path) -> None:
@@ -51,7 +52,7 @@ def load_transcript_from_json(json_path: Path) -> Transcript:
         json.JSONDecodeError: If the file is not valid JSON.
         KeyError: If required fields (id, start, end, text) are missing.
     """
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
     segments = []
