@@ -71,7 +71,7 @@ rich>=13.0,<14.0                # rich console output
 # Performance Profiling
 # ============================================================================
 memory-profiler>=0.61,<1.0
-line-profiler>=4.0,<5.0
+line-profiler>=4.0,<6.0
 py-spy>=0.3,<1.0                # sampling profiler
 
 # ============================================================================
