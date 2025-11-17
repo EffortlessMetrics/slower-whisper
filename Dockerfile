@@ -1,194 +1,178 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.4
 
 # =============================================================================
-# Multi-stage Dockerfile for slower-whisper
-# Provides both CPU and GPU variants with optional audio enrichment
+# Production-ready Dockerfile for slower-whisper (CPU version)
+# Multi-stage build with pinned versions and uv dependency management
 # =============================================================================
 
 # -----------------------------------------------------------------------------
 # Stage 1: Base image with Python and system dependencies
 # -----------------------------------------------------------------------------
-FROM python:3.12-slim AS base
+# Using pinned Python version for reproducibility
+FROM python:3.12.8-slim-bookworm AS base
 
 # Metadata
 LABEL maintainer="slower-whisper contributors"
-LABEL description="Local transcription pipeline with faster-whisper and audio enrichment"
+LABEL description="Local audio transcription pipeline with faster-whisper and audio enrichment"
 LABEL version="1.0.0"
+LABEL org.opencontainers.image.source="https://github.com/steven/slower-whisper"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    # Increase thread pool for faster-whisper
+    OMP_NUM_THREADS=4
 
 # Install system dependencies
+# ffmpeg: Audio normalization and conversion
+# libsndfile1: WAV file I/O for audio enrichment
+# libgomp1: OpenMP runtime for parallel processing
+# ca-certificates: SSL/TLS certificates for model downloads
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
     libgomp1 \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Create non-root user
+# Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash appuser
 
 # Set working directory
 WORKDIR /app
 
 # -----------------------------------------------------------------------------
-# Stage 2: Build stage - Install Python dependencies
+# Stage 2: Builder - Install uv and Python dependencies
 # -----------------------------------------------------------------------------
 FROM base AS builder
 
-# Install build dependencies
+# Install build dependencies (needed for some Python packages)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Install uv for faster dependency resolution
-RUN pip install uv
+# Install uv - pinned version for reproducibility
+# uv is Astral's fast Python package manager
+ENV UV_VERSION=0.5.11
+RUN pip install --no-cache-dir uv==${UV_VERSION}
 
-# Copy dependency files
-COPY requirements-base.txt requirements-enrich.txt pyproject.toml ./
+# Copy dependency files and application code
+# Using layer caching optimization: copy dependency files first
+COPY pyproject.toml uv.lock README.md ./
+COPY transcription/ ./transcription/
 
-# Install Python dependencies
-# ARG INSTALL_MODE can be: base, enrich, all
-ARG INSTALL_MODE=enrich
+# Install Python dependencies using uv
+# ARG INSTALL_MODE controls which dependencies to install
+# - base: faster-whisper only (minimal, ~2.5GB)
+# - full: all enrichment features (prosody + emotion, ~4GB additional)
+ARG INSTALL_MODE=full
 
-RUN if [ "$INSTALL_MODE" = "base" ]; then \
-        uv pip install --system -r requirements-base.txt; \
-    elif [ "$INSTALL_MODE" = "enrich" ]; then \
-        uv pip install --system -r requirements-enrich.txt; \
-    elif [ "$INSTALL_MODE" = "all" ]; then \
-        uv pip install --system -r requirements-enrich.txt; \
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$INSTALL_MODE" = "base" ]; then \
+        uv pip install --system -e .; \
+    elif [ "$INSTALL_MODE" = "full" ]; then \
+        uv pip install --system -e ".[full]"; \
+    else \
+        echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'base' or 'full')" && exit 1; \
     fi
 
 # -----------------------------------------------------------------------------
-# Stage 3: Runtime image (CPU version)
+# Stage 3: Runtime image
 # -----------------------------------------------------------------------------
-FROM base AS runtime-cpu
+FROM base AS runtime
 
 # Copy Python packages from builder
+# This keeps the final image smaller by excluding build tools
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY --chown=appuser:appuser transcription/ /app/transcription/
+COPY --chown=appuser:appuser pyproject.toml /app/
+
+# Copy legacy entry points for backward compatibility
 COPY --chown=appuser:appuser transcribe_pipeline.py audio_enrich.py /app/
-COPY --chown=appuser:appuser examples/ /app/examples/
 
 # Create data directories
+# These will typically be mounted as volumes
 RUN mkdir -p /app/raw_audio /app/input_audio /app/transcripts /app/whisper_json && \
     chown -R appuser:appuser /app
+
+# Create cache directory for model downloads
+RUN mkdir -p /home/appuser/.cache && \
+    chown -R appuser:appuser /home/appuser/.cache
 
 # Switch to non-root user
 USER appuser
 
-# Set default command
-ENTRYPOINT ["python", "transcribe_pipeline.py"]
-CMD ["--help"]
+# Expose volume mount points
+VOLUME ["/app/raw_audio", "/app/input_audio", "/app/transcripts", "/app/whisper_json"]
 
-# -----------------------------------------------------------------------------
-# Stage 4: Runtime image (GPU version)
-# -----------------------------------------------------------------------------
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS runtime-gpu
+# Health check (optional - verifies CLI is working)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD slower-whisper --help || exit 1
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    DEBIAN_FRONTEND=noninteractive \
-    NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility
-
-# Install Python and system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 \
-    python3-pip \
-    ffmpeg \
-    libsndfile1 \
-    libgomp1 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create symlink for python
-RUN ln -s /usr/bin/python3.12 /usr/bin/python
-
-# Create non-root user
-RUN useradd -m -u 1000 -s /bin/bash appuser
-
-# Set working directory
-WORKDIR /app
-
-# Copy Python packages from builder
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy application code
-COPY --chown=appuser:appuser transcription/ /app/transcription/
-COPY --chown=appuser:appuser transcribe_pipeline.py audio_enrich.py /app/
-COPY --chown=appuser:appuser examples/ /app/examples/
-
-# Create data directories
-RUN mkdir -p /app/raw_audio /app/input_audio /app/transcripts /app/whisper_json && \
-    chown -R appuser:appuser /app
-
-# Switch to non-root user
-USER appuser
-
-# Set default command
-ENTRYPOINT ["python", "transcribe_pipeline.py"]
+# Set default entrypoint to slower-whisper CLI
+ENTRYPOINT ["slower-whisper"]
 CMD ["--help"]
 
 # =============================================================================
 # Build Instructions:
 # =============================================================================
 #
-# CPU version (minimal, transcription only):
-#   docker build --target runtime-cpu --build-arg INSTALL_MODE=base -t slower-whisper:cpu-base .
+# Minimal build (transcription only, ~2.5GB):
+#   docker build --build-arg INSTALL_MODE=base -t slower-whisper:cpu-base .
 #
-# CPU version (with audio enrichment):
-#   docker build --target runtime-cpu --build-arg INSTALL_MODE=enrich -t slower-whisper:cpu .
-#
-# GPU version (minimal, transcription only):
-#   docker build --target runtime-gpu --build-arg INSTALL_MODE=base -t slower-whisper:gpu-base .
-#
-# GPU version (with audio enrichment):
-#   docker build --target runtime-gpu --build-arg INSTALL_MODE=enrich -t slower-whisper:gpu .
+# Full build (with audio enrichment, ~6.5GB):
+#   docker build --build-arg INSTALL_MODE=full -t slower-whisper:cpu .
+#   docker build -t slower-whisper:cpu .  # (full is default)
 #
 # =============================================================================
 # Usage Examples:
 # =============================================================================
 #
-# Run transcription (GPU):
-#   docker run --gpus all \
+# Transcribe audio files in a directory:
+#   docker run --rm \
 #     -v $(pwd)/raw_audio:/app/raw_audio \
-#     -v $(pwd)/output:/app/output \
-#     slower-whisper:gpu \
-#     --model large-v3 --language en
-#
-# Run transcription (CPU):
-#   docker run \
-#     -v $(pwd)/raw_audio:/app/raw_audio \
-#     -v $(pwd)/output:/app/output \
+#     -v $(pwd)/transcripts:/app/transcripts \
+#     -v $(pwd)/whisper_json:/app/whisper_json \
 #     slower-whisper:cpu \
-#     --device cpu --model medium
+#     transcribe --model large-v3 --language en --device cpu
 #
-# Interactive shell:
-#   docker run -it --gpus all slower-whisper:gpu /bin/bash
-#
-# Audio enrichment:
-#   docker run --gpus all \
+# Enrich existing transcripts with audio features:
+#   docker run --rm \
 #     -v $(pwd)/whisper_json:/app/whisper_json \
 #     -v $(pwd)/input_audio:/app/input_audio \
-#     slower-whisper:gpu \
-#     python audio_enrich.py enrich whisper_json/file.json input_audio/file.wav
+#     slower-whisper:cpu \
+#     enrich --model dimensional
+#
+# Interactive shell for debugging:
+#   docker run --rm -it \
+#     -v $(pwd)/raw_audio:/app/raw_audio \
+#     slower-whisper:cpu \
+#     /bin/bash
+#
+# Using legacy entry point (backward compatibility):
+#   docker run --rm \
+#     -v $(pwd)/raw_audio:/app/raw_audio \
+#     slower-whisper:cpu \
+#     python transcribe_pipeline.py --help
 #
 # =============================================================================
-# Docker Compose:
+# Development Build:
 # =============================================================================
 #
-# See docker-compose.yml for orchestration examples
+# For development with live code changes:
+#   docker run --rm -it \
+#     -v $(pwd):/app \
+#     -v ~/.cache/huggingface:/home/appuser/.cache/huggingface \
+#     slower-whisper:cpu \
+#     /bin/bash
 #

@@ -1,37 +1,80 @@
+# =============================================================================
 # Docker Compose configuration for slower-whisper
-# Provides orchestration for different use cases
+# Provides orchestration for local development and testing
+# =============================================================================
+#
+# Quick Start:
+#   docker compose up transcribe-gpu    # GPU transcription (recommended)
+#   docker compose up transcribe-cpu    # CPU transcription (no GPU required)
+#   docker compose run --rm dev         # Interactive development shell
+#
+# For development with additional tools, use docker-compose.dev.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up dev
+#
+# =============================================================================
 
-version: '3.8'
+version: '3.9'
 
+# =============================================================================
+# Services
+# =============================================================================
 services:
-  # ============================================================================
-  # GPU transcription service (recommended for production)
-  # ============================================================================
+  # ---------------------------------------------------------------------------
+  # GPU Transcription Service (Recommended for Production)
+  # ---------------------------------------------------------------------------
+  # Runs transcription on NVIDIA GPU with large-v3 model
+  # Requires: NVIDIA Docker runtime and CUDA-capable GPU
+  #
+  # Usage:
+  #   docker compose run --rm transcribe-gpu
+  #   docker compose run --rm transcribe-gpu --model medium --language ja
+  #
   transcribe-gpu:
     image: slower-whisper:gpu
     build:
       context: .
-      target: runtime-gpu
+      dockerfile: Dockerfile.gpu
+      target: runtime
       args:
-        INSTALL_MODE: enrich
+        INSTALL_MODE: full  # Options: base, full
     container_name: slower-whisper-gpu
+
+    # NVIDIA GPU configuration
     runtime: nvidia
     environment:
+      # GPU visibility and capabilities
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+      # Transcription configuration (override with .env or command args)
+      - SLOWER_WHISPER_MODEL=${SLOWER_WHISPER_MODEL:-large-v3}
+      - SLOWER_WHISPER_DEVICE=${SLOWER_WHISPER_DEVICE:-cuda}
+      - SLOWER_WHISPER_LANGUAGE=${SLOWER_WHISPER_LANGUAGE:-auto}
+      - SLOWER_WHISPER_COMPUTE_TYPE=${SLOWER_WHISPER_COMPUTE_TYPE:-float16}
+
+      # Performance tuning
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+
     volumes:
-      # Map local directories to container
-      - ./raw_audio:/app/raw_audio:ro
-      - ./input_audio:/app/input_audio
-      - ./transcripts:/app/transcripts
-      - ./whisper_json:/app/whisper_json
-      # Cache model downloads to avoid re-downloading
+      # Data directories (production layout)
+      - ./data/raw_audio:/app/raw_audio:ro         # Input audio (read-only)
+      - ./data/input_audio:/app/input_audio        # Normalized audio
+      - ./data/transcripts:/app/transcripts        # TXT/SRT outputs
+      - ./data/whisper_json:/app/whisper_json      # JSON transcripts
+
+      # Model caches (persisted across containers)
       - huggingface-cache:/home/appuser/.cache/huggingface
       - whisper-cache:/home/appuser/.cache/whisper
+
+    # Default command (override with docker compose run args)
     command: >
-      --model large-v3
-      --language en
+      --model ${SLOWER_WHISPER_MODEL:-large-v3}
+      --language ${SLOWER_WHISPER_LANGUAGE:-auto}
+      --device cuda
       --skip-existing-json
+
+    # Resource limits for GPU
     deploy:
       resources:
         reservations:
@@ -39,55 +82,153 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+        limits:
+          memory: 8G  # Adjust based on model size
+
+    # Auto-restart on failure (for batch processing)
     restart: unless-stopped
 
-  # ============================================================================
-  # CPU transcription service (for machines without GPU)
-  # ============================================================================
+  # ---------------------------------------------------------------------------
+  # CPU Transcription Service (No GPU Required)
+  # ---------------------------------------------------------------------------
+  # Runs transcription on CPU with smaller model (slower but works everywhere)
+  #
+  # Usage:
+  #   docker compose run --rm transcribe-cpu
+  #   docker compose run --rm transcribe-cpu --model base --language en
+  #
   transcribe-cpu:
     image: slower-whisper:cpu
     build:
       context: .
-      target: runtime-cpu
+      dockerfile: Dockerfile
+      target: runtime
       args:
-        INSTALL_MODE: enrich
+        INSTALL_MODE: full
     container_name: slower-whisper-cpu
+
     environment:
-      - CUDA_VISIBLE_DEVICES=""  # Disable GPU
+      # Disable GPU
+      - CUDA_VISIBLE_DEVICES=""
+
+      # Transcription configuration
+      - SLOWER_WHISPER_MODEL=${SLOWER_WHISPER_MODEL:-medium}
+      - SLOWER_WHISPER_DEVICE=cpu
+      - SLOWER_WHISPER_LANGUAGE=${SLOWER_WHISPER_LANGUAGE:-auto}
+      - SLOWER_WHISPER_COMPUTE_TYPE=${SLOWER_WHISPER_COMPUTE_TYPE:-int8}
+
+      # CPU performance tuning
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
+      - MKL_NUM_THREADS=${MKL_NUM_THREADS:-8}
+
     volumes:
-      - ./raw_audio:/app/raw_audio:ro
-      - ./input_audio:/app/input_audio
-      - ./transcripts:/app/transcripts
-      - ./whisper_json:/app/whisper_json
+      - ./data/raw_audio:/app/raw_audio:ro
+      - ./data/input_audio:/app/input_audio
+      - ./data/transcripts:/app/transcripts
+      - ./data/whisper_json:/app/whisper_json
       - huggingface-cache:/home/appuser/.cache/huggingface
       - whisper-cache:/home/appuser/.cache/whisper
+
     command: >
       --device cpu
-      --model medium
+      --model ${SLOWER_WHISPER_MODEL:-medium}
+      --language ${SLOWER_WHISPER_LANGUAGE:-auto}
       --skip-existing-json
+
+    deploy:
+      resources:
+        limits:
+          cpus: '8'    # Adjust based on available CPUs
+          memory: 4G   # Medium model requires ~2GB
+
     restart: unless-stopped
 
-  # ============================================================================
-  # Batch processing service (watch folder for new files)
-  # ============================================================================
+  # ---------------------------------------------------------------------------
+  # Audio Enrichment Service
+  # ---------------------------------------------------------------------------
+  # Runs Stage 2 audio enrichment (prosody + emotion analysis)
+  # Operates on existing transcripts from Stage 1
+  #
+  # Usage:
+  #   docker compose run --rm enrich
+  #   docker compose run --rm enrich --prosody-only
+  #
+  enrich:
+    image: slower-whisper:gpu
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+      target: runtime
+      args:
+        INSTALL_MODE: full  # Requires full enrichment dependencies
+    container_name: slower-whisper-enrich
+
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+      # Enrichment configuration
+      - SLOWER_WHISPER_DEVICE=${SLOWER_WHISPER_DEVICE:-cuda}
+      - ENRICH_PROSODY=${ENRICH_PROSODY:-true}
+      - ENRICH_EMOTION=${ENRICH_EMOTION:-true}
+
+    volumes:
+      - ./data/input_audio:/app/input_audio:ro     # Normalized audio (read-only)
+      - ./data/whisper_json:/app/whisper_json      # JSON transcripts (read-write)
+      - huggingface-cache:/home/appuser/.cache/huggingface
+
+    # Run audio enrichment CLI
+    entrypoint: ["python", "audio_enrich.py"]
+    command: ["enrich", "/app/whisper_json"]
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          memory: 8G
+
+  # ---------------------------------------------------------------------------
+  # Batch Processing Service (Continuous Watch Mode)
+  # ---------------------------------------------------------------------------
+  # Continuously processes new audio files added to raw_audio/
+  # Runs as daemon with auto-restart
+  #
+  # Usage:
+  #   docker compose up -d batch-processor
+  #   docker compose logs -f batch-processor
+  #
   batch-processor:
     image: slower-whisper:gpu
     container_name: slower-whisper-batch
     runtime: nvidia
+
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - SLOWER_WHISPER_MODEL=${SLOWER_WHISPER_MODEL:-large-v3}
+      - SLOWER_WHISPER_LANGUAGE=${SLOWER_WHISPER_LANGUAGE:-auto}
+
     volumes:
-      - ./raw_audio:/app/raw_audio:ro
-      - ./input_audio:/app/input_audio
-      - ./transcripts:/app/transcripts
-      - ./whisper_json:/app/whisper_json
+      - ./data/raw_audio:/app/raw_audio:ro
+      - ./data/input_audio:/app/input_audio
+      - ./data/transcripts:/app/transcripts
+      - ./data/whisper_json:/app/whisper_json
       - huggingface-cache:/home/appuser/.cache/huggingface
       - whisper-cache:/home/appuser/.cache/whisper
+
     command: >
-      --model large-v3
+      --model ${SLOWER_WHISPER_MODEL:-large-v3}
       --skip-existing-json
       --language auto
+
+    # Always restart on failure (for long-running batch processing)
     restart: always
+
     deploy:
       resources:
         reservations:
@@ -95,24 +236,58 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+        limits:
+          memory: 8G
 
-  # ============================================================================
-  # Development/interactive service
-  # ============================================================================
+    # Health check to monitor batch processor
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "transcribe_pipeline"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Development / Interactive Shell
+  # ---------------------------------------------------------------------------
+  # Interactive shell for development and testing
+  # Mounts source code for live editing
+  #
+  # Usage:
+  #   docker compose run --rm dev
+  #   docker compose run --rm dev pytest tests/
+  #   docker compose run --rm dev uv run slower-whisper --help
+  #
   dev:
     image: slower-whisper:gpu
     container_name: slower-whisper-dev
     runtime: nvidia
+
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - PYTHONPATH=/app
+
+      # Development settings
+      - SLOWER_WHISPER_DEV_MODE=1
+      - PYTHONDONTWRITEBYTECODE=1
+
     volumes:
-      # Mount source code for development
+      # Mount entire project for development
       - .:/app
+
+      # Preserve caches
       - huggingface-cache:/home/appuser/.cache/huggingface
       - whisper-cache:/home/appuser/.cache/whisper
+
+      # Optional: Mount local SSH for git operations
+      # - ~/.ssh:/home/appuser/.ssh:ro
+      # - ~/.gitconfig:/home/appuser/.gitconfig:ro
+
+    # Start interactive shell
     command: /bin/bash
     stdin_open: true
     tty: true
+
     deploy:
       resources:
         reservations:
@@ -121,12 +296,37 @@ services:
               count: 1
               capabilities: [gpu]
 
-# Shared volumes for caching models
+    # Development doesn't need auto-restart
+    restart: "no"
+
+# =============================================================================
+# Volumes
+# =============================================================================
+# Persistent volumes for model caches (shared across containers)
+#
 volumes:
+  # HuggingFace model cache (emotion models, transformers)
   huggingface-cache:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/.cache/huggingface  # Reuse host cache if available
+
+  # Whisper model cache (faster-whisper models)
   whisper-cache:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/.cache/whisper
+
+# =============================================================================
+# Networks (optional)
+# =============================================================================
+# networks:
+#   slower-whisper-net:
+#     driver: bridge
 
 # =============================================================================
 # Usage:

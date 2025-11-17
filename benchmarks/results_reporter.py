@@ -249,9 +249,9 @@ class BenchmarkReporter:
             if duration < 60:
                 dur_str = f"{int(duration)}s"
             elif duration < 3600:
-                dur_str = f"{int(duration/60)}m"
+                dur_str = f"{int(duration / 60)}m"
             else:
-                dur_str = f"{int(duration/3600)}h"
+                dur_str = f"{int(duration / 3600)}h"
 
             lines.append(
                 f"| {dur_str:8s} | {exec_time:13.2f} | {seg_per_sec:10.2f} | "
@@ -288,8 +288,7 @@ class BenchmarkReporter:
                     memory = result["peak_memory_mb"]
 
                     lines.append(
-                        f"| {config:13s} | {device:6s} | {time_per_seg:17.1f} | "
-                        f"{memory:11.1f} |"
+                        f"| {config:13s} | {device:6s} | {time_per_seg:17.1f} | {memory:11.1f} |"
                     )
 
                 lines.append("")
@@ -338,7 +337,7 @@ class BenchmarkReporter:
                     scaling = "linear" if cv < 10 else "sublinear" if cv < 20 else "poor"
 
                     lines.append(
-                        f"- **{config_mode} ({device}):** {scaling} scaling " f"(CV: {cv:.1f}%)"
+                        f"- **{config_mode} ({device}):** {scaling} scaling (CV: {cv:.1f}%)"
                     )
 
         return lines

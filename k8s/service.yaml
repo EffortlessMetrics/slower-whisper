@@ -1,0 +1,57 @@
+---
+# Service for slower-whisper (optional)
+# This is mainly useful if you extend slower-whisper with an HTTP API
+# For batch processing, this service is not required
+apiVersion: v1
+kind: Service
+metadata:
+  name: slower-whisper
+  namespace: slower-whisper
+  labels:
+    app: slower-whisper
+spec:
+  type: ClusterIP  # Internal service only
+
+  # Use LoadBalancer or NodePort if you need external access
+  # type: LoadBalancer
+
+  selector:
+    app: slower-whisper
+
+  ports:
+    # Example port if you add an HTTP API
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+
+    # Example port for metrics
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+
+  # Session affinity (optional)
+  sessionAffinity: ClientIP
+
+---
+# Headless service for StatefulSet deployments (if needed)
+apiVersion: v1
+kind: Service
+metadata:
+  name: slower-whisper-headless
+  namespace: slower-whisper
+  labels:
+    app: slower-whisper
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service
+
+  selector:
+    app: slower-whisper
+
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

@@ -1,0 +1,124 @@
+---
+# CronJob for scheduled transcription runs
+# Example: Process new audio files every 6 hours
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: slower-whisper-cron
+  namespace: slower-whisper
+  labels:
+    app: slower-whisper
+    component: scheduled-processor
+spec:
+  # Schedule: every 6 hours
+  schedule: "0 */6 * * *"
+
+  # Timezone (requires Kubernetes 1.25+)
+  # timeZone: "America/New_York"
+
+  # Job history limits
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+  # Concurrency policy
+  concurrencyPolicy: Forbid  # Don't run multiple instances concurrently
+
+  # Job deadline
+  startingDeadlineSeconds: 3600  # Start within 1 hour or skip
+
+  jobTemplate:
+    metadata:
+      labels:
+        app: slower-whisper
+        component: scheduled-processor
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 21600  # 6 hours max runtime
+
+      template:
+        metadata:
+          labels:
+            app: slower-whisper
+            component: scheduled-processor
+        spec:
+          restartPolicy: OnFailure
+
+          nodeSelector:
+            kubernetes.io/hostname: gpu-node
+
+          tolerations:
+            - key: nvidia.com/gpu
+              operator: Exists
+              effect: NoSchedule
+
+          securityContext:
+            fsGroup: 1000
+
+          containers:
+            - name: slower-whisper
+              image: your-registry/slower-whisper:latest
+              imagePullPolicy: IfNotPresent
+
+              envFrom:
+                - configMapRef:
+                    name: slower-whisper-config
+
+              env:
+                - name: HF_HOME
+                  value: /cache/huggingface
+                - name: CUDA_VISIBLE_DEVICES
+                  value: "0"
+
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+
+                  echo "Starting scheduled transcription run at $(date)"
+
+                  # Check for new audio files
+                  if [ -z "$(ls -A /data/raw_audio 2>/dev/null)" ]; then
+                    echo "No audio files found. Exiting."
+                    exit 0
+                  fi
+
+                  # Run transcription
+                  uv run slower-whisper transcribe \
+                    --model ${WHISPER_MODEL} \
+                    --device ${WHISPER_DEVICE} \
+                    --language ${WHISPER_LANGUAGE} \
+                    --project-dir /data
+
+                  # Run enrichment
+                  if [ "${ENABLE_AUDIO_ENRICHMENT}" = "true" ]; then
+                    uv run slower-whisper enrich \
+                      --device ${WHISPER_DEVICE} \
+                      --project-dir /data
+                  fi
+
+                  echo "Scheduled run complete at $(date)"
+
+              resources:
+                limits:
+                  nvidia.com/gpu: 1
+                  cpu: "8"
+                  memory: "32Gi"
+                requests:
+                  nvidia.com/gpu: 1
+                  cpu: "4"
+                  memory: "16Gi"
+
+              volumeMounts:
+                - name: data-volume
+                  mountPath: /data
+                - name: model-cache
+                  mountPath: /cache/huggingface
+
+          volumes:
+            - name: data-volume
+              persistentVolumeClaim:
+                claimName: slower-whisper-data
+            - name: model-cache
+              persistentVolumeClaim:
+                claimName: slower-whisper-models

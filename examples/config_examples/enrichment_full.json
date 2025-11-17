@@ -1,0 +1,9 @@
+{
+  "skip_existing": true,
+  "enable_prosody": true,
+  "enable_emotion": true,
+  "enable_categorical_emotion": true,
+  "device": "cuda",
+  "dimensional_model_name": null,
+  "categorical_model_name": null
+}

@@ -93,8 +93,7 @@ def enrich_transcript_with_emotions(json_file: Path, audio_file: Path, output_fi
             arousal = dim_emotions["arousal"]["level"]
 
             logger.info(
-                f"  Emotion: {primary} ({confidence:.2f}) | "
-                f"Valence: {valence}, Arousal: {arousal}"
+                f"  Emotion: {primary} ({confidence:.2f}) | Valence: {valence}, Arousal: {arousal}"
             )
 
         except Exception as e:

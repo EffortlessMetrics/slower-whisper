@@ -1,0 +1,10 @@
+{
+  "model": "tiny",
+  "device": "cpu",
+  "compute_type": "int8",
+  "language": "en",
+  "task": "transcribe",
+  "skip_existing_json": false,
+  "vad_min_silence_ms": 500,
+  "beam_size": 1
+}

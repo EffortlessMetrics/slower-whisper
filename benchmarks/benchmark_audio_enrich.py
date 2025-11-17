@@ -249,9 +249,9 @@ class AudioEnrichmentBenchmark:
             description=self.CONFIGS[config_mode]["description"],
         )
 
-        logger.info(f"\n{'='*80}")
+        logger.info(f"\n{'=' * 80}")
         logger.info(f"Running benchmark: {duration_seconds}s, {config_mode}, {device}")
-        logger.info(f"{'='*80}")
+        logger.info(f"{'=' * 80}")
 
         # Set device for torch models
         original_device = None
@@ -403,12 +403,12 @@ class AudioEnrichmentBenchmark:
         total_benchmarks = len(durations) * len(config_modes) * len(devices)
         current = 0
 
-        logger.info(f"\n{'#'*80}")
+        logger.info(f"\n{'#' * 80}")
         logger.info(f"Starting benchmark suite: {total_benchmarks} total benchmarks")
         logger.info(f"Durations: {durations}")
         logger.info(f"Configs: {config_modes}")
         logger.info(f"Devices: {devices}")
-        logger.info(f"{'#'*80}\n")
+        logger.info(f"{'#' * 80}\n")
 
         for duration in durations:
             for config_mode in config_modes:

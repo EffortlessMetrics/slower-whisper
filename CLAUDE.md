@@ -1,0 +1,445 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+**slower-whisper** is a local audio transcription pipeline with optional audio feature enrichment. It runs entirely on your machine (NVIDIA GPU recommended) and processes audio through a two-stage pipeline:
+
+**Stage 1 (Transcription)**: Uses faster-whisper to transcribe audio to structured JSON, TXT, and SRT formats.
+
+**Stage 2 (Audio Enrichment)**: Optionally extracts prosodic features (pitch, energy, speech rate, pauses) and emotional features (valence/arousal/dominance, categorical emotions) that text-only models cannot infer.
+
+The core goal is to encode audio-only information into transcripts so text-only LLMs can "hear" acoustic features.
+
+## Package Management
+
+This project uses **uv** (Astral's fast Python package manager) with `pyproject.toml`:
+
+```bash
+# Install base dependencies (transcription only)
+uv sync
+
+# Install with audio enrichment features
+uv sync --extra full
+
+# Install development dependencies (includes testing, linting, docs)
+uv sync --extra dev
+```
+
+**Dependency groups:**
+- **base** (default): faster-whisper only (~2.5GB)
+- **enrich-basic**: soundfile, numpy, librosa (~1GB additional)
+- **enrich-prosody**: adds praat-parselmouth for research-grade pitch analysis
+- **emotion**: torch, transformers for emotion recognition (~4GB additional)
+- **full**: all enrichment features (prosody + emotion)
+- **dev**: full + testing/linting/docs tools
+
+Alternative pip installation: `pip install -e ".[dev]"`
+
+## Common Commands
+
+### Building and Running
+
+```bash
+# Run transcription pipeline
+uv run slower-whisper transcribe
+
+# Run with specific options
+uv run slower-whisper transcribe --model large-v3 --language en --device cuda
+
+# Run audio enrichment (Stage 2)
+uv run slower-whisper enrich
+
+# Legacy entry points (still work)
+uv run python transcribe_pipeline.py
+uv run python audio_enrich.py
+```
+
+### Testing
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=transcription --cov-report=term-missing
+
+# Run specific test categories
+uv run pytest -m "not slow"              # Skip slow tests
+uv run pytest -m "not requires_gpu"      # Skip GPU tests
+uv run pytest tests/test_prosody.py      # Run specific file
+
+# Run single test
+uv run pytest tests/test_models.py::test_segment_creation -v
+```
+
+### Code Quality
+
+```bash
+# Format code with ruff
+uv run ruff format transcription/ tests/
+
+# Lint with ruff
+uv run ruff check transcription/ tests/
+
+# Auto-fix linting issues
+uv run ruff check --fix transcription/ tests/
+
+# Type check with mypy
+uv run mypy transcription/
+
+# Run pre-commit hooks manually
+uv run pre-commit run --all-files
+```
+
+### Pre-commit Hooks
+
+Pre-commit hooks are configured in `.pre-commit-config.yaml`:
+
+```bash
+# Install pre-commit hooks
+uv run pre-commit install
+
+# Run manually on all files
+uv run pre-commit run --all-files
+```
+
+Hooks run automatically on `git commit`:
+- ruff (linter with auto-fix)
+- ruff-format (formatter)
+- trailing-whitespace, end-of-file-fixer
+- check-yaml, check-json, check-toml
+- mypy (type checking, non-blocking)
+
+## Code Architecture
+
+### Two-Stage Pipeline Design
+
+The project is architected around a **strict separation** between transcription (Stage 1) and audio enrichment (Stage 2):
+
+**Stage 1: Transcription Pipeline** (`transcription/pipeline.py`)
+1. Audio normalization (ffmpeg: 16 kHz mono WAV)
+2. Transcription (faster-whisper on GPU)
+3. Output: JSON, TXT, SRT files
+
+**Stage 2: Audio Enrichment** (optional, `transcription/audio_enrichment.py`)
+1. Load existing transcripts
+2. Extract prosodic features from WAV
+3. Extract emotional features from WAV
+4. Populate `audio_state` field in JSON
+5. Generate text rendering: `[audio: high pitch, loud volume, fast speech]`
+
+### Core Modules
+
+**Data Models** (`transcription/models.py`)
+- `Segment`: Single transcribed segment with optional `audio_state` field
+- `Transcript`: Complete transcript with metadata
+- `SCHEMA_VERSION = 2`: Current JSON schema version
+- `AUDIO_STATE_VERSION = "1.0.0"`: Audio feature schema version
+
+**Configuration** (`transcription/config.py`)
+- `TranscriptionConfig`: Public API for Stage 1 settings
+- `EnrichmentConfig`: Public API for Stage 2 settings
+- `Paths`, `AsrConfig`, `AppConfig`: Legacy internal configs (backward compatibility)
+
+**Public API** (`transcription/api.py`)
+- `transcribe_directory()`: Transcribe all audio files in a project
+- `transcribe_file()`: Transcribe single audio file
+- `enrich_directory()`: Enrich all transcripts with audio features
+- `enrich_transcript()`: Enrich single transcript
+- `load_transcript()`: Load transcript from JSON
+- `save_transcript()`: Save transcript to JSON
+
+**Audio Processing**
+- `audio_io.py`: ffmpeg-based audio normalization
+- `audio_utils.py`: Memory-efficient WAV segment extraction
+- `asr_engine.py`: faster-whisper wrapper
+
+**Audio Enrichment**
+- `prosody.py`: Pitch, energy, speech rate, pause extraction (Praat/Parselmouth, librosa)
+- `emotion.py`: Emotion recognition using pre-trained wav2vec2 models
+- `audio_rendering.py`: Convert numeric features to text annotations
+- `audio_enrichment.py`: Orchestrates all extractors, handles baselines and errors
+
+**I/O and CLI**
+- `writers.py`: JSON/TXT/SRT output with schema versioning
+- `cli.py`: Modern unified CLI with subcommands (`transcribe`, `enrich`)
+- `cli_legacy_transcribe.py`: Backward-compatible legacy interface
+
+### JSON Schema (Version 2)
+
+**Transcript structure:**
+```json
+{
+  "schema_version": 2,
+  "file_name": "audio.wav",
+  "language": "en",
+  "meta": {
+    "generated_at": "2025-11-15T...",
+    "model_name": "large-v3",
+    "device": "cuda",
+    "audio_enrichment": { /* optional enrichment metadata */ }
+  },
+  "segments": [ /* array of Segment objects */ ]
+}
+```
+
+**Segment with audio_state:**
+```json
+{
+  "id": 0,
+  "start": 0.0,
+  "end": 4.2,
+  "text": "Hello world",
+  "speaker": null,
+  "tone": null,
+  "audio_state": {
+    "prosody": {
+      "pitch": {"level": "high", "mean_hz": 245.3, "contour": "rising"},
+      "energy": {"level": "loud", "db_rms": -8.2},
+      "rate": {"level": "fast", "syllables_per_sec": 6.3}
+    },
+    "emotion": {
+      "valence": {"level": "positive", "score": 0.72},
+      "arousal": {"level": "high", "score": 0.68}
+    },
+    "rendering": "[audio: high pitch, loud volume, fast speech]",
+    "extraction_status": {"prosody": "success", "emotion_dimensional": "success"}
+  }
+}
+```
+
+### Schema Versioning and Compatibility
+
+**Forward Compatibility (v1 → v2):**
+- v2 readers accept v1 transcripts (missing `audio_state` treated as `null`)
+- `load_transcript_from_json()` handles both versions transparently
+
+**Backward Compatibility:**
+- v1 transcripts remain valid
+- New optional fields (`audio_state`) don't break v1 consumers
+
+**Stability Contract:**
+- Core fields (`file_name`, `language`, `segments`, `id`, `start`, `end`, `text`) are stable within v2
+- Optional fields (`speaker`, `tone`, `audio_state`) may be `null`
+- Adding new optional fields does NOT bump schema version
+- Breaking changes (removing/renaming core fields) require version bump (v3)
+
+### Directory Layout
+
+```
+project_root/
+  raw_audio/         # Original audio files (input)
+  input_audio/       # Normalized 16kHz mono WAV (generated)
+  transcripts/       # TXT and SRT outputs (generated)
+  whisper_json/      # JSON structured transcripts (generated)
+  transcription/     # Python package
+  tests/             # Test suite
+  examples/          # Example scripts
+  docs/              # Documentation
+```
+
+## Important Design Patterns
+
+### Audio State Is Audio-Only
+
+**Critical**: All features in `audio_state` must be extracted from raw audio waveform, NOT inferred from text. This is the core distinction from semantic/NLP analysis.
+
+Examples:
+- **Allowed**: Pitch (Hz), energy (dB), speech rate (syllables/sec), pauses (ms), emotion from audio model
+- **Not allowed**: Sentiment from text, topic detection, speaker name inference from content
+
+### Speaker-Relative Normalization
+
+Prosody features use **speaker-relative baselines** rather than absolute thresholds:
+- Baseline computed from median of 20 sampled segments
+- "high pitch" = above speaker's median, not an absolute Hz threshold
+- Supports multi-speaker scenarios (future: per-speaker baselines with diarization)
+
+### Graceful Degradation
+
+Audio enrichment continues even if individual features fail:
+- Each feature extraction wrapped in try/except
+- `extraction_status` tracks success/failure per feature
+- Partial enrichment supported (e.g., prosody succeeds, emotion fails)
+- Errors logged but don't halt processing
+
+### Lazy Model Loading
+
+Emotion recognition models are large (~4GB) and GPU-intensive:
+- Models loaded only when first needed
+- Singleton pattern with lazy initialization
+- GPU/CPU device selection at load time
+
+## Testing Philosophy
+
+**Test organization:**
+- `tests/test_models.py`: Data model tests
+- `tests/test_prosody.py`: Prosody extraction tests
+- `tests/test_emotion.py`: Emotion recognition tests
+- `tests/test_audio_enrichment.py`: Integration tests for enrichment
+- `tests/test_api_integration.py`: Public API integration tests
+- `tests/test_writers.py`: JSON I/O and schema validation
+
+**Test markers (pytest):**
+- `@pytest.mark.slow`: Skip with `-m "not slow"`
+- `@pytest.mark.requires_gpu`: Skip with `-m "not requires_gpu"`
+- `@pytest.mark.requires_enrich`: Requires enrichment dependencies
+
+**Running subsets:**
+```bash
+# Fast tests only
+uv run pytest -m "not slow and not requires_gpu"
+
+# Unit tests only (no integration)
+uv run pytest tests/test_models.py tests/test_prosody.py
+```
+
+## Code Style and Quality
+
+**Tools configured:**
+- **ruff**: Fast linter and formatter (replaces black + isort + flake8)
+- **mypy**: Type checking (configured to warn but not fail in pre-commit)
+- **pytest**: Testing with coverage reporting
+
+**ruff configuration** (pyproject.toml):
+- Line length: 100 characters
+- Target: Python 3.10+
+- Enabled rules: pycodestyle, pyflakes, isort, flake8-bugbear, flake8-comprehensions, pyupgrade
+
+**mypy configuration**:
+- Type checking enabled for `transcription/` package
+- Third-party libraries (faster-whisper, librosa, transformers) ignored
+- Configured for gradual typing (not strict mode)
+
+## Key Files to Know
+
+**Entry points:**
+- `transcription/cli.py`: Main CLI with subcommands (recommended)
+- `transcription/api.py`: Public Python API
+- `transcribe_pipeline.py`: Legacy script entry point
+
+**Core implementation:**
+- `transcription/models.py`: Data models (Segment, Transcript)
+- `transcription/pipeline.py`: Stage 1 orchestration
+- `transcription/audio_enrichment.py`: Stage 2 orchestration
+- `transcription/writers.py`: JSON I/O with versioning
+
+**Configuration:**
+- `pyproject.toml`: Project metadata, dependencies, tool configs
+- `.pre-commit-config.yaml`: Pre-commit hooks
+- `uv.lock`: Locked dependency versions
+
+**Documentation:**
+- `README.md`: User-facing documentation
+- `docs/ARCHITECTURE.md`: Detailed implementation summary
+- `CHANGELOG.md`: Version history
+
+## Common Development Tasks
+
+### Adding a New Audio Feature
+
+1. Implement extractor in new or existing module (e.g., `transcription/voice_quality.py`)
+2. Follow pattern from `prosody.py` or `emotion.py`:
+   - Extract from audio segment (not text)
+   - Return structured dict with numeric values + categorized levels
+   - Handle errors gracefully (return None or partial data)
+3. Integrate in `audio_enrichment.py`:
+   - Add to `enrich_segment()` function
+   - Update `extraction_status` tracking
+   - Add config flag if optional
+4. Update `audio_rendering.py` to render new features as text
+5. Add tests in `tests/test_audio_enrichment.py`
+6. Update `AUDIO_STATE_VERSION` if structure changes
+
+### Modifying the JSON Schema
+
+**For backward-compatible changes** (adding optional fields):
+1. Add field to `Segment` or `Transcript` dataclass with default `None`
+2. Update `write_json()` in `writers.py` to serialize new field
+3. Update `load_transcript_from_json()` to handle missing field
+4. Add tests for forward/backward compatibility
+5. **Do not** bump `SCHEMA_VERSION`
+
+**For breaking changes** (removing/renaming core fields):
+1. Increment `SCHEMA_VERSION` in `models.py`
+2. Update all writers and readers
+3. Provide migration tool or compatibility layer
+4. Document migration path in CHANGELOG
+5. Support old version for at least one major release
+
+### Running Benchmarks
+
+```bash
+# Run audio enrichment benchmark
+uv run python benchmarks/benchmark_audio_enrich.py
+
+# View benchmark results
+cat benchmarks/results/benchmark_*.json
+```
+
+## External Dependencies
+
+**Required (Stage 1):**
+- `faster-whisper`: Whisper transcription engine
+- `ffmpeg`: Audio normalization (system dependency, not Python package)
+
+**Optional (Stage 2):**
+- `librosa`: Audio analysis (energy, basic pitch)
+- `praat-parselmouth`: Research-grade pitch extraction
+- `soundfile`: WAV file I/O
+- `torch`: PyTorch for neural models
+- `transformers`: HuggingFace models for emotion recognition
+
+**Development:**
+- `pytest`, `pytest-cov`: Testing
+- `ruff`: Linting and formatting
+- `mypy`: Type checking
+- `pre-commit`: Git hooks
+
+## Model Downloads
+
+**Emotion recognition models** (downloaded on first use):
+- Dimensional: `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim`
+- Categorical: `ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition`
+
+Models cached in `~/.cache/huggingface/` (Linux/macOS) or `%USERPROFILE%\.cache\huggingface\` (Windows).
+
+**Whisper models** (downloaded on first use):
+- Model size determines download: base (~150MB), medium (~1.5GB), large-v3 (~3GB)
+- Cached by faster-whisper in `~/.cache/huggingface/hub/`
+
+## Troubleshooting
+
+**Import errors for enrichment modules:**
+- Install enrichment dependencies: `uv sync --extra full`
+- For prosody only: `uv sync --extra enrich-prosody`
+- For emotion only: `uv sync --extra emotion`
+
+**CUDA/GPU not detected:**
+- Ensure NVIDIA drivers installed
+- Check `torch.cuda.is_available()` in Python
+- Pipeline falls back to CPU (slower but functional)
+
+**Tests failing with "requires enrichment dependencies":**
+- Install dev dependencies: `uv sync --extra dev`
+- Or skip those tests: `uv run pytest -m "not requires_enrich"`
+
+**Pre-commit hooks failing:**
+- Run manually to see errors: `uv run pre-commit run --all-files`
+- Auto-fix with ruff: `uv run ruff check --fix .`
+- Format with ruff: `uv run ruff format .`
+
+## Privacy and Security
+
+**No data leaves your machine:**
+- Transcription runs locally (faster-whisper)
+- Audio enrichment runs locally
+- Only model weights downloaded from internet (HuggingFace, on first use)
+- No telemetry, no uploads
+
+**Model sources:**
+- Whisper models: OpenAI via HuggingFace
+- Emotion models: Pre-trained academic models on HuggingFace
+- All models publicly available and widely used

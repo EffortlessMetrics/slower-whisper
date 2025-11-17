@@ -1,0 +1,45 @@
+---
+# ResourceQuota to limit GPU usage in the namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gpu-quota
+  namespace: slower-whisper
+spec:
+  hard:
+    # Limit total GPU requests in namespace
+    requests.nvidia.com/gpu: "2"
+    limits.nvidia.com/gpu: "2"
+
+    # CPU and memory limits
+    requests.cpu: "16"
+    requests.memory: "64Gi"
+    limits.cpu: "32"
+    limits.memory: "128Gi"
+
+    # Pod limits
+    pods: "5"
+
+---
+# LimitRange to set default resource limits
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: slower-whisper
+spec:
+  limits:
+    - max:
+        cpu: "8"
+        memory: "32Gi"
+        nvidia.com/gpu: "1"
+      min:
+        cpu: "1"
+        memory: "4Gi"
+      default:
+        cpu: "4"
+        memory: "16Gi"
+      defaultRequest:
+        cpu: "2"
+        memory: "8Gi"
+      type: Container

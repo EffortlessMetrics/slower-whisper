@@ -89,7 +89,9 @@ def categorize_value(value: float, thresholds: dict[str, float]) -> str:
     return list(thresholds.keys())[-1]
 
 
-def normalize_to_baseline(value: float, baseline_median: float, baseline_std: float = None) -> str:
+def normalize_to_baseline(
+    value: float, baseline_median: float, baseline_std: float | None = None
+) -> str:
     """
     Normalize a value relative to speaker baseline and categorize.
 
@@ -344,7 +346,7 @@ def detect_pauses(
         )
 
         # Find continuous silent regions
-        pauses = []
+        pauses: list[tuple[float, float]] = []
         in_pause = False
         pause_start = 0
 
@@ -495,7 +497,7 @@ def extract_prosody(
     duration = len(audio) / sr if sr > 0 else 0
 
     # Initialize result with defaults
-    result = {
+    result: dict[str, Any] = {
         "pitch": {
             "level": "unknown",
             "mean_hz": None,

@@ -66,6 +66,13 @@ enrich = [
     "slower-whisper[full]",
 ]
 
+# FastAPI service wrapper
+api = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",  # Required for file uploads
+]
+
 # Development dependencies
 dev = [
     "slower-whisper[full]",
@@ -75,6 +82,7 @@ dev = [
     "pytest-mock>=3.10",
     "pytest-asyncio>=0.21",
     "pytest-xdist>=3.0",
+    "pytest-bdd>=7.0",
     # Code quality
     "black>=23.0",
     "flake8>=6.0",
@@ -120,7 +128,11 @@ profiling = [
 ]
 
 [project.scripts]
+# Unified CLI (new, recommended)
 slower-whisper = "transcription.cli:main"
+
+# Legacy entry points (backward compatibility)
+# These still work but are deprecated in favor of the unified CLI
 slower-whisper-enrich = "transcription.audio_enrich_cli:main"
 
 [project.urls]
@@ -185,6 +197,8 @@ module = [
     "soundfile.*",
     "transformers.*",
     "torch.*",
+    "fastapi.*",
+    "uvicorn.*",
 ]
 ignore_missing_imports = true
 

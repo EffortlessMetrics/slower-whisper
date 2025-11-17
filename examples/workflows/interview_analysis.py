@@ -330,7 +330,7 @@ class InterviewAnalyzer:
                 lines.append(
                     f"{emoji} [{mins:02d}:{secs:02d}] {moment['type'].replace('_', ' ').title()}"
                 )
-                lines.append(f"  \"{moment['text'][:70]}...\"")
+                lines.append(f'  "{moment["text"][:70]}..."')
                 lines.append(f"  Confidence: {moment['confidence']:.0%}")
                 lines.append("")
 

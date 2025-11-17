@@ -1,84 +1,431 @@
+"""
+Unified CLI for slower-whisper.
+
+Provides a single entry point with two subcommands:
+- slower-whisper transcribe: Stage 1 transcription
+- slower-whisper enrich: Stage 2 audio enrichment
+
+This replaces the separate slower-whisper and slower-whisper-enrich commands
+with a more coherent interface.
+"""
+
+from __future__ import annotations
+
 import argparse
+import sys
+from collections.abc import Sequence
 from pathlib import Path
 
-from .config import AppConfig, AsrConfig, Paths
-from .pipeline import run_pipeline
+from .api import enrich_directory, transcribe_directory
+from .config import EnrichmentConfig, TranscriptionConfig
+from .exceptions import SlowerWhisperError
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser with subcommands."""
     parser = argparse.ArgumentParser(
-        description="Local transcription pipeline (ffmpeg + faster-whisper)"
+        prog="slower-whisper",
+        description="Local transcription and audio enrichment pipeline.",
     )
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # ============================================================================
+    # transcribe subcommand
+    # ============================================================================
+    p_trans = subparsers.add_parser(
+        "transcribe",
+        help="Transcribe audio under a project root (Stage 1).",
+    )
+
+    p_trans.add_argument(
         "--root",
         type=Path,
-        default=Path(),
-        help="Root directory containing raw_audio/ etc. (default: current directory)",
+        default=Path("."),
+        help="Project root (contains raw_audio/, input_audio/, whisper_json/, transcripts/).",
     )
-    parser.add_argument(
+    p_trans.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to TranscriptionConfig JSON file. Precedence: CLI flags > config file > env vars > defaults.",
+    )
+    p_trans.add_argument(
         "--model",
-        default="large-v3",
-        help="Whisper model name (default: large-v3)",
+        default=None,
+        help="Whisper model name (default: large-v3).",
     )
-    parser.add_argument(
+    p_trans.add_argument(
         "--device",
-        default="cuda",
-        help="Device for inference (cuda or cpu, default: cuda)",
+        default=None,
+        help="Device: cuda or cpu (default: cuda).",
     )
-    parser.add_argument(
+    p_trans.add_argument(
         "--compute-type",
-        default="float16",
-        help="Compute type for faster-whisper (e.g. float16, int8_float16).",
+        default=None,
+        help="faster-whisper compute type (e.g. float16, int8).",
     )
-    parser.add_argument(
+    p_trans.add_argument(
         "--language",
         default=None,
-        help="Force language code (e.g. en, es) instead of auto-detect.",
+        help="Force language (e.g. en). Leave empty for auto-detect.",
     )
-    parser.add_argument(
+    p_trans.add_argument(
         "--task",
-        default="transcribe",
+        default=None,
         choices=["transcribe", "translate"],
-        help="Task to perform: transcribe (default) or translate to English.",
+        help="Whisper task (default: transcribe).",
     )
-    parser.add_argument(
+    p_trans.add_argument(
         "--vad-min-silence-ms",
         type=int,
-        default=500,
+        default=None,
         help="Minimum silence duration in ms to split segments (default: 500).",
     )
-    parser.add_argument(
+    p_trans.add_argument(
         "--beam-size",
         type=int,
-        default=5,
+        default=None,
         help="Beam size for decoding (default: 5).",
     )
-    parser.add_argument(
+    p_trans.add_argument(
         "--skip-existing-json",
-        action="store_true",
-        help="If set, skip transcription for files that already have a JSON output.",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Skip files with existing JSON in whisper_json/ (default: True).",
     )
+
+    # ============================================================================
+    # enrich subcommand
+    # ============================================================================
+    p_enrich = subparsers.add_parser(
+        "enrich",
+        help="Enrich existing transcripts with audio-derived features (Stage 2).",
+    )
+
+    p_enrich.add_argument(
+        "--root",
+        type=Path,
+        default=Path("."),
+        help="Project root.",
+    )
+    p_enrich.add_argument(
+        "--enrich-config",
+        type=Path,
+        default=None,
+        help="Path to EnrichmentConfig JSON file. Precedence: CLI flags > config file > env vars > defaults.",
+    )
+    p_enrich.add_argument(
+        "--skip-existing",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Skip segments that already have audio_state (default: True).",
+    )
+    p_enrich.add_argument(
+        "--enable-prosody",
+        dest="enable_prosody",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable prosody extraction (default: True).",
+    )
+    p_enrich.add_argument(
+        "--enable-emotion",
+        dest="enable_emotion",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable dimensional emotion extraction (default: True).",
+    )
+    p_enrich.add_argument(
+        "--enable-categorical-emotion",
+        dest="enable_categorical_emotion",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable categorical emotion (slower, default: False).",
+    )
+    p_enrich.add_argument(
+        "--device",
+        default=None,
+        choices=["cpu", "cuda"],
+        help="Device to run emotion models on (default: cpu).",
+    )
+
     return parser
 
 
-def main() -> None:
-    parser = build_parser()
-    args = parser.parse_args()
+def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> TranscriptionConfig:
+    """
+    Merge two TranscriptionConfig instances, with override taking precedence.
 
-    paths = Paths(root=args.root)
-    asr_cfg = AsrConfig(
-        model_name=args.model,
-        device=args.device,
-        compute_type=args.compute_type,
-        vad_min_silence_ms=args.vad_min_silence_ms,
-        beam_size=args.beam_size,
-        language=args.language,
-        task=args.task,
+    This function implements proper config layering by checking which fields
+    were explicitly set in the override config (via _source_fields attribute).
+    Only explicitly-set fields override the base config, preventing the bug where
+    a file value that equals the default would be ignored.
+
+    The merge strategy:
+    - If field was explicitly set in override (in _source_fields): use override value
+    - Otherwise: keep base value
+
+    This correctly handles the case where:
+    1. Env sets device="cpu"
+    2. File explicitly sets device="cuda" (which happens to equal the default)
+    3. Result is "cuda" (file overrides env) ✓
+
+    And also handles:
+    1. Env sets device="cpu"
+    2. File doesn't mention device (so device="cuda" is just a default)
+    3. Result is "cpu" (env value preserved) ✓
+
+    Args:
+        base: Base configuration (lower precedence).
+        override: Override configuration (higher precedence).
+
+    Returns:
+        New TranscriptionConfig with merged values.
+    """
+    # Check if override has _source_fields (set by from_file/from_env)
+    # If not, or if it's empty, fall back to comparing values (for backward compatibility)
+    source_fields = getattr(override, "_source_fields", None)
+
+    if source_fields is None or not source_fields:
+        # No source tracking - fall back to value comparison
+        # This shouldn't happen in normal CLI usage, but provides safety
+        return TranscriptionConfig(
+            model=override.model if override.model != base.model else base.model,
+            device=override.device if override.device != base.device else base.device,
+            compute_type=override.compute_type
+            if override.compute_type != base.compute_type
+            else base.compute_type,
+            language=override.language if override.language != base.language else base.language,
+            task=override.task if override.task != base.task else base.task,
+            vad_min_silence_ms=override.vad_min_silence_ms
+            if override.vad_min_silence_ms != base.vad_min_silence_ms
+            else base.vad_min_silence_ms,
+            beam_size=override.beam_size
+            if override.beam_size != base.beam_size
+            else base.beam_size,
+            skip_existing_json=override.skip_existing_json
+            if override.skip_existing_json != base.skip_existing_json
+            else base.skip_existing_json,
+        )
+
+    # Use source_fields to determine which values to override
+    return TranscriptionConfig(
+        model=override.model if "model" in source_fields else base.model,
+        device=override.device if "device" in source_fields else base.device,
+        compute_type=override.compute_type
+        if "compute_type" in source_fields
+        else base.compute_type,
+        language=override.language if "language" in source_fields else base.language,
+        task=override.task if "task" in source_fields else base.task,
+        vad_min_silence_ms=override.vad_min_silence_ms
+        if "vad_min_silence_ms" in source_fields
+        else base.vad_min_silence_ms,
+        beam_size=override.beam_size if "beam_size" in source_fields else base.beam_size,
+        skip_existing_json=override.skip_existing_json
+        if "skip_existing_json" in source_fields
+        else base.skip_existing_json,
     )
-    cfg = AppConfig(paths=paths, asr=asr_cfg, skip_existing_json=args.skip_existing_json)
 
-    run_pipeline(cfg)
+
+def _merge_enrich_configs(base: EnrichmentConfig, override: EnrichmentConfig) -> EnrichmentConfig:
+    """
+    Merge two EnrichmentConfig instances, with override taking precedence.
+
+    This function implements proper config layering by checking which fields
+    were explicitly set in the override config (via _source_fields attribute).
+    Only explicitly-set fields override the base config.
+
+    See _merge_configs() for detailed explanation of the merge strategy.
+
+    Args:
+        base: Base configuration (lower precedence).
+        override: Override configuration (higher precedence).
+
+    Returns:
+        New EnrichmentConfig with merged values.
+    """
+    # Check if override has _source_fields (set by from_file/from_env)
+    # If not, or if it's empty, fall back to comparing values (for backward compatibility)
+    source_fields = getattr(override, "_source_fields", None)
+
+    if source_fields is None or not source_fields:
+        # No source tracking - fall back to value comparison
+        return EnrichmentConfig(
+            skip_existing=override.skip_existing
+            if override.skip_existing != base.skip_existing
+            else base.skip_existing,
+            enable_prosody=override.enable_prosody
+            if override.enable_prosody != base.enable_prosody
+            else base.enable_prosody,
+            enable_emotion=override.enable_emotion
+            if override.enable_emotion != base.enable_emotion
+            else base.enable_emotion,
+            enable_categorical_emotion=override.enable_categorical_emotion
+            if override.enable_categorical_emotion != base.enable_categorical_emotion
+            else base.enable_categorical_emotion,
+            device=override.device if override.device != base.device else base.device,
+            dimensional_model_name=override.dimensional_model_name
+            if override.dimensional_model_name != base.dimensional_model_name
+            else base.dimensional_model_name,
+            categorical_model_name=override.categorical_model_name
+            if override.categorical_model_name != base.categorical_model_name
+            else base.categorical_model_name,
+        )
+
+    # Use source_fields to determine which values to override
+    return EnrichmentConfig(
+        skip_existing=override.skip_existing
+        if "skip_existing" in source_fields
+        else base.skip_existing,
+        enable_prosody=override.enable_prosody
+        if "enable_prosody" in source_fields
+        else base.enable_prosody,
+        enable_emotion=override.enable_emotion
+        if "enable_emotion" in source_fields
+        else base.enable_emotion,
+        enable_categorical_emotion=override.enable_categorical_emotion
+        if "enable_categorical_emotion" in source_fields
+        else base.enable_categorical_emotion,
+        device=override.device if "device" in source_fields else base.device,
+        dimensional_model_name=override.dimensional_model_name
+        if "dimensional_model_name" in source_fields
+        else base.dimensional_model_name,
+        categorical_model_name=override.categorical_model_name
+        if "categorical_model_name" in source_fields
+        else base.categorical_model_name,
+    )
+
+
+def _config_from_transcribe_args(args: argparse.Namespace) -> TranscriptionConfig:
+    """
+    Build TranscriptionConfig from CLI arguments with proper precedence.
+
+    Precedence order (highest to lowest):
+    1. Explicit CLI flags
+    2. Config file (if --config provided)
+    3. Environment variables
+    4. Defaults
+
+    Args:
+        args: Parsed command-line arguments from argparse.
+
+    Returns:
+        TranscriptionConfig with merged settings from all sources.
+    """
+    # Step 1: Start with defaults
+    config = TranscriptionConfig()
+
+    # Step 2: Override with environment variables
+    env_config = TranscriptionConfig.from_env()
+    config = _merge_configs(config, env_config)
+
+    # Step 3: Override with config file if provided
+    if args.config is not None:
+        file_config = TranscriptionConfig.from_file(args.config)
+        config = _merge_configs(config, file_config)
+
+    # Step 4: Override with explicit CLI flags (only if not None)
+    config = TranscriptionConfig(
+        model=args.model if args.model is not None else config.model,
+        device=args.device if args.device is not None else config.device,
+        compute_type=args.compute_type if args.compute_type is not None else config.compute_type,
+        language=args.language if args.language is not None else config.language,
+        task=args.task if args.task is not None else config.task,
+        vad_min_silence_ms=args.vad_min_silence_ms
+        if args.vad_min_silence_ms is not None
+        else config.vad_min_silence_ms,
+        beam_size=args.beam_size if args.beam_size is not None else config.beam_size,
+        skip_existing_json=args.skip_existing_json
+        if args.skip_existing_json is not None
+        else config.skip_existing_json,
+    )
+
+    return config
+
+
+def _config_from_enrich_args(args: argparse.Namespace) -> EnrichmentConfig:
+    """
+    Build EnrichmentConfig from CLI arguments with proper precedence.
+
+    Precedence order (highest to lowest):
+    1. Explicit CLI flags
+    2. Config file (if --enrich-config provided)
+    3. Environment variables
+    4. Defaults
+
+    Args:
+        args: Parsed command-line arguments from argparse.
+
+    Returns:
+        EnrichmentConfig with merged settings from all sources.
+    """
+    # Step 1: Start with defaults
+    config = EnrichmentConfig()
+
+    # Step 2: Override with environment variables
+    env_config = EnrichmentConfig.from_env()
+    config = _merge_enrich_configs(config, env_config)
+
+    # Step 3: Override with config file if provided
+    if args.enrich_config is not None:
+        file_config = EnrichmentConfig.from_file(args.enrich_config)
+        config = _merge_enrich_configs(config, file_config)
+
+    # Step 4: Override with explicit CLI flags (only if not None)
+    config = EnrichmentConfig(
+        skip_existing=args.skip_existing
+        if args.skip_existing is not None
+        else config.skip_existing,
+        enable_prosody=args.enable_prosody
+        if args.enable_prosody is not None
+        else config.enable_prosody,
+        enable_emotion=args.enable_emotion
+        if args.enable_emotion is not None
+        else config.enable_emotion,
+        enable_categorical_emotion=args.enable_categorical_emotion
+        if args.enable_categorical_emotion is not None
+        else config.enable_categorical_emotion,
+        device=args.device if args.device is not None else config.device,
+        dimensional_model_name=config.dimensional_model_name,
+        categorical_model_name=config.categorical_model_name,
+    )
+
+    return config
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """
+    Main CLI entry point.
+
+    Returns:
+        0 on success, 1 on SlowerWhisperError, 2 on unexpected error.
+    """
+    try:
+        parser = build_parser()
+        args = parser.parse_args(argv)
+
+        if args.command == "transcribe":
+            cfg = _config_from_transcribe_args(args)
+            transcripts = transcribe_directory(args.root, config=cfg)
+            print(f"\n[done] Transcribed {len(transcripts)} files")
+
+        elif args.command == "enrich":
+            enrich_cfg = _config_from_enrich_args(args)
+            enriched = enrich_directory(args.root, config=enrich_cfg)
+            print(f"\n[done] Enriched {len(enriched)} transcripts")
+
+        else:
+            parser.error(f"Unknown command: {args.command}")
+
+        return 0
+
+    except SlowerWhisperError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -6,6 +6,7 @@ with audio features including prosody and emotion analysis.
 """
 
 import argparse
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 from . import __version__ as PIPELINE_VERSION
 from .audio_enrichment import enrich_transcript_audio as enrich_transcript_comprehensive
 from .config import Paths
+from .exceptions import SlowerWhisperError
 from .models import AUDIO_STATE_VERSION, Transcript
 from .writers import load_transcript_from_json, write_json
 
@@ -262,23 +264,38 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    """Main entry point for audio enrichment CLI."""
-    parser = build_parser()
-    args = parser.parse_args()
+def main() -> int:
+    """
+    Main entry point for audio enrichment CLI.
 
-    config = EnrichmentConfig(
-        root=args.root,
-        skip_existing=args.skip_existing,
-        enable_prosody=args.enable_prosody,
-        enable_emotion=args.enable_emotion,
-        enable_categorical_emotion=args.enable_categorical_emotion,
-        device=args.device,
-        single_file=args.file,
-    )
+    Returns:
+        0 on success, 1 on SlowerWhisperError, 2 on unexpected error.
+    """
+    try:
+        parser = build_parser()
+        args = parser.parse_args()
 
-    run_enrichment_pipeline(config)
+        config = EnrichmentConfig(
+            root=args.root,
+            skip_existing=args.skip_existing,
+            enable_prosody=args.enable_prosody,
+            enable_emotion=args.enable_emotion,
+            enable_categorical_emotion=args.enable_categorical_emotion,
+            device=args.device,
+            single_file=args.file,
+        )
+
+        run_enrichment_pipeline(config)
+        return 0
+
+    except SlowerWhisperError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

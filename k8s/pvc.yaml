@@ -1,0 +1,54 @@
+---
+# PersistentVolumeClaim for audio data storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: slower-whisper-data
+  namespace: slower-whisper
+  labels:
+    app: slower-whisper
+spec:
+  accessModes:
+    - ReadWriteOnce  # Single node access for GPU workloads
+  resources:
+    requests:
+      storage: 100Gi  # Adjust based on your audio data size
+  # storageClassName: fast-ssd  # Uncomment and set to use specific storage class
+
+---
+# PersistentVolumeClaim for model cache
+# Caches downloaded Whisper and emotion recognition models
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: slower-whisper-models
+  namespace: slower-whisper
+  labels:
+    app: slower-whisper
+    component: model-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi  # Models: large-v3 (~3GB) + emotion models (~4GB) + buffer
+  # storageClassName: fast-ssd  # SSD recommended for faster model loading
+
+---
+# Optional: PersistentVolumeClaim for shared input audio
+# Use this if you want to provide audio files via a shared volume
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: slower-whisper-input
+  namespace: slower-whisper
+  labels:
+    app: slower-whisper
+    component: input
+spec:
+  accessModes:
+    - ReadWriteMany  # Allow multiple pods to read input files
+  resources:
+    requests:
+      storage: 50Gi  # Adjust based on your input audio size
+  # storageClassName: nfs  # Use network storage for shared access

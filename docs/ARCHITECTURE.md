@@ -24,6 +24,104 @@ Successfully implemented a complete Stage 2B Audio Feature Enrichment system for
 
 ---
 
+## Schema and Compatibility
+
+### Schema Versioning
+
+The transcription system uses semantic versioning for its JSON schema:
+
+- **Current schema version:** `2`
+- **Schema constant:** `SCHEMA_VERSION = 2` in `transcription/models.py`
+- **Audio state version:** `AUDIO_STATE_VERSION = "1.0.0"`
+
+### Schema v2 Structure
+
+The current schema (v2) has the following stable structure:
+
+**Top-level Transcript:**
+```json
+{
+  "schema_version": 2,
+  "file_name": "audio.wav",
+  "language": "en",
+  "meta": { /* metadata object */ },
+  "segments": [ /* array of Segment objects */ ]
+}
+```
+
+**Segment structure:**
+```json
+{
+  "id": 0,
+  "start": 0.0,
+  "end": 5.2,
+  "text": "Hello world",
+  "speaker": null,  // optional
+  "tone": null,  // optional
+  "audio_state": { /* optional audio features */ }
+}
+```
+
+### Compatibility Guarantees
+
+**Forward Compatibility (v1 → v2):**
+- v2 readers MUST accept v1 transcripts
+- v1 transcripts lack `audio_state` field; treated as `null` in v2
+- `load_transcript_from_json()` gracefully handles both versions
+- No migration required; reading is transparent
+
+**Backward Compatibility:**
+- Existing v1 transcripts remain valid
+- New fields in v2 (`audio_state`, enrichment metadata) are optional
+- v1 consumers can ignore extra fields
+
+**Stability Contract:**
+- Core fields (`file_name`, `language`, `segments`) will not change type or meaning within schema v2
+- Core segment fields (`id`, `start`, `end`, `text`) are stable
+- Optional fields (`speaker`, `tone`, `audio_state`) may be `null`
+- Adding new optional fields does NOT increment schema version
+- Removing or renaming core fields requires schema version bump (v3)
+
+**Breaking Changes:**
+- Major schema version bumps (2 → 3) MAY introduce breaking changes
+- Migration tools will be provided for major version transitions
+- Deprecated fields supported for at least one major version
+
+### Audio State Stability
+
+The `audio_state` field is versioned independently:
+
+- **Current version:** `AUDIO_STATE_VERSION = "1.0.0"`
+- Structure may evolve (add features, refine categorizations)
+- Changes to audio_state structure increment its version
+- Consumers should check `audio_state["extraction_status"]` for feature availability
+- Missing features indicated by `null` or `"skipped"` status
+
+### Using the Schema
+
+**Load with version awareness:**
+```python
+from transcription import load_transcript
+
+transcript = load_transcript("output.json")
+
+# Check schema version (recommended for strict consumers)
+if transcript.meta and transcript.meta.get("schema_version") == 2:
+    # Process v2 transcript
+    pass
+```
+
+**Safe access to optional fields:**
+```python
+for segment in transcript.segments:
+    # Always check before accessing audio_state
+    if segment.audio_state:
+        rendering = segment.audio_state.get("rendering", "[audio: neutral]")
+        print(rendering)
+```
+
+---
+
 ## Implementation Statistics
 
 - **Modules Created:** 9 core modules (~3,381 lines of Python)

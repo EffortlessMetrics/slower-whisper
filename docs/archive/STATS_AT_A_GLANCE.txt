@@ -1,0 +1,31 @@
+═══════════════════════════════════════════════════════════════════════════
+                     SLOWER-WHISPER AT A GLANCE
+═══════════════════════════════════════════════════════════════════════════
+
+CODE                  QUALITY               DOCUMENTATION
+────────────────────  ────────────────────  ────────────────────
+17,079 total lines    96.1% documented      38 markdown files
+3,656 core source     100% module coverage  8 core docs
+3,409 test code       142 test functions    6 example docs
+7,999 example code    0 linter errors       20 example scripts
+1,339 benchmark code  8.5/10 quality score  100% class docs
+
+ARCHITECTURE          DEPENDENCIES          DEVELOPMENT
+────────────────────  ────────────────────  ────────────────────
+17 modules            1 core dependency     12 total commits
+51 functions          6 optional deps       2 contributors
+11 classes            27 dev dependencies   1 day active
+4 categories          7 runtime total       Recent: 2025-11-15
+224 lines/module avg  61 unique imports     Python 3.10+
+
+TOP MODULES           TESTING               FILES
+────────────────────  ────────────────────  ────────────────────
+prosody.py (666)      8 test files          54 Python
+audio_enrich (464)    Unit: ~70 tests       38 Markdown
+emotion.py (386)      Integration: ~40      24 Config/Data
+api.py (368)          Format: ~20           3 Other
+audio_utils (320)     CLI: ~12 tests        119 total
+
+═══════════════════════════════════════════════════════════════════════════
+STATUS: Production Ready ✓  |  LICENSE: Apache-2.0  |  VERSION: 1.0.0
+═══════════════════════════════════════════════════════════════════════════

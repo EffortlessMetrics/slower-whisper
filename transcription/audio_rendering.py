@@ -163,7 +163,7 @@ def render_audio_features_detailed(audio_state: dict[str, Any]) -> dict[str, lis
         >>> result['emotion']
         ['excited tone']
     """
-    result = {"prosody": [], "emotion": [], "voice_quality": []}
+    result: dict[str, list[str]] = {"prosody": [], "emotion": [], "voice_quality": []}
 
     # Process prosody features
     prosody = audio_state.get("prosody") or {}

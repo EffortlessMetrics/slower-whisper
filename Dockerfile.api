@@ -1,0 +1,210 @@
+# syntax=docker/dockerfile:1.4
+
+# =============================================================================
+# FastAPI Service Dockerfile for slower-whisper (CPU version)
+# Multi-stage build optimized for REST API deployment
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Base image with Python and system dependencies
+# -----------------------------------------------------------------------------
+FROM python:3.12.8-slim-bookworm AS base
+
+# Metadata
+LABEL maintainer="slower-whisper contributors"
+LABEL description="REST API for slower-whisper transcription and enrichment"
+LABEL version="1.0.0"
+LABEL org.opencontainers.image.source="https://github.com/steven/slower-whisper"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    # Increase thread pool for faster-whisper
+    OMP_NUM_THREADS=4
+
+# Install system dependencies
+# ffmpeg: Audio normalization and conversion
+# libsndfile1: WAV file I/O for audio enrichment
+# libgomp1: OpenMP runtime for parallel processing
+# ca-certificates: SSL/TLS certificates for model downloads
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libsndfile1 \
+    libgomp1 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user for security
+RUN useradd -m -u 1000 -s /bin/bash appuser
+
+# Set working directory
+WORKDIR /app
+
+# -----------------------------------------------------------------------------
+# Stage 2: Builder - Install uv and Python dependencies
+# -----------------------------------------------------------------------------
+FROM base AS builder
+
+# Install build dependencies (needed for some Python packages)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install uv - pinned version for reproducibility
+ENV UV_VERSION=0.5.11
+RUN pip install --no-cache-dir uv==${UV_VERSION}
+
+# Copy dependency files
+COPY pyproject.toml uv.lock* ./
+
+# Install Python dependencies using uv
+# ARG INSTALL_MODE controls which dependencies to install
+# - api-min: API + transcription only (minimal, ~2.5GB)
+# - api-full: API + all enrichment features (recommended, ~6.5GB)
+ARG INSTALL_MODE=api-full
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$INSTALL_MODE" = "api-min" ]; then \
+        uv pip install --system --no-deps -e ".[api]"; \
+    elif [ "$INSTALL_MODE" = "api-full" ]; then \
+        uv pip install --system --no-deps -e ".[api,full]"; \
+    else \
+        echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'api-min' or 'api-full')" && exit 1; \
+    fi
+
+# Install the package itself
+COPY transcription/ ./transcription/
+COPY pyproject.toml ./
+RUN uv pip install --system --no-deps -e .
+
+# -----------------------------------------------------------------------------
+# Stage 3: Runtime image
+# -----------------------------------------------------------------------------
+FROM base AS runtime
+
+# Copy Python packages from builder
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY --chown=appuser:appuser transcription/ /app/transcription/
+COPY --chown=appuser:appuser pyproject.toml /app/
+
+# Create cache directory for model downloads
+# Models are cached to avoid re-downloading on container restart
+RUN mkdir -p /home/appuser/.cache && \
+    chown -R appuser:appuser /home/appuser/.cache
+
+# Create temporary upload directory
+RUN mkdir -p /tmp/uploads && \
+    chown -R appuser:appuser /tmp/uploads
+
+# Switch to non-root user
+USER appuser
+
+# Expose FastAPI port
+EXPOSE 8000
+
+# Health check for service monitoring
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)" || exit 1
+
+# Set default entrypoint to uvicorn
+# Production configuration with 4 workers and auto-reload disabled
+ENTRYPOINT ["uvicorn", "transcription.service:app"]
+CMD ["--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+
+# =============================================================================
+# Build Instructions:
+# =============================================================================
+#
+# Minimal build (API + transcription only, ~2.5GB):
+#   docker build -f Dockerfile.api --build-arg INSTALL_MODE=api-min \
+#     -t slower-whisper:api-min .
+#
+# Full build (API + all enrichment features, ~6.5GB, recommended):
+#   docker build -f Dockerfile.api --build-arg INSTALL_MODE=api-full \
+#     -t slower-whisper:api .
+#   docker build -f Dockerfile.api -t slower-whisper:api .  # (api-full is default)
+#
+# =============================================================================
+# Usage Examples:
+# =============================================================================
+#
+# Run the API service:
+#   docker run --rm -p 8000:8000 slower-whisper:api
+#
+# Run with GPU support (requires nvidia-docker):
+#   docker run --rm --gpus all -p 8000:8000 slower-whisper:api \
+#     uvicorn transcription.service:app --host 0.0.0.0 --port 8000
+#
+# Run in development mode with live reload:
+#   docker run --rm -it -p 8000:8000 \
+#     -v $(pwd)/transcription:/app/transcription \
+#     slower-whisper:api \
+#     --reload --log-level debug
+#
+# Run with persistent model cache:
+#   docker run --rm -p 8000:8000 \
+#     -v ~/.cache/huggingface:/home/appuser/.cache/huggingface \
+#     slower-whisper:api
+#
+# Run with custom workers and timeout:
+#   docker run --rm -p 8000:8000 slower-whisper:api \
+#     --host 0.0.0.0 --port 8000 --workers 8 --timeout-keep-alive 120
+#
+# =============================================================================
+# API Endpoints:
+# =============================================================================
+#
+# Health check:
+#   curl http://localhost:8000/health
+#
+# OpenAPI documentation (Swagger UI):
+#   http://localhost:8000/docs
+#
+# ReDoc documentation:
+#   http://localhost:8000/redoc
+#
+# Transcribe audio file:
+#   curl -X POST -F "audio=@interview.mp3" \
+#     "http://localhost:8000/transcribe?model=large-v3&language=en&device=cpu"
+#
+# Enrich transcript with audio features:
+#   curl -X POST \
+#     -F "transcript=@transcript.json" \
+#     -F "audio=@audio.wav" \
+#     "http://localhost:8000/enrich?enable_prosody=true&enable_emotion=true&device=cpu"
+#
+# =============================================================================
+# Docker Compose Example:
+# =============================================================================
+#
+# version: '3.8'
+# services:
+#   slower-whisper-api:
+#     image: slower-whisper:api
+#     ports:
+#       - "8000:8000"
+#     environment:
+#       - OMP_NUM_THREADS=4
+#     volumes:
+#       - model-cache:/home/appuser/.cache/huggingface
+#     healthcheck:
+#       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 5s
+#     restart: unless-stopped
+#
+# volumes:
+#   model-cache:
+#

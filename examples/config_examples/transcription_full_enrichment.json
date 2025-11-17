@@ -1,0 +1,10 @@
+{
+  "model": "large-v3",
+  "device": "cuda",
+  "compute_type": "float16",
+  "language": null,
+  "task": "transcribe",
+  "skip_existing_json": true,
+  "vad_min_silence_ms": 500,
+  "beam_size": 5
+}

@@ -1,0 +1,200 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slower-whisper
+  namespace: slower-whisper
+  labels:
+    app: slower-whisper
+    version: v1
+spec:
+  # Single replica for GPU workloads (adjust based on GPU availability)
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: slower-whisper
+
+  # Recreate strategy to avoid multiple pods competing for GPU
+  strategy:
+    type: Recreate
+
+  template:
+    metadata:
+      labels:
+        app: slower-whisper
+        version: v1
+    spec:
+      # Node selection for GPU nodes
+      nodeSelector:
+        # Uncomment and adjust based on your cluster's GPU node labels
+        # accelerator: nvidia-gpu
+        # gpu-type: nvidia-tesla-v100
+        kubernetes.io/hostname: gpu-node  # Replace with your GPU node name
+
+      # Tolerations for GPU nodes (if using taints)
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      # Optional: affinity rules
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #         - matchExpressions:
+      #             - key: gpu
+      #               operator: In
+      #               values:
+      #                 - "true"
+
+      # Service account (if needed for RBAC)
+      # serviceAccountName: slower-whisper
+
+      # Security context
+      securityContext:
+        fsGroup: 1000  # Allow writing to volumes
+
+      # Init container to ensure directories exist
+      initContainers:
+        - name: init-directories
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /data/raw_audio /data/input_audio /data/transcripts /data/whisper_json
+              chmod -R 775 /data
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+
+      containers:
+        - name: slower-whisper
+          # Replace with your container image
+          # Build image: docker build -t your-registry/slower-whisper:latest .
+          image: your-registry/slower-whisper:latest
+          imagePullPolicy: IfNotPresent
+
+          # Environment variables from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: slower-whisper-config
+
+          # Additional environment variables
+          env:
+            # HuggingFace cache location for models
+            - name: HF_HOME
+              value: /cache/huggingface
+            - name: TRANSFORMERS_CACHE
+              value: /cache/huggingface/transformers
+
+            # CUDA environment variables
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"  # Use first GPU
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+
+          # Command to run (adjust based on your use case)
+          # This example runs transcription and then enrichment
+          command:
+            - /bin/bash
+            - -c
+            - |
+              # Wait for any ongoing operations to complete
+              echo "Starting slower-whisper pipeline..."
+
+              # Run transcription
+              uv run slower-whisper transcribe \
+                --model ${WHISPER_MODEL} \
+                --device ${WHISPER_DEVICE} \
+                --language ${WHISPER_LANGUAGE} \
+                --project-dir /data
+
+              # Run enrichment if enabled
+              if [ "${ENABLE_AUDIO_ENRICHMENT}" = "true" ]; then
+                uv run slower-whisper enrich \
+                  --device ${WHISPER_DEVICE} \
+                  --project-dir /data
+              fi
+
+              # Keep container running (for debugging)
+              # Remove this line if running as a Job instead of Deployment
+              echo "Pipeline complete. Sleeping..."
+              sleep infinity
+
+          # Resource limits and requests
+          resources:
+            limits:
+              # GPU resource
+              nvidia.com/gpu: 1  # Request 1 GPU
+
+              # CPU and memory limits
+              cpu: "8"
+              memory: "32Gi"
+
+            requests:
+              # GPU resource
+              nvidia.com/gpu: 1
+
+              # CPU and memory requests
+              cpu: "4"
+              memory: "16Gi"
+
+          # Volume mounts
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+            - name: model-cache
+              mountPath: /cache/huggingface
+            # Optional: mount input audio separately
+            # - name: input-volume
+            #   mountPath: /data/raw_audio
+            #   readOnly: true
+
+          # Liveness probe (check if container is alive)
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "nvidia-smi && echo 'GPU OK'"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          # Readiness probe (check if ready to process)
+          # readinessProbe:
+          #   exec:
+          #     command:
+          #       - sh
+          #       - -c
+          #       - "test -f /tmp/ready"
+          #   initialDelaySeconds: 60
+          #   periodSeconds: 10
+
+      # Volumes
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: slower-whisper-data
+
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: slower-whisper-models
+
+        # Optional: separate input volume
+        # - name: input-volume
+        #   persistentVolumeClaim:
+        #     claimName: slower-whisper-input
+
+      # Restart policy
+      restartPolicy: Always
+
+      # DNS policy
+      dnsPolicy: ClusterFirst
+
+      # Termination grace period
+      terminationGracePeriodSeconds: 30

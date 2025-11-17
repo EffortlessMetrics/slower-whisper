@@ -1,0 +1,9 @@
+{
+  "skip_existing": false,
+  "enable_prosody": true,
+  "enable_emotion": false,
+  "enable_categorical_emotion": false,
+  "device": "cpu",
+  "dimensional_model_name": null,
+  "categorical_model_name": null
+}

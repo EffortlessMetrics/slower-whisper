@@ -1,0 +1,33 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slower-whisper-config
+  namespace: slower-whisper
+  labels:
+    app: slower-whisper
+data:
+  # Transcription configuration
+  WHISPER_MODEL: "large-v3"
+  WHISPER_DEVICE: "cuda"
+  WHISPER_COMPUTE_TYPE: "float16"
+  WHISPER_LANGUAGE: "en"
+  WHISPER_BEAM_SIZE: "5"
+
+  # Audio enrichment configuration
+  ENABLE_AUDIO_ENRICHMENT: "true"
+  ENABLE_PROSODY: "true"
+  ENABLE_EMOTION: "true"
+
+  # Pipeline configuration
+  BATCH_SIZE: "16"
+  NUM_WORKERS: "4"
+
+  # Logging configuration
+  LOG_LEVEL: "INFO"
+
+  # Directory paths (relative to mounted volumes)
+  RAW_AUDIO_DIR: "/data/raw_audio"
+  INPUT_AUDIO_DIR: "/data/input_audio"
+  TRANSCRIPTS_DIR: "/data/transcripts"
+  WHISPER_JSON_DIR: "/data/whisper_json"

@@ -73,14 +73,13 @@ def demo_basic_extraction():
         f"({features['pitch']['mean_hz']:.1f} Hz) - "
         f"{features['pitch']['contour']} contour"
     )
-    print(f"  Energy: {features['energy']['level']} " f"({features['energy']['db_rms']:.1f} dB)")
+    print(f"  Energy: {features['energy']['level']} ({features['energy']['db_rms']:.1f} dB)")
     print(
         f"  Speech Rate: {features['rate']['level']} "
         f"({features['rate']['syllables_per_sec']:.1f} syllables/sec)"
     )
     print(
-        f"  Pauses: {features['pauses']['count']} pauses, "
-        f"{features['pauses']['density']} density"
+        f"  Pauses: {features['pauses']['count']} pauses, {features['pauses']['density']} density"
     )
 
 
@@ -152,12 +151,9 @@ def demo_speech_variations():
     audio_calm = generate_sample_audio(sr=sr, duration=3.0, frequency=160, amplitude=0.2)
     text_calm = "This is calm slow speech."
     features_calm = extract_prosody(audio_calm, sr, text_calm)
+    print(f"Pitch: {features_calm['pitch']['level']} ({features_calm['pitch']['mean_hz']:.1f} Hz)")
     print(
-        f"Pitch: {features_calm['pitch']['level']} " f"({features_calm['pitch']['mean_hz']:.1f} Hz)"
-    )
-    print(
-        f"Energy: {features_calm['energy']['level']} "
-        f"({features_calm['energy']['db_rms']:.1f} dB)"
+        f"Energy: {features_calm['energy']['level']} ({features_calm['energy']['db_rms']:.1f} dB)"
     )
     print(
         f"Rate: {features_calm['rate']['level']} "

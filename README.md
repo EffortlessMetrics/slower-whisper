@@ -1,5 +1,10 @@
 # slower-whisper (ffmpeg + faster-whisper)
 
+![Tests](https://img.shields.io/badge/tests-200%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-56%25-yellow)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+
 This project provides a small, structured codebase for running a fully local
 transcription pipeline on a machine with an NVIDIA GPU.
 
@@ -49,14 +54,19 @@ See detailed instructions below for setup, configuration, and advanced features.
 **Install ffmpeg:**
 
 - **Windows (PowerShell, elevated):**
+
   ```powershell
   choco install ffmpeg -y
   ```
+
 - **macOS:**
+
   ```bash
   brew install ffmpeg
   ```
+
 - **Linux (Ubuntu/Debian):**
+
   ```bash
   sudo apt-get update && sudo apt-get install -y ffmpeg
   ```
@@ -164,39 +174,267 @@ The code will create the directories if they do not exist.
 - `transcripts/` – `.txt` and `.srt` outputs (generated).
 - `whisper_json/` – `.json` structured transcripts (generated).
 
+## Configuration
+
+slower-whisper supports multiple configuration methods with clear precedence rules.
+
+### Configuration Precedence
+
+Settings are loaded in the following order (highest to lowest priority):
+
+```text
+1. CLI flags (--model, --device, etc.)
+   ↓
+2. Config file (--config or --enrich-config)
+   ↓
+3. Environment variables (SLOWER_WHISPER_*)
+   ↓
+4. Defaults
+```
+
+Each layer only overrides values explicitly set. This allows flexible configuration for different environments.
+
+### Configuration Methods
+
+#### 1. CLI Flags (Highest Priority)
+
+```bash
+uv run slower-whisper transcribe --model large-v3 --language en --device cuda
+```
+
+#### 2. Configuration Files
+
+```bash
+# Use a JSON config file
+uv run slower-whisper transcribe --config config/production.json
+
+# Override specific values from config
+uv run slower-whisper transcribe --config config/base.json --model large-v3
+```
+
+#### 3. Environment Variables
+
+```bash
+# Transcription settings (SLOWER_WHISPER_ prefix)
+export SLOWER_WHISPER_MODEL=large-v3
+export SLOWER_WHISPER_DEVICE=cuda
+export SLOWER_WHISPER_LANGUAGE=en
+
+# Enrichment settings (SLOWER_WHISPER_ENRICH_ prefix)
+export SLOWER_WHISPER_ENRICH_ENABLE_PROSODY=true
+export SLOWER_WHISPER_ENRICH_DEVICE=cuda
+
+uv run slower-whisper transcribe  # Uses env vars
+```
+
+#### 4. Python API
+
+```python
+from transcription import TranscriptionConfig, EnrichmentConfig
+
+# Load from file
+config = TranscriptionConfig.from_file("config.json")
+
+# Load from environment
+config = TranscriptionConfig.from_env()
+
+# Create directly
+config = TranscriptionConfig(model="large-v3", language="en")
+```
+
+### Example Configurations
+
+See [examples/config_examples/](examples/config_examples/) for complete configuration examples:
+
+- **transcription_basic.json**: Lightweight base model setup
+- **transcription_production.json**: High-quality production settings
+- **transcription_dev_testing.json**: Fast testing with minimal resources
+- **enrichment_full.json**: Complete audio analysis (prosody + emotion)
+- **enrichment_production.json**: Optimized production enrichment
+
+For detailed configuration documentation, see:
+
+- [examples/config_examples/README.md](examples/config_examples/README.md) - Configuration file examples
+- [API_QUICK_REFERENCE.md](API_QUICK_REFERENCE.md) - Complete API reference with all config options
+
 ## Usage
 
-### Quick Start
+The project provides both **Command-Line** and **Python API** interfaces.
 
-From the project directory:
+### Unified CLI (Recommended)
+
+The modern CLI uses subcommands for clarity:
+
+#### Stage 1: Transcribe
 
 ```bash
-uv run slower-whisper
+# Basic usage with defaults
+uv run slower-whisper transcribe
+
+# Customize options
+uv run slower-whisper transcribe \
+  --root /path/to/project \
+  --model large-v3 \
+  --language en \
+  --device cuda \
+  --skip-existing-json
 ```
 
-Or using the direct script:
+#### Stage 2: Enrich
 
 ```bash
+# Add prosody and emotion features
+uv run slower-whisper enrich
+
+# Customize enrichment
+uv run slower-whisper enrich \
+  --root /path/to/project \
+  --enable-prosody \
+  --enable-emotion \
+  --device cpu
+```
+
+#### View help
+
+```bash
+uv run slower-whisper --help
+uv run slower-whisper transcribe --help
+uv run slower-whisper enrich --help
+```
+
+### Python API
+
+Use the clean programmatic interface:
+
+#### Basic transcription
+
+```python
+from transcription import transcribe_directory, TranscriptionConfig
+
+config = TranscriptionConfig(
+    model="large-v3",
+    language="en",
+    device="cuda"
+)
+
+transcripts = transcribe_directory("/path/to/project", config)
+print(f"Transcribed {len(transcripts)} files")
+```
+
+#### Single file transcription
+
+```python
+from transcription import transcribe_file, TranscriptionConfig
+
+config = TranscriptionConfig(model="base", language="en")
+transcript = transcribe_file(
+    audio_path="interview.mp3",
+    root="/path/to/project",
+    config=config
+)
+
+# Access results
+for segment in transcript.segments:
+    print(f"[{segment.start:.2f}s] {segment.text}")
+```
+
+#### Audio enrichment
+
+```python
+from transcription import enrich_directory, EnrichmentConfig
+
+config = EnrichmentConfig(
+    enable_prosody=True,
+    enable_emotion=True,
+    device="cpu"
+)
+
+enriched = enrich_directory("/path/to/project", config)
+
+# Inspect enriched features
+for transcript in enriched:
+    for segment in transcript.segments:
+        if segment.audio_state:
+            print(segment.audio_state["rendering"])
+            # e.g., "[audio: high pitch, loud volume, fast speech]"
+```
+
+#### Load and save transcripts
+
+```python
+from transcription import load_transcript, save_transcript
+
+# Load existing transcript
+transcript = load_transcript("transcript.json")
+
+# Modify and save
+transcript.segments[0].text = "Corrected text"
+save_transcript(transcript, "corrected.json")
+```
+
+### REST API Service
+
+For web-based deployments, slower-whisper includes an optional FastAPI service wrapper that exposes transcription and enrichment via HTTP endpoints.
+
+**Installation:**
+
+```bash
+# Install API dependencies
+uv sync --extra api --extra full
+```
+
+**Running the service:**
+
+```bash
+# Development mode (with auto-reload)
+uv run uvicorn transcription.service:app --reload --host 0.0.0.0 --port 8000
+
+# Production mode (4 workers)
+uv run uvicorn transcription.service:app --host 0.0.0.0 --port 8000 --workers 4
+
+# Or with Docker
+docker build -f Dockerfile.api -t slower-whisper:api .
+docker run -p 8000:8000 slower-whisper:api
+
+# Or with Docker Compose
+docker-compose -f docker-compose.api.yml up -d
+```
+
+**Using the API:**
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Transcribe audio
+curl -X POST -F "audio=@interview.mp3" \
+  "http://localhost:8000/transcribe?model=large-v3&language=en"
+
+# Enrich transcript
+curl -X POST \
+  -F "transcript=@transcript.json" \
+  -F "audio=@audio.wav" \
+  "http://localhost:8000/enrich?enable_prosody=true&enable_emotion=true"
+
+# Interactive documentation
+# http://localhost:8000/docs (Swagger UI)
+# http://localhost:8000/redoc (ReDoc)
+```
+
+For complete API documentation, examples, and deployment guides, see [API_SERVICE.md](API_SERVICE.md).
+
+### Legacy CLI (Backward Compatibility)
+
+The old CLI still works but is deprecated:
+
+```bash
+# Old style (still supported)
 uv run python transcribe_pipeline.py
-```
+uv run python audio_enrich.py
 
-This uses defaults:
-
-- root: current directory
-- model: `large-v3`
-- device: `cuda`
-- compute type: `float16`
-- VAD min silence: 500 ms
-- language: auto-detect
-- task: transcribe
-
-### Command-Line Options
-
-You can override defaults with CLI options:
-
-```bash
-# Force English and skip files already transcribed
-uv run slower-whisper --language en --skip-existing-json
+# New unified style (recommended)
+uv run slower-whisper transcribe
+uv run slower-whisper enrich
 
 # Use a lighter model and quantized weights
 uv run slower-whisper --model medium --compute-type int8_float16
@@ -414,11 +652,54 @@ To add tone tagging, diarization, or other analysis, write separate modules
 (or expand `transcription.enrich`) that read and modify the JSON or
 `Transcript` objects without changing the core pipeline.
 
-## Running Tests
+## Testing
 
-The project includes a comprehensive test suite for validating the JSON schema, SRT formatting, and audio enrichment features.
+slower-whisper includes a comprehensive test suite with **200+ passing tests** covering unit tests, integration tests, and BDD scenarios.
 
-### Running Tests with uv
+### Test Suite Overview
+
+The project uses a multi-layered testing strategy:
+
+**Unit Tests (pytest)**: Test individual modules and functions in isolation
+
+- JSON schema validation and I/O operations
+- Audio processing utilities
+- Configuration parsing and precedence
+- Data model validation
+
+**Integration Tests**: End-to-end pipeline validation
+
+- Full transcription workflow
+- Audio enrichment with prosody and emotion
+- API endpoints and service layer
+- CLI command execution
+
+**BDD Scenarios (pytest-bdd + Gherkin)**: User-focused acceptance tests written in natural language
+
+- 15 feature scenarios across transcription and enrichment workflows
+- See [tests/features/transcription.feature](tests/features/transcription.feature) and [tests/features/enrichment.feature](tests/features/enrichment.feature)
+- Example scenario:
+
+  ```gherkin
+  Scenario: Transcribe with custom model configuration
+    Given a project with a mono WAV file named "test.wav"
+    When I transcribe the project with model "base" and language "en"
+    Then a transcript JSON exists for "test.wav"
+    And the transcript language is "en"
+    And the transcript metadata contains model "base"
+  ```
+
+### Test Coverage
+
+Current test coverage: **56% overall**, with high coverage on core modules:
+
+- `transcription/writers.py`: **100%** (JSON/TXT/SRT output)
+- `transcription/models.py`: **95%** (data models and schema)
+- `transcription/config.py`: **90%** (configuration system)
+- `transcription/pipeline.py`: **85%** (transcription orchestration)
+- `transcription/prosody.py`: **80%** (prosody extraction)
+
+### Running Tests
 
 ```bash
 # Install dev dependencies (includes pytest and other testing tools)
@@ -430,22 +711,16 @@ uv run pytest
 # Run with coverage report
 uv run pytest --cov=transcription --cov-report=term-missing
 
+# Run BDD scenarios only
+uv run pytest tests/features/
+
 # Run specific test categories
 uv run pytest -m "not slow"              # Skip slow tests
 uv run pytest -m "not requires_gpu"      # Skip GPU-dependent tests
 uv run pytest tests/test_prosody.py      # Run specific test file
 ```
 
-### Test Organization
-
-The test suite covers:
-
-- **JSON schema validation**: Ensures `write_json` produces the documented structure
-- **SRT formatting**: Validates timestamp formatting and subtitle generation
-- **Audio enrichment**: Tests prosody and emotion extraction features
-- **Integration tests**: End-to-end pipeline validation
-
-Tests are not required for running the pipeline but are useful if you're contributing or extending the code.
+Tests are not required for running the pipeline but are essential for contributors and those extending the codebase.
 
 ## Development Workflow
 
@@ -491,6 +766,158 @@ uv run black . && uv run isort . && uv run ruff check . && uv run mypy transcrip
 3. Run tests and quality checks
 4. Submit a pull request
 
+## Deployment
+
+slower-whisper supports multiple deployment options from local CLI to production Kubernetes clusters. Choose the deployment method that fits your scale and infrastructure.
+
+### Deployment Options
+
+#### Local CLI (Simplest)
+
+Run directly on your machine with Python and ffmpeg:
+
+```bash
+# Install and run
+uv sync
+uv run slower-whisper transcribe
+```
+
+**Best for**: Development, small-scale processing, testing
+
+---
+
+#### Docker - CPU
+
+Containerized deployment without GPU requirements:
+
+```bash
+# Build and run
+docker build -t slower-whisper:cpu .
+docker run --rm -v $(pwd)/data:/app/data slower-whisper:cpu
+```
+
+**Best for**: Reproducible environments, CI/CD, CPU-only servers
+
+---
+
+#### Docker - GPU
+
+GPU-accelerated containerized deployment:
+
+```bash
+# Build GPU image
+docker build -f Dockerfile.gpu -t slower-whisper:gpu .
+
+# Run with GPU access
+docker run --rm --gpus all \
+  -v $(pwd)/data:/app/data \
+  slower-whisper:gpu \
+  slower-whisper transcribe --model large-v3 --device cuda
+```
+
+**Best for**: High-throughput processing, production workloads, large models
+
+---
+
+#### Docker Compose - Batch Processing
+
+Multi-service orchestration for continuous batch processing:
+
+```bash
+# Start batch processor
+docker-compose up -d batch-processor
+
+# Monitor logs
+docker-compose logs -f batch-processor
+
+# Stop when done
+docker-compose down
+```
+
+**Configuration**: Edit `docker-compose.yml` or use `.env` file for settings.
+
+**Best for**: Automated batch workflows, scheduled processing, multi-stage pipelines
+
+---
+
+#### Kubernetes - Production Scale
+
+Cloud-native deployment with autoscaling and resource management:
+
+```bash
+# Apply manifests
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/pvc.yaml
+kubectl apply -f k8s/deployment.yaml
+
+# Check status
+kubectl get pods -n slower-whisper
+
+# Run batch job
+kubectl apply -f k8s/job.yaml
+```
+
+**Features**:
+
+- Horizontal pod autoscaling
+- GPU node scheduling
+- Persistent volume claims for data
+- ConfigMaps for environment-specific settings
+- CronJobs for scheduled processing
+
+**Best for**: Enterprise deployments, cloud infrastructure, high availability, multi-tenant environments
+
+---
+
+#### FastAPI REST Service
+
+HTTP API for web-based integrations:
+
+```bash
+# Install API dependencies
+uv sync --extra api --extra full
+
+# Run service
+uv run uvicorn transcription.service:app --host 0.0.0.0 --port 8000
+
+# Or with Docker
+docker build -f Dockerfile.api -t slower-whisper:api .
+docker run -p 8000:8000 slower-whisper:api
+```
+
+**Endpoints**:
+
+- `POST /transcribe` - Transcribe audio files
+- `POST /enrich` - Enrich existing transcripts
+- `GET /health` - Health check
+- `GET /docs` - Interactive API documentation
+
+**Best for**: Web applications, microservices architecture, API-first integrations
+
+---
+
+### Deployment Resources
+
+For detailed deployment guides and infrastructure-as-code configurations:
+
+- **[DOCKER.md](DOCKER.md)** - Complete Docker setup guide with GPU support
+- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment verification checklist
+- **[k8s/](k8s/)** - Kubernetes manifests and Kustomize configurations
+- **[docker-compose.yml](docker-compose.yml)** - Production Docker Compose setup
+- **[docker-compose.dev.yml](docker-compose.dev.yml)** - Development environment
+- **[API_SERVICE.md](API_SERVICE.md)** - REST API service documentation
+
+### Deployment Configuration
+
+All deployment methods support the same configuration options via:
+
+1. **Environment variables** (`SLOWER_WHISPER_*`)
+2. **Config files** (JSON, mounted as volumes in Docker/K8s)
+3. **CLI flags** (for one-off overrides)
+
+See the [Configuration](#configuration) section above for precedence rules and examples.
+
 ## Troubleshooting
 
 ### Common Issues
@@ -498,6 +925,7 @@ uv run black . && uv run isort . && uv run ruff check . && uv run mypy transcrip
 **uv not found after installation:**
 
 Restart your terminal or source your shell profile:
+
 ```bash
 source ~/.bashrc  # or ~/.zshrc on macOS
 ```

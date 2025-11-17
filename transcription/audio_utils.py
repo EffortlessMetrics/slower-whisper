@@ -49,10 +49,10 @@ class AudioSegmentExtractor:
         # Probe the file to get metadata and validate readability
         try:
             with sf.SoundFile(str(self.wav_path), "r") as audio_file:
-                self.sample_rate = audio_file.samplerate
-                self.total_frames = len(audio_file)
-                self.channels = audio_file.channels
-                self.duration_seconds = self.total_frames / self.sample_rate
+                self.sample_rate: int = audio_file.samplerate
+                self.total_frames: int = len(audio_file)
+                self.channels: int = audio_file.channels
+                self.duration_seconds: float = self.total_frames / self.sample_rate
         except Exception as e:
             raise RuntimeError(f"Failed to open audio file '{self.wav_path}': {e}") from e
 

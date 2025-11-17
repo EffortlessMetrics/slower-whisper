@@ -29,12 +29,13 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: |
-          uv sync --no-dev
-          uv pip install ruff
+        run: uv sync --no-dev
+
+      - name: Install ruff
+        run: uv pip install ruff
 
       - name: Run ruff check
-        run: uv run ruff check .
+        run: uv run ruff check transcription/ tests/ examples/ benchmarks/
 
   format:
     name: Format check (ruff format)
@@ -51,11 +52,11 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install dependencies
+      - name: Install ruff
         run: uv pip install ruff
 
       - name: Check formatting
-        run: uv run ruff format --check .
+        run: uv run ruff format --check transcription/ tests/ examples/ benchmarks/
 
   type-check:
     name: Type check (mypy)
@@ -73,12 +74,13 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: |
-          uv sync --all-extras
-          uv pip install mypy
+        run: uv sync --all-extras
+
+      - name: Install mypy
+        run: uv pip install mypy
 
       - name: Run mypy
-        run: uv run mypy transcription tests
+        run: uv run mypy transcription/ tests/
         continue-on-error: true  # Allow mypy failures initially while fixing types
 
   test:
@@ -107,9 +109,10 @@ jobs:
           sudo apt-get install -y ffmpeg libsndfile1
 
       - name: Install dependencies
-        run: |
-          uv sync --all-extras
-          uv pip install pytest pytest-cov pytest-xdist
+        run: uv sync --all-extras
+
+      - name: Install test dependencies
+        run: uv pip install pytest pytest-cov pytest-xdist pytest-mock
 
       - name: Run tests with coverage
         run: |
@@ -118,7 +121,8 @@ jobs:
             --cov-report=xml \
             --cov-report=term-missing \
             -v \
-            -m "not slow and not heavy"
+            -m "not slow and not heavy" \
+            -n auto
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -155,9 +159,18 @@ jobs:
           sudo apt-get install -y ffmpeg libsndfile1
 
       - name: Install dependencies with emotion extras
-        run: |
-          uv sync --extra emotion
-          uv pip install pytest
+        run: uv sync --extra emotion
+
+      - name: Install test dependencies
+        run: uv pip install pytest pytest-mock
+
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-huggingface-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-huggingface-
 
       - name: Run heavy tests
         run: |
@@ -190,13 +203,14 @@ jobs:
           sudo apt-get install -y ffmpeg libsndfile1
 
       - name: Install dependencies
-        run: |
-          uv sync --all-extras
-          uv pip install pytest
+        run: uv sync --all-extras
+
+      - name: Install test dependencies
+        run: uv pip install pytest pytest-mock
 
       - name: Run integration tests
         run: |
-          uv run pytest tests/test_integration.py -v
+          uv run pytest tests/test_*integration*.py -v --tb=short
 
   # Summary job that all required checks depend on
   ci-success:

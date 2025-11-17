@@ -1,0 +1,9 @@
+{
+  "skip_existing": true,
+  "enable_prosody": true,
+  "enable_emotion": true,
+  "enable_categorical_emotion": false,
+  "device": "cuda",
+  "dimensional_model_name": "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim",
+  "categorical_model_name": null
+}

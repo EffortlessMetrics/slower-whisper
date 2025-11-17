@@ -1,0 +1,104 @@
+# Docker Compose for local testing of Kubernetes deployment
+# Use this to test the container locally before deploying to K8s
+
+version: '3.8'
+
+services:
+  slower-whisper:
+    build:
+      context: ..
+      dockerfile: k8s/Dockerfile
+    image: slower-whisper:latest
+    container_name: slower-whisper
+
+    # GPU access (requires nvidia-docker)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Environment variables (matches ConfigMap)
+    environment:
+      - WHISPER_MODEL=large-v3
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE_TYPE=float16
+      - WHISPER_LANGUAGE=en
+      - WHISPER_BEAM_SIZE=5
+      - ENABLE_AUDIO_ENRICHMENT=true
+      - ENABLE_PROSODY=true
+      - ENABLE_EMOTION=true
+      - LOG_LEVEL=INFO
+      - HF_HOME=/cache/huggingface
+      - CUDA_VISIBLE_DEVICES=0
+
+    # Volumes (matches PVCs)
+    volumes:
+      # Data volume
+      - ./data:/data
+      # Model cache
+      - ./cache:/cache/huggingface
+      # Optional: mount specific directories
+      # - ./raw_audio:/data/raw_audio
+      # - ./transcripts:/data/transcripts
+
+    # Command to run
+    command: >
+      bash -c "
+        echo 'Starting slower-whisper pipeline...';
+        uv run slower-whisper transcribe
+          --model $${WHISPER_MODEL}
+          --device $${WHISPER_DEVICE}
+          --language $${WHISPER_LANGUAGE}
+          --project-dir /data;
+        if [ \"$${ENABLE_AUDIO_ENRICHMENT}\" = \"true\" ]; then
+          uv run slower-whisper enrich
+            --device $${WHISPER_DEVICE}
+            --project-dir /data;
+        fi;
+        echo 'Pipeline complete!';
+      "
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Logging
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Optional: separate service for enrichment only
+  slower-whisper-enrich:
+    build:
+      context: ..
+      dockerfile: k8s/Dockerfile
+    image: slower-whisper:latest
+    container_name: slower-whisper-enrich
+    profiles:
+      - enrich-only
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    environment:
+      - WHISPER_DEVICE=cuda
+      - ENABLE_PROSODY=true
+      - ENABLE_EMOTION=true
+      - HF_HOME=/cache/huggingface
+
+    volumes:
+      - ./data:/data
+      - ./cache:/cache/huggingface
+
+    command: uv run slower-whisper enrich --device cuda --project-dir /data
+
+    restart: "no"

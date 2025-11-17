@@ -1175,34 +1175,278 @@ If you encounter unacceptable behavior, please report it to the project maintain
 
 (For maintainers only)
 
-**Creating a new release:**
+### Version Numbering
 
-1. **Update version in `pyproject.toml`**
-   ```toml
-   version = "1.1.0"
-   ```
+slower-whisper uses semantic versioning (MAJOR.MINOR.PATCH):
 
-2. **Update CHANGELOG.md** with new features, fixes, and changes
+- **MAJOR** (x.0.0): Breaking changes to public API or JSON schema
+- **MINOR** (0.x.0): New features, backward-compatible changes
+- **PATCH** (0.0.x): Bug fixes, no new features
 
-3. **Run full test suite** including heavy tests
+Additionally, the project maintains:
+- **SCHEMA_VERSION** in `transcription/models.py`: Incremented only for breaking JSON schema changes
+- **AUDIO_STATE_VERSION** in `transcription/models.py`: Incremented for changes to the `audio_state` field structure
+
+### Pre-Release Checklist
+
+Before creating a release, ensure:
+
+1. **All tests pass**
    ```bash
-   uv run pytest --cov=transcription
+   # Run full test suite including slow and heavy tests
+   uv run pytest
    uv run pytest -m heavy
+   uv run pytest -m slow
+
+   # Check code coverage (aim for >80%)
+   uv run pytest --cov=transcription --cov-report=term-missing
    ```
 
-4. **Create git tag and push**
+2. **Code quality checks pass**
    ```bash
-   git tag -a v1.1.0 -m "Release v1.1.0"
-   git push origin v1.1.0
+   # Run all linters and formatters
+   uv run ruff check .
+   uv run ruff format --check .
+   uv run mypy transcription tests
+
+   # Run pre-commit on all files
+   uv run pre-commit run --all-files
    ```
 
-5. **Build and publish to PyPI** (if applicable)
+3. **Examples and documentation are up-to-date**
    ```bash
-   uv run python -m build
-   uv run twine upload dist/*
+   # Verify all example scripts work
+   uv run python examples/basic_transcription.py
+   uv run python examples/enrichment_workflow.py
+
+   # Check that documentation reflects current features
+   # Review README.md, docs/ARCHITECTURE.md, etc.
    ```
 
-6. **Create GitHub release** with release notes
+4. **CHANGELOG.md is updated**
+   - Move "Unreleased" changes to new version section
+   - Add release date
+   - Ensure all changes are documented
+
+### Creating a Release
+
+**Step 1: Update version numbers**
+
+```bash
+# Edit pyproject.toml
+# Change version = "x.y.z" to new version
+
+# If JSON schema changed, update in transcription/models.py:
+# SCHEMA_VERSION = 3  # Only if breaking changes to core fields
+
+# If audio_state structure changed, update in transcription/models.py:
+# AUDIO_STATE_VERSION = "2.0.0"  # Major.Minor.Patch
+```
+
+**Step 2: Update CHANGELOG.md**
+
+```markdown
+## [x.y.z] - YYYY-MM-DD
+
+### Added
+- New feature 1 with usage example
+- New feature 2
+
+### Changed
+- Modified behavior description
+- Updated dependency version
+
+### Fixed
+- Bug fix with issue reference (#123)
+- Performance improvement details
+
+### Deprecated
+- Feature being phased out (will be removed in version X.Y.Z)
+
+### Removed
+- Deprecated feature that was previously warned about
+
+### Security
+- Security vulnerability fix (if applicable)
+```
+
+**Step 3: Commit version changes**
+
+```bash
+# Commit version bump and changelog
+git add pyproject.toml CHANGELOG.md transcription/models.py
+git commit -m "Bump version to x.y.z"
+
+# Push to main (or release branch)
+git push origin main
+```
+
+**Step 4: Create and push git tag**
+
+```bash
+# Create annotated tag
+git tag -a vx.y.z -m "Release version x.y.z
+
+Major changes:
+- Feature 1
+- Feature 2
+- Bug fix 3"
+
+# Push tag to GitHub
+git push origin vx.y.z
+```
+
+**Step 5: Build distribution packages**
+
+```bash
+# Clean old builds
+rm -rf dist/ build/ *.egg-info
+
+# Build wheel and source distribution
+uv run python -m build
+
+# Verify the build
+ls dist/
+# Should show:
+# slower_whisper-x.y.z-py3-none-any.whl
+# slower-whisper-x.y.z.tar.gz
+```
+
+**Step 6: Test the distribution (optional but recommended)**
+
+```bash
+# Create a fresh virtual environment
+python -m venv test_env
+source test_env/bin/activate
+
+# Install from the built wheel
+pip install dist/slower_whisper-x.y.z-py3-none-any.whl
+
+# Test that it works
+slower-whisper --help
+python -c "from transcription import api; print(api.__version__)"
+
+# Deactivate and remove test environment
+deactivate
+rm -rf test_env
+```
+
+**Step 7: Publish to PyPI (if applicable)**
+
+```bash
+# Install/upgrade twine
+uv pip install --upgrade twine
+
+# Check the distribution
+uv run twine check dist/*
+
+# Upload to TestPyPI first (recommended)
+uv run twine upload --repository testpypi dist/*
+# Then test install: pip install --index-url https://test.pypi.org/simple/ slower-whisper
+
+# Upload to PyPI (production)
+uv run twine upload dist/*
+# You'll be prompted for PyPI credentials or API token
+```
+
+**Step 8: Create GitHub Release**
+
+1. Go to https://github.com/yourusername/slower-whisper/releases/new
+2. Select the tag you just pushed (vx.y.z)
+3. Title: "Release x.y.z" or "Version x.y.z - Feature Name"
+4. Description: Copy relevant sections from CHANGELOG.md
+5. Attach distribution files (optional):
+   - Upload `dist/slower_whisper-x.y.z-py3-none-any.whl`
+   - Upload `dist/slower-whisper-x.y.z.tar.gz`
+6. Check "Set as the latest release"
+7. Click "Publish release"
+
+**Step 9: Post-release tasks**
+
+```bash
+# Add "Unreleased" section back to CHANGELOG.md
+```markdown
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+```
+
+# Commit and push
+git add CHANGELOG.md
+git commit -m "Prepare CHANGELOG for next release"
+git push origin main
+```
+
+### Release Types
+
+**Patch Release (x.y.Z)** - Bug fixes only
+- No new features
+- No breaking changes
+- Backward compatible
+- Example: 1.0.0 → 1.0.1
+
+**Minor Release (x.Y.0)** - New features
+- New features added
+- Backward compatible
+- No breaking changes
+- May include bug fixes
+- Example: 1.0.1 → 1.1.0
+
+**Major Release (X.0.0)** - Breaking changes
+- Breaking changes to public API
+- Breaking changes to JSON schema
+- May remove deprecated features
+- May include new features and bug fixes
+- Example: 1.1.0 → 2.0.0
+
+### Schema Versioning Guidelines
+
+**SCHEMA_VERSION** (in `transcription/models.py`):
+- Increment ONLY for breaking changes to core JSON schema fields
+- Core fields: `file_name`, `language`, `segments`, segment `id`/`start`/`end`/`text`
+- Adding optional fields does NOT require version bump
+- Document migration path in CHANGELOG
+
+**AUDIO_STATE_VERSION** (in `transcription/models.py`):
+- Follow semantic versioning for `audio_state` field structure
+- MAJOR: Breaking changes (removing/renaming fields)
+- MINOR: New optional fields or feature additions
+- PATCH: Bug fixes, no structure changes
+- Example: "1.0.0" → "1.1.0" when adding new prosody features
+
+### Hotfix Releases
+
+For critical bugs in production:
+
+1. Create hotfix branch from tagged release:
+   ```bash
+   git checkout -b hotfix/x.y.z vx.y.z-1
+   ```
+
+2. Fix the bug and add tests
+
+3. Update version to x.y.Z (increment patch)
+
+4. Follow normal release process
+
+5. Merge hotfix back to main:
+   ```bash
+   git checkout main
+   git merge hotfix/x.y.z
+   git push origin main
+   ```
+
+### Release Announcement
+
+After publishing:
+- Announce on project discussion/forum
+- Update documentation website (if applicable)
+- Notify users of breaking changes (major releases)
+- Share on social media/relevant communities (optional)
 
 ---
 

@@ -1,0 +1,232 @@
+# syntax=docker/dockerfile:1.4
+
+# =============================================================================
+# Production-ready Dockerfile for slower-whisper (GPU version)
+# Multi-stage build with CUDA support, pinned versions, and uv dependency management
+# Requires: NVIDIA Docker runtime (nvidia-docker2)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Base image with CUDA, Python, and system dependencies
+# -----------------------------------------------------------------------------
+# Using pinned CUDA runtime image for reproducibility
+# CUDA 12.1.0 with Ubuntu 22.04 (Jammy) runtime
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS base
+
+# Metadata
+LABEL maintainer="slower-whisper contributors"
+LABEL description="Local audio transcription pipeline with faster-whisper and audio enrichment (GPU-accelerated)"
+LABEL version="1.0.0"
+LABEL org.opencontainers.image.source="https://github.com/steven/slower-whisper"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    # NVIDIA/CUDA settings
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    # CuDNN/CuBLAS settings for optimal performance
+    CUDA_MODULE_LOADING=LAZY \
+    # Increase thread pool for faster-whisper
+    OMP_NUM_THREADS=4
+
+# Install Python 3.12 and system dependencies
+# Note: Ubuntu 22.04 base image doesn't include Python 3.12 by default
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-dev \
+    python3.12-distutils \
+    python3-pip \
+    ffmpeg \
+    libsndfile1 \
+    libgomp1 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create symlinks for python
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
+
+# Upgrade pip to latest version
+RUN python3.12 -m pip install --upgrade pip
+
+# Create non-root user for security
+RUN useradd -m -u 1000 -s /bin/bash appuser
+
+# Set working directory
+WORKDIR /app
+
+# -----------------------------------------------------------------------------
+# Stage 2: Builder - Install uv and Python dependencies
+# -----------------------------------------------------------------------------
+FROM base AS builder
+
+# Install build dependencies (needed for some Python packages)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install uv - pinned version for reproducibility
+# uv is Astral's fast Python package manager
+ENV UV_VERSION=0.5.11
+RUN pip install --no-cache-dir uv==${UV_VERSION}
+
+# Copy dependency files and application code
+# Using layer caching optimization: copy dependency files first
+COPY pyproject.toml uv.lock README.md ./
+COPY transcription/ ./transcription/
+
+# Install Python dependencies using uv
+# ARG INSTALL_MODE controls which dependencies to install
+# - base: faster-whisper only (minimal, ~2.5GB)
+# - full: all enrichment features (prosody + emotion, ~6GB additional with CUDA)
+ARG INSTALL_MODE=full
+
+# Install PyTorch with CUDA 12.1 support first (if needed)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$INSTALL_MODE" = "full" ]; then \
+        uv pip install --system \
+            torch==2.5.1+cu121 \
+            --index-url https://download.pytorch.org/whl/cu121; \
+    fi
+
+# Install remaining dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$INSTALL_MODE" = "base" ]; then \
+        uv pip install --system -e .; \
+    elif [ "$INSTALL_MODE" = "full" ]; then \
+        uv pip install --system -e ".[full]"; \
+    else \
+        echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'base' or 'full')" && exit 1; \
+    fi
+
+# -----------------------------------------------------------------------------
+# Stage 3: Runtime image
+# -----------------------------------------------------------------------------
+FROM base AS runtime
+
+# Copy Python packages from builder
+# This keeps the final image smaller by excluding build tools
+COPY --from=builder /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY --chown=appuser:appuser transcription/ /app/transcription/
+COPY --chown=appuser:appuser pyproject.toml /app/
+
+# Copy legacy entry points for backward compatibility
+COPY --chown=appuser:appuser transcribe_pipeline.py audio_enrich.py /app/
+
+# Create data directories
+# These will typically be mounted as volumes
+RUN mkdir -p /app/raw_audio /app/input_audio /app/transcripts /app/whisper_json && \
+    chown -R appuser:appuser /app
+
+# Create cache directory for model downloads
+RUN mkdir -p /home/appuser/.cache && \
+    chown -R appuser:appuser /home/appuser/.cache
+
+# Switch to non-root user
+USER appuser
+
+# Expose volume mount points
+VOLUME ["/app/raw_audio", "/app/input_audio", "/app/transcripts", "/app/whisper_json"]
+
+# Health check (optional - verifies CLI is working)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD slower-whisper --help || exit 1
+
+# Set default entrypoint to slower-whisper CLI
+ENTRYPOINT ["slower-whisper"]
+CMD ["--help"]
+
+# =============================================================================
+# Build Instructions:
+# =============================================================================
+#
+# Minimal build (transcription only, ~2.5GB):
+#   docker build -f Dockerfile.gpu --build-arg INSTALL_MODE=base -t slower-whisper:gpu-base .
+#
+# Full build (with audio enrichment and CUDA, ~8.5GB):
+#   docker build -f Dockerfile.gpu --build-arg INSTALL_MODE=full -t slower-whisper:gpu .
+#   docker build -f Dockerfile.gpu -t slower-whisper:gpu .  # (full is default)
+#
+# =============================================================================
+# Usage Examples:
+# =============================================================================
+#
+# Transcribe audio files using GPU:
+#   docker run --rm --gpus all \
+#     -v $(pwd)/raw_audio:/app/raw_audio \
+#     -v $(pwd)/transcripts:/app/transcripts \
+#     -v $(pwd)/whisper_json:/app/whisper_json \
+#     slower-whisper:gpu \
+#     transcribe --model large-v3 --language en --device cuda
+#
+# Transcribe with specific GPU:
+#   docker run --rm --gpus '"device=0"' \
+#     -v $(pwd)/raw_audio:/app/raw_audio \
+#     -v $(pwd)/transcripts:/app/transcripts \
+#     slower-whisper:gpu \
+#     transcribe --model large-v3 --device cuda
+#
+# Enrich existing transcripts with audio features (GPU-accelerated):
+#   docker run --rm --gpus all \
+#     -v $(pwd)/whisper_json:/app/whisper_json \
+#     -v $(pwd)/input_audio:/app/input_audio \
+#     slower-whisper:gpu \
+#     enrich --model dimensional --device cuda
+#
+# Interactive shell for debugging:
+#   docker run --rm -it --gpus all \
+#     -v $(pwd)/raw_audio:/app/raw_audio \
+#     slower-whisper:gpu \
+#     /bin/bash
+#
+# Verify GPU is accessible:
+#   docker run --rm --gpus all slower-whisper:gpu \
+#     python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device count: {torch.cuda.device_count()}')"
+#
+# Using legacy entry point (backward compatibility):
+#   docker run --rm --gpus all \
+#     -v $(pwd)/raw_audio:/app/raw_audio \
+#     slower-whisper:gpu \
+#     python transcribe_pipeline.py --device cuda
+#
+# =============================================================================
+# Development Build:
+# =============================================================================
+#
+# For development with live code changes:
+#   docker run --rm -it --gpus all \
+#     -v $(pwd):/app \
+#     -v ~/.cache/huggingface:/home/appuser/.cache/huggingface \
+#     slower-whisper:gpu \
+#     /bin/bash
+#
+# =============================================================================
+# Requirements:
+# =============================================================================
+#
+# 1. NVIDIA Docker runtime must be installed:
+#    https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#
+# 2. NVIDIA GPU with compute capability >= 7.0 (Volta or newer)
+#    - RTX 20/30/40 series
+#    - Tesla V100, A100, etc.
+#
+# 3. NVIDIA driver version >= 525.60.13 (for CUDA 12.1)
+#
+# 4. Verify installation:
+#    docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+#

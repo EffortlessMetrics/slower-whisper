@@ -103,7 +103,7 @@ class BatchProcessor:
             # Default: try to parse common patterns
             parts = Path(filename).stem.split("_")
             for i, part in enumerate(parts):
-                metadata[f"field_{i+1}"] = part
+                metadata[f"field_{i + 1}"] = part
             return metadata
 
         # Convert pattern to regex
@@ -421,7 +421,7 @@ class BatchProcessor:
         lines.append(f"Successfully Processed: {success_count} ({success_pct:.1f}%)")
 
         if fail_count > 0:
-            lines.append(f"Failed: {fail_count} ({100-success_pct:.1f}%)")
+            lines.append(f"Failed: {fail_count} ({100 - success_pct:.1f}%)")
             for filename, error in self.failed_files[:5]:
                 lines.append(f"  - {filename}: {error}")
             if len(self.failed_files) > 5:

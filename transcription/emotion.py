@@ -6,6 +6,7 @@ classification for audio segments.
 """
 
 import logging
+from typing import Any
 
 import numpy as np
 
@@ -17,9 +18,9 @@ try:
     EMOTION_AVAILABLE = True
 except ImportError:
     EMOTION_AVAILABLE = False
-    torch = None  # type: ignore
-    AutoModelForAudioClassification = None  # type: ignore
-    Wav2Vec2FeatureExtractor = None  # type: ignore
+    torch = None  # type: ignore[misc]
+    AutoModelForAudioClassification = None  # type: ignore[misc]
+    Wav2Vec2FeatureExtractor = None  # type: ignore[misc]
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,7 @@ class EmotionRecognizer:
             return "dominant"
         return "very_dominant"
 
-    def extract_emotion_dimensional(self, audio: np.ndarray, sr: int) -> dict[str, dict[str, any]]:
+    def extract_emotion_dimensional(self, audio: np.ndarray, sr: int) -> dict[str, dict[str, Any]]:
         """
         Extract dimensional emotion features (valence, arousal, dominance).
 
@@ -232,7 +233,7 @@ class EmotionRecognizer:
         logger.debug(f"Dimensional emotion: {result}")
         return result
 
-    def extract_emotion_categorical(self, audio: np.ndarray, sr: int) -> dict[str, dict[str, any]]:
+    def extract_emotion_categorical(self, audio: np.ndarray, sr: int) -> dict[str, dict[str, Any]]:
         """
         Extract categorical emotion classification.
 
@@ -323,7 +324,7 @@ def get_emotion_recognizer() -> EmotionRecognizer:
     return _recognizer_instance
 
 
-def extract_emotion_dimensional(audio: np.ndarray, sr: int) -> dict[str, dict[str, any]]:
+def extract_emotion_dimensional(audio: np.ndarray, sr: int) -> dict[str, dict[str, Any]]:
     """
     Convenience function to extract dimensional emotion features.
 
@@ -348,7 +349,7 @@ def extract_emotion_dimensional(audio: np.ndarray, sr: int) -> dict[str, dict[st
     return recognizer.extract_emotion_dimensional(audio, sr)
 
 
-def extract_emotion_categorical(audio: np.ndarray, sr: int) -> dict[str, dict[str, any]]:
+def extract_emotion_categorical(audio: np.ndarray, sr: int) -> dict[str, dict[str, Any]]:
     """
     Convenience function to extract categorical emotion classification.
 

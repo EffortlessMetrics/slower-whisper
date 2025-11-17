@@ -1,0 +1,73 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.eggs
+.venv
+venv
+env
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Tests
+tests/
+.pytest_cache
+.coverage
+htmlcov
+.tox
+
+# Documentation
+docs/
+*.md
+!README.md
+!CHANGELOG.md
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+
+# Kubernetes
+k8s/
+
+# Data directories (don't include in image)
+raw_audio/
+input_audio/
+transcripts/
+whisper_json/
+benchmarks/results/
+
+# Development files
+.pre-commit-config.yaml
+.ruff_cache
+.mypy_cache
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Examples (optional, comment out if you want to include)
+examples/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

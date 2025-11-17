@@ -1,0 +1,106 @@
+---
+# Alternative to Deployment: Run slower-whisper as a Kubernetes Job
+# Use this for batch processing instead of long-running service
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: slower-whisper-job
+  namespace: slower-whisper
+  labels:
+    app: slower-whisper
+    component: batch-processor
+spec:
+  # Number of completions (parallel jobs)
+  completions: 1
+  parallelism: 1
+
+  # Retry policy
+  backoffLimit: 3
+
+  # Job deadline (24 hours)
+  activeDeadlineSeconds: 86400
+
+  template:
+    metadata:
+      labels:
+        app: slower-whisper
+        component: batch-processor
+    spec:
+      # Restart policy for jobs
+      restartPolicy: OnFailure
+
+      # Node selection for GPU nodes
+      nodeSelector:
+        kubernetes.io/hostname: gpu-node  # Replace with your GPU node name
+
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      securityContext:
+        fsGroup: 1000
+
+      containers:
+        - name: slower-whisper
+          image: your-registry/slower-whisper:latest
+          imagePullPolicy: IfNotPresent
+
+          envFrom:
+            - configMapRef:
+                name: slower-whisper-config
+
+          env:
+            - name: HF_HOME
+              value: /cache/huggingface
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+
+          # Job command: process and exit
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "Starting slower-whisper batch job..."
+
+              # Run transcription
+              uv run slower-whisper transcribe \
+                --model ${WHISPER_MODEL} \
+                --device ${WHISPER_DEVICE} \
+                --language ${WHISPER_LANGUAGE} \
+                --project-dir /data
+
+              # Run enrichment
+              if [ "${ENABLE_AUDIO_ENRICHMENT}" = "true" ]; then
+                uv run slower-whisper enrich \
+                  --device ${WHISPER_DEVICE} \
+                  --project-dir /data
+              fi
+
+              echo "Batch job complete!"
+
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              cpu: "8"
+              memory: "32Gi"
+            requests:
+              nvidia.com/gpu: 1
+              cpu: "4"
+              memory: "16Gi"
+
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+            - name: model-cache
+              mountPath: /cache/huggingface
+
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: slower-whisper-data
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: slower-whisper-models

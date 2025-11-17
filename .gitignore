@@ -164,3 +164,4 @@ secrets/
 *.key
 *.pem
 credentials.json
+/.scratch/

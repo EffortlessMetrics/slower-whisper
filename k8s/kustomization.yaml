@@ -1,0 +1,55 @@
+---
+# Kustomization file for easy deployment
+# Deploy with: kubectl apply -k k8s/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: slower-whisper
+
+# Common labels applied to all resources
+commonLabels:
+  app: slower-whisper
+  managed-by: kustomize
+
+# Resources to deploy
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - gpu-resource-quota.yaml
+  # Optional resources (uncomment as needed):
+  # - job.yaml
+  # - cronjob.yaml
+  # - secret.yaml
+
+# ConfigMap generator (alternative to configmap.yaml)
+# configMapGenerator:
+#   - name: slower-whisper-config
+#     literals:
+#       - WHISPER_MODEL=large-v3
+#       - WHISPER_DEVICE=cuda
+#       - ENABLE_AUDIO_ENRICHMENT=true
+
+# Secret generator
+# secretGenerator:
+#   - name: hf-token
+#     literals:
+#       - token=YOUR_TOKEN
+
+# Images to update
+images:
+  - name: your-registry/slower-whisper
+    newName: your-registry/slower-whisper
+    newTag: latest
+
+# Patches (example: increase replicas in production)
+# patchesStrategicMerge:
+#   - |-
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     metadata:
+#       name: slower-whisper
+#     spec:
+#       replicas: 2

@@ -1,0 +1,304 @@
+# =============================================================================
+# Docker Compose Development Override
+# Extends docker-compose.yml with development tools and configurations
+# =============================================================================
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up dev
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm dev-tools
+#
+# This file adds:
+#   - Development tools (pytest, ruff, mypy, pre-commit)
+#   - Code coverage and profiling tools
+#   - Jupyter notebook server
+#   - Live code reloading
+#   - Extended debugging capabilities
+#
+# =============================================================================
+
+version: '3.9'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Enhanced Development Container with Additional Tools
+  # ---------------------------------------------------------------------------
+  dev:
+    build:
+      context: .
+      target: runtime-gpu
+      args:
+        INSTALL_MODE: all  # Install all dependencies including dev tools
+      dockerfile: Dockerfile.dev  # Use development Dockerfile if available
+
+    environment:
+      # Development environment variables
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app
+      - PYTEST_ADDOPTS=-v --cov=transcription --cov-report=html --cov-report=term
+
+      # Enable debug logging
+      - LOG_LEVEL=DEBUG
+      - SLOWER_WHISPER_DEBUG=1
+
+      # Pre-commit configuration
+      - PRE_COMMIT_HOME=/app/.cache/pre-commit
+
+      # IPython configuration
+      - IPYTHONDIR=/app/.ipython
+
+    volumes:
+      # Mount source code for live editing
+      - .:/app
+
+      # Preserve development caches
+      - huggingface-cache:/home/appuser/.cache/huggingface
+      - whisper-cache:/home/appuser/.cache/whisper
+      - dev-pytest-cache:/app/.pytest_cache
+      - dev-mypy-cache:/app/.mypy_cache
+      - dev-ruff-cache:/app/.ruff_cache
+      - dev-precommit-cache:/app/.cache/pre-commit
+
+      # Mount test data (if available)
+      - ./tests/data:/app/tests/data
+
+      # Optional: Mount SSH keys for git operations
+      - ~/.ssh:/home/appuser/.ssh:ro
+      - ~/.gitconfig:/home/appuser/.gitconfig:ro
+
+    # Expose ports for development tools
+    ports:
+      - "8888:8888"  # Jupyter
+      - "5678:5678"  # Python debugger (debugpy)
+      - "6006:6006"  # TensorBoard (optional)
+
+    # Override command to start with bash and development helpers
+    command: >
+      bash -c "
+        echo '=== Slower-Whisper Development Environment ===';
+        echo 'Python version:' $$(python --version);
+        echo 'GPU available:' $$(python -c 'import torch; print(torch.cuda.is_available())' 2>/dev/null || echo 'torch not installed');
+        echo '';
+        echo 'Available commands:';
+        echo '  uv run slower-whisper --help     # Run CLI';
+        echo '  uv run pytest                    # Run tests';
+        echo '  uv run pytest --cov              # Run tests with coverage';
+        echo '  uv run ruff check .              # Lint code';
+        echo '  uv run ruff format .             # Format code';
+        echo '  uv run mypy transcription/       # Type check';
+        echo '  uv run pre-commit run --all      # Run pre-commit hooks';
+        echo '  jupyter notebook --ip=0.0.0.0    # Start Jupyter';
+        echo '';
+        exec bash
+      "
+
+  # ---------------------------------------------------------------------------
+  # Development Tools Container (Testing, Linting, Profiling)
+  # ---------------------------------------------------------------------------
+  dev-tools:
+    image: slower-whisper:dev-tools
+    build:
+      context: .
+      target: runtime-cpu
+      args:
+        INSTALL_MODE: all
+    container_name: slower-whisper-dev-tools
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app
+      - CUDA_VISIBLE_DEVICES=""  # No GPU needed for linting/testing
+
+    volumes:
+      - .:/app
+      - dev-pytest-cache:/app/.pytest_cache
+      - dev-mypy-cache:/app/.mypy_cache
+      - dev-ruff-cache:/app/.ruff_cache
+      - dev-precommit-cache:/app/.cache/pre-commit
+
+    # Default to running test suite
+    command: >
+      bash -c "
+        echo 'Running code quality checks...';
+        uv run ruff check transcription/ tests/ || true;
+        echo '';
+        echo 'Running type checks...';
+        uv run mypy transcription/ || true;
+        echo '';
+        echo 'Running tests...';
+        uv run pytest -v --cov=transcription --cov-report=term-missing;
+      "
+
+    # No restart needed for one-off commands
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Jupyter Notebook Server for Interactive Development
+  # ---------------------------------------------------------------------------
+  jupyter:
+    image: slower-whisper:gpu
+    container_name: slower-whisper-jupyter
+    runtime: nvidia
+
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - PYTHONPATH=/app
+      - JUPYTER_ENABLE_LAB=yes
+
+    volumes:
+      - .:/app
+      - ./notebooks:/app/notebooks  # Dedicated notebooks directory
+      - huggingface-cache:/home/appuser/.cache/huggingface
+      - whisper-cache:/home/appuser/.cache/whisper
+
+    ports:
+      - "8888:8888"
+
+    # Start Jupyter Lab
+    command: >
+      bash -c "
+        pip install jupyterlab ipywidgets matplotlib seaborn &&
+        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+          --NotebookApp.token='' --NotebookApp.password=''
+      "
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ---------------------------------------------------------------------------
+  # Code Coverage and Profiling Service
+  # ---------------------------------------------------------------------------
+  profiler:
+    image: slower-whisper:gpu
+    container_name: slower-whisper-profiler
+    runtime: nvidia
+
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PYTHONPATH=/app
+      - PROFILE_OUTPUT=/app/profiling
+
+    volumes:
+      - .:/app
+      - ./profiling:/app/profiling  # Output directory for profiling results
+
+    # Run performance profiling
+    command: >
+      bash -c "
+        echo 'Installing profiling tools...';
+        pip install memory-profiler line-profiler py-spy psutil;
+        echo '';
+        echo 'Running memory profiler...';
+        python -m memory_profiler benchmarks/benchmark_audio_enrich.py || true;
+        echo '';
+        echo 'Profiling results saved to ./profiling/';
+      "
+
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Pre-commit Hooks Runner
+  # ---------------------------------------------------------------------------
+  pre-commit:
+    image: slower-whisper:cpu
+    container_name: slower-whisper-precommit
+
+    environment:
+      - PYTHONPATH=/app
+      - PRE_COMMIT_HOME=/app/.cache/pre-commit
+
+    volumes:
+      - .:/app
+      - dev-precommit-cache:/app/.cache/pre-commit
+
+    # Run pre-commit on all files
+    command: >
+      bash -c "
+        uv run pre-commit install &&
+        uv run pre-commit run --all-files
+      "
+
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Documentation Builder (Sphinx)
+  # ---------------------------------------------------------------------------
+  docs:
+    image: slower-whisper:cpu
+    container_name: slower-whisper-docs
+
+    environment:
+      - PYTHONPATH=/app
+
+    volumes:
+      - .:/app
+      - ./docs/_build:/app/docs/_build
+
+    ports:
+      - "8000:8000"
+
+    # Build and serve documentation
+    command: >
+      bash -c "
+        pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints myst-parser;
+        cd docs && make html;
+        echo 'Documentation built. Serving at http://localhost:8000';
+        python -m http.server 8000 --directory _build/html
+      "
+
+    restart: "no"
+
+# =============================================================================
+# Development Volumes
+# =============================================================================
+# Additional volumes for development caches
+#
+volumes:
+  # Development tool caches (faster repeated runs)
+  dev-pytest-cache:
+    driver: local
+  dev-mypy-cache:
+    driver: local
+  dev-ruff-cache:
+    driver: local
+  dev-precommit-cache:
+    driver: local
+
+# =============================================================================
+# Usage Examples
+# =============================================================================
+#
+# Start development environment:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up dev
+#
+# Run tests with coverage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm dev-tools
+#
+# Start Jupyter notebook:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up jupyter
+#   # Open http://localhost:8888 in your browser
+#
+# Run pre-commit hooks:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pre-commit
+#
+# Profile performance:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm profiler
+#
+# Build documentation:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm docs
+#
+# Run specific test file:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm dev \
+#     uv run pytest tests/test_prosody.py -v
+#
+# Interactive shell with all tools:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm dev
+#
+# =============================================================================

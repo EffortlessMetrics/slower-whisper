@@ -343,7 +343,7 @@ def compare_prompt_sizes(transcript_path: Path):
     print(f"Text-only prompt: {len(text_only)} characters")
     print(f"Enriched prompt: {len(enriched)} characters")
     print(
-        f"Additional size: {len(enriched) - len(text_only)} characters ({(len(enriched)/len(text_only) - 1)*100:.1f}% increase)"
+        f"Additional size: {len(enriched) - len(text_only)} characters ({(len(enriched) / len(text_only) - 1) * 100:.1f}% increase)"
     )
     print()
     print("The enriched prompt is larger, but the added audio annotations")

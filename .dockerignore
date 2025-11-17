@@ -1,4 +1,11 @@
+# =============================================================================
+# .dockerignore - Exclude unnecessary files from Docker build context
+# Reduces build context size and speeds up docker build
+# =============================================================================
+
+# -----------------------------------------------------------------------------
 # Python
+# -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,57 +15,199 @@ __pycache__/
 dist/
 build/
 *.egg
+*.whl
 
+# -----------------------------------------------------------------------------
 # Virtual environments
+# -----------------------------------------------------------------------------
 venv/
 env/
 ENV/
-.venv
+.venv/
+virtualenv/
 
-# IDEs
+# -----------------------------------------------------------------------------
+# IDEs and editors
+# -----------------------------------------------------------------------------
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.vs/
+*.sublime-project
+*.sublime-workspace
 
-# Testing
+# -----------------------------------------------------------------------------
+# Testing and coverage
+# -----------------------------------------------------------------------------
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .tox/
 .mypy_cache/
 .ruff_cache/
 .benchmarks/
+.hypothesis/
+.pytest_cache/
+coverage.xml
+*.cover
+.cache
+nosetests.xml
 
+# -----------------------------------------------------------------------------
 # Git
+# -----------------------------------------------------------------------------
 .git/
 .gitignore
 .gitattributes
+.gitmodules
 
+# -----------------------------------------------------------------------------
 # CI/CD
+# -----------------------------------------------------------------------------
 .github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+azure-pipelines.yml
+Jenkinsfile
 
-# Documentation
+# -----------------------------------------------------------------------------
+# Documentation (excluded from build, included in runtime via COPY)
+# -----------------------------------------------------------------------------
+docs/
+*.rst
+*.txt
+!requirements*.txt
+# Exclude most markdown files but keep README.md
 *.md
 !README.md
-docs/
 
+# -----------------------------------------------------------------------------
 # Data directories (will be mounted as volumes)
+# -----------------------------------------------------------------------------
 raw_audio/
 input_audio/
 transcripts/
 whisper_json/
+output/
+data/
+models/
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.ogg
 
+# -----------------------------------------------------------------------------
+# Development and configuration files
+# -----------------------------------------------------------------------------
+.pre-commit-config.yaml
+.editorconfig
+.flake8
+.pylintrc
+pytest.ini
+setup.cfg
+tox.ini
+.isort.cfg
+
+# -----------------------------------------------------------------------------
 # System files
+# -----------------------------------------------------------------------------
 .DS_Store
 Thumbs.db
 *.Zone.Identifier
+desktop.ini
 
-# Development
-.pre-commit-config.yaml
-pytest.ini
+# -----------------------------------------------------------------------------
+# Logs and temporary files
+# -----------------------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+logs/
+tmp/
+temp/
 
-# Build artifacts
+# -----------------------------------------------------------------------------
+# Docker files (excluded from context to prevent recursion)
+# -----------------------------------------------------------------------------
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+.docker/
+
+# -----------------------------------------------------------------------------
+# Build artifacts and distribution
+# -----------------------------------------------------------------------------
 *.tar.gz
-*.whl
+*.zip
+*.tar
+*.rar
+
+# -----------------------------------------------------------------------------
+# Environment and secrets
+# -----------------------------------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+secrets/
+credentials/
+
+# -----------------------------------------------------------------------------
+# Lock files (keep uv.lock, exclude others)
+# -----------------------------------------------------------------------------
+poetry.lock
+Pipfile.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# -----------------------------------------------------------------------------
+# Notebooks and research files
+# -----------------------------------------------------------------------------
+*.ipynb
+.ipynb_checkpoints/
+notebooks/
+
+# -----------------------------------------------------------------------------
+# Benchmarks and profiling
+# -----------------------------------------------------------------------------
+benchmarks/
+profiling/
+*.prof
+*.lprof
+
+# -----------------------------------------------------------------------------
+# Examples (can be included if needed, currently excluded to reduce size)
+# -----------------------------------------------------------------------------
+examples/
+demo/
+samples/
+
+# -----------------------------------------------------------------------------
+# Stats and reports (generated documentation)
+# -----------------------------------------------------------------------------
+*_SUMMARY.md
+*_REPORT.md
+*_METRICS.md
+*_STATISTICS.md
+*_INDEX.md
+PROJECT_STATISTICS.md
+STATS_*.md
+STATS_*.txt
+detailed_verification_report.md
+verification_summary.md
+VERIFICATION_SUMMARY.md
+FINAL_CODE_VERIFICATION_REPORT.md
+TRANSFORMATION_SUMMARY.md
+DEVELOPER_METRICS.md
+
+# -----------------------------------------------------------------------------
+# Custom project files
+# -----------------------------------------------------------------------------
+CLAUDE.md
+verify_code_examples.py
