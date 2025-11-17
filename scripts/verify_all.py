@@ -72,7 +72,7 @@ def run_tests_fast() -> None:
 def verify_bdd() -> None:
     """Run BDD scenarios (Gherkin) via pytest-bdd."""
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("3️⃣  BDD acceptance scenarios")
+    print("3️⃣  BDD acceptance scenarios (library)")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg:
@@ -84,10 +84,44 @@ def verify_bdd() -> None:
     run(["uv", "run", "pytest", "tests/steps/", "-v"])
 
 
+def verify_api_bdd() -> None:
+    """Run API BDD scenarios (REST service black-box tests)."""
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("4️⃣  BDD acceptance scenarios (API service)")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+    # Check for httpx (required for API tests)
+    try:
+        import httpx  # noqa: F401
+
+        print("✅ httpx available")
+    except ImportError:
+        print("⚠️  httpx not installed; skipping API BDD tests")
+        print("   Install with: uv sync --extra dev")
+        return
+
+    # Check for uvicorn (required to run the service)
+    if shutil.which("uvicorn") is None:
+        print("⚠️  uvicorn not found; skipping API BDD tests")
+        print("   Install with: uv sync --extra dev")
+        return
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        print(f"✅ ffmpeg found at {ffmpeg}")
+    else:
+        print("⚠️  ffmpeg not found; API transcription scenarios may skip")
+
+    # Run API BDD scenarios from features/ directory
+    print("\n🚀 Starting API service for BDD tests...")
+    print("   (service will auto-start/stop via pytest fixtures)")
+    run(["uv", "run", "pytest", "features/", "-v", "-m", "api"])
+
+
 def docker_smoke() -> None:
     """Build and smoke-test Docker images."""
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("4️⃣  Docker smoke tests")
+    print("5️⃣  Docker smoke tests")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     if shutil.which("docker") is None:
@@ -143,7 +177,7 @@ def docker_smoke() -> None:
 def validate_k8s() -> None:
     """Validate Kubernetes manifests via kubectl dry-run=client."""
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("5️⃣  Kubernetes manifest validation")
+    print("6️⃣  Kubernetes manifest validation")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     if shutil.which("kubectl") is None:
@@ -184,11 +218,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip Docker and K8s checks; run only code + tests + BDD.",
     )
+    parser.add_argument(
+        "--skip-api",
+        action="store_true",
+        help="Skip API BDD tests (useful if httpx/uvicorn not installed).",
+    )
     args = parser.parse_args(argv)
 
     check_ruff()
     run_tests_fast()
     verify_bdd()
+
+    if not args.skip_api:
+        verify_api_bdd()
 
     if not args.quick:
         docker_smoke()

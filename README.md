@@ -705,12 +705,10 @@ Current test coverage: **56% overall**, with high coverage on core modules:
 
 Behavioral acceptance tests are defined using Gherkin syntax and pytest-bdd. These tests represent the **behavioral contract** of slower-whisper - they define guaranteed behaviors that must not break without explicit discussion.
 
+**Library BDD Scenarios** (tests/features/):
 ```bash
-# Run all BDD scenarios
+# Run library BDD scenarios (transcription and enrichment)
 uv run pytest tests/steps/ -v
-
-# Run BDD verification script
-./scripts/verify_bdd.sh
 
 # Run only transcription scenarios
 uv run pytest tests/steps/test_transcription_steps.py -v
@@ -720,13 +718,29 @@ uv run pytest tests/steps/test_enrichment_steps.py -v
 ```
 
 **Feature files:**
-
 - `tests/features/transcription.feature` - Core transcription behaviors
 - `tests/features/enrichment.feature` - Audio enrichment behaviors
 
-**Note:** BDD tests require `ffmpeg` for audio processing. Without it, tests gracefully fail with `xfail` status.
+**API Service BDD Scenarios** (features/):
+```bash
+# Run API service BDD scenarios (black-box REST API tests)
+uv run pytest features/ -v -m api
 
-**Behavioral Contract:** These scenarios define the **guaranteed behaviors** of slower-whisper. Breaking these scenarios requires explicit discussion and may trigger a version bump.
+# Run only smoke tests (health, docs)
+uv run pytest features/ -v -m "api and smoke"
+
+# Run functional tests (transcribe, enrich endpoints)
+uv run pytest features/ -v -m "api and functional"
+```
+
+**Feature files:**
+- `features/api_service.feature` - REST API endpoint behaviors
+
+**Requirements:**
+- Library BDD: Requires `ffmpeg` for audio processing
+- API BDD: Requires `httpx` and `uvicorn` (auto-installed with `uv sync --extra dev`)
+
+**Behavioral Contract:** These scenarios define the **guaranteed behaviors** of slower-whisper at both the library level and the REST API level. Breaking these scenarios requires explicit discussion and may trigger a version bump.
 
 ### Running Tests
 
