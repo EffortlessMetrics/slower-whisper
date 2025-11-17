@@ -904,7 +904,6 @@ docker run -p 8000:8000 slower-whisper:api
 For detailed deployment guides and infrastructure-as-code configurations:
 
 - **[DOCKER.md](DOCKER.md)** - Complete Docker setup guide with GPU support
-- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment verification checklist
 - **[k8s/](k8s/)** - Kubernetes manifests and Kustomize configurations
 - **[docker-compose.yml](docker-compose.yml)** - Production Docker Compose setup
 - **[docker-compose.dev.yml](docker-compose.dev.yml)** - Development environment
