@@ -859,17 +859,17 @@ slower-whisper treats deployment configurations as **first-class contracts**. Al
 - ✅ Subject to the same config precedence rules (CLI > file > env > defaults)
 - ✅ Smoke tested with verification scripts
 
-**Verification scripts:**
+**Verification CLI:**
 
 ```bash
-# Verify Docker images build and run
-./scripts/docker_smoke_test.sh
+# Quick verification (code + tests + BDD only)
+uv run slower-whisper-verify --quick
 
-# Validate Kubernetes manifests
-./scripts/validate_k8s.sh  # requires kubectl
+# Full verification (includes Docker and K8s)
+uv run slower-whisper-verify
 
-# Run full verification suite
-./scripts/verify_all.sh
+# Alternative: run as module
+python scripts/verify_all.py --quick
 ```
 
 **IaC Contract:** All deployment artifacts must build/validate successfully and support consistent configuration across local, Docker, and Kubernetes environments. See `docs/BDD_IAC_LOCKDOWN.md` for the complete contract.

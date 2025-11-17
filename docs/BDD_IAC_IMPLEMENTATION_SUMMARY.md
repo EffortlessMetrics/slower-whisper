@@ -1,8 +1,8 @@
 # BDD & IaC Lock-In: Implementation Summary
 
 **Date:** 2025-11-17
-**Commit:** `eda4d6e`
-**Status:** ✅ Complete (immediate actions)
+**Commits:** `eda4d6e` (shell scripts), `[current]` (Python CLI migration)
+**Status:** ✅ Complete (immediate actions + Python CLI migration)
 
 ---
 
@@ -151,6 +151,51 @@ Files changed: 7 files, 1002 insertions(+), 3 deletions(-)
  - pytest.ini (updated, +5 markers)
  - README.md (updated, +53 lines)
 ```
+
+---
+
+## Python CLI Migration (2025-11-17)
+
+### Motivation
+
+The original shell scripts worked but had limitations:
+- ❌ Not cross-platform (Windows compatibility issues)
+- ❌ Harder to test and maintain
+- ❌ Not integrated with project dependency management
+
+### Solution: Unified Python CLI
+
+**Created:** `scripts/verify_all.py` (200 lines)
+- Single-file verification CLI with all checks
+- Cross-platform (Linux, macOS, Windows)
+- Testable with pytest
+- Integrated with uv/pip as console script
+
+**Console Entry Point:**
+```bash
+uv run slower-whisper-verify --quick  # Quick verification
+uv run slower-whisper-verify          # Full verification
+```
+
+**Test Coverage:** `tests/test_verify_all.py` (6 test cases)
+- Help flag works
+- Module can be imported
+- Quick mode dry-run (mocked subprocess)
+- All components callable
+- Runs as module and direct script
+
+**Documentation:** `docs/BDD_IAC_PYTHON_CLI.md` (detailed migration guide)
+
+### Benefits
+
+- ✅ Cross-platform verification
+- ✅ Versioned alongside code
+- ✅ Testable infrastructure (tests for the test tooling)
+- ✅ Single source of truth
+- ✅ Console script integration (`slower-whisper-verify`)
+- ✅ Programmatic access (can import individual functions)
+
+**Backward Compatibility:** Original shell scripts deprecated but kept for reference.
 
 ---
 
