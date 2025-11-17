@@ -86,7 +86,7 @@ pip install slower-whisper
 # pip install slower-whisper --require-hashes
 
 # Install from source (verify git tag)
-git clone https://github.com/yourusername/slower-whisper.git
+git clone https://github.com/EffotlessMetrics/slower-whisper.git
 cd slower-whisper
 git verify-tag v1.0.0  # Verify GPG signature
 pip install -e .
@@ -501,8 +501,8 @@ If you suspect a security breach:
 ## Security Contacts
 
 - **Security Email:** security@yourproject.com (replace with actual)
-- **GitHub Security:** https://github.com/yourusername/slower-whisper/security
-- **General Issues:** https://github.com/yourusername/slower-whisper/issues
+- **GitHub Security:** https://github.com/EffotlessMetrics/slower-whisper/security
+- **General Issues:** https://github.com/EffotlessMetrics/slower-whisper/issues
 
 ---
 

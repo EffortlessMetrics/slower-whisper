@@ -730,7 +730,7 @@ Tests are not required for running the pipeline but are essential for contributo
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/slower-whisper.git
+git clone https://github.com/EffotlessMetrics/slower-whisper.git
 cd slower-whisper
 
 # Install with dev dependencies

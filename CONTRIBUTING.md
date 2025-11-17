@@ -1351,7 +1351,7 @@ uv run twine upload dist/*
 
 **Step 8: Create GitHub Release**
 
-1. Go to https://github.com/yourusername/slower-whisper/releases/new
+1. Go to https://github.com/EffotlessMetrics/slower-whisper/releases/new
 2. Select the tag you just pushed (vx.y.z)
 3. Title: "Release x.y.z" or "Version x.y.z - Feature Name"
 4. Description: Copy relevant sections from CHANGELOG.md
