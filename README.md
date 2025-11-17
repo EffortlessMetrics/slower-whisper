@@ -1,9 +1,11 @@
 # slower-whisper (ffmpeg + faster-whisper)
 
-![Tests](https://img.shields.io/badge/tests-200%20passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-56%25-yellow)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Tests](https://img.shields.io/badge/tests-191%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-57%25-yellow)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+![Status](https://img.shields.io/badge/status-production%20ready-success)
 
 This project provides a small, structured codebase for running a fully local
 transcription pipeline on a machine with an NVIDIA GPU.
@@ -946,8 +948,10 @@ Check your internet connection. Models are downloaded from Hugging Face on first
 
 - **[Installation Guide](INSTALL.md)**: Detailed setup instructions
 - **[Audio Enrichment Guide](docs/AUDIO_ENRICHMENT.md)**: Deep dive into prosody and emotion features
+- **[Roadmap](ROADMAP.md)**: Future features and development plans
 - **[Contributing Guide](CONTRIBUTING.md)**: How to contribute to the project
 - **[Changelog](CHANGELOG.md)**: Version history and updates
+- **[Documentation Index](docs/INDEX.md)**: Complete documentation map
 
 ## License
 

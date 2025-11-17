@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2025-11-16
+## [1.0.0] - 2025-11-17
 
 This release transforms slower-whisper from a "well-built power tool" into a **production-ready library** with a clean public API, unified CLI interface, and comprehensive audio enrichment capabilities.
 
@@ -381,7 +381,7 @@ Future breaking changes (if any) will be:
 
 ## Version History
 
-### [1.0.0] - 2025-11-16
+### [1.0.0] - 2025-11-17
 Production release with public API, unified CLI, and audio enrichment system.
 
 ### [0.1.0] - 2025-11-14

@@ -30,6 +30,7 @@ Welcome to the slower-whisper documentation. This page provides a complete map o
 |----------|-------------|----------|
 | [README.md](../README.md) | Project overview, features, installation, and quick start | Everyone |
 | [CHANGELOG.md](../CHANGELOG.md) | Version history and release notes | All users |
+| [ROADMAP.md](../ROADMAP.md) | Future plans, features, and development timeline | Contributors, users |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | How to contribute to the project | Contributors |
 | [SECURITY.md](../SECURITY.md) | Security policy and vulnerability reporting | Security-conscious users |
 | [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Community standards and expectations | Community members |
@@ -251,6 +252,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2025-11-15
+**Last Updated:** 2025-11-17
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.
