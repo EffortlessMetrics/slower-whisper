@@ -77,6 +77,13 @@ Welcome to the slower-whisper documentation. This page provides a complete map o
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, architecture, and internals | Understanding the codebase |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems and solutions | Encountering errors |
 
+### Testing & Quality Assurance
+
+| Document | Description | Topics |
+|----------|-------------|--------|
+| [BDD_IAC_LOCKDOWN.md](BDD_IAC_LOCKDOWN.md) | BDD and IaC as first-class contracts | Behavioral contracts, IaC validation, verification |
+| [BDD_IAC_IMPLEMENTATION_SUMMARY.md](BDD_IAC_IMPLEMENTATION_SUMMARY.md) | Implementation summary and usage guide | Status, scripts, next steps |
+
 ---
 
 ## Examples Documentation (examples/)
@@ -172,6 +179,7 @@ These documents are historical artifacts from the development process and transf
 1. [Contributing Guide](../CONTRIBUTING.md) - Process and standards
 2. [CLAUDE.md](../CLAUDE.md) - Codebase guidance
 3. [Architecture](ARCHITECTURE.md) - System design
+4. [BDD/IaC Contracts](BDD_IAC_LOCKDOWN.md) - Testing and deployment standards
 
 ### "I want to understand the system design"
 1. [Architecture](ARCHITECTURE.md) - Complete architecture overview
