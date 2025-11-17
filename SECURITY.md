@@ -28,10 +28,10 @@ Instead, please report security issues via one of these methods:
    - Click "Report a vulnerability"
    - Fill out the private advisory form
 
-2. **Email:**
-   - Send to: `security@yourproject.com` (replace with actual email)
-   - Include "SECURITY" in the subject line
-   - Encrypt sensitive details with our PGP key if possible
+2. **Email (if GitHub Security Advisories unavailable):**
+   - Create an issue on the repository with minimal details
+   - Tag as "security" if not sensitive
+   - For sensitive issues, contact via GitHub profile email
 
 ### What to Include
 
@@ -481,9 +481,9 @@ If you suspect a security breach:
 ## Security Resources
 
 ### Documentation
-- [SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md) - Detailed audit findings
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Secure development practices
-- [ERROR_HANDLING_AUDIT.md](ERROR_HANDLING_AUDIT.md) - Error handling security
+- [README.md](README.md) - Project overview and setup
+- [docs/INDEX.md](docs/INDEX.md) - Complete documentation index
 
 ### External Resources
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
@@ -500,15 +500,15 @@ If you suspect a security breach:
 
 ## Security Contacts
 
-- **Security Email:** security@yourproject.com (replace with actual)
-- **GitHub Security:** https://github.com/EffotlessMetrics/slower-whisper/security
-- **General Issues:** https://github.com/EffotlessMetrics/slower-whisper/issues
+- **GitHub Security:** https://github.com/EffortlessMetrics/slower-whisper/security/advisories
+- **General Issues:** https://github.com/EffortlessMetrics/slower-whisper/issues
+- **Maintainers:** See GitHub profile for contact options
 
 ---
 
 ## License
 
-This security policy is part of the Slower Whisper project and follows the same MIT license.
+This security policy is part of the slower-whisper project and follows the same Apache 2.0 license.
 
-**Last Updated:** 2025-11-15
+**Last Updated:** 2025-11-17
 **Policy Version:** 1.0

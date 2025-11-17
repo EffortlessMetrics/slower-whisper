@@ -724,49 +724,100 @@ uv run pytest tests/test_prosody.py      # Run specific test file
 
 Tests are not required for running the pipeline but are essential for contributors and those extending the codebase.
 
-## Development Workflow
+## Contributing
 
-### Setting Up Development Environment
+Contributions are welcome! Whether you're fixing bugs, adding features, improving documentation, or helping with issues, your help makes this project better.
+
+### Quick Start for Contributors
 
 ```bash
-# Clone the repository
-git clone https://github.com/EffotlessMetrics/slower-whisper.git
+# 1. Fork and clone
+git clone https://github.com/<your-fork>/slower-whisper.git
 cd slower-whisper
 
-# Install with dev dependencies
+# 2. Install dev dependencies
 uv sync --extra dev
 
-# Run tests to verify setup
-uv run pytest
+# 3. Run tests to verify setup
+uv run pytest -m "not slow"
+
+# 4. Run linting to check code quality
+uv run ruff check .
 ```
+
+### Development Workflow
+
+1. **Create a feature branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Make your changes**
+   - Add or update tests for any behavior changes
+   - Follow existing code style and patterns
+   - Update documentation if needed
+
+3. **Run quality checks**
+   ```bash
+   # Format and lint
+   uv run ruff format .
+   uv run ruff check .
+
+   # Type check (optional but recommended)
+   uv run mypy transcription/
+
+   # Run tests
+   uv run pytest
+   ```
+
+4. **Commit and push**
+   ```bash
+   git add .
+   git commit -m "feat: brief description of your changes"
+   git push origin feature/your-feature-name
+   ```
+
+5. **Open a Pull Request**
+   - Submit a PR against the `main` branch
+   - Describe what changed and why
+   - Link any related issues
+
+### Guidelines
+
+- **Use feature branches** and submit Pull Requests against `main`
+- **Add tests** for new functionality or bug fixes
+- **Run quality checks** before pushing (`uv run pytest && uv run ruff check .`)
+- **For larger changes**, open an issue or discussion first to align on direction
+- **Follow code style**: We use ruff for linting and formatting (configured in `pyproject.toml`)
+- **Write clear commit messages** using conventional commits format when possible
 
 ### Code Quality Tools
 
-The project uses modern Python tooling for code quality:
-
 ```bash
-# Format code with black
-uv run black transcription/ tests/
+# Format code with ruff
+uv run ruff format transcription/ tests/
 
-# Sort imports with isort
-uv run isort transcription/ tests/
-
-# Lint with ruff
-uv run ruff check transcription/ tests/
+# Lint with ruff (with auto-fix)
+uv run ruff check --fix transcription/ tests/
 
 # Type check with mypy
 uv run mypy transcription/
-
-# Run all quality checks
-uv run black . && uv run isort . && uv run ruff check . && uv run mypy transcription/
 ```
 
-### Making Changes
+### Running Tests
 
-1. Create a new branch for your feature/fix
-2. Make your changes
-3. Run tests and quality checks
-4. Submit a pull request
+```bash
+# Run all fast tests
+uv run pytest -m "not slow"
+
+# Run with coverage
+uv run pytest --cov=transcription --cov-report=term-missing
+
+# Run specific test file
+uv run pytest tests/test_models.py -v
+```
+
+For detailed guidelines, coding standards, and the full development workflow, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Deployment
 
