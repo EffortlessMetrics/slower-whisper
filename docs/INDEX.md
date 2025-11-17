@@ -84,6 +84,7 @@ Welcome to the slower-whisper documentation. This page provides a complete map o
 | [BDD_IAC_LOCKDOWN.md](BDD_IAC_LOCKDOWN.md) | BDD and IaC as first-class contracts | Behavioral contracts, IaC validation, verification |
 | [BDD_IAC_IMPLEMENTATION_SUMMARY.md](BDD_IAC_IMPLEMENTATION_SUMMARY.md) | Implementation summary and usage guide | Status, scripts, next steps |
 | [BDD_IAC_PYTHON_CLI.md](BDD_IAC_PYTHON_CLI.md) | Python CLI verification tooling | Cross-platform verification, testing infrastructure |
+| [API_BDD_CONTRACT.md](API_BDD_CONTRACT.md) | FastAPI service behavioral contract | REST API BDD scenarios, black-box testing, smoke and functional tests |
 
 ---
 
