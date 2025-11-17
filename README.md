@@ -701,6 +701,33 @@ Current test coverage: **56% overall**, with high coverage on core modules:
 - `transcription/pipeline.py`: **85%** (transcription orchestration)
 - `transcription/prosody.py`: **80%** (prosody extraction)
 
+### BDD/Acceptance Tests
+
+Behavioral acceptance tests are defined using Gherkin syntax and pytest-bdd. These tests represent the **behavioral contract** of slower-whisper - they define guaranteed behaviors that must not break without explicit discussion.
+
+```bash
+# Run all BDD scenarios
+uv run pytest tests/steps/ -v
+
+# Run BDD verification script
+./scripts/verify_bdd.sh
+
+# Run only transcription scenarios
+uv run pytest tests/steps/test_transcription_steps.py -v
+
+# Run only enrichment scenarios
+uv run pytest tests/steps/test_enrichment_steps.py -v
+```
+
+**Feature files:**
+
+- `tests/features/transcription.feature` - Core transcription behaviors
+- `tests/features/enrichment.feature` - Audio enrichment behaviors
+
+**Note:** BDD tests require `ffmpeg` for audio processing. Without it, tests gracefully fail with `xfail` status.
+
+**Behavioral Contract:** These scenarios define the **guaranteed behaviors** of slower-whisper. Breaking these scenarios requires explicit discussion and may trigger a version bump.
+
 ### Running Tests
 
 ```bash
@@ -714,7 +741,7 @@ uv run pytest
 uv run pytest --cov=transcription --cov-report=term-missing
 
 # Run BDD scenarios only
-uv run pytest tests/features/
+uv run pytest tests/steps/ -v
 
 # Run specific test categories
 uv run pytest -m "not slow"              # Skip slow tests
@@ -822,6 +849,30 @@ For detailed guidelines, coding standards, and the full development workflow, se
 ## Deployment
 
 slower-whisper supports multiple deployment options from local CLI to production Kubernetes clusters. Choose the deployment method that fits your scale and infrastructure.
+
+### Infrastructure as Code (IaC)
+
+slower-whisper treats deployment configurations as **first-class contracts**. All IaC artifacts (Dockerfiles, K8s manifests, Compose files) are:
+
+- ✅ Validated before release
+- ✅ Tested in CI/CD pipelines
+- ✅ Subject to the same config precedence rules (CLI > file > env > defaults)
+- ✅ Smoke tested with verification scripts
+
+**Verification scripts:**
+
+```bash
+# Verify Docker images build and run
+./scripts/docker_smoke_test.sh
+
+# Validate Kubernetes manifests
+./scripts/validate_k8s.sh  # requires kubectl
+
+# Run full verification suite
+./scripts/verify_all.sh
+```
+
+**IaC Contract:** All deployment artifacts must build/validate successfully and support consistent configuration across local, Docker, and Kubernetes environments. See `docs/BDD_IAC_LOCKDOWN.md` for the complete contract.
 
 ### Deployment Options
 
