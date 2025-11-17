@@ -24,7 +24,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 Instead, please report security issues via one of these methods:
 
 1. **GitHub Security Advisories (Preferred):**
-   - Go to the [Security tab](https://github.com/yourusername/slower-whisper/security)
+   - Go to the [Security tab](https://github.com/EffortlessMetrics/slower-whisper/security)
    - Click "Report a vulnerability"
    - Fill out the private advisory form
 
