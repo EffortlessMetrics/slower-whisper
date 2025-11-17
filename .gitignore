@@ -121,6 +121,7 @@ transcripts/
 # Temporary test files
 test_*.wav
 test_*.json
+test_output.txt
 
 # Model cache (faster-whisper models)
 models/
