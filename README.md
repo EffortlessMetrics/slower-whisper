@@ -798,18 +798,22 @@ uv run ruff check .
    - Follow existing code style and patterns
    - Update documentation if needed
 
-3. **Run quality checks**
+3. **Verify contracts before pushing (REQUIRED)**
    ```bash
-   # Format and lint
-   uv run ruff format .
-   uv run ruff check .
+   # Run quick verification (minimum before pushing)
+   uv run slower-whisper-verify --quick
 
-   # Type check (optional but recommended)
-   uv run mypy transcription/
-
-   # Run tests
-   uv run pytest
+   # Or use make target
+   make verify-quick
    ```
+
+   This verifies:
+   - ✅ Code quality (ruff linting and formatting)
+   - ✅ Unit tests pass
+   - ✅ Library BDD scenarios (behavioral contract)
+   - ✅ API BDD scenarios (REST API contract)
+
+   **If this fails, do not push.** Fix the issues first.
 
 4. **Commit and push**
    ```bash
@@ -823,14 +827,32 @@ uv run ruff check .
    - Describe what changed and why
    - Link any related issues
 
+### Behavioral Contract Guarantee
+
+This project uses **BDD (Behavior-Driven Development) scenarios as contracts**. These scenarios define guaranteed behaviors that cannot break without explicit discussion and versioning:
+
+**Library BDD Contract** (`tests/features/`):
+- Transcription behaviors (audio → JSON/TXT/SRT)
+- Audio enrichment behaviors (prosody, emotion extraction)
+
+**API BDD Contract** (`features/`):
+- REST API endpoint behaviors
+- Health checks, documentation, transcribe/enrich endpoints
+
+**Rules:**
+- All BDD scenarios must pass before merging
+- Breaking a scenario = breaking the contract = requires versioning discussion
+- See `docs/BDD_IAC_LOCKDOWN.md` for versioning policy
+
 ### Guidelines
 
 - **Use feature branches** and submit Pull Requests against `main`
 - **Add tests** for new functionality or bug fixes
-- **Run quality checks** before pushing (`uv run pytest && uv run ruff check .`)
+- **Run verification CLI** before pushing: `uv run slower-whisper-verify --quick`
 - **For larger changes**, open an issue or discussion first to align on direction
 - **Follow code style**: We use ruff for linting and formatting (configured in `pyproject.toml`)
 - **Write clear commit messages** using conventional commits format when possible
+- **If changing BDD scenarios**, document why the behavioral contract is changing
 
 ### Code Quality Tools
 

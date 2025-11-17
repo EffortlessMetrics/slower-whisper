@@ -730,13 +730,161 @@ chmod +x scripts/verify_all.sh
 
 ---
 
+## Part 4: Contract Versioning and Change Policy
+
+### 4.1 BDD Contract Changes
+
+BDD scenarios define **guaranteed behaviors**. Changes to these scenarios are treated as explicit changes to the behavioral contract.
+
+#### What Requires a Version Bump
+
+**Major version bump (breaking change):**
+- Removing an existing scenario (behavior no longer guaranteed)
+- Changing scenario semantics in a breaking way (e.g., endpoint changes required parameters)
+- Making a previously-passing scenario fail intentionally
+
+**Minor version bump (backward-compatible addition):**
+- Adding new scenarios for new features
+- Adding new steps to existing scenarios (that were already implicitly guaranteed)
+- Making scenarios more specific (strengthening guarantees)
+
+**Patch version bump (clarification/fix):**
+- Fixing broken step implementations (scenario intent unchanged)
+- Adding better assertions to existing scenarios (catching bugs, not changing contract)
+- Documentation updates to scenarios
+
+#### Process for BDD Changes
+
+1. **Propose** the scenario change in a PR/issue
+2. **Justify** why the behavioral contract should change
+3. **Update** CHANGELOG.md with the contract change
+4. **Review** with explicit focus on "is this a breaking change?"
+5. **Merge** only after agreement on versioning impact
+
+#### Examples
+
+**Breaking change (major bump required):**
+```gherkin
+# Old scenario (v1.x)
+Scenario: Transcribe audio file
+  Given I have an audio file "sample.wav"
+  When I transcribe the file
+  Then the transcript is generated
+
+# New scenario (v2.0) - BREAKING: changed output format
+Scenario: Transcribe audio file
+  Given I have an audio file "sample.wav"
+  When I transcribe the file
+  Then the transcript is generated in JSON schema v2 format  # <-- NEW REQUIREMENT
+```
+
+**Non-breaking addition (minor bump):**
+```gherkin
+# v1.2.0 - added new optional feature
+Scenario: Enrich transcript with emotion recognition
+  Given I have a transcript
+  When I enrich it with emotion enabled
+  Then each segment has emotion scores  # <-- NEW FEATURE
+```
+
+### 4.2 IaC Contract Changes
+
+Infrastructure as Code artifacts define **deployment guarantees**. Changes affect production deployments.
+
+#### What Requires a Version Bump
+
+**Major version bump (breaking deployment change):**
+- Changing Docker image entrypoint or CMD behavior
+- Removing environment variables that were previously supported
+- Changing K8s resource names (breaks existing deployments)
+- Changing persistent volume structure (requires migration)
+
+**Minor version bump (backward-compatible):**
+- Adding new Docker build variants
+- Adding new environment variables (with defaults)
+- Adding new K8s resources (optional services, jobs)
+- Adding new configuration options
+
+**Patch version bump (fix/improvement):**
+- Fixing Docker build issues
+- Improving K8s resource limits/requests
+- Documentation updates to deployment guides
+
+#### Process for IaC Changes
+
+1. **Validate** locally using verification scripts:
+   - `./scripts/docker_smoke_test.sh` (or `uv run slower-whisper-verify`)
+   - `./scripts/validate_k8s.sh` (or `uv run slower-whisper-verify`)
+2. **Document** impact in CHANGELOG.md
+3. **Test** in staging environment if breaking
+4. **Update** deployment guides (`DOCKER.md`, `k8s/README.md`)
+
+### 4.3 Scenario Tag Semantics
+
+Tags define **when tests must pass**:
+
+**Library BDD markers:**
+- `@bdd`: All library behavioral scenarios
+- `@requires_enrich`: Requires enrichment dependencies (librosa, parselmouth)
+- `@requires_gpu`: Requires GPU (can be skipped in CPU-only environments)
+
+**API BDD markers:**
+- `@api`: All API service scenarios
+- `@smoke`: **Hard gate for all releases** - health, docs, basic endpoints
+- `@functional`: Full functional contract - recommended before minor/major releases
+
+**Enforcement rules:**
+1. `@api @smoke` scenarios **must always pass** before any release
+2. `@api @functional` scenarios **should pass** before minor/major releases
+3. Skipping `@functional` tests requires explicit justification in release notes
+
+### 4.4 Stability Guarantees
+
+**What won't break (within same major version):**
+- Existing BDD scenarios continue to pass
+- Docker images built with same tags continue to work
+- K8s manifests apply successfully to existing clusters
+- Environment variables maintain same semantics
+- API endpoints maintain same request/response schemas
+
+**What might change (minor/patch versions):**
+- New scenarios added (new features)
+- New optional parameters/fields
+- Performance improvements
+- Better error messages
+- Documentation enhancements
+
+### 4.5 Deprecation Policy
+
+**For behavioral changes:**
+1. Announce deprecation in CHANGELOG (one minor version ahead)
+2. Add deprecation warnings to affected code
+3. Keep old behavior working until next major version
+4. Update BDD scenarios to reflect new recommended behavior
+
+**For deployment changes:**
+1. Support old configuration for at least one minor version
+2. Document migration path in deployment guides
+3. Add runtime warnings for deprecated configuration
+4. Remove in next major version
+
+**Example:**
+```
+v1.8.0: Deprecate FOO_CONFIG env var (use NEW_CONFIG instead)
+v1.9.0: FOO_CONFIG still works but logs warning
+v2.0.0: FOO_CONFIG removed (only NEW_CONFIG supported)
+```
+
+---
+
 ## References
 
-- BDD feature files: `tests/features/`
-- BDD step implementations: `tests/steps/`
+- BDD feature files: `tests/features/` (library), `features/` (API)
+- BDD step implementations: `tests/steps/` (library), `features/steps/` (API)
 - Docker artifacts: `Dockerfile*`, `docker-compose*.yml`
 - Kubernetes manifests: `k8s/`
 - CI workflows: `.github/workflows/`
 - pytest configuration: `pytest.ini`
+- Verification CLI: `scripts/verify_all.py` (run via `uv run slower-whisper-verify`)
 
 **Last updated:** 2025-11-17

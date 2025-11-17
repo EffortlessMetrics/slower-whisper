@@ -212,6 +212,83 @@ jobs:
         run: |
           uv run pytest tests/test_*integration*.py -v --tb=short
 
+  bdd-library:
+    name: BDD Library Contract (behavioral)
+    runs-on: ubuntu-latest
+    needs: [lint, format]  # Run after quick checks pass
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies (ffmpeg required for BDD)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run library BDD scenarios
+        run: |
+          uv run pytest tests/steps/ -v -m "not slow and not requires_gpu" --tb=short
+
+      - name: Upload BDD results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdd-library-results
+          path: .pytest_cache/
+
+  bdd-api:
+    name: BDD API Contract (REST service)
+    runs-on: ubuntu-latest
+    needs: [lint, format]  # Run after quick checks pass
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install dependencies (with API deps)
+        run: uv sync --extra dev
+
+      - name: Run API BDD scenarios (smoke tests - hard gate)
+        run: |
+          uv run pytest features/ -v -m "api and smoke" --tb=short
+
+      - name: Run API BDD scenarios (functional tests)
+        run: |
+          uv run pytest features/ -v -m "api and functional" --tb=short
+        continue-on-error: true  # Functional tests recommended but not required
+
+      - name: Upload API BDD results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdd-api-results
+          path: .pytest_cache/
+
   # Summary job that all required checks depend on
   ci-success:
     name: CI Success
@@ -222,6 +299,8 @@ jobs:
       - type-check
       - test
       - test-integration
+      - bdd-library
+      - bdd-api
     runs-on: ubuntu-latest
     steps:
       - name: Check all jobs
@@ -229,8 +308,16 @@ jobs:
           if [[ "${{ needs.lint.result }}" == "failure" ]] || \
              [[ "${{ needs.format.result }}" == "failure" ]] || \
              [[ "${{ needs.test.result }}" == "failure" ]] || \
-             [[ "${{ needs.test-integration.result }}" == "failure" ]]; then
+             [[ "${{ needs.test-integration.result }}" == "failure" ]] || \
+             [[ "${{ needs.bdd-library.result }}" == "failure" ]] || \
+             [[ "${{ needs.bdd-api.result }}" == "failure" ]]; then
             echo "One or more required jobs failed"
             exit 1
           fi
           echo "All required jobs passed!"
+          echo ""
+          echo "✅ Code quality verified"
+          echo "✅ Unit tests passed"
+          echo "✅ Integration tests passed"
+          echo "✅ Library BDD contract enforced"
+          echo "✅ API BDD contract enforced"

@@ -455,7 +455,31 @@ uv run pytest tests/test_your_feature.py -v
 uv run pytest --cov=transcription --cov-report=term-missing
 ```
 
-**5. Format and lint your code**
+**5. Verify contracts (REQUIRED before pushing)**
+
+Before pushing your changes, **you must run the verification CLI** to ensure you haven't broken the behavioral or deployment contracts:
+
+```bash
+# Quick verification (code quality + tests + BDD + API BDD)
+# This is the MINIMUM required before pushing
+uv run slower-whisper-verify --quick
+
+# Full verification (includes Docker and K8s validation)
+# Recommended before creating a PR
+uv run slower-whisper-verify
+```
+
+**What this verifies:**
+- ✅ Code quality (ruff linting and formatting)
+- ✅ Unit tests pass
+- ✅ Library BDD scenarios (behavioral contract)
+- ✅ API BDD scenarios (REST API contract)
+- ✅ Docker images build correctly (full mode only)
+- ✅ Kubernetes manifests are valid (full mode only)
+
+If any step fails, **do not push**. Fix the issues first. This verification ensures you're not breaking the project's **behavioral contracts** (BDD scenarios) or **deployment contracts** (Docker/K8s).
+
+**6. Format and lint your code**
 
 ```bash
 # Auto-format code
@@ -468,7 +492,7 @@ uv run ruff check --fix .
 uv run pre-commit run --all-files
 ```
 
-**6. Update documentation**
+**7. Update documentation**
 
 If your changes affect usage:
 - Update relevant files in `docs/`
@@ -476,7 +500,7 @@ If your changes affect usage:
 - Add examples if helpful
 - Update docstrings
 
-**7. Commit your changes**
+**8. Commit your changes**
 
 ```bash
 # Stage your changes
@@ -490,7 +514,7 @@ git add .
 git commit -m "Add pause density feature to prosody extraction"
 ```
 
-**8. Push and create a pull request**
+**9. Push and create a pull request**
 
 ```bash
 # Push your branch
@@ -666,18 +690,29 @@ Update docs when:
 
 Run through this checklist before creating your pull request:
 
-**Required:**
-- [ ] All tests pass locally (`uv run pytest`)
-- [ ] Code is formatted (`uv run ruff format .`)
-- [ ] No linting errors (`uv run ruff check .`)
+**Required (Hard gates - PR will be rejected without these):**
+- [ ] **Verification CLI passes**: `uv run slower-whisper-verify --quick`
+  - This verifies code quality, tests, and behavioral contracts (BDD scenarios)
+  - If this fails, **do not create a PR**
 - [ ] Tests added for new features or bug fixes
 - [ ] Branch is up-to-date with main
+- [ ] No BDD scenarios broken (verification CLI checks this)
 
-**Recommended:**
+**Strongly Recommended:**
+- [ ] Full verification passes: `uv run slower-whisper-verify`
+  - Includes Docker and K8s validation
+  - Required for releases, recommended for PRs
 - [ ] Documentation updated (README, docs/, docstrings)
 - [ ] Examples added if applicable
 - [ ] Commit messages are clear and descriptive
 - [ ] Pre-commit hooks installed and passing
+
+**Behavioral Contract Awareness:**
+If your changes affect any BDD scenarios (`tests/features/` or `features/`), you **must**:
+- [ ] Document why the behavioral contract is changing
+- [ ] Discuss versioning impact (major/minor/patch)
+- [ ] Update `CHANGELOG.md` with contract changes
+- [ ] Consider if this requires a deprecation period
 
 ### Creating a Pull Request
 
