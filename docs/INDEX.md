@@ -1,24 +1,45 @@
 # Documentation Index
 
-Welcome to the slower-whisper documentation. This page provides a complete map of all available documentation.
+Welcome to the **slower-whisper** documentation — your guide to local-first conversation intelligence infrastructure.
+
+---
+
+## What is slower-whisper?
+
+slower-whisper is a **local conversation signal engine** that turns audio into **LLM-ready structured data**, capturing not just *what* was said, but ***how*** it was said (prosody, emotion, speaker dynamics, interaction patterns).
+
+**Key differentiators:**
+
+- 🔒 **Local-first** — runs entirely on your machine, no cloud dependency
+- 📋 **Stable JSON schema** — versioned contracts for production use
+- 🧩 **Modular architecture** — use only the features you need
+- 🧪 **Contract-driven** — BDD scenarios enforce behavioral stability
+- 🤖 **LLM-native** — designed for RAG, summarization, analysis
+
+See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROADMAP.md) for development timeline.
 
 ---
 
 ## Quick Navigation
 
 **New to slower-whisper?**
-1. Start with the [README](../README.md) for project overview
-2. Follow the [Quickstart Guide](QUICKSTART.md) for your first transcription
-3. Check [API Quick Reference](../API_QUICK_REFERENCE.md) for function usage
+
+1. Start with [README](../README.md) — project overview, installation, architecture
+2. Read [VISION.md](../VISION.md) — understand the "why" and positioning
+3. Follow [Quickstart Guide](QUICKSTART.md) — your first transcription
+4. Check [API Quick Reference](../API_QUICK_REFERENCE.md) — function usage
 
 **Need help?**
-- [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
-- [ARCHITECTURE](ARCHITECTURE.md) - System design and structure
-- [Examples](../examples/) - Working code examples
+
+- [Troubleshooting Guide](TROUBLESHOOTING.md) — common issues and solutions
+- [ARCHITECTURE](ARCHITECTURE.md) — layered design (L0-L4)
+- [Examples](../examples/) — working code examples
 
 **Want to contribute?**
-- [Contributing Guide](../CONTRIBUTING.md) - How to contribute
-- [CLAUDE.md](../CLAUDE.md) - AI assistant instructions for working with this codebase
+
+- [Contributing Guide](../CONTRIBUTING.md) — how to contribute
+- [ROADMAP.md](../ROADMAP.md) — planned features and priorities
+- [CLAUDE.md](../CLAUDE.md) — AI assistant instructions for this codebase
 
 ---
 
@@ -29,8 +50,9 @@ Welcome to the slower-whisper documentation. This page provides a complete map o
 | Document | Description | Audience |
 |----------|-------------|----------|
 | [README.md](../README.md) | Project overview, features, installation, and quick start | Everyone |
+| [VISION.md](../VISION.md) | Strategic vision, positioning, and long-term goals | Everyone interested in the "why" |
+| [ROADMAP.md](../ROADMAP.md) | Detailed development timeline and planned features (v1.1-v3.0) | Contributors, users, stakeholders |
 | [CHANGELOG.md](../CHANGELOG.md) | Version history and release notes | All users |
-| [ROADMAP.md](../ROADMAP.md) | Future plans, features, and development timeline | Contributors, users |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | How to contribute to the project | Contributors |
 | [SECURITY.md](../SECURITY.md) | Security policy and vulnerability reporting | Security-conscious users |
 | [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Community standards and expectations | Community members |

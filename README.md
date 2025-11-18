@@ -1,4 +1,6 @@
-# slower-whisper (ffmpeg + faster-whisper)
+# slower-whisper
+
+**Local-first conversation signal engine for LLMs**
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![Tests](https://img.shields.io/badge/tests-191%20passing-brightgreen)
@@ -7,20 +9,46 @@
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Status](https://img.shields.io/badge/status-production%20ready-success)
 
-This project provides a small, structured codebase for running a fully local
-transcription pipeline on a machine with an NVIDIA GPU.
+## What is slower-whisper?
 
-It:
+slower-whisper transforms audio conversations into **LLM-ready structured data** that captures not just what was said, but **how it was said**.
 
-- Normalizes audio in `raw_audio/` to 16 kHz mono WAV in `input_audio/` using `ffmpeg`.
-- Transcribes using Whisper via `faster-whisper` on CUDA.
-- Writes:
-  - `transcripts/<name>.txt` – timestamped text.
-  - `transcripts/<name>.srt` – subtitles.
-  - `whisper_json/<name>.json` – structured JSON for analysis.
+Unlike traditional transcription tools that output plain text, slower-whisper produces a rich, versioned JSON format with:
 
-JSON is the canonical output format and is designed to be extended later
-with tone, speaker, and other annotations.
+- **Timestamped segments** with word-level alignment
+- **Speaker diarization** (who spoke when)
+- **Prosodic features** (pitch, energy, speaking rate, pauses)
+- **Emotional state** (valence, arousal, categorical emotions)
+- **Turn structure** and interaction patterns
+- **LLM-friendly text renderings** of acoustic features
+
+**The result**: A text-only LLM can now "hear" key aspects of audio — tone, emphasis, hesitation, excitement — that aren't captured in transcription alone.
+
+## Why slower-whisper?
+
+### The Problem
+
+Standard transcription gives you words, but misses:
+
+- **How** someone said something (sarcasm, uncertainty, stress)
+- **Acoustic cues** that change meaning ("I'm fine" said flatly vs. enthusiastically)
+- **Interaction patterns** (interruptions, pauses, who dominated the conversation)
+
+Cloud "conversation intelligence" APIs solve this but are:
+
+- **Closed-source** and opaque
+- **Cloud-only** (privacy and latency concerns)
+- **Text-centric** (limited acoustic feature access)
+
+### The Solution
+
+slower-whisper is a **local-first, open-source conversation signal engine** that:
+
+✅ **Runs entirely locally** (NVIDIA GPU recommended, CPU fallback supported)
+✅ **Produces stable, versioned JSON** you can build on
+✅ **Modular architecture** — use only the features you need
+✅ **Contract-driven** — BDD scenarios guarantee behavioral stability
+✅ **LLM-native** — designed for RAG, summarization, analysis, and prompt engineering
 
 ## Quick Start
 
@@ -42,6 +70,69 @@ uv run slower-whisper
 Place your audio files in `raw_audio/` and find transcripts in `whisper_json/`, `transcripts/`.
 
 See detailed instructions below for setup, configuration, and advanced features.
+
+## Architecture Overview
+
+slower-whisper uses a **layered enrichment pipeline** where each layer adds progressively richer conversational context:
+
+### Layer 0 – Ingestion
+- Audio normalization (ffmpeg: 16 kHz mono WAV)
+- Format detection and chunking
+- Audio hashing for caching
+
+### Layer 1 – ASR (Whisper)
+- Fast, deterministic transcription via faster-whisper
+- Timestamped segments with confidence scores
+- Word-level alignment (optional, via WhisperX integration planned)
+- **Fully local, GPU-accelerated**
+
+### Layer 2 – Acoustic & Structural Enrichment (local, modular)
+Optional enrichment passes that never re-run ASR:
+
+**Speaker Diarization** (planned v1.1)
+- Who spoke when, per segment + global speakers table
+- Speaker-relative feature normalization
+
+**Prosody Extraction** (current)
+- Pitch (mean, range, contour)
+- Energy (loudness)
+- Speaking rate (syllables/sec)
+- Pause statistics
+
+**Emotion Recognition** (current)
+- Dimensional: valence (positive/negative), arousal (calm/excited)
+- Categorical: happy, sad, angry, frustrated, etc.
+
+**Turn & Interaction Structure** (planned v1.2)
+- Turn grouping (sequences from same speaker)
+- Overlap/interruption detection
+- Question/answer linking
+
+### Layer 3 – Semantic Enrichment (optional, SLM/MM)
+Small local multimodal models for higher-level insights:
+
+- Chunk-level summaries
+- Topic segmentation
+- Intent classification (decision, objection, risk)
+- Sarcasm/irony detection
+
+**Design principle**: L3 is **opt-in**, chunked (60-120s), and never blocks the core pipeline.
+
+### Layer 4 – Task-Specific Outputs
+Use the enriched JSON for downstream tasks:
+
+- Meeting notes and action item extraction
+- Coaching feedback and QA scoring
+- Sentiment trajectory analysis
+- RAG/vector search with acoustic context
+
+**Key guarantees:**
+- 🔒 **Cacheable & resumable** at every layer
+- 🔒 **Versioned JSON schema** with stability contracts
+- 🔒 **BDD scenarios** enforce behavioral invariants
+- 🔒 **Local-first** — no data leaves your machine
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete design details.
 
 ## Requirements
 
@@ -470,50 +561,98 @@ internet access to fetch the weights.
 pipeline.** All transcription runs locally on your machine; only the model
 weights are fetched from the internet on first use.
 
-## JSON schema
+## JSON Schema v2 — Stable, Versioned Contract
 
-Each JSON file looks like:
+slower-whisper produces a **stable, versioned JSON format** designed for programmatic consumption by LLMs and analytics tools.
+
+### Current Schema (v2.0)
 
 ```json
 {
   "schema_version": 2,
-  "file": "meeting1.wav",
-  "language": "en",
-  "meta": {
-    "generated_at": "2025-11-15T03:21:00Z",
-    "audio_file": "meeting1.wav",
-    "audio_duration_sec": 3120.5,
-    "model_name": "large-v3",
-    "device": "cuda",
-    "compute_type": "float16",
-    "beam_size": 5,
-    "vad_min_silence_ms": 500,
-    "language_hint": "en",
-    "task": "transcribe",
-    "pipeline_version": "1.0.0",
-    "root": "C:/transcription_toolkit"
+  "audio": {
+    "id": "sha256:abc123...",
+    "path": "meeting.wav",
+    "duration_sec": 3120.5,
+    "sample_rate": 16000,
+    "channels": 1
   },
+  "meta": {
+    "pipeline_version": "1.0.0",
+    "language": "en",
+    "asr_model": "faster-whisper-large-v3",
+    "enrichment": {
+      "prosody": { /* config */ },
+      "emotion": { /* config */ }
+    }
+  },
+  "speakers": [
+    {
+      "id": "spk_0",
+      "label": "Speaker A",
+      "role_hint": "agent",
+      "cluster_confidence": 0.93
+    }
+  ],
   "segments": [
     {
-      "id": 0,
-      "start": 0.0,
-      "end": 4.2,
-      "text": "Okay, let's get started with today's agenda.",
-      "speaker": null,
-      "tone": null,
-      "audio_state": null
+      "id": 23,
+      "start": 123.45,
+      "end": 129.30,
+      "text": "I'm not sure this pricing works for us.",
+      "words": [
+        {"text": "I'm", "start": 123.45, "end": 123.80},
+        {"text": "not", "start": 123.81, "end": 124.12}
+      ],
+      "speaker": {
+        "id": "spk_1",
+        "confidence": 0.86
+      },
+      "audio_state": {
+        "prosody": {
+          "pitch_mean_hz": 195.2,
+          "pitch_contour": "rising",
+          "energy_rms": 0.24,
+          "speech_rate_wps": 3.1,
+          "pause_before_ms": 420
+        },
+        "emotion": {
+          "valence": 0.35,
+          "arousal": 0.68,
+          "label": "concerned",
+          "confidence": 0.78
+        },
+        "interaction": {
+          "is_question": true,
+          "is_overlap": false
+        }
+      },
+      "annotations": {
+        "llm": []  // Optional Stage 3 semantic tags
+      }
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn_17",
+      "speaker_id": "spk_1",
+      "segment_ids": [23, 24],
+      "start": 123.45,
+      "end": 140.10
     }
   ]
 }
 ```
 
-This schema is stable and is intended to be the basis for future tooling:
+### Schema Guarantees
 
-- Tone tagging: populate `tone`.
-- Speaker diarization: populate `speaker`.
-- Audio enrichment: populate `audio_state` with prosody and emotion features.
-- Search and analysis: operate over `segments[]`.
-- Run-level analysis and reproducibility: read `meta`.
+- ✅ **Forward compatible** — v2 readers accept v1 transcripts
+- ✅ **Backward compatible** — optional fields can be null
+- ✅ **Stable core fields** — `segments`, `id`, `start`, `end`, `text` won't change meaning within v2.x
+- ✅ **Breaking changes require version bump** — v2 → v3 only for structural changes
+- ✅ **Audio state versioned independently** — `AUDIO_STATE_VERSION = "1.0.0"`
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#schema-versioning) for the complete stability contract.
 
 ## Audio Feature Enrichment
 
