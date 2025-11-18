@@ -79,20 +79,72 @@ It **is**:
 
 ### Target Users
 
-**Primary:**
+We serve **three primary user types**, each with different needs:
 
-- **Developers / data teams** building:
-  - Meeting tools, support QA, coaching platforms, clinical documentation
-  - Internal conversation analytics without shipping data to cloud APIs
-  - RAG/vector search with acoustic context
-- **Researchers** (linguistics, HCI, psychology, UX) who:
-  - Need prosody and emotion features for analysis
-  - Want reproducible pipelines with versioned schemas
+#### Primary Users (v1.x Focus)
 
-**Not targeting (directly):**
+**1. Infrastructure / Platform Engineers**
 
-- B2C end-users (they use products built *on* slower-whisper)
-- Enterprise "conversation intelligence" buyers (they're buying SaaS, not infra)
+Building internal conversation processing systems:
+- On-prem transcription stacks (compliance, security)
+- Multi-tenant platforms with conversation analytics
+- Batch processing pipelines (1000s of hours/month)
+
+**What they need:**
+- ✅ Stability, contracts, Docker/K8s deployment
+- ✅ Versioned JSON schema (build on it without fear)
+- ✅ BDD/IaC guarantees (infrastructure-grade quality)
+- ❌ Don't care about: LLM adapters, fancy export formats
+
+**2. Research Labs (Linguistics, HCI, Psychology, UX)**
+
+Analyzing conversations for academic research:
+- Prosody and emotion studies
+- Speaker interaction patterns
+- Multi-modal communication research
+
+**What they need:**
+- ✅ Accurate prosody/emotion features
+- ✅ Reproducible pipelines (same input → same output)
+- ✅ Export to research tools (Praat, ELAN)
+- ❌ Don't care about: Kubernetes, real-time streaming
+
+#### Secondary Users (v1.2+ and Community-Driven)
+
+**3. LLM Application Developers**
+
+Building conversation-aware LLM apps:
+- RAG/vector search with acoustic metadata
+- Meeting summarization and action-item extraction
+- Q&A systems that understand tone and speaker
+
+**What they need:**
+- ✅ LangChain/LlamaIndex adapters
+- ✅ Prompt builder utilities
+- ✅ Easy chunking and formatting
+- ❌ Don't care about: Low-level prosody details, Docker internals
+
+**Note:** We prioritize groups 1 and 2 in v1.x. Group 3 features (LLM adapters) are added in v1.2-v1.3 but can also be community-contributed.
+
+#### Non-Target Users (Explicitly Out of Scope)
+
+- **B2C end-users** — They use products built *on* slower-whisper, not slower-whisper directly
+- **Enterprise SaaS buyers** — They want turn-key solutions, not infrastructure
+- **Real-time captioning consumers** — They need apps, not libraries (v2.0+ may enable app builders)
+
+---
+
+### Why This Matters
+
+**Prioritization:**
+- v1.1: Speaker diarization (all three groups want this)
+- v1.2: Speaker analytics + evaluation (groups 1 & 2 priority)
+- v1.3: LLM adapters (group 3 priority, but useful to all)
+
+**Feature decisions:**
+- Docker/K8s docs before LangChain adapter (group 1 > group 3)
+- Praat export before HTML viewer (group 2 > casual users)
+- Schema stability before semantic SLM (infrastructure > novelty)
 
 ### Market Position
 
