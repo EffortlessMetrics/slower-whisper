@@ -2,8 +2,8 @@
 
 **Local-first conversation signal engine for LLMs**
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Tests](https://img.shields.io/badge/tests-191%20passing-brightgreen)
+![Version](https://img.shields.io/badge/version-1.1.0--dev-blue)
+![Tests](https://img.shields.io/badge/tests-231%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-57%25-yellow)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
@@ -16,7 +16,7 @@ slower-whisper transforms audio conversations into **LLM-ready structured data**
 Unlike traditional transcription tools that output plain text, slower-whisper produces a rich, versioned JSON format with:
 
 - **Timestamped segments** (word-level alignment planned)
-- **Speaker diarization** (who spoke when - planned v1.1)
+- **Speaker diarization** (who spoke when - v1.1)
 - **Prosodic features** (pitch, energy, speaking rate, pauses)
 - **Emotional state** (valence, arousal, categorical emotions)
 - **Turn structure** and interaction patterns
@@ -89,9 +89,11 @@ slower-whisper uses a **layered enrichment pipeline** where each layer adds prog
 ### Layer 2 – Acoustic & Structural Enrichment (local, modular)
 Optional enrichment passes that never re-run ASR:
 
-**Speaker Diarization** (planned v1.1)
+**Speaker Diarization** (v1.1)
 - Who spoke when, per segment + global speakers table
-- Speaker-relative feature normalization
+- Normalized canonical speaker IDs (`spk_0`, `spk_1`, ...)
+- Turn structure grouping contiguous segments by speaker
+- Foundation for speaker-relative feature normalization (v1.2)
 
 **Prosody Extraction** (current)
 - Pitch (mean, range, contour)
@@ -103,10 +105,11 @@ Optional enrichment passes that never re-run ASR:
 - Dimensional: valence (positive/negative), arousal (calm/excited)
 - Categorical: happy, sad, angry, frustrated, etc.
 
-**Turn & Interaction Structure** (planned v1.2)
-- Turn grouping (sequences from same speaker)
+**Turn & Interaction Structure** (v1.2 planned)
+- Speaker statistics (talk time, turn counts)
 - Overlap/interruption detection
 - Question/answer linking
+- Backchanneling and turn-taking analysis
 
 ### Layer 3 – Semantic Enrichment (optional, SLM/MM)
 Small local multimodal models for higher-level insights:
@@ -386,6 +389,46 @@ uv run slower-whisper enrich \
   --enable-emotion \
   --device cpu
 ```
+
+#### Speaker Diarization (v1.1)
+
+```bash
+# Install diarization dependencies (one-time setup)
+uv sync --extra diarization
+
+# Set HuggingFace token (after accepting pyannote model license)
+export HF_TOKEN=hf_...  # Get from https://huggingface.co/settings/tokens
+
+# Run transcription with diarization enabled
+uv run slower-whisper transcribe \
+  --enable-diarization \
+  --min-speakers 2 \
+  --max-speakers 4
+
+# Or programmatically:
+from transcription import transcribe_directory, TranscriptionConfig, DiarizationConfig
+
+config = TranscriptionConfig(
+    model="large-v3",
+    diarization=DiarizationConfig(
+        enabled=True,
+        min_speakers=2,
+        max_speakers=4
+    )
+)
+transcripts = transcribe_directory("/path/to/project", config)
+```
+
+**What you get:**
+- `segment.speaker = {"id": "spk_0", "confidence": 0.87}` - Per-segment speaker assignment
+- `speakers[]` table - Global speaker metadata (first/last seen, total speech time)
+- `turns[]` structure - Contiguous segments grouped by speaker
+- `meta.diarization` - Status, backend, and error information
+
+**Requirements:**
+- HuggingFace account (free) with accepted pyannote.audio model license
+- `HF_TOKEN` environment variable or `~/.cache/huggingface/token`
+- GPU recommended (pyannote.audio is resource-intensive)
 
 #### View help
 

@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **v1.1 speaker diarization** (L2 enrichment layer) using pyannote.audio
+  - Optional `diarization` extra: `uv sync --extra diarization`
+  - Populates `segment.speaker = {"id": "spk_N", "confidence": float}`
+  - Builds global `speakers[]` table and `turns[]` structure in schema v2
+  - Normalized canonical speaker IDs (`spk_0`, `spk_1`, ...) backend-agnostic
+  - Overlap-based segment-to-speaker mapping with configurable threshold
+- **Diarization metadata** in `meta.diarization`:
+  - `status: "success" | "failed"` - Overall diarization result
+  - `requested: bool` - Whether diarization was enabled
+  - `backend: "pyannote.audio"` - Backend used for diarization
+  - `error_type: "auth" | "missing_dependency" | "file_not_found" | "unknown"` - Error category for self-service debugging
+- **Turn structure** - Contiguous segments grouped by speaker:
+  - Each turn includes `speaker_id`, `start`, `end`, `segment_ids`, `text`
+  - Foundation for turn-level analysis (interruptions, questions, backchanneling)
+- **Speaker table** - Per-speaker aggregates:
+  - `id`, `first_seen`, `last_seen`, `total_speech_time`, `num_segments`
+  - Foundation for speaker-relative prosody baselines (v1.2)
+- **Comprehensive diarization tests** (36 new tests):
+  - Unit tests for overlap logic and segment mapping
+  - Synthetic 2-speaker fixture with ground truth
+  - Error handling for missing dependencies, auth failures, file errors
+  - 12 new BDD scenarios in `tests/features/transcription.feature`
+- **Documentation**:
+  - `docs/SPEAKER_DIARIZATION.md` - Complete implementation guide
+  - `docs/V1.1_SKELETON_SUMMARY.md` - Schema contract and feature summary
+  - `docs/V1.1_GITHUB_ISSUES.md` - Issue tracking structure
+  - Updated `docs/ARCHITECTURE.md` for L2 enrichment layer
+  - Updated `docs/TESTING_STRATEGY.md` with synthetic fixtures methodology
+
+### Changed
+- Schema v2 remains backward compatible:
+  - `speakers` and `turns` are optional, default to `null`
+  - Existing v1 transcripts still load correctly
+  - Diarization disabled by default (`--enable-diarization` required)
+
 ## [1.0.0] - 2025-11-17
 
 This release transforms slower-whisper from a "well-built power tool" into a **production-ready library** with a clean public API, unified CLI interface, and comprehensive audio enrichment capabilities.
