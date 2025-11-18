@@ -93,6 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Skip files with existing JSON in whisper_json/ (default: True).",
     )
+    p_trans.add_argument(
+        "--enable-diarization",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable speaker diarization (v1.1 experimental, default: False).",
+    )
 
     # ============================================================================
     # enrich subcommand
@@ -404,6 +410,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(argv)
 
         if args.command == "transcribe":
+            # Check for experimental diarization flag (v1.1 skeleton)
+            if getattr(args, "enable_diarization", False):
+                print(
+                    "\n[WARNING] --enable-diarization is NOT YET IMPLEMENTED (v1.1 skeleton).\n"
+                    "This flag will enable speaker diarization in a future release.\n"
+                    "See docs/SPEAKER_DIARIZATION.md for implementation roadmap.\n",
+                    file=sys.stderr,
+                )
+
             cfg = _config_from_transcribe_args(args)
             transcripts = transcribe_directory(args.root, config=cfg)
             print(f"\n[done] Transcribed {len(transcripts)} files")

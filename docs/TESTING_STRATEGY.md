@@ -74,74 +74,6 @@ Scenario: Transcribe clean English audio
 
 ---
 
-## Layer 2: Speaker Diarization
-
-**Responsibility:** Determine *who* spoke *when*.
-
-### What We Test
-
-**Correctness:**
-- ✅ Speaker count (detect correct number of speakers)
-- ✅ Diarization Error Rate (DER)
-- ✅ Speaker consistency (same person gets same ID across segments)
-- ✅ Confidence scores are calibrated
-
-**Robustness:**
-- ✅ Single-speaker edge case (1 speaker detected, not 2+)
-- ✅ Overlapping speech (marked as overlap, not attributed to one speaker only)
-- ✅ Silence segments (no speaker assigned)
-
-### Quality Thresholds
-
-| Metric | Threshold | Dataset |
-|--------|-----------|---------|
-| DER (Diarization Error Rate) | < 0.25 | AMI Meeting Corpus (10 files) |
-| Speaker count accuracy | > 90% | Synthetic test set (2-4 speakers known) |
-| Confidence calibration | ECE < 0.15 | AMI subset with manual labels |
-
-**DER components:**
-- False Alarm (speech detected when none)
-- Missed Speech (speech not detected)
-- Speaker Error (wrong speaker assigned)
-
-### Test Implementation
-
-**Synthetic tests:**
-```python
-# tests/test_diarization.py
-def test_two_speaker_synthetic():
-    """Two distinct voices → exactly 2 speakers detected."""
-    audio = generate_two_speaker_audio()  # TTS with different voices
-    transcript = transcribe_and_diarize(audio)
-    assert len(transcript.speakers) == 2
-    assert all(s.cluster_confidence > 0.7 for s in transcript.speakers)
-```
-
-**BDD scenarios:**
-```gherkin
-Scenario: Two-speaker conversation
-  Given a 2-speaker audio file "interview_2spk.wav"
-  When I transcribe with diarization enabled
-  Then exactly 2 speakers are detected
-  And each segment has a speaker ID
-  And speaker confidence > 0.7 for 80%+ of segments
-
-Scenario: Single-speaker monologue
-  Given a single-speaker audio file "lecture.wav"
-  When I transcribe with diarization enabled
-  Then exactly 1 speaker is detected
-```
-
-**Real-world benchmark:**
-```bash
-# benchmarks/eval_diarization.py
-uv run python benchmarks/eval_diarization.py \
-  --dataset ami_subset \
-  --metric DER \
-  --threshold 0.25
-```
-
----
 
 ## Layer 2: Prosody Extraction
 
@@ -265,6 +197,120 @@ Scenario: Calm neutral segment
   When I extract emotion features
   Then valence is near zero (-0.3 to +0.3)
   And arousal is low (< 0.4)
+```
+
+---
+
+## Layer 2: Speaker Diarization (v1.1+)
+
+**Responsibility:** Identify "who spoke when" and populate `speakers[]` and `segment.speaker`.
+
+### What We Test
+
+**Correctness:**
+- ✅ DER (Diarization Error Rate) on labeled data
+- ✅ Speaker count detection accuracy
+- ✅ Segment-to-speaker assignment quality
+- ✅ Speaker timing accuracy (boundary alignment)
+
+**Robustness:**
+- ✅ Single-speaker audio (no false multi-speaker detection)
+- ✅ Overlapping speech handling
+- ✅ Background noise / music interference
+
+### Quality Thresholds
+
+| Metric | Threshold | Dataset |
+|--------|-----------|---------|
+| DER (Diarization Error Rate) | < 0.25 | AMI Meeting Corpus (subset) |
+| Speaker count accuracy | > 80% | Synthetic 2-4 speaker conversations |
+| Segment attribution F1 | > 0.75 | AMI subset with ground truth |
+
+**Note:** DER < 0.25 is "good enough" for most conversation intelligence tasks. We're not aiming for research-grade DER < 0.10.
+
+### Test Implementation
+
+**MVP Testbed (v1.1):**
+
+**1. Synthetic 2-speaker test** (anchor for BDD):
+```bash
+# tests/fixtures/synthetic_2speaker.wav
+# Generated via tests/fixtures/generate_synthetic_2speaker.py
+#
+# Structure:
+#   0.0-3.0s: Speaker A (120 Hz tone, representing low-pitch voice)
+#   3.2-6.2s: Speaker B (220 Hz tone, representing high-pitch voice)
+#   6.2-9.2s: Speaker A
+#   9.4-12.4s: Speaker B
+#   Total duration: ~12.6 seconds
+#
+# Expected output after diarization:
+#   - speakers: [{"id": "spk_0", ...}, {"id": "spk_1", ...}]
+#     (normalized IDs, not raw backend labels like "SPEAKER_00")
+#   - 4 speaker turns, alternating A-B-A-B
+#   - DER = 0.00 (perfect on synthetic)
+```
+
+**Generation:**
+The fixture is committed to the repository (`tests/fixtures/synthetic_2speaker.wav`).
+To regenerate:
+```bash
+uv run python tests/fixtures/generate_synthetic_2speaker.py
+```
+
+The script uses pure sine waves at different frequencies (120 Hz vs 220 Hz) to create
+distinct "speakers" with deterministic timing. This is simpler and more reproducible
+than TTS-based fixtures, while still providing a clear ground truth for diarization
+mapping logic.
+
+**Integration test:**
+```python
+# tests/test_diarization_skeleton.py::test_synthetic_2speaker_diarization_skeleton
+# Currently tests skeleton behavior (meta.diarization.status = "not_implemented")
+# When pyannote is integrated, will assert:
+#   - len(transcript.speakers) == 2
+#   - len(transcript.turns) == 4
+#   - Turn pattern matches A-B-A-B
+#   - DER ~ 0.0 (perfect diarization expected)
+```
+
+**2. AMI Meeting Corpus subset** (real-world eval):
+- 5-10 short meeting excerpts (30-60s each)
+- Ground truth speaker labels
+- Target DER < 0.25
+- Documents common failure modes (overlaps, cross-talk)
+
+**BDD scenarios:**
+```gherkin
+Scenario: Synthetic 2-speaker alternating conversation
+  Given synthetic audio "synthetic_2speaker.wav"
+  When I run diarization
+  Then exactly 2 speakers are detected
+  And 4 segments exist with speaker labels
+  And speaker labels alternate A-B-A-B
+  And DER is 0.00 (perfect on synthetic)
+
+Scenario: Single speaker audio has no false multi-speaker
+  Given synthetic audio "single_speaker.wav" (60s, one voice)
+  When I run diarization
+  Then exactly 1 speaker is detected
+  And all segments have the same speaker ID
+
+Scenario: No diarization requested leaves speaker fields null
+  Given any audio file
+  When I transcribe without --enable-diarization
+  Then all segment.speaker values are null
+  And speakers array is null
+  And turns array is null
+```
+
+**Real-world dataset tests:**
+```bash
+# benchmarks/eval_diarization.py
+uv run python benchmarks/eval_diarization.py \
+  --dataset ami_subset \
+  --metric DER \
+  --threshold 0.25
 ```
 
 ---

@@ -53,9 +53,17 @@ class Transcript:
         segments: Ordered list of segments making up the transcript.
         meta: Optional metadata dictionary describing how/when this
               transcript was generated (model, device, etc.).
+        speakers: Optional list of speaker metadata (v1.1+).
+                  Each speaker dict contains: {id, label, total_speech_time, num_segments}.
+                  Null in v1.0 transcripts; empty array if diarization finds no speakers.
+        turns: Optional list of conversational turns (v1.1+).
+               Each turn dict contains: {speaker_id, start, end, segment_ids, text}.
+               Null in v1.0 transcripts; populated after diarization in v1.1+.
     """
 
     file_name: str
     language: str
     segments: list[Segment] = field(default_factory=list)
     meta: dict[str, Any] | None = None
+    speakers: list[dict[str, Any]] | None = None
+    turns: list[dict[str, Any]] | None = None

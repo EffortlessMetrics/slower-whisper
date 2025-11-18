@@ -1,0 +1,291 @@
+"""
+Unit tests for conversational turn structure.
+
+Tests the turn building logic that groups contiguous segments by speaker.
+"""
+
+from transcription.models import Segment, Transcript
+from transcription.turns import build_turns
+
+
+def make_segment(
+    seg_id: int, start: float, end: float, text: str, speaker_id: str | None = None
+) -> Segment:
+    """Helper to create Segment for testing."""
+    seg = Segment(id=seg_id, start=start, end=end, text=text)
+    if speaker_id is not None:
+        seg.speaker = {"id": speaker_id, "confidence": 0.9}
+    return seg
+
+
+def make_transcript(segments: list[Segment]) -> Transcript:
+    """Helper to create Transcript for testing."""
+    # Build speakers list from segments
+    speaker_ids = {seg.speaker["id"] for seg in segments if seg.speaker is not None}
+    speakers = [
+        {"id": sid, "label": None, "total_speech_time": 0.0, "num_segments": 0}
+        for sid in sorted(speaker_ids)
+    ]
+    return Transcript(file_name="test.wav", language="en", segments=segments, speakers=speakers)
+
+
+class TestBuildTurns:
+    """Tests for build_turns() function."""
+
+    def test_single_speaker_one_turn(self):
+        """Single speaker across multiple segments → 1 turn."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "Hello", "spk_0"),
+            make_segment(1, 2.1, 4.0, "world", "spk_0"),
+            make_segment(2, 4.2, 6.0, "today", "spk_0"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 1
+        turn = result.turns[0]
+        assert turn["id"] == "turn_0"
+        assert turn["speaker_id"] == "spk_0"
+        assert turn["start"] == 0.0
+        assert turn["end"] == 6.0
+        assert turn["segment_ids"] == [0, 1, 2]
+        assert turn["text"] == "Hello world today"
+
+    def test_alternating_speakers(self):
+        """A-B-A-B pattern → 4 turns."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "A1", "spk_0"),
+            make_segment(1, 3.0, 5.0, "B1", "spk_1"),
+            make_segment(2, 6.0, 8.0, "A2", "spk_0"),
+            make_segment(3, 9.0, 11.0, "B2", "spk_1"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 4
+        assert result.turns[0]["speaker_id"] == "spk_0"
+        assert result.turns[1]["speaker_id"] == "spk_1"
+        assert result.turns[2]["speaker_id"] == "spk_0"
+        assert result.turns[3]["speaker_id"] == "spk_1"
+
+        assert result.turns[0]["segment_ids"] == [0]
+        assert result.turns[1]["segment_ids"] == [1]
+        assert result.turns[2]["segment_ids"] == [2]
+        assert result.turns[3]["segment_ids"] == [3]
+
+    def test_multi_segment_turns(self):
+        """Multiple consecutive segments per speaker → grouped into turns."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "A1", "spk_0"),
+            make_segment(1, 2.1, 4.0, "A2", "spk_0"),
+            make_segment(2, 5.0, 7.0, "B1", "spk_1"),
+            make_segment(3, 7.1, 9.0, "B2", "spk_1"),
+            make_segment(4, 10.0, 12.0, "A3", "spk_0"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 3
+        assert result.turns[0]["speaker_id"] == "spk_0"
+        assert result.turns[0]["segment_ids"] == [0, 1]
+        assert result.turns[0]["text"] == "A1 A2"
+
+        assert result.turns[1]["speaker_id"] == "spk_1"
+        assert result.turns[1]["segment_ids"] == [2, 3]
+        assert result.turns[1]["text"] == "B1 B2"
+
+        assert result.turns[2]["speaker_id"] == "spk_0"
+        assert result.turns[2]["segment_ids"] == [4]
+        assert result.turns[2]["text"] == "A3"
+
+    def test_unknown_speaker_segments_skipped(self):
+        """Segments with speaker=None → excluded from turns."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "A1", "spk_0"),
+            make_segment(1, 3.0, 5.0, "Unknown", None),  # No speaker
+            make_segment(2, 6.0, 8.0, "B1", "spk_1"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        # Should have 2 turns (unknown segment excluded)
+        assert len(result.turns) == 2
+        assert result.turns[0]["segment_ids"] == [0]
+        assert result.turns[1]["segment_ids"] == [2]
+
+    def test_turn_boundaries_from_first_last_segment(self):
+        """Turn start/end derived from first/last segment in turn."""
+        segments = [
+            make_segment(0, 1.5, 3.0, "A1", "spk_0"),
+            make_segment(1, 3.2, 5.7, "A2", "spk_0"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 1
+        assert result.turns[0]["start"] == 1.5
+        assert result.turns[0]["end"] == 5.7
+
+    def test_text_concatenation_with_spaces(self):
+        """Turn text = segments joined with spaces."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "Hello", "spk_0"),
+            make_segment(1, 2.1, 4.0, "world!", "spk_0"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert result.turns[0]["text"] == "Hello world!"
+
+    def test_text_concatenation_strips_whitespace(self):
+        """Segment text is stripped before concatenation."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "  Hello  ", "spk_0"),
+            make_segment(1, 2.1, 4.0, "  world  ", "spk_0"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert result.turns[0]["text"] == "Hello world"
+
+    def test_empty_transcript(self):
+        """Transcript with no segments → no turns."""
+        transcript = Transcript(file_name="test.wav", language="en", segments=[], speakers=[])
+
+        result = build_turns(transcript)
+
+        assert result.turns == []
+
+    def test_all_unknown_speakers(self):
+        """All segments have speaker=None → no turns."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "Unknown1", None),
+            make_segment(1, 3.0, 5.0, "Unknown2", None),
+        ]
+        transcript = Transcript(file_name="test.wav", language="en", segments=segments, speakers=[])
+
+        result = build_turns(transcript)
+
+        assert result.turns == []
+
+    def test_turn_ids_sequential(self):
+        """Turn IDs are turn_0, turn_1, turn_2, ..."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "A", "spk_0"),
+            make_segment(1, 3.0, 5.0, "B", "spk_1"),
+            make_segment(2, 6.0, 8.0, "C", "spk_0"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert result.turns[0]["id"] == "turn_0"
+        assert result.turns[1]["id"] == "turn_1"
+        assert result.turns[2]["id"] == "turn_2"
+
+    def test_single_segment_per_turn(self):
+        """Each segment is its own turn (all different speakers)."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "A", "spk_0"),
+            make_segment(1, 3.0, 5.0, "B", "spk_1"),
+            make_segment(2, 6.0, 8.0, "C", "spk_2"),
+        ]
+        # Need to build speakers list manually for this test
+        speakers = [
+            {"id": "spk_0", "label": None, "total_speech_time": 0.0, "num_segments": 0},
+            {"id": "spk_1", "label": None, "total_speech_time": 0.0, "num_segments": 0},
+            {"id": "spk_2", "label": None, "total_speech_time": 0.0, "num_segments": 0},
+        ]
+        transcript = Transcript(
+            file_name="test.wav", language="en", segments=segments, speakers=speakers
+        )
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 3
+        assert [t["segment_ids"] for t in result.turns] == [[0], [1], [2]]
+
+    def test_turn_preserves_segment_order(self):
+        """Turns built in segment order (should already be sorted by time)."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "A1", "spk_0"),
+            make_segment(1, 2.1, 4.0, "A2", "spk_0"),
+            make_segment(2, 5.0, 7.0, "B", "spk_1"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert result.turns[0]["segment_ids"] == [0, 1]
+        assert result.turns[1]["segment_ids"] == [2]
+
+    def test_unknown_then_known_speaker(self):
+        """Unknown segments followed by known → turns start after unknown."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "Unknown1", None),
+            make_segment(1, 3.0, 5.0, "A", "spk_0"),
+            make_segment(2, 5.1, 7.0, "B", "spk_1"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 2
+        assert result.turns[0]["speaker_id"] == "spk_0"
+        assert result.turns[1]["speaker_id"] == "spk_1"
+
+    def test_known_then_unknown_speaker(self):
+        """Known speaker followed by unknown → turn ends, unknown skipped."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "A", "spk_0"),
+            make_segment(1, 3.0, 5.0, "Unknown", None),
+            make_segment(2, 6.0, 8.0, "B", "spk_1"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 2
+        assert result.turns[0]["segment_ids"] == [0]
+        assert result.turns[1]["segment_ids"] == [2]
+
+
+class TestEdgeCases:
+    """Edge case handling for turn building."""
+
+    def test_empty_text_segments(self):
+        """Segments with empty text → included in turn but don't break concatenation."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "Hello", "spk_0"),
+            make_segment(1, 2.1, 4.0, "", "spk_0"),  # Empty text
+            make_segment(2, 4.2, 6.0, "world", "spk_0"),
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 1
+        assert result.turns[0]["segment_ids"] == [0, 1, 2]
+        # Empty text should not create extra spaces
+        assert result.turns[0]["text"] == "Hello world"
+
+    def test_long_turn_many_segments(self):
+        """Single speaker monologue with many segments → 1 long turn."""
+        segments = [
+            make_segment(i, float(i), float(i + 1), f"Segment {i}", "spk_0") for i in range(100)
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 1
+        assert len(result.turns[0]["segment_ids"]) == 100
+        assert result.turns[0]["start"] == 0.0
+        assert result.turns[0]["end"] == 100.0

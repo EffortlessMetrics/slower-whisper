@@ -45,7 +45,9 @@ The current schema (v2) has the following stable structure:
   "file_name": "audio.wav",
   "language": "en",
   "meta": { /* metadata object */ },
-  "segments": [ /* array of Segment objects */ ]
+  "segments": [ /* array of Segment objects */ ],
+  "speakers": [ /* optional v1.1: speaker table */ ],
+  "turns": [ /* optional v1.1: speaker turn structure */ ]
 }
 ```
 
@@ -78,9 +80,20 @@ The current schema (v2) has the following stable structure:
 **Stability Contract:**
 - Core fields (`file_name`, `language`, `segments`) will not change type or meaning within schema v2
 - Core segment fields (`id`, `start`, `end`, `text`) are stable
-- Optional fields (`speaker`, `tone`, `audio_state`) may be `null`
+- Optional fields (`speaker`, `tone`, `audio_state`, `speakers`, `turns`) may be `null` or missing
 - Adding new optional fields does NOT increment schema version
 - Removing or renaming core fields requires schema version bump (v3)
+
+**Diarization Fields Semantics (v1.1):**
+
+The `speakers` and `turns` fields have intentionally distinct semantics for null vs. missing:
+
+- **Missing field** (field not present in JSON): Diarization was not requested (`enable_diarization=False`)
+- **`null` value** (`"speakers": null`): Diarization was requested but not run (disabled or error)
+- **Empty array** (`"speakers": []`): Diarization ran successfully but detected zero speakers (rare but valid)
+- **Non-empty array**: Diarization succeeded and found speakers/turns
+
+In practice, both `null` and missing are treated identically by readers as "no diarization output," but the distinction helps with debugging (was diarization requested? did it fail?). The `meta.diarization.status` and `meta.diarization.requested` fields provide authoritative information about diarization execution.
 
 **Breaking Changes:**
 - Major schema version bumps (2 → 3) MAY introduce breaking changes

@@ -20,12 +20,132 @@ Example usage:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from .config import AsrConfig, EnrichmentConfig, Paths, TranscriptionConfig
 from .exceptions import EnrichmentError, TranscriptionError
 from .models import Transcript
 from .writers import load_transcript_from_json, write_json
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Internal helper: Diarization orchestration (v1.1)
+# ============================================================================
+
+
+def _maybe_run_diarization(
+    transcript: Transcript,
+    wav_path: Path,
+    config: TranscriptionConfig,
+) -> Transcript:
+    """
+    Run diarization and turn building if enabled.
+
+    v1.1 skeleton: does not actually run diarization yet.
+    It only records that diarization was requested but is not implemented.
+
+    When pyannote is integrated, this function will:
+    1. Initialize Diarizer with config.diarization_device, min/max_speakers
+    2. Run diarizer.run(wav_path) -> speaker_turns
+    3. Call assign_speakers(transcript, speaker_turns, overlap_threshold)
+    4. Call build_turns(transcript)
+    5. Catch any exceptions and mark diarization as "failed" in meta
+
+    Args:
+        transcript: Transcript from ASR (with segments populated).
+        wav_path: Path to normalized WAV file.
+        config: TranscriptionConfig with diarization settings.
+
+    Returns:
+        Updated transcript (with speakers/turns if diarization succeeds,
+        or original transcript with meta.diarization.status set).
+    """
+    if not config.enable_diarization:
+        return transcript
+
+    # v1.1: Real diarization implementation with pyannote.audio
+    try:
+        from .diarization import Diarizer, assign_speakers
+        from .turns import build_turns
+
+        diarizer = Diarizer(
+            device=config.diarization_device,
+            min_speakers=config.min_speakers,
+            max_speakers=config.max_speakers,
+        )
+        speaker_turns = diarizer.run(wav_path)
+
+        if len(speaker_turns) == 0:
+            logger.warning("Diarization produced no speaker turns for %s", wav_path.name)
+
+        # Check for suspiciously high speaker counts
+        unique_speakers = len({t.speaker_id for t in speaker_turns})
+        if unique_speakers > 10:
+            logger.warning(
+                "Diarization found %d speakers for %s; this may indicate "
+                "noisy audio or misconfiguration.",
+                unique_speakers,
+                wav_path.name,
+            )
+
+        # Assign speakers to segments based on overlap
+        transcript = assign_speakers(
+            transcript,
+            speaker_turns,
+            overlap_threshold=config.overlap_threshold,
+        )
+
+        # Build turn structure from speaker-labeled segments
+        transcript = build_turns(transcript)
+
+        # Record success in metadata
+        if transcript.meta is None:
+            transcript.meta = {}
+        diar_meta = transcript.meta.setdefault("diarization", {})
+        diar_meta.update(
+            {
+                "status": "success",
+                "requested": True,
+                "backend": "pyannote.audio",
+                "num_speakers": len(transcript.speakers) if transcript.speakers else 0,
+            }
+        )
+
+        return transcript
+
+    except Exception as exc:
+        logger.warning(
+            "Diarization failed for %s: %s. Proceeding without speakers/turns.",
+            wav_path.name,
+            exc,
+        )
+        if transcript.meta is None:
+            transcript.meta = {}
+        diar_meta = transcript.meta.setdefault("diarization", {})
+
+        # Categorize error for better debugging
+        error_msg = str(exc)
+        error_type = "unknown"
+
+        if "HF_TOKEN" in error_msg or "use_auth_token" in error_msg:
+            error_type = "auth"
+        elif "pyannote.audio" in error_msg or "ImportError" in str(type(exc)):
+            error_type = "missing_dependency"
+        elif "not found" in error_msg.lower() or isinstance(exc, FileNotFoundError):
+            error_type = "file_not_found"
+
+        diar_meta.update(
+            {
+                "status": "failed",
+                "requested": True,
+                "error": error_msg,
+                "error_type": error_type,
+            }
+        )
+        return transcript
 
 
 def transcribe_directory(
@@ -76,7 +196,8 @@ def transcribe_directory(
     )
 
     # Run the pipeline (modifies files on disk)
-    run_pipeline(app_cfg)
+    # Pass the config for diarization if enabled
+    run_pipeline(app_cfg, diarization_config=config if config.enable_diarization else None)
 
     # Load and return all transcripts
     json_dir = paths.json_dir
@@ -182,6 +303,13 @@ def transcribe_file(
     # Transcribe
     engine = TranscriptionEngine(asr_cfg)
     transcript = engine.transcribe_file(norm_wav)
+
+    # v1.1: Run diarization if enabled (skeleton for now)
+    transcript = _maybe_run_diarization(
+        transcript=transcript,
+        wav_path=norm_wav,
+        config=config,
+    )
 
     # Write outputs
     from . import writers

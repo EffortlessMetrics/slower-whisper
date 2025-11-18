@@ -55,10 +55,20 @@ emotion = [
     "transformers>=4.30.0",
 ]
 
-# Full audio enrichment (prosody + emotion, ~4GB additional)
+# Stage 2d: Speaker diarization (heavy ML, ~4GB additional)
+# Adds: pyannote.audio for speaker identification
+# Requires HF_TOKEN environment variable for model access
+diarization = [
+    "slower-whisper[enrich-basic]",
+    "pyannote.audio>=3.1.0",
+    "torch>=2.0.0",
+]
+
+# Full audio enrichment (prosody + emotion + diarization, ~4GB additional)
 full = [
     "slower-whisper[enrich-prosody]",
     "slower-whisper[emotion]",
+    "slower-whisper[diarization]",
 ]
 
 # Alias for backward compatibility
@@ -203,6 +213,7 @@ module = [
     "torch.*",
     "fastapi.*",
     "uvicorn.*",
+    "pyannote.*",
 ]
 ignore_missing_imports = true
 
@@ -223,6 +234,7 @@ markers = [
     "integration: marks tests as integration tests",
     "requires_gpu: marks tests that require GPU",
     "requires_enrich: marks tests that require enrichment dependencies",
+    "requires_diarization: marks tests that require pyannote.audio diarization extra",
 ]
 
 [tool.coverage.run]

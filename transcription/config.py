@@ -99,6 +99,13 @@ class TranscriptionConfig:
     vad_min_silence_ms: int = 500
     beam_size: int = 5
 
+    # v1.1+ diarization (L2) — opt-in
+    enable_diarization: bool = False
+    diarization_device: str = "auto"  # "cuda" | "cpu" | "auto"
+    min_speakers: int | None = None
+    max_speakers: int | None = None
+    overlap_threshold: float = 0.3  # internal; not exposed in CLI yet
+
     # Internal field to track which config values were explicitly set
     # Used by CLI merge logic to implement correct precedence
     _source_fields: set[str] = field(default_factory=set, init=False, repr=False)
@@ -187,6 +194,11 @@ class TranscriptionConfig:
             "skip_existing_json",
             "vad_min_silence_ms",
             "beam_size",
+            "enable_diarization",
+            "diarization_device",
+            "min_speakers",
+            "max_speakers",
+            "overlap_threshold",
         }
         filtered_data = {k: v for k, v in data.items() if k in valid_fields}
 

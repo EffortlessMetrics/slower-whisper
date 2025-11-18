@@ -6,7 +6,7 @@ from pathlib import Path
 from . import __version__ as PIPELINE_VERSION
 from . import audio_io, writers
 from .asr_engine import TranscriptionEngine
-from .config import AppConfig
+from .config import AppConfig, TranscriptionConfig
 from .models import Transcript
 
 
@@ -48,16 +48,23 @@ def _build_meta(
     }
 
 
-def run_pipeline(cfg: AppConfig) -> None:
+def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None = None) -> None:
     """
     Orchestrate the full pipeline:
     1) Ensure directories.
     2) Normalize raw audio to 16 kHz mono WAV.
     3) Transcribe normalized audio with Whisper.
-    4) Write JSON, TXT, and SRT outputs per file.
+    4) (v1.1) Optionally run diarization if diarization_config.enable_diarization=True.
+    5) Write JSON, TXT, and SRT outputs per file.
 
     If cfg.skip_existing_json is True, files that already have a JSON
     output will be skipped at the transcription step.
+
+    Args:
+        cfg: AppConfig (internal pipeline config).
+        diarization_config: Optional TranscriptionConfig with diarization settings.
+                           If provided and enable_diarization=True, diarization
+                           will run on each transcript before writing outputs.
     """
     paths = cfg.paths
 
@@ -107,6 +114,16 @@ def run_pipeline(cfg: AppConfig) -> None:
 
         # Attach metadata to transcript before writing JSON.
         transcript.meta = _build_meta(cfg, transcript, wav, duration)
+
+        # v1.1: Run diarization if enabled (skeleton for now)
+        if diarization_config and diarization_config.enable_diarization:
+            from .api import _maybe_run_diarization
+
+            transcript = _maybe_run_diarization(
+                transcript=transcript,
+                wav_path=wav,
+                config=diarization_config,
+            )
 
         writers.write_json(transcript, json_path)
         writers.write_txt(transcript, txt_path)

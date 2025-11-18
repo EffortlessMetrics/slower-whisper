@@ -8,7 +8,9 @@ def write_json(transcript: Transcript, out_path: Path) -> None:
     """
     Write transcript to JSON with a stable schema for downstream processing.
 
-    Includes audio_state field for segments containing enriched audio features.
+    Schema v2 includes:
+    - audio_state field for segments (v1.0+)
+    - speakers and turns arrays (v1.1+, optional)
     """
     data = {
         "schema_version": SCHEMA_VERSION,
@@ -28,6 +30,13 @@ def write_json(transcript: Transcript, out_path: Path) -> None:
             for s in transcript.segments
         ],
     }
+
+    # Add v1.1+ fields if present
+    if transcript.speakers is not None:
+        data["speakers"] = transcript.speakers
+    if transcript.turns is not None:
+        data["turns"] = transcript.turns
+
     out_path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -73,6 +82,8 @@ def load_transcript_from_json(json_path: Path) -> Transcript:
         language=data.get("language", ""),
         segments=segments,
         meta=data.get("meta"),
+        speakers=data.get("speakers"),  # v1.1+ speaker metadata (optional)
+        turns=data.get("turns"),  # v1.1+ turn structure (optional)
     )
 
     return transcript
