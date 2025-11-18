@@ -494,7 +494,7 @@ annotator = SemanticAnnotator(model="qwen2.5-vl-7b", device="cuda")
 annotations = annotator.run(transcript, chunk)
 ```
 
-**Chunk-level outputs:**
+**Chunk-level outputs (v2.0+ only):**
 
 ```json
 "chunks": [
@@ -502,7 +502,7 @@ annotations = annotator.run(transcript, chunk)
     "summary": "Customer expresses pricing concerns; agent offers alternatives.",
     "semantic_tags": ["objection", "pricing_discussion"],
     "annotations": {
-      "llm": [
+      "llm": [  // Reserved for v2.0+ semantic layer; empty in v1.x
         {
           "type": "interaction_pattern",
           "label": "objection_handling",
@@ -513,6 +513,8 @@ annotations = annotator.run(transcript, chunk)
   }
 ]
 ```
+
+**Note:** These fields are **not populated in v1.x** unless you write custom plugins.
 
 **Design constraints:**
 

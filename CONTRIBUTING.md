@@ -8,6 +8,7 @@ Whether you're fixing a bug, adding a feature, or improving documentation, this 
 
 ## Table of Contents
 
+- [Who This Project Is For](#who-this-project-is-for)
 - [Quick Start for Contributors](#quick-start-for-contributors)
 - [Development Environment Setup](#development-environment-setup)
 - [Project Structure](#project-structure)
@@ -22,6 +23,67 @@ Whether you're fixing a bug, adding a feature, or improving documentation, this 
 - [GPU/CUDA Development](#gpucuda-development)
 - [Getting Help](#getting-help)
 - [Frequently Asked Questions](#frequently-asked-questions)
+
+---
+
+## Who This Project Is For
+
+Before contributing, it's helpful to understand who slower-whisper serves and how we prioritize features:
+
+### Primary Users (v1.x Focus)
+
+**1. Infrastructure / Platform Engineers**
+- Building internal conversation processing systems
+- On-prem transcription stacks (compliance, security)
+- Multi-tenant platforms with conversation analytics
+
+**What they need:**
+- ✅ Stability, contracts, Docker/K8s deployment
+- ✅ Versioned JSON schema (build on it without fear)
+- ✅ BDD/IaC guarantees (infrastructure-grade quality)
+
+**2. Research Labs (Linguistics, HCI, Psychology, UX)**
+- Analyzing conversations for academic research
+- Prosody and emotion studies
+- Speaker interaction patterns
+
+**What they need:**
+- ✅ Accurate prosody/emotion features
+- ✅ Reproducible pipelines (same input → same output)
+- ✅ Export to research tools (Praat, ELAN)
+
+### Secondary Users (v1.2+)
+
+**3. LLM Application Developers**
+- Building conversation-aware LLM apps
+- RAG/vector search with acoustic metadata
+- Meeting summarization and action-item extraction
+
+**What they need:**
+- ✅ LangChain/LlamaIndex adapters
+- ✅ Prompt builder utilities
+- ✅ Easy chunking and formatting
+
+### Design Priorities
+
+When contributing, keep these priorities in mind:
+
+1. **Local-first always** — No cloud dependencies at runtime
+2. **Contracts over convenience** — Schema stability beats new features
+3. **Infrastructure users first** — Reliability over novelty
+4. **BDD scenarios are contracts** — Breaking them requires discussion
+
+**This is NOT:**
+- A consumer transcription app
+- A SaaS platform or cloud API
+- A "meeting notes" product
+
+**This IS:**
+- Infrastructure for building conversation-aware systems
+- "OpenTelemetry for audio conversations"
+- A stable foundation for production use
+
+See [VISION.md](VISION.md) for detailed positioning.
 
 ---
 
@@ -121,7 +183,7 @@ uv pip install pytest pytest-cov ruff mypy pre-commit
 # Run tests to ensure everything is working
 uv run pytest
 
-# Should show all tests passing (58+ tests)
+# Should show all tests passing (191 tests)
 ```
 
 ### Alternative: Using pip or poetry
@@ -222,7 +284,7 @@ uv run pytest -m "not slow"
 
 ### Test Suite Overview
 
-The project has 58+ tests across multiple categories:
+The project has 191 tests across multiple categories:
 
 | Category | Count | Description |
 |----------|-------|-------------|
@@ -231,7 +293,8 @@ The project has 58+ tests across multiple categories:
 | Prosody | 12 | Pitch, energy, rate extraction |
 | Integration | 8 | End-to-end pipeline tests |
 | Writers | 6 | JSON, TXT, SRT output |
-| Other | 1+ | Miscellaneous tests |
+| BDD Scenarios | 15+ | Behavioral acceptance tests |
+| Other | 119+ | Unit tests across all modules |
 
 **Expected result:** All tests should pass unless you're actively developing new features.
 

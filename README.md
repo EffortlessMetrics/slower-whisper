@@ -15,8 +15,8 @@ slower-whisper transforms audio conversations into **LLM-ready structured data**
 
 Unlike traditional transcription tools that output plain text, slower-whisper produces a rich, versioned JSON format with:
 
-- **Timestamped segments** with word-level alignment
-- **Speaker diarization** (who spoke when)
+- **Timestamped segments** (word-level alignment planned)
+- **Speaker diarization** (who spoke when - planned v1.1)
 - **Prosodic features** (pitch, energy, speaking rate, pauses)
 - **Emotional state** (valence, arousal, categorical emotions)
 - **Turn structure** and interaction patterns
@@ -628,7 +628,7 @@ slower-whisper produces a **stable, versioned JSON format** designed for program
         }
       },
       "annotations": {
-        "llm": []  // Optional Stage 3 semantic tags
+        "llm": []  // Reserved for v2.0+ semantic layer; empty in v1.x
       }
     }
   ],
@@ -795,7 +795,9 @@ To add tone tagging, diarization, or other analysis, write separate modules
 
 ## Testing
 
-slower-whisper includes a comprehensive test suite with **200+ passing tests** covering unit tests, integration tests, and BDD scenarios.
+slower-whisper includes a comprehensive test suite with **191 passing tests** (57% coverage) covering unit tests, integration tests, and BDD scenarios.
+
+For detailed quality thresholds and evaluation criteria, see [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md).
 
 ### Test Suite Overview
 
@@ -832,7 +834,7 @@ The project uses a multi-layered testing strategy:
 
 ### Test Coverage
 
-Current test coverage: **56% overall**, with high coverage on core modules:
+Current test coverage: **57% overall**, with high coverage on core modules:
 
 - `transcription/writers.py`: **100%** (JSON/TXT/SRT output)
 - `transcription/models.py`: **95%** (data models and schema)

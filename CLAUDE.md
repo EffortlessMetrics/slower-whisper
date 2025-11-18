@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Unlike traditional transcription tools that output plain text, slower-whisper produces a rich, versioned JSON format capturing:
 
-- **What was said** (text, timestamps, word-level alignment)
+- **What was said** (text, segment-level timestamps; word-level alignment planned)
 - **Who said it** (speaker diarization, turn structure) — *v1.1 priority*
 - **How it was said** (prosody, emotion, interaction patterns)
 - **Semantic context** (chunk summaries, intent tags) — *v1.3 optional*
