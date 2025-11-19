@@ -24,14 +24,14 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 Instead, please report security issues via one of these methods:
 
 1. **GitHub Security Advisories (Preferred):**
-   - Go to the [Security tab](https://github.com/yourusername/slower-whisper/security)
+   - Go to the [Security tab](https://github.com/EffortlessMetrics/slower-whisper/security)
    - Click "Report a vulnerability"
    - Fill out the private advisory form
 
-2. **Email:**
-   - Send to: `security@yourproject.com` (replace with actual email)
-   - Include "SECURITY" in the subject line
-   - Encrypt sensitive details with our PGP key if possible
+2. **Email (if GitHub Security Advisories unavailable):**
+   - Create an issue on the repository with minimal details
+   - Tag as "security" if not sensitive
+   - For sensitive issues, contact via GitHub profile email
 
 ### What to Include
 
@@ -86,7 +86,7 @@ pip install slower-whisper
 # pip install slower-whisper --require-hashes
 
 # Install from source (verify git tag)
-git clone https://github.com/yourusername/slower-whisper.git
+git clone https://github.com/EffortlessMetrics/slower-whisper.git
 cd slower-whisper
 git verify-tag v1.0.0  # Verify GPG signature
 pip install -e .
@@ -157,30 +157,57 @@ du -sh raw_audio/
 Models are automatically downloaded from:
 - **Whisper models:** `Systran/faster-whisper-*` (HuggingFace)
 - **Emotion models:** `audeering/*`, `ehcalabres/*` (HuggingFace)
+- **Diarization models:** `pyannote/speaker-diarization-3.1` (HuggingFace)
 
 **Security Measures:**
 - Models downloaded via HTTPS
-- Handled by trusted libraries (transformers, faster-whisper)
+- Handled by trusted libraries (transformers, faster-whisper, pyannote.audio)
 - Cached locally after first download
 
 **Model Cache Locations:**
-```bash
-# HuggingFace cache
-~/.cache/huggingface/
 
-# CTranslate2 cache
-~/.cache/ctranslate2/
+By default, slower-whisper configures:
+- `SLOWER_WHISPER_CACHE_ROOT` (default: `~/.cache/slower-whisper`)
+- `HF_HOME` → `$SLOWER_WHISPER_CACHE_ROOT/hf`
+- `TORCH_HOME` → `$SLOWER_WHISPER_CACHE_ROOT/torch`
+- `HF_HUB_CACHE` → `$HF_HOME/hub`
+
+Specific model caches:
+```bash
+~/.cache/slower-whisper/
+  ├── hf/          # HuggingFace hub cache (HF_HOME)
+  ├── torch/       # PyTorch cache (TORCH_HOME)
+  ├── whisper/     # Whisper model weights
+  ├── emotion/     # Emotion recognition models
+  └── diarization/ # Pyannote diarization models
 ```
 
-**To verify models:**
+**To verify and manage models:**
 
 ```bash
-# List downloaded models
-ls -lh ~/.cache/huggingface/hub/
+# Inspect cache locations and sizes
+slower-whisper cache --show
 
-# Clear cache if needed (will re-download)
-rm -rf ~/.cache/huggingface/hub/models--*
+# List downloaded HuggingFace models
+ls -lh ~/.cache/slower-whisper/hf/hub/
+
+# Clear specific cache (will re-download on next use)
+slower-whisper cache --clear whisper
+slower-whisper cache --clear emotion
+slower-whisper cache --clear diarization
+
+# Clear all caches
+slower-whisper cache --clear all
 ```
+
+**Custom cache location:**
+```bash
+# Set before running to override default location
+export SLOWER_WHISPER_CACHE_ROOT=/secure/models/cache
+slower-whisper transcribe
+```
+
+See [`docs/MODEL_CACHE.md`](docs/MODEL_CACHE.md) for detailed cache management and security considerations.
 
 ---
 
@@ -481,9 +508,9 @@ If you suspect a security breach:
 ## Security Resources
 
 ### Documentation
-- [SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md) - Detailed audit findings
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Secure development practices
-- [ERROR_HANDLING_AUDIT.md](ERROR_HANDLING_AUDIT.md) - Error handling security
+- [README.md](README.md) - Project overview and setup
+- [docs/INDEX.md](docs/INDEX.md) - Complete documentation index
 
 ### External Resources
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
@@ -500,15 +527,15 @@ If you suspect a security breach:
 
 ## Security Contacts
 
-- **Security Email:** security@yourproject.com (replace with actual)
-- **GitHub Security:** https://github.com/yourusername/slower-whisper/security
-- **General Issues:** https://github.com/yourusername/slower-whisper/issues
+- **GitHub Security:** https://github.com/EffortlessMetrics/slower-whisper/security/advisories
+- **General Issues:** https://github.com/EffortlessMetrics/slower-whisper/issues
+- **Maintainers:** See GitHub profile for contact options
 
 ---
 
 ## License
 
-This security policy is part of the Slower Whisper project and follows the same MIT license.
+This security policy is part of the slower-whisper project and follows the same Apache 2.0 license.
 
-**Last Updated:** 2025-11-15
+**Last Updated:** 2025-11-17
 **Policy Version:** 1.0

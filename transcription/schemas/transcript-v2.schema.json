@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/yourusername/slower-whisper/schemas/transcript-v2.json",
+  "$id": "https://github.com/EffotlessMetrics/slower-whisper/schemas/transcript-v2.json",
   "title": "Slower-Whisper Transcript Schema v2",
   "description": "Schema for transcribed audio with optional enriched audio features including prosody and emotion analysis",
   "type": "object",
@@ -21,6 +21,87 @@
       "description": "Language code reported by ASR (e.g., 'en', 'es', 'fr')",
       "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
       "examples": ["en", "es", "fr", "zh", "en-US"]
+    },
+    "speakers": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "description": "Per-speaker aggregates (v1.1+)",
+          "items": {
+            "type": "object",
+            "required": ["id", "total_speech_time", "num_segments"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^spk_[0-9]+$",
+                "description": "Normalized speaker ID (e.g., 'spk_0', 'spk_1')"
+              },
+              "label": {
+                "type": ["string", "null"],
+                "description": "Optional human-readable label for speaker"
+              },
+              "total_speech_time": {
+                "type": "number",
+                "minimum": 0.0,
+                "description": "Total speech time for this speaker in seconds"
+              },
+              "num_segments": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of segments attributed to this speaker"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      ],
+      "description": "Global speaker table (v1.1+, null if diarization not run)"
+    },
+    "turns": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "description": "Speaker turns (v1.1+)",
+          "items": {
+            "type": "object",
+            "required": ["id", "speaker_id", "start", "end", "segment_ids"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Turn ID (e.g., 'turn_0', 'turn_1')"
+              },
+              "speaker_id": {
+                "type": "string",
+                "pattern": "^spk_[0-9]+$",
+                "description": "Speaker ID for this turn"
+              },
+              "start": {
+                "type": "number",
+                "minimum": 0.0,
+                "description": "Turn start time in seconds"
+              },
+              "end": {
+                "type": "number",
+                "minimum": 0.0,
+                "description": "Turn end time in seconds"
+              },
+              "segment_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "List of segment IDs included in this turn"
+              },
+              "text": {
+                "type": "string",
+                "description": "Concatenated text from all segments in turn"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      ],
+      "description": "Turn structure grouping contiguous segments by speaker (v1.1+, null if diarization not run)"
     },
     "meta": {
       "type": ["object", "null"],
@@ -137,8 +218,29 @@
           "description": "Transcribed text for this segment"
         },
         "speaker": {
-          "type": ["string", "null"],
-          "description": "Optional speaker label for future diarization support"
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "description": "Speaker attribution for this segment (v1.1+)",
+              "required": ["id", "confidence"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^spk_[0-9]+$",
+                  "description": "Normalized speaker ID (e.g., 'spk_0')"
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0,
+                  "description": "Assignment confidence (overlap ratio)"
+                }
+              },
+              "additionalProperties": false
+            }
+          ],
+          "description": "Speaker attribution (null if diarization not run or segment unattributed)"
         },
         "tone": {
           "type": ["string", "null"],

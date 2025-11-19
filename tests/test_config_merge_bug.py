@@ -302,6 +302,9 @@ class TestConfigMergeBugFix:
                 vad_min_silence_ms=None,
                 beam_size=None,
                 skip_existing_json=None,
+                enable_diarization=None,  # Diarization fields added in v1.1
+                min_speakers=None,
+                max_speakers=None,
             )
 
             config = _config_from_transcribe_args(args)

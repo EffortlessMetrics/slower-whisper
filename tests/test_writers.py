@@ -167,3 +167,129 @@ def test_load_transcript_backward_compatibility(tmp_path: Path) -> None:
     assert loaded_transcript.file_name == "old_format.wav"
     assert loaded_transcript.segments[0].text == "old segment"
     assert loaded_transcript.segments[0].audio_state is None  # Should default to None
+
+
+def test_segment_speaker_dict_serialization(tmp_path: Path) -> None:
+    """Test serialization of v1.1 speaker dict structure in segments."""
+    # Create segment with speaker dict (v1.1 format)
+    seg = Segment(
+        id=0,
+        start=0.0,
+        end=2.0,
+        text="Hello world",
+        speaker={"id": "spk_0", "confidence": 0.95},
+    )
+    transcript = Transcript(file_name="test.wav", language="en", segments=[seg])
+
+    # Write and verify JSON
+    json_path = tmp_path / "test_speaker.json"
+    writers.write_json(transcript, json_path)
+
+    # Verify JSON structure
+    data = json.loads(json_path.read_text())
+    assert data["segments"][0]["speaker"]["id"] == "spk_0"
+    assert data["segments"][0]["speaker"]["confidence"] == 0.95
+
+    # Test round-trip
+    loaded = writers.load_transcript_from_json(json_path)
+    assert loaded.segments[0].speaker == {"id": "spk_0", "confidence": 0.95}
+
+
+def test_speakers_array_serialization(tmp_path: Path) -> None:
+    """Test serialization of speakers[] array (v1.1)."""
+    transcript = Transcript(
+        file_name="test.wav",
+        language="en",
+        segments=[],
+        speakers=[
+            {"id": "spk_0", "label": None, "total_speech_time": 5.5, "num_segments": 3},
+            {"id": "spk_1", "label": "Alice", "total_speech_time": 3.2, "num_segments": 2},
+        ],
+    )
+
+    json_path = tmp_path / "test_speakers.json"
+    writers.write_json(transcript, json_path)
+
+    # Verify JSON structure
+    data = json.loads(json_path.read_text())
+    assert len(data["speakers"]) == 2
+    assert data["speakers"][0]["id"] == "spk_0"
+    assert data["speakers"][0]["total_speech_time"] == 5.5
+    assert data["speakers"][0]["num_segments"] == 3
+    assert data["speakers"][1]["label"] == "Alice"
+
+    # Test round-trip
+    loaded = writers.load_transcript_from_json(json_path)
+    assert loaded.speakers is not None
+    assert len(loaded.speakers) == 2
+    assert loaded.speakers[0]["id"] == "spk_0"
+    assert loaded.speakers[1]["label"] == "Alice"
+
+
+def test_turns_array_serialization(tmp_path: Path) -> None:
+    """Test serialization of turns[] array (v1.1)."""
+    transcript = Transcript(
+        file_name="test.wav",
+        language="en",
+        segments=[],
+        turns=[
+            {
+                "id": "turn_0",
+                "speaker_id": "spk_0",
+                "start": 0.0,
+                "end": 3.5,
+                "segment_ids": [0, 1],
+                "text": "Hello there",
+            },
+            {
+                "id": "turn_1",
+                "speaker_id": "spk_1",
+                "start": 3.6,
+                "end": 5.0,
+                "segment_ids": [2],
+                "text": "Hi",
+            },
+        ],
+    )
+
+    json_path = tmp_path / "test_turns.json"
+    writers.write_json(transcript, json_path)
+
+    # Verify JSON structure
+    data = json.loads(json_path.read_text())
+    assert len(data["turns"]) == 2
+    assert data["turns"][0]["speaker_id"] == "spk_0"
+    assert data["turns"][0]["segment_ids"] == [0, 1]
+    assert data["turns"][0]["text"] == "Hello there"
+    assert data["turns"][1]["id"] == "turn_1"
+
+    # Test round-trip
+    loaded = writers.load_transcript_from_json(json_path)
+    assert loaded.turns is not None
+    assert len(loaded.turns) == 2
+    assert loaded.turns[0]["speaker_id"] == "spk_0"
+    assert loaded.turns[1]["text"] == "Hi"
+
+
+def test_null_speakers_and_turns_serialization(tmp_path: Path) -> None:
+    """Test that null speakers and turns serialize correctly (omitted from JSON)."""
+    transcript = Transcript(
+        file_name="test.wav",
+        language="en",
+        segments=[Segment(id=0, start=0.0, end=1.0, text="test")],
+        speakers=None,
+        turns=None,
+    )
+
+    json_path = tmp_path / "test_null.json"
+    writers.write_json(transcript, json_path)
+
+    # Verify JSON structure - speakers/turns keys should be omitted when None
+    data = json.loads(json_path.read_text())
+    assert "speakers" not in data  # None values are omitted
+    assert "turns" not in data  # None values are omitted
+
+    # Test round-trip - missing keys should load as None
+    loaded = writers.load_transcript_from_json(json_path)
+    assert loaded.speakers is None
+    assert loaded.turns is None

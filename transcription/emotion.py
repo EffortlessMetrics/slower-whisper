@@ -61,12 +61,15 @@ class EmotionRecognizer:
     def _load_dimensional_model(self) -> None:
         """Lazy load dimensional emotion model (valence/arousal/dominance)."""
         if self._dimensional_model is None:
+            from .cache import CachePaths
+
+            paths = CachePaths.from_env().ensure_dirs()
             logger.info(f"Loading dimensional model: {self.DIMENSIONAL_MODEL}")
             self._dimensional_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
-                self.DIMENSIONAL_MODEL
+                self.DIMENSIONAL_MODEL, cache_dir=str(paths.emotion_root)
             )
             self._dimensional_model = AutoModelForAudioClassification.from_pretrained(
-                self.DIMENSIONAL_MODEL
+                self.DIMENSIONAL_MODEL, cache_dir=str(paths.emotion_root)
             ).to(self._device)
             self._dimensional_model.eval()
             logger.info("Dimensional model loaded successfully")
@@ -74,12 +77,15 @@ class EmotionRecognizer:
     def _load_categorical_model(self) -> None:
         """Lazy load categorical emotion model."""
         if self._categorical_model is None:
+            from .cache import CachePaths
+
+            paths = CachePaths.from_env().ensure_dirs()
             logger.info(f"Loading categorical model: {self.CATEGORICAL_MODEL}")
             self._categorical_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
-                self.CATEGORICAL_MODEL
+                self.CATEGORICAL_MODEL, cache_dir=str(paths.emotion_root)
             )
             self._categorical_model = AutoModelForAudioClassification.from_pretrained(
-                self.CATEGORICAL_MODEL
+                self.CATEGORICAL_MODEL, cache_dir=str(paths.emotion_root)
             ).to(self._device)
             self._categorical_model.eval()
             logger.info("Categorical model loaded successfully")

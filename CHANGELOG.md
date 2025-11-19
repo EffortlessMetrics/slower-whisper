@@ -5,9 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2025-11-18
 
-## [1.0.0] - 2025-11-16
+This release adds **experimental speaker diarization** and **first-class LLM integration** to slower-whisper, enabling speaker-aware conversation analysis with LLMs.
+
+### Added
+
+#### Speaker Diarization (Experimental)
+- **v1.1 speaker diarization** (L2 enrichment layer) using pyannote.audio
+  - Optional `diarization` extra: `uv sync --extra diarization`
+  - Populates `segment.speaker` with speaker IDs (`"spk_0"`, `"spk_1"`, etc.)
+  - Builds global `speakers[]` table and `turns[]` structure in schema v2
+  - Normalized canonical speaker IDs backend-agnostic
+  - Overlap-based segment-to-speaker mapping with configurable threshold
+- **Diarization metadata** in `meta.diarization`:
+  - `status: "success" | "failed"` - Overall diarization result
+  - `requested: bool` - Whether diarization was enabled
+  - `backend: "pyannote.audio"` - Backend used for diarization
+  - `error_type: "auth" | "missing_dependency" | "file_not_found" | "unknown"` - Error category for debugging
+- **Turn structure** - Contiguous segments grouped by speaker:
+  - Each turn includes `speaker_id`, `start`, `end`, `segment_ids`, `text`
+  - Foundation for turn-level analysis (interruptions, questions, backchanneling)
+- **Speaker table** - Per-speaker aggregates:
+  - `id`, `first_seen`, `last_seen`, `total_speech_time`, `num_segments`
+  - Foundation for speaker-relative prosody baselines (v1.2)
+
+#### LLM Integration API
+- **`render_conversation_for_llm()`** - Convert transcripts to LLM-ready text:
+  - Modes: `"turns"` (speaker turns) or `"segments"` (individual segments)
+  - Optional speaker labels: `speaker_labels={"spk_0": "Agent", "spk_1": "Customer"}`
+  - Audio cue inclusion: `include_audio_cues=True` for prosody/emotion annotations
+  - Timestamp prefixes: `include_timestamps=True` for temporal context
+  - Metadata header with conversation stats
+- **`render_conversation_compact()`** - Token-efficient rendering for constrained contexts:
+  - Simple `Speaker: text` format without cues
+  - Automatic truncation with `max_tokens` parameter
+  - Preserves speaker labels and turn structure
+- **`render_segment()`** - Render individual segments with speaker/audio cues:
+  - Format: `"[Agent | calm tone, low pitch] Hello, how can I help you?"`
+  - Configurable cue inclusion and timestamp formatting
+- **Speaker label mapping** - Map raw IDs to human-readable labels across all rendering functions
+- **Graceful degradation** - Handles missing speakers, turns, or audio state without errors
+
+#### Examples and Documentation
+- **Working example scripts** in `examples/llm_integration/`:
+  - `summarize_with_diarization.py` - Complete end-to-end QA scoring with Claude
+  - Speaker role inference (heuristic talk time-based)
+  - Demonstrates rendering + LLM API integration
+- **Comprehensive test coverage** (21 new tests):
+  - Unit tests for all rendering functions
+  - Speaker label mapping validation
+  - Edge case handling (empty transcripts, missing speakers, no turns)
+  - Graceful degradation verification
+- **Documentation**:
+  - `docs/SPEAKER_DIARIZATION.md` - Complete diarization implementation guide
+  - `docs/LLM_PROMPT_PATTERNS.md` - Reference prompts and rendering strategies
+  - `docs/TESTING_STRATEGY.md` - Updated with synthetic fixtures methodology
+  - `examples/llm_integration/README.md` - LLM integration guide with alternative providers
+  - Updated `README.md` with 5-minute quickstart and LLM integration section
+
+### Improved
+- **CLI help text** now references docs for diarization setup (`docs/SPEAKER_DIARIZATION.md`)
+- **`--version` flag** added to main CLI
+- **README structure** - Added 5-minute quickstart and LLM cross-links
+- **docs/INDEX.md** - Enhanced LLM integration flow with new examples
+
+### Fixed
+- **Speaker type consistency** - All speaker fields use string IDs throughout schema
+- **Linting** - Fixed module-level import order issues with proper ruff configuration
+
+### Changed
+- Schema v2 remains backward compatible:
+  - `speakers` and `turns` are optional, default to `null`
+  - Existing v1 transcripts still load correctly
+  - Diarization disabled by default (`--enable-diarization` required)
+
+## [1.0.0] - 2025-11-17
 
 This release transforms slower-whisper from a "well-built power tool" into a **production-ready library** with a clean public API, unified CLI interface, and comprehensive audio enrichment capabilities.
 
@@ -381,7 +454,7 @@ Future breaking changes (if any) will be:
 
 ## Version History
 
-### [1.0.0] - 2025-11-16
+### [1.0.0] - 2025-11-17
 Production release with public API, unified CLI, and audio enrichment system.
 
 ### [0.1.0] - 2025-11-14

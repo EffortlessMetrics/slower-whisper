@@ -4,13 +4,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**slower-whisper** is a local audio transcription pipeline with optional audio feature enrichment. It runs entirely on your machine (NVIDIA GPU recommended) and processes audio through a two-stage pipeline:
+**slower-whisper** is a **local-first conversation signal engine** that turns audio into **LLM-ready structured data**.
 
-**Stage 1 (Transcription)**: Uses faster-whisper to transcribe audio to structured JSON, TXT, and SRT formats.
+Unlike traditional transcription tools that output plain text, slower-whisper produces a rich, versioned JSON format capturing:
 
-**Stage 2 (Audio Enrichment)**: Optionally extracts prosodic features (pitch, energy, speech rate, pauses) and emotional features (valence/arousal/dominance, categorical emotions) that text-only models cannot infer.
+- **What was said** (text, segment-level timestamps; word-level alignment planned)
+- **Who said it** (speaker diarization, turn structure) — *v1.1 priority*
+- **How it was said** (prosody, emotion, interaction patterns)
+- **Semantic context** (chunk summaries, intent tags) — *v1.3 optional*
 
-The core goal is to encode audio-only information into transcripts so text-only LLMs can "hear" acoustic features.
+### Positioning
+
+slower-whisper is **infrastructure, not a product**:
+
+- **Not** "another transcription app" or meeting bot
+- **Not** a cloud API or SaaS platform
+- **Is** local-first, open-source conversation intelligence infrastructure
+- **Is** "OpenTelemetry for audio conversations"
+
+See [VISION.md](VISION.md) for strategic positioning and [ROADMAP.md](ROADMAP.md) for development timeline.
+
+### Layered Architecture (L0-L4)
+
+- **L0: Ingestion** — audio normalization, chunking, hashing
+- **L1: ASR (Whisper)** — fast, deterministic transcription via faster-whisper
+- **L2: Acoustic Enrichment** — speaker diarization, prosody, emotion, turns (modular, cacheable)
+- **L3: Semantic Enrichment** — optional local SLM annotations (chunk summaries, intent tags)
+- **L4: Task Outputs** — meeting notes, QA, coaching (consumer applications)
+
+**Key principle**: Each layer adds value without blocking earlier layers. All layers independently cacheable and resumable.
 
 ## Package Management
 
@@ -36,6 +58,81 @@ uv sync --extra dev
 - **dev**: full + testing/linting/docs tools
 
 Alternative pip installation: `pip install -e ".[dev]"`
+
+## Development Priorities (v1.1 Focus)
+
+**Current Status**: v1.0.0 shipped (production-ready transcription + basic enrichment)
+
+**Next Milestone**: v1.1.0 — Speaker & Schema Lock-In (Q1 2026)
+
+### High-Priority Features
+
+1. **Speaker Diarization (L2)**
+   - Integrate WhisperX-style diarization (Whisper + pyannote.audio)
+   - Populate `segment.speaker = {id, confidence, alternatives}`
+   - Build global `speakers[]` table
+   - Module: `transcription/diarization.py`
+
+2. **Turn Structure (L2)**
+   - Group contiguous segments by speaker into `turns[]`
+   - Add turn-level metadata (question_count, interruptions)
+   - Module: `transcription/turns.py`
+
+3. **Speaker Stats (L2)**
+   - Per-speaker aggregates (talk_time, num_turns, interruptions)
+   - Sentiment summaries per speaker
+   - Module: extends `transcription/turns.py`
+
+4. **Schema v2 Finalization**
+   - Lock in core fields contract (no meaning changes within v2.x)
+   - Create JSON Schema (draft-07) validation file
+   - Document deprecation policy
+
+5. **Evaluation Harness**
+   - Build testbed with 50-200 labeled segments
+   - Task-level tests: speaker-aware summarization, action items, conflict detection
+   - LLM-as-judge scoring: text vs text+speaker vs text+speaker+stats
+   - Module: `benchmarks/eval_speakers.py`
+
+### Design Constraints
+
+**Schema Stability**:
+- Core fields (`audio`, `meta`, `speakers`, `segments`, `turns`) are **locked** in v2
+- Only add optional fields; never remove or rename core fields
+- Breaking changes require v3 and migration tooling
+
+**Modularity**:
+- L2 features are opt-in via config flags (`--enable-diarization`)
+- Never re-run ASR when enrichment changes
+- Each feature caches independently by hash
+
+**Local-First**:
+- No cloud dependencies at runtime
+- All models run locally (pyannote, wav2vec2, etc.)
+- Only model weights download (one-time, HuggingFace cache)
+
+### When Building v1.1 Features
+
+**DO**:
+- Add new optional fields to `Segment` or `Transcript` dataclasses
+- Write BDD scenarios for new behaviors
+- Update schema documentation
+- Provide LLM-friendly "views" (e.g., `to_turn_view()`)
+- Cache new passes separately by config hash
+
+**DON'T**:
+- Change meaning of existing fields
+- Remove or rename core schema fields
+- Add cloud API dependencies
+- Break backward compatibility with v1.0 JSON
+
+**Test Rigor**:
+- BDD scenario for correct speaker counts
+- Synthetic 2-speaker audio → validate diarization
+- Real-world confusion matrix (AMI Meeting Corpus subset)
+- LLM-as-judge sanity check (speaker labeling consistency)
+
+See [ROADMAP.md](ROADMAP.md) for complete v1.1 spec and deliverables.
 
 ## Common Commands
 

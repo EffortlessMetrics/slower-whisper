@@ -1,24 +1,45 @@
 # Documentation Index
 
-Welcome to the slower-whisper documentation. This page provides a complete map of all available documentation.
+Welcome to the **slower-whisper** documentation — your guide to local-first conversation intelligence infrastructure.
+
+---
+
+## What is slower-whisper?
+
+slower-whisper is a **local conversation signal engine** that turns audio into **LLM-ready structured data**, capturing not just *what* was said, but ***how*** it was said (prosody, emotion, speaker dynamics, interaction patterns).
+
+**Key differentiators:**
+
+- 🔒 **Local-first** — runs entirely on your machine, no cloud dependency
+- 📋 **Stable JSON schema** — versioned contracts for production use
+- 🧩 **Modular architecture** — use only the features you need
+- 🧪 **Contract-driven** — BDD scenarios enforce behavioral stability
+- 🤖 **LLM-native** — designed for RAG, summarization, analysis
+
+See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROADMAP.md) for development timeline.
 
 ---
 
 ## Quick Navigation
 
 **New to slower-whisper?**
-1. Start with the [README](../README.md) for project overview
-2. Follow the [Quickstart Guide](QUICKSTART.md) for your first transcription
-3. Check [API Quick Reference](../API_QUICK_REFERENCE.md) for function usage
+
+1. Start with [README](../README.md) — project overview, installation, architecture
+2. Read [VISION.md](../VISION.md) — understand the "why" and positioning
+3. Follow [Quickstart Guide](QUICKSTART.md) — your first transcription
+4. Check [API Quick Reference](../API_QUICK_REFERENCE.md) — function usage
 
 **Need help?**
-- [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
-- [ARCHITECTURE](ARCHITECTURE.md) - System design and structure
-- [Examples](../examples/) - Working code examples
+
+- [Troubleshooting Guide](TROUBLESHOOTING.md) — common issues and solutions
+- [ARCHITECTURE](ARCHITECTURE.md) — layered design (L0-L4)
+- [Examples](../examples/) — working code examples
 
 **Want to contribute?**
-- [Contributing Guide](../CONTRIBUTING.md) - How to contribute
-- [CLAUDE.md](../CLAUDE.md) - AI assistant instructions for working with this codebase
+
+- [Contributing Guide](../CONTRIBUTING.md) — how to contribute
+- [ROADMAP.md](../ROADMAP.md) — planned features and priorities
+- [CLAUDE.md](../CLAUDE.md) — AI assistant instructions for this codebase
 
 ---
 
@@ -29,6 +50,8 @@ Welcome to the slower-whisper documentation. This page provides a complete map o
 | Document | Description | Audience |
 |----------|-------------|----------|
 | [README.md](../README.md) | Project overview, features, installation, and quick start | Everyone |
+| [VISION.md](../VISION.md) | Strategic vision, positioning, and long-term goals | Everyone interested in the "why" |
+| [ROADMAP.md](../ROADMAP.md) | Detailed development timeline and planned features (v1.1-v3.0) | Contributors, users, stakeholders |
 | [CHANGELOG.md](../CHANGELOG.md) | Version history and release notes | All users |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | How to contribute to the project | Contributors |
 | [SECURITY.md](../SECURITY.md) | Security policy and vulnerability reporting | Security-conscious users |
@@ -68,6 +91,9 @@ Welcome to the slower-whisper documentation. This page provides a complete map o
 | [AUDIO_ENRICHMENT.md](AUDIO_ENRICHMENT.md) | Stage 2 audio feature extraction | Prosody, emotion, workflow |
 | [PROSODY.md](PROSODY.md) | Prosodic feature extraction details | Pitch, energy, rate, pauses |
 | [PROSODY_QUICK_REFERENCE.md](PROSODY_QUICK_REFERENCE.md) | Quick reference for prosody features | API, thresholds, examples |
+| [SPEAKER_DIARIZATION.md](SPEAKER_DIARIZATION.md) | Speaker diarization design and implementation | Who spoke when, turn structure |
+| [LLM_PROMPT_PATTERNS.md](LLM_PROMPT_PATTERNS.md) | Reference prompts for LLM conversation analysis | Prompts, rendering, use cases |
+| [MODEL_CACHE.md](MODEL_CACHE.md) | Model cache management | Cache location, cleanup, troubleshooting |
 
 ### System Documentation
 
@@ -75,6 +101,16 @@ Welcome to the slower-whisper documentation. This page provides a complete map o
 |----------|-------------|----------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, architecture, and internals | Understanding the codebase |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems and solutions | Encountering errors |
+
+### Testing & Quality Assurance
+
+| Document | Description | Topics |
+|----------|-------------|--------|
+| [TESTING_STRATEGY.md](TESTING_STRATEGY.md) | Quality thresholds and testing strategy | Test categories, metrics, "good enough" thresholds, datasets |
+| [BDD_IAC_LOCKDOWN.md](BDD_IAC_LOCKDOWN.md) | BDD and IaC as first-class contracts | Behavioral contracts, IaC validation, verification |
+| [BDD_IAC_IMPLEMENTATION_SUMMARY.md](BDD_IAC_IMPLEMENTATION_SUMMARY.md) | Implementation summary and usage guide | Status, scripts, next steps |
+| [BDD_IAC_PYTHON_CLI.md](BDD_IAC_PYTHON_CLI.md) | Python CLI verification tooling | Cross-platform verification, testing infrastructure |
+| [API_BDD_CONTRACT.md](API_BDD_CONTRACT.md) | FastAPI service behavioral contract | REST API BDD scenarios, black-box testing, smoke and functional tests |
 
 ---
 
@@ -158,9 +194,10 @@ These documents are historical artifacts from the development process and transf
 3. [Architecture](ARCHITECTURE.md) - Understanding the design
 
 ### "I want to analyze enriched transcripts with LLMs"
-1. [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Understand the rendering
-2. [LLM Integration Examples](../examples/llm_integration/README.md) - Example code
-3. [Examples Index](../examples/llm_integration/INDEX.md) - Catalog of examples
+1. [LLM Prompt Patterns](LLM_PROMPT_PATTERNS.md) - Reference prompts and rendering strategies
+2. [LLM Integration Examples](../examples/llm_integration/README.md) - Working scripts (summarization, QA scoring, coaching)
+3. [README Python API](../README.md#llm-integration-analyze-conversations) - Quick API example with speaker labels
+4. [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Understand the prosody/emotion features
 
 ### "I want to deploy this in production"
 1. [Docker Guide](../DOCKER.md) - Containerization
@@ -171,6 +208,7 @@ These documents are historical artifacts from the development process and transf
 1. [Contributing Guide](../CONTRIBUTING.md) - Process and standards
 2. [CLAUDE.md](../CLAUDE.md) - Codebase guidance
 3. [Architecture](ARCHITECTURE.md) - System design
+4. [BDD/IaC Contracts](BDD_IAC_LOCKDOWN.md) - Testing and deployment standards
 
 ### "I want to understand the system design"
 1. [Architecture](ARCHITECTURE.md) - Complete architecture overview
@@ -251,6 +289,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2025-11-15
+**Last Updated:** 2025-11-17
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.

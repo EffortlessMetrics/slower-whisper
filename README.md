@@ -1,24 +1,54 @@
-# slower-whisper (ffmpeg + faster-whisper)
+# slower-whisper
 
-![Tests](https://img.shields.io/badge/tests-200%20passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-56%25-yellow)
+**Local-first conversation signal engine for LLMs**
+
+![Version](https://img.shields.io/badge/version-1.1.0--dev-blue)
+![Tests](https://img.shields.io/badge/tests-267%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-57%25-yellow)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+![Status](https://img.shields.io/badge/status-production%20ready-success)
 
-This project provides a small, structured codebase for running a fully local
-transcription pipeline on a machine with an NVIDIA GPU.
+## What is slower-whisper?
 
-It:
+slower-whisper transforms audio conversations into **LLM-ready structured data** that captures not just what was said, but **how it was said**.
 
-- Normalizes audio in `raw_audio/` to 16 kHz mono WAV in `input_audio/` using `ffmpeg`.
-- Transcribes using Whisper via `faster-whisper` on CUDA.
-- Writes:
-  - `transcripts/<name>.txt` – timestamped text.
-  - `transcripts/<name>.srt` – subtitles.
-  - `whisper_json/<name>.json` – structured JSON for analysis.
+Unlike traditional transcription tools that output plain text, slower-whisper produces a rich, versioned JSON format with:
 
-JSON is the canonical output format and is designed to be extended later
-with tone, speaker, and other annotations.
+- **Timestamped segments** (word-level alignment planned)
+- **Speaker diarization** (v1.1 experimental - who spoke when, speaker attribution per segment)
+- **Prosodic features** (pitch, energy, speaking rate, pauses)
+- **Emotional state** (valence, arousal, categorical emotions)
+- **Turn structure** and interaction patterns
+- **LLM-friendly text renderings** of acoustic features
+
+**The result**: A text-only LLM can now "hear" key aspects of audio — tone, emphasis, hesitation, excitement — that aren't captured in transcription alone.
+
+## Why slower-whisper?
+
+### The Problem
+
+Standard transcription gives you words, but misses:
+
+- **How** someone said something (sarcasm, uncertainty, stress)
+- **Acoustic cues** that change meaning ("I'm fine" said flatly vs. enthusiastically)
+- **Interaction patterns** (interruptions, pauses, who dominated the conversation)
+
+Cloud "conversation intelligence" APIs solve this but are:
+
+- **Closed-source** and opaque
+- **Cloud-only** (privacy and latency concerns)
+- **Text-centric** (limited acoustic feature access)
+
+### The Solution
+
+slower-whisper is a **local-first, open-source conversation signal engine** that:
+
+✅ **Runs entirely locally** (NVIDIA GPU recommended, CPU fallback supported)
+✅ **Produces stable, versioned JSON** you can build on
+✅ **Modular architecture** — use only the features you need
+✅ **Contract-driven** — BDD scenarios guarantee behavioral stability
+✅ **LLM-native** — designed for RAG, summarization, analysis, and prompt engineering
 
 ## Quick Start
 
@@ -40,6 +70,73 @@ uv run slower-whisper
 Place your audio files in `raw_audio/` and find transcripts in `whisper_json/`, `transcripts/`.
 
 See detailed instructions below for setup, configuration, and advanced features.
+
+## Architecture Overview
+
+slower-whisper uses a **layered enrichment pipeline** where each layer adds progressively richer conversational context:
+
+### Layer 0 – Ingestion
+- Audio normalization (ffmpeg: 16 kHz mono WAV)
+- Format detection and chunking
+- Audio hashing for caching
+
+### Layer 1 – ASR (Whisper)
+- Fast, deterministic transcription via faster-whisper
+- Timestamped segments with confidence scores
+- Word-level alignment (optional, via WhisperX integration planned)
+- **Fully local, GPU-accelerated**
+
+### Layer 2 – Acoustic & Structural Enrichment (local, modular)
+Optional enrichment passes that never re-run ASR:
+
+**Speaker Diarization** (v1.1 - Experimental)
+- Who spoke when, per segment + global speakers table
+- Normalized canonical speaker IDs (`spk_0`, `spk_1`, ...)
+- Turn structure grouping contiguous segments by speaker
+- Foundation for speaker-relative feature normalization (v1.2)
+- **Status:** Functional but experimental; requires HuggingFace token and pyannote.audio dependency
+
+**Prosody Extraction** (current)
+- Pitch (mean, range, contour)
+- Energy (loudness)
+- Speaking rate (syllables/sec)
+- Pause statistics
+
+**Emotion Recognition** (current)
+- Dimensional: valence (positive/negative), arousal (calm/excited)
+- Categorical: happy, sad, angry, frustrated, etc.
+
+**Turn & Interaction Structure** (v1.2 planned)
+- Speaker statistics (talk time, turn counts)
+- Overlap/interruption detection
+- Question/answer linking
+- Backchanneling and turn-taking analysis
+
+### Layer 3 – Semantic Enrichment (optional, SLM/MM)
+Small local multimodal models for higher-level insights:
+
+- Chunk-level summaries
+- Topic segmentation
+- Intent classification (decision, objection, risk)
+- Sarcasm/irony detection
+
+**Design principle**: L3 is **opt-in**, chunked (60-120s), and never blocks the core pipeline.
+
+### Layer 4 – Task-Specific Outputs
+Use the enriched JSON for downstream tasks:
+
+- Meeting notes and action item extraction
+- Coaching feedback and QA scoring
+- Sentiment trajectory analysis
+- RAG/vector search with acoustic context
+
+**Key guarantees:**
+- 🔒 **Cacheable & resumable** at every layer
+- 🔒 **Versioned JSON schema** with stability contracts
+- 🔒 **BDD scenarios** enforce behavioral invariants
+- 🔒 **Local-first** — no data leaves your machine
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete design details.
 
 ## Requirements
 
@@ -118,10 +215,11 @@ The project offers modular dependencies based on what you need:
 | Group | Size | What's Included | When to Use |
 |-------|------|----------------|-------------|
 | **base** (default) | ~2.5GB | faster-whisper only | Just need transcription |
+| **diarization** | +1.5GB | pyannote.audio for speaker diarization (v1.1 experimental) | Speaker attribution and turn structure |
 | **enrich-basic** | +1GB | soundfile, numpy, librosa | Basic prosody features |
 | **enrich-prosody** | +36MB | Praat/Parselmouth | Research-grade pitch analysis |
 | **emotion** | +4GB | torch, transformers | Emotion recognition |
-| **full** | +4GB total | All enrichment features | Complete audio analysis |
+| **full** | +4GB total | All enrichment features (not including diarization) | Complete audio analysis |
 | **dev** | +full + tools | Testing, linting, docs | Contributing to project |
 
 **Install specific groups:**
@@ -132,6 +230,9 @@ uv sync --extra enrich-prosody
 
 # Just emotion (no prosody)
 uv sync --extra emotion
+
+# Speaker diarization (v1.1 experimental)
+uv sync --extra diarization
 
 # Basic enrichment only
 uv sync --extra enrich-basic
@@ -261,6 +362,54 @@ For detailed configuration documentation, see:
 
 The project provides both **Command-Line** and **Python API** interfaces.
 
+### Usage Profiles
+
+Choose your installation and feature set based on your needs:
+
+| Profile | Install Command | Enabled Features | Typical Flags | Model Cache Size |
+|---------|----------------|------------------|---------------|------------------|
+| **Transcription only** | `uv sync` | ASR (faster-whisper) | `slower-whisper transcribe` | ~2.5GB |
+| **Transcription + prosody/emotion** | `uv sync --extra full` | ASR + acoustic features | `--enable-prosody --enable-emotion` | ~6.5GB |
+| **Full conversation signals** | `uv sync --extra full --extra diarization` | ASR + acoustic + speaker diarization | `--enable-diarization --min-speakers N --max-speakers M` | ~8GB |
+
+**Notes:**
+- All profiles run **entirely locally** (no cloud dependencies at runtime)
+- GPU recommended for diarization (pyannote.audio is compute-intensive), CPU fallback supported
+- Diarization requires HuggingFace token: `export HF_TOKEN=hf_...`
+- See [Model Cache Management](#model-cache-management) for cache location and cleanup
+
+### 5-Minute Quickstart (Transcription Only)
+
+Get your first transcripts in 5 minutes:
+
+```bash
+# 1. Clone and install
+git clone https://github.com/EffortlessMetrics/slower-whisper.git
+cd slower-whisper
+uv sync
+
+# 2. Add your audio file
+mkdir -p raw_audio
+cp /path/to/your_audio.wav raw_audio/
+
+# 3. Transcribe!
+uv run slower-whisper transcribe
+
+# 4. View results
+ls whisper_json/    # Structured JSON with segments
+ls transcripts/     # Human-readable TXT and SRT
+```
+
+**What you get:**
+- `whisper_json/your_audio.json` - Rich structured data with timestamps, confidence scores
+- `transcripts/your_audio.txt` - Clean text output
+- `transcripts/your_audio.srt` - Subtitle file
+
+**Next steps:**
+- Analyze with LLMs: See [LLM Integration](#llm-integration-analyze-conversations) below
+- Add prosody/emotion: `uv sync --extra full && slower-whisper enrich`
+- Add speaker diarization: See [docs/SPEAKER_DIARIZATION.md](docs/SPEAKER_DIARIZATION.md)
+
 ### Unified CLI (Recommended)
 
 The modern CLI uses subcommands for clarity:
@@ -294,12 +443,110 @@ uv run slower-whisper enrich \
   --device cpu
 ```
 
+#### Speaker Diarization (v1.1 - Experimental)
+
+**Status:** Functional but experimental. Use for testing and feedback; may change in v1.2.
+
+```bash
+# Install diarization dependencies (one-time setup)
+uv sync --extra diarization
+
+# Set HuggingFace token (after accepting pyannote model license)
+export HF_TOKEN=hf_...  # Get from https://huggingface.co/settings/tokens
+
+# Run transcription with diarization enabled
+# Note: Diarization auto-selects GPU if available, otherwise CPU
+uv run slower-whisper transcribe \
+  --enable-diarization \
+  --min-speakers 2 \
+  --max-speakers 4
+
+# Or programmatically:
+from transcription import transcribe_directory, TranscriptionConfig, DiarizationConfig
+
+config = TranscriptionConfig(
+    model="large-v3",
+    diarization=DiarizationConfig(
+        enabled=True,
+        min_speakers=2,
+        max_speakers=4
+    )
+)
+transcripts = transcribe_directory("/path/to/project", config)
+```
+
+**What you get:**
+
+- `segment.speaker = {"id": "spk_0", "confidence": 0.87}` - Per-segment speaker assignment
+- `speakers[]` table - Global speaker metadata (first/last seen, total speech time)
+- `turns[]` structure - Contiguous segments grouped by speaker
+- `meta.diarization` - Status, backend, and error information
+
+**Requirements:**
+
+- HuggingFace account (free) with accepted pyannote.audio model license
+- `HF_TOKEN` environment variable or `~/.cache/huggingface/token`
+- GPU recommended (pyannote.audio is resource-intensive)
+
+**Known Limitations (v1.1 experimental):**
+
+- Optimized for 2-4 speakers; performance degrades with >4 speakers
+- No support for overlapping speech detection (planned v1.2)
+- Speaker names/labels not supported yet (identifiers only)
+- See [`docs/SPEAKER_DIARIZATION.md`](docs/SPEAKER_DIARIZATION.md) for detailed design and known issues
+
+#### Model Cache Management
+
+slower-whisper caches large model files (Whisper weights, pyannote diarization models, emotion recognition models) to avoid redownloading on each run.
+
+**Default cache location:**
+
+```text
+~/.cache/slower-whisper/
+  ├── hf/          # HuggingFace hub cache (HF_HOME)
+  ├── torch/       # PyTorch cache (TORCH_HOME)
+  ├── whisper/     # Whisper model weights
+  ├── emotion/     # Emotion recognition models
+  └── diarization/ # Pyannote diarization models
+```
+
+**Inspect cache:**
+
+```bash
+uv run slower-whisper cache --show
+```
+
+**Clear cache:**
+
+```bash
+# Clear all caches
+uv run slower-whisper cache --clear all
+
+# Clear specific cache
+uv run slower-whisper cache --clear whisper
+uv run slower-whisper cache --clear emotion
+uv run slower-whisper cache --clear diarization
+```
+
+**Custom cache location:**
+
+```bash
+# Set before running (or add to shell profile)
+export SLOWER_WHISPER_CACHE_ROOT=/data/models/slower-whisper
+uv run slower-whisper transcribe
+```
+
+**Important:** Importing the `transcription` package automatically configures cache paths and sets `HF_HOME`, `TORCH_HOME`, and `HF_HUB_CACHE` environment variables if not already set. To override these defaults, set the environment variables **before** importing or running slower-whisper.
+
+See [`docs/MODEL_CACHE.md`](docs/MODEL_CACHE.md) for detailed cache management documentation, including Docker/CI integration.
+
 #### View help
 
 ```bash
 uv run slower-whisper --help
 uv run slower-whisper transcribe --help
 uv run slower-whisper enrich --help
+uv run slower-whisper cache --help
 ```
 
 ### Python API
@@ -371,6 +618,42 @@ transcript = load_transcript("transcript.json")
 transcript.segments[0].text = "Corrected text"
 save_transcript(transcript, "corrected.json")
 ```
+
+#### LLM Integration (Analyze Conversations)
+
+slower-whisper includes utilities to render transcripts as LLM-ready text with speaker labels and audio cues:
+
+```python
+from transcription import load_transcript, render_conversation_for_llm
+
+# Load transcript with diarization
+transcript = load_transcript("whisper_json/support_call.json")
+
+# Render for LLM consumption with speaker labels
+context = render_conversation_for_llm(
+    transcript,
+    mode="turns",  # or "segments"
+    include_audio_cues=True,
+    speaker_labels={"spk_0": "Agent", "spk_1": "Customer"}
+)
+
+# Send to LLM (Claude, GPT, etc.)
+# context contains: "[Agent | calm tone] Hello, how can I help you?"
+#                   "[Customer | frustrated tone, high pitch] I can't log in..."
+```
+
+**Resources:**
+- **[`docs/LLM_PROMPT_PATTERNS.md`](docs/LLM_PROMPT_PATTERNS.md)** - Comprehensive guide to LLM prompting with slower-whisper data
+- **[`examples/llm_integration/`](examples/llm_integration/)** - Working examples (summarization, coaching, QA scoring)
+- **API functions:** `render_conversation_for_llm()`, `render_conversation_compact()`, `render_segment()`
+
+**Common use cases:**
+- Meeting summarization with speaker attribution
+- Call quality analysis and coaching feedback
+- Sentiment tracking per speaker
+- Action item extraction with timestamps
+
+See the examples for complete, runnable scripts.
 
 ### REST API Service
 
@@ -468,50 +751,98 @@ internet access to fetch the weights.
 pipeline.** All transcription runs locally on your machine; only the model
 weights are fetched from the internet on first use.
 
-## JSON schema
+## JSON Schema v2 — Stable, Versioned Contract
 
-Each JSON file looks like:
+slower-whisper produces a **stable, versioned JSON format** designed for programmatic consumption by LLMs and analytics tools.
+
+### Current Schema (v2.0)
 
 ```json
 {
   "schema_version": 2,
-  "file": "meeting1.wav",
-  "language": "en",
-  "meta": {
-    "generated_at": "2025-11-15T03:21:00Z",
-    "audio_file": "meeting1.wav",
-    "audio_duration_sec": 3120.5,
-    "model_name": "large-v3",
-    "device": "cuda",
-    "compute_type": "float16",
-    "beam_size": 5,
-    "vad_min_silence_ms": 500,
-    "language_hint": "en",
-    "task": "transcribe",
-    "pipeline_version": "1.0.0",
-    "root": "C:/transcription_toolkit"
+  "audio": {
+    "id": "sha256:abc123...",
+    "path": "meeting.wav",
+    "duration_sec": 3120.5,
+    "sample_rate": 16000,
+    "channels": 1
   },
+  "meta": {
+    "pipeline_version": "1.0.0",
+    "language": "en",
+    "asr_model": "faster-whisper-large-v3",
+    "enrichment": {
+      "prosody": { /* config */ },
+      "emotion": { /* config */ }
+    }
+  },
+  "speakers": [
+    {
+      "id": "spk_0",
+      "label": "Speaker A",
+      "role_hint": "agent",
+      "cluster_confidence": 0.93
+    }
+  ],
   "segments": [
     {
-      "id": 0,
-      "start": 0.0,
-      "end": 4.2,
-      "text": "Okay, let's get started with today's agenda.",
-      "speaker": null,
-      "tone": null,
-      "audio_state": null
+      "id": 23,
+      "start": 123.45,
+      "end": 129.30,
+      "text": "I'm not sure this pricing works for us.",
+      "words": [
+        {"text": "I'm", "start": 123.45, "end": 123.80},
+        {"text": "not", "start": 123.81, "end": 124.12}
+      ],
+      "speaker": {
+        "id": "spk_1",
+        "confidence": 0.86
+      },
+      "audio_state": {
+        "prosody": {
+          "pitch_mean_hz": 195.2,
+          "pitch_contour": "rising",
+          "energy_rms": 0.24,
+          "speech_rate_wps": 3.1,
+          "pause_before_ms": 420
+        },
+        "emotion": {
+          "valence": 0.35,
+          "arousal": 0.68,
+          "label": "concerned",
+          "confidence": 0.78
+        },
+        "interaction": {
+          "is_question": true,
+          "is_overlap": false
+        }
+      },
+      "annotations": {
+        "llm": []  // Reserved for v2.0+ semantic layer; empty in v1.x
+      }
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn_17",
+      "speaker_id": "spk_1",
+      "segment_ids": [23, 24],
+      "start": 123.45,
+      "end": 140.10
     }
   ]
 }
 ```
 
-This schema is stable and is intended to be the basis for future tooling:
+### Schema Guarantees
 
-- Tone tagging: populate `tone`.
-- Speaker diarization: populate `speaker`.
-- Audio enrichment: populate `audio_state` with prosody and emotion features.
-- Search and analysis: operate over `segments[]`.
-- Run-level analysis and reproducibility: read `meta`.
+- ✅ **Forward compatible** — v2 readers accept v1 transcripts
+- ✅ **Backward compatible** — optional fields can be null
+- ✅ **Stable core fields** — `segments`, `id`, `start`, `end`, `text` won't change meaning within v2.x
+- ✅ **Breaking changes require version bump** — v2 → v3 only for structural changes
+- ✅ **Audio state versioned independently** — `AUDIO_STATE_VERSION = "1.0.0"`
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#schema-versioning) for the complete stability contract.
 
 ## Audio Feature Enrichment
 
@@ -654,7 +985,9 @@ To add tone tagging, diarization, or other analysis, write separate modules
 
 ## Testing
 
-slower-whisper includes a comprehensive test suite with **200+ passing tests** covering unit tests, integration tests, and BDD scenarios.
+slower-whisper includes a comprehensive test suite with **267 passing tests** (57% coverage) covering unit tests, integration tests, and BDD scenarios.
+
+For detailed quality thresholds and evaluation criteria, see [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md).
 
 ### Test Suite Overview
 
@@ -691,13 +1024,59 @@ The project uses a multi-layered testing strategy:
 
 ### Test Coverage
 
-Current test coverage: **56% overall**, with high coverage on core modules:
+Current test coverage: **57% overall**, with high coverage on core modules:
 
 - `transcription/writers.py`: **100%** (JSON/TXT/SRT output)
 - `transcription/models.py`: **95%** (data models and schema)
 - `transcription/config.py`: **90%** (configuration system)
 - `transcription/pipeline.py`: **85%** (transcription orchestration)
 - `transcription/prosody.py`: **80%** (prosody extraction)
+
+### BDD/Acceptance Tests
+
+Behavioral acceptance tests are defined using Gherkin syntax and pytest-bdd. These tests represent the **behavioral contract** of slower-whisper - they define guaranteed behaviors that must not break without explicit discussion.
+
+**Library BDD Scenarios** (tests/features/):
+
+```bash
+# Run library BDD scenarios (transcription and enrichment)
+uv run pytest tests/steps/ -v
+
+# Run only transcription scenarios
+uv run pytest tests/steps/test_transcription_steps.py -v
+
+# Run only enrichment scenarios
+uv run pytest tests/steps/test_enrichment_steps.py -v
+```
+
+**Feature files:**
+
+- `tests/features/transcription.feature` - Core transcription behaviors
+- `tests/features/enrichment.feature` - Audio enrichment behaviors
+
+**API Service BDD Scenarios** (features/):
+
+```bash
+# Run API service BDD scenarios (black-box REST API tests)
+uv run pytest features/ -v -m api
+
+# Run only smoke tests (health, docs)
+uv run pytest features/ -v -m "api and smoke"
+
+# Run functional tests (transcribe, enrich endpoints)
+uv run pytest features/ -v -m "api and functional"
+```
+
+**Feature files:**
+
+- `features/api_service.feature` - REST API endpoint behaviors
+
+**Requirements:**
+
+- Library BDD: Requires `ffmpeg` for audio processing
+- API BDD: Requires `httpx` and `uvicorn` (auto-installed with `uv sync --extra dev`)
+
+**Behavioral Contract:** These scenarios define the **guaranteed behaviors** of slower-whisper at both the library level and the REST API level. Breaking these scenarios requires explicit discussion and may trigger a version bump.
 
 ### Running Tests
 
@@ -712,7 +1091,7 @@ uv run pytest
 uv run pytest --cov=transcription --cov-report=term-missing
 
 # Run BDD scenarios only
-uv run pytest tests/features/
+uv run pytest tests/steps/ -v
 
 # Run specific test categories
 uv run pytest -m "not slow"              # Skip slow tests
@@ -722,53 +1101,156 @@ uv run pytest tests/test_prosody.py      # Run specific test file
 
 Tests are not required for running the pipeline but are essential for contributors and those extending the codebase.
 
-## Development Workflow
+## Contributing
 
-### Setting Up Development Environment
+Contributions are welcome! Whether you're fixing bugs, adding features, improving documentation, or helping with issues, your help makes this project better.
+
+### Quick Start for Contributors
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/slower-whisper.git
+# 1. Fork and clone
+git clone https://github.com/<your-fork>/slower-whisper.git
 cd slower-whisper
 
-# Install with dev dependencies
+# 2. Install dev dependencies
 uv sync --extra dev
 
-# Run tests to verify setup
-uv run pytest
+# 3. Run tests to verify setup
+uv run pytest -m "not slow"
+
+# 4. Run linting to check code quality
+uv run ruff check .
 ```
+
+### Development Workflow
+
+1. **Create a feature branch**
+
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Make your changes**
+   - Add or update tests for any behavior changes
+   - Follow existing code style and patterns
+   - Update documentation if needed
+
+3. **Verify contracts before pushing (REQUIRED)**
+
+   ```bash
+   # Run quick verification (minimum before pushing)
+   uv run slower-whisper-verify --quick
+
+   # Or use make target
+   make verify-quick
+   ```
+
+   This verifies:
+   - ✅ Code quality (ruff linting and formatting)
+   - ✅ Unit tests pass
+   - ✅ Library BDD scenarios (behavioral contract)
+   - ✅ API BDD scenarios (REST API contract)
+
+   **If this fails, do not push.** Fix the issues first.
+
+4. **Commit and push**
+
+   ```bash
+   git add .
+   git commit -m "feat: brief description of your changes"
+   git push origin feature/your-feature-name
+   ```
+
+5. **Open a Pull Request**
+   - Submit a PR against the `main` branch
+   - Describe what changed and why
+   - Link any related issues
+
+### Behavioral Contract Guarantee
+
+This project uses **BDD (Behavior-Driven Development) scenarios as contracts**. These scenarios define guaranteed behaviors that cannot break without explicit discussion and versioning:
+
+**Library BDD Contract** (`tests/features/`):
+
+- Transcription behaviors (audio → JSON/TXT/SRT)
+- Audio enrichment behaviors (prosody, emotion extraction)
+
+**API BDD Contract** (`features/`):
+
+- REST API endpoint behaviors
+- Health checks, documentation, transcribe/enrich endpoints
+
+**Rules:**
+
+- All BDD scenarios must pass before merging
+- Breaking a scenario = breaking the contract = requires versioning discussion
+- See `docs/BDD_IAC_LOCKDOWN.md` for versioning policy
+
+### Guidelines
+
+- **Use feature branches** and submit Pull Requests against `main`
+- **Add tests** for new functionality or bug fixes
+- **Run verification CLI** before pushing: `uv run slower-whisper-verify --quick`
+- **For larger changes**, open an issue or discussion first to align on direction
+- **Follow code style**: We use ruff for linting and formatting (configured in `pyproject.toml`)
+- **Write clear commit messages** using conventional commits format when possible
+- **If changing BDD scenarios**, document why the behavioral contract is changing
 
 ### Code Quality Tools
 
-The project uses modern Python tooling for code quality:
-
 ```bash
-# Format code with black
-uv run black transcription/ tests/
+# Format code with ruff
+uv run ruff format transcription/ tests/
 
-# Sort imports with isort
-uv run isort transcription/ tests/
-
-# Lint with ruff
-uv run ruff check transcription/ tests/
+# Lint with ruff (with auto-fix)
+uv run ruff check --fix transcription/ tests/
 
 # Type check with mypy
 uv run mypy transcription/
-
-# Run all quality checks
-uv run black . && uv run isort . && uv run ruff check . && uv run mypy transcription/
 ```
 
-### Making Changes
+### Running Tests (For Contributors)
 
-1. Create a new branch for your feature/fix
-2. Make your changes
-3. Run tests and quality checks
-4. Submit a pull request
+```bash
+# Run all fast tests
+uv run pytest -m "not slow"
+
+# Run with coverage
+uv run pytest --cov=transcription --cov-report=term-missing
+
+# Run specific test file
+uv run pytest tests/test_models.py -v
+```
+
+For detailed guidelines, coding standards, and the full development workflow, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Deployment
 
 slower-whisper supports multiple deployment options from local CLI to production Kubernetes clusters. Choose the deployment method that fits your scale and infrastructure.
+
+### Infrastructure as Code (IaC)
+
+slower-whisper treats deployment configurations as **first-class contracts**. All IaC artifacts (Dockerfiles, K8s manifests, Compose files) are:
+
+- ✅ Validated before release
+- ✅ Tested in CI/CD pipelines
+- ✅ Subject to the same config precedence rules (CLI > file > env > defaults)
+- ✅ Smoke tested with verification scripts
+
+**Verification CLI:**
+
+```bash
+# Quick verification (code + tests + BDD only)
+uv run slower-whisper-verify --quick
+
+# Full verification (includes Docker and K8s)
+uv run slower-whisper-verify
+
+# Alternative: run as module
+python scripts/verify_all.py --quick
+```
+
+**IaC Contract:** All deployment artifacts must build/validate successfully and support consistent configuration across local, Docker, and Kubernetes environments. See `docs/BDD_IAC_LOCKDOWN.md` for the complete contract.
 
 ### Deployment Options
 
@@ -902,7 +1384,6 @@ docker run -p 8000:8000 slower-whisper:api
 For detailed deployment guides and infrastructure-as-code configurations:
 
 - **[DOCKER.md](DOCKER.md)** - Complete Docker setup guide with GPU support
-- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment verification checklist
 - **[k8s/](k8s/)** - Kubernetes manifests and Kustomize configurations
 - **[docker-compose.yml](docker-compose.yml)** - Production Docker Compose setup
 - **[docker-compose.dev.yml](docker-compose.dev.yml)** - Development environment
@@ -945,9 +1426,13 @@ Check your internet connection. Models are downloaded from Hugging Face on first
 ## Additional Resources
 
 - **[Installation Guide](INSTALL.md)**: Detailed setup instructions
+- **[LLM Prompt Patterns](docs/LLM_PROMPT_PATTERNS.md)**: Reference prompts for conversation analysis with LLMs
 - **[Audio Enrichment Guide](docs/AUDIO_ENRICHMENT.md)**: Deep dive into prosody and emotion features
+- **[Speaker Diarization Guide](docs/SPEAKER_DIARIZATION.md)**: Design and implementation details for speaker diarization
+- **[Roadmap](ROADMAP.md)**: Future features and development plans
 - **[Contributing Guide](CONTRIBUTING.md)**: How to contribute to the project
 - **[Changelog](CHANGELOG.md)**: Version history and updates
+- **[Documentation Index](docs/INDEX.md)**: Complete documentation map
 
 ## License
 

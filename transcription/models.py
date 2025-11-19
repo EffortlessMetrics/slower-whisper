@@ -19,7 +19,9 @@ class Segment:
         start: Start time in seconds.
         end: End time in seconds.
         text: Transcribed text for this segment.
-        speaker: Optional speaker label (for future diarization).
+        speaker: Optional speaker metadata dict (v1.1+ diarization).
+                 Structure: {"id": "spk_0", "confidence": 0.87}
+                 None when diarization is disabled or speaker is unknown.
         tone: Optional tone label (for future tone tagging).
         audio_state: Optional dictionary containing enriched audio features and
                      prosodic information for this segment. This field supports
@@ -37,7 +39,7 @@ class Segment:
     start: float
     end: float
     text: str
-    speaker: str | None = None
+    speaker: dict[str, Any] | None = None
     tone: str | None = None
     audio_state: dict[str, Any] | None = None
 
@@ -53,9 +55,17 @@ class Transcript:
         segments: Ordered list of segments making up the transcript.
         meta: Optional metadata dictionary describing how/when this
               transcript was generated (model, device, etc.).
+        speakers: Optional list of speaker metadata (v1.1+).
+                  Each speaker dict contains: {id, label, total_speech_time, num_segments}.
+                  Null in v1.0 transcripts; empty array if diarization finds no speakers.
+        turns: Optional list of conversational turns (v1.1+).
+               Each turn dict contains: {speaker_id, start, end, segment_ids, text}.
+               Null in v1.0 transcripts; populated after diarization in v1.1+.
     """
 
     file_name: str
     language: str
     segments: list[Segment] = field(default_factory=list)
     meta: dict[str, Any] | None = None
+    speakers: list[dict[str, Any]] | None = None
+    turns: list[dict[str, Any]] | None = None

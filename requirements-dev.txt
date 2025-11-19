@@ -13,10 +13,10 @@
 # ============================================================================
 # Testing
 # ============================================================================
-pytest>=7.0,<8.0
+pytest>=7.0,<10.0
 pytest-cov>=4.0,<8.0
 pytest-mock>=3.10,<4.0
-pytest-asyncio>=0.21,<1.0
+pytest-asyncio>=0.21,<2.0
 pytest-xdist>=3.0,<4.0          # parallel test execution
 
 # ============================================================================
@@ -24,13 +24,13 @@ pytest-xdist>=3.0,<4.0          # parallel test execution
 # ============================================================================
 black>=23.0,<25.0               # code formatter
 flake8>=6.0,<8.0                # linter
-isort>=5.0,<6.0                 # import sorter
+isort>=5.0,<8.0                 # import sorter
 mypy>=1.0,<2.0                  # static type checker
 ruff>=0.1.0,<1.0                # fast linter (alternative to flake8)
 
 # Flake8 plugins
 flake8-docstrings>=1.7,<2.0
-flake8-bugbear>=23.0,<25.0
+flake8-bugbear>=23.0,<26.0
 flake8-comprehensions>=3.10,<4.0
 
 # Type stubs
@@ -40,10 +40,10 @@ types-PyYAML>=6.0,<7.0
 # ============================================================================
 # Documentation
 # ============================================================================
-sphinx>=5.0,<8.0
+sphinx>=5.0,<9.0
 sphinx-rtd-theme>=1.0,<3.0
-sphinx-autodoc-typehints>=1.23,<2.0
-myst-parser>=2.0,<3.0           # markdown support
+sphinx-autodoc-typehints>=1.23,<4.0
+myst-parser>=2.0,<5.0           # markdown support
 
 # ============================================================================
 # Security & Dependency Scanning
@@ -56,7 +56,7 @@ bandit>=1.7,<2.0                # security linter
 # Build & Distribution
 # ============================================================================
 build>=1.0,<2.0                 # PEP 517 build frontend
-twine>=4.0,<6.0                 # PyPI upload
+twine>=4.0,<7.0                 # PyPI upload
 wheel>=0.42,<1.0                # wheel builder
 
 # ============================================================================
@@ -71,7 +71,7 @@ rich>=13.0,<14.0                # rich console output
 # Performance Profiling
 # ============================================================================
 memory-profiler>=0.61,<1.0
-line-profiler>=4.0,<5.0
+line-profiler>=4.0,<6.0
 py-spy>=0.3,<1.0                # sampling profiler
 
 # ============================================================================

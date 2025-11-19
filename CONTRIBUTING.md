@@ -8,6 +8,7 @@ Whether you're fixing a bug, adding a feature, or improving documentation, this 
 
 ## Table of Contents
 
+- [Who This Project Is For](#who-this-project-is-for)
 - [Quick Start for Contributors](#quick-start-for-contributors)
 - [Development Environment Setup](#development-environment-setup)
 - [Project Structure](#project-structure)
@@ -22,6 +23,67 @@ Whether you're fixing a bug, adding a feature, or improving documentation, this 
 - [GPU/CUDA Development](#gpucuda-development)
 - [Getting Help](#getting-help)
 - [Frequently Asked Questions](#frequently-asked-questions)
+
+---
+
+## Who This Project Is For
+
+Before contributing, it's helpful to understand who slower-whisper serves and how we prioritize features:
+
+### Primary Users (v1.x Focus)
+
+**1. Infrastructure / Platform Engineers**
+- Building internal conversation processing systems
+- On-prem transcription stacks (compliance, security)
+- Multi-tenant platforms with conversation analytics
+
+**What they need:**
+- ✅ Stability, contracts, Docker/K8s deployment
+- ✅ Versioned JSON schema (build on it without fear)
+- ✅ BDD/IaC guarantees (infrastructure-grade quality)
+
+**2. Research Labs (Linguistics, HCI, Psychology, UX)**
+- Analyzing conversations for academic research
+- Prosody and emotion studies
+- Speaker interaction patterns
+
+**What they need:**
+- ✅ Accurate prosody/emotion features
+- ✅ Reproducible pipelines (same input → same output)
+- ✅ Export to research tools (Praat, ELAN)
+
+### Secondary Users (v1.2+)
+
+**3. LLM Application Developers**
+- Building conversation-aware LLM apps
+- RAG/vector search with acoustic metadata
+- Meeting summarization and action-item extraction
+
+**What they need:**
+- ✅ LangChain/LlamaIndex adapters
+- ✅ Prompt builder utilities
+- ✅ Easy chunking and formatting
+
+### Design Priorities
+
+When contributing, keep these priorities in mind:
+
+1. **Local-first always** — No cloud dependencies at runtime
+2. **Contracts over convenience** — Schema stability beats new features
+3. **Infrastructure users first** — Reliability over novelty
+4. **BDD scenarios are contracts** — Breaking them requires discussion
+
+**This is NOT:**
+- A consumer transcription app
+- A SaaS platform or cloud API
+- A "meeting notes" product
+
+**This IS:**
+- Infrastructure for building conversation-aware systems
+- "OpenTelemetry for audio conversations"
+- A stable foundation for production use
+
+See [VISION.md](VISION.md) for detailed positioning.
 
 ---
 
@@ -121,7 +183,7 @@ uv pip install pytest pytest-cov ruff mypy pre-commit
 # Run tests to ensure everything is working
 uv run pytest
 
-# Should show all tests passing (58+ tests)
+# Should show all tests passing (191 tests)
 ```
 
 ### Alternative: Using pip or poetry
@@ -222,7 +284,7 @@ uv run pytest -m "not slow"
 
 ### Test Suite Overview
 
-The project has 58+ tests across multiple categories:
+The project has 191 tests across multiple categories:
 
 | Category | Count | Description |
 |----------|-------|-------------|
@@ -231,7 +293,8 @@ The project has 58+ tests across multiple categories:
 | Prosody | 12 | Pitch, energy, rate extraction |
 | Integration | 8 | End-to-end pipeline tests |
 | Writers | 6 | JSON, TXT, SRT output |
-| Other | 1+ | Miscellaneous tests |
+| BDD Scenarios | 15+ | Behavioral acceptance tests |
+| Other | 119+ | Unit tests across all modules |
 
 **Expected result:** All tests should pass unless you're actively developing new features.
 
@@ -455,7 +518,31 @@ uv run pytest tests/test_your_feature.py -v
 uv run pytest --cov=transcription --cov-report=term-missing
 ```
 
-**5. Format and lint your code**
+**5. Verify contracts (REQUIRED before pushing)**
+
+Before pushing your changes, **you must run the verification CLI** to ensure you haven't broken the behavioral or deployment contracts:
+
+```bash
+# Quick verification (code quality + tests + BDD + API BDD)
+# This is the MINIMUM required before pushing
+uv run slower-whisper-verify --quick
+
+# Full verification (includes Docker and K8s validation)
+# Recommended before creating a PR
+uv run slower-whisper-verify
+```
+
+**What this verifies:**
+- ✅ Code quality (ruff linting and formatting)
+- ✅ Unit tests pass
+- ✅ Library BDD scenarios (behavioral contract)
+- ✅ API BDD scenarios (REST API contract)
+- ✅ Docker images build correctly (full mode only)
+- ✅ Kubernetes manifests are valid (full mode only)
+
+If any step fails, **do not push**. Fix the issues first. This verification ensures you're not breaking the project's **behavioral contracts** (BDD scenarios) or **deployment contracts** (Docker/K8s).
+
+**6. Format and lint your code**
 
 ```bash
 # Auto-format code
@@ -468,7 +555,7 @@ uv run ruff check --fix .
 uv run pre-commit run --all-files
 ```
 
-**6. Update documentation**
+**7. Update documentation**
 
 If your changes affect usage:
 - Update relevant files in `docs/`
@@ -476,7 +563,7 @@ If your changes affect usage:
 - Add examples if helpful
 - Update docstrings
 
-**7. Commit your changes**
+**8. Commit your changes**
 
 ```bash
 # Stage your changes
@@ -490,7 +577,7 @@ git add .
 git commit -m "Add pause density feature to prosody extraction"
 ```
 
-**8. Push and create a pull request**
+**9. Push and create a pull request**
 
 ```bash
 # Push your branch
@@ -666,18 +753,29 @@ Update docs when:
 
 Run through this checklist before creating your pull request:
 
-**Required:**
-- [ ] All tests pass locally (`uv run pytest`)
-- [ ] Code is formatted (`uv run ruff format .`)
-- [ ] No linting errors (`uv run ruff check .`)
+**Required (Hard gates - PR will be rejected without these):**
+- [ ] **Verification CLI passes**: `uv run slower-whisper-verify --quick`
+  - This verifies code quality, tests, and behavioral contracts (BDD scenarios)
+  - If this fails, **do not create a PR**
 - [ ] Tests added for new features or bug fixes
 - [ ] Branch is up-to-date with main
+- [ ] No BDD scenarios broken (verification CLI checks this)
 
-**Recommended:**
+**Strongly Recommended:**
+- [ ] Full verification passes: `uv run slower-whisper-verify`
+  - Includes Docker and K8s validation
+  - Required for releases, recommended for PRs
 - [ ] Documentation updated (README, docs/, docstrings)
 - [ ] Examples added if applicable
 - [ ] Commit messages are clear and descriptive
 - [ ] Pre-commit hooks installed and passing
+
+**Behavioral Contract Awareness:**
+If your changes affect any BDD scenarios (`tests/features/` or `features/`), you **must**:
+- [ ] Document why the behavioral contract is changing
+- [ ] Discuss versioning impact (major/minor/patch)
+- [ ] Update `CHANGELOG.md` with contract changes
+- [ ] Consider if this requires a deprecation period
 
 ### Creating a Pull Request
 
@@ -1351,7 +1449,7 @@ uv run twine upload dist/*
 
 **Step 8: Create GitHub Release**
 
-1. Go to https://github.com/yourusername/slower-whisper/releases/new
+1. Go to https://github.com/EffotlessMetrics/slower-whisper/releases/new
 2. Select the tag you just pushed (vx.y.z)
 3. Title: "Release x.y.z" or "Version x.y.z - Feature Name"
 4. Description: Copy relevant sections from CHANGELOG.md

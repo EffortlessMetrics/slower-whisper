@@ -554,7 +554,7 @@ k8s/
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 2. Clone repository
-git clone https://github.com/yourusername/slower-whisper.git
+git clone https://github.com/EffotlessMetrics/slower-whisper.git
 cd slower-whisper
 
 # 3. Install dependencies
@@ -854,7 +854,7 @@ kubectl apply -f k8s/ingress.yaml
 **Initial Setup:**
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourusername/slower-whisper.git
+git clone https://github.com/EffotlessMetrics/slower-whisper.git
 cd slower-whisper
 
 # 2. Install uv (recommended package manager)

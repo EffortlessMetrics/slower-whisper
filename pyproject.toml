@@ -4,15 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slower-whisper"
-version = "1.0.0"
-description = "Local audio transcription pipeline with optional prosody and emotion enrichment"
+version = "1.1.0"
+description = "Local-first conversation signal engine: transform audio into LLM-ready structured data with speaker diarization, prosody, and emotion"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Steven", email = "steven@example.com"}
 ]
-keywords = ["whisper", "transcription", "audio", "speech-to-text", "prosody", "emotion"]
+keywords = [
+    "whisper",
+    "transcription",
+    "audio",
+    "speech-to-text",
+    "prosody",
+    "emotion",
+    "diarization",
+    "speaker-identification",
+    "conversation-intelligence",
+    "llm-integration",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -22,8 +33,10 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
 ]
 
 # Minimum viable dependencies (Stage 1: Transcription only, ~2.5GB)
@@ -55,10 +68,20 @@ emotion = [
     "transformers>=4.30.0",
 ]
 
-# Full audio enrichment (prosody + emotion, ~4GB additional)
+# Stage 2d: Speaker diarization (heavy ML, ~4GB additional)
+# Adds: pyannote.audio for speaker identification
+# Requires HF_TOKEN environment variable for model access
+diarization = [
+    "slower-whisper[enrich-basic]",
+    "pyannote.audio>=3.1.0",
+    "torch>=2.0.0",
+]
+
+# Full audio enrichment (prosody + emotion + diarization, ~4GB additional)
 full = [
     "slower-whisper[enrich-prosody]",
     "slower-whisper[emotion]",
+    "slower-whisper[diarization]",
 ]
 
 # Alias for backward compatibility
@@ -83,6 +106,7 @@ dev = [
     "pytest-asyncio>=0.21",
     "pytest-xdist>=3.0",
     "pytest-bdd>=7.0",
+    "httpx>=0.24.0",  # For API BDD tests
     # Code quality
     "black>=23.0",
     "flake8>=6.0",
@@ -131,6 +155,12 @@ profiling = [
 # Unified CLI (new, recommended)
 slower-whisper = "transcription.cli:main"
 
+# Verification and testing CLI (developers)
+slower-whisper-verify = "scripts.verify_all:main"
+
+# Dogfooding workflow CLI (for testing before release)
+slower-whisper-dogfood = "transcription.dogfood:main"
+
 # Legacy entry points (backward compatibility)
 # These still work but are deprecated in favor of the unified CLI
 slower-whisper-enrich = "transcription.audio_enrich_cli:main"
@@ -142,7 +172,7 @@ Repository = "https://github.com/steven/slower-whisper"
 Issues = "https://github.com/steven/slower-whisper/issues"
 
 [tool.setuptools]
-packages = ["transcription"]
+packages = ["transcription", "scripts"]
 
 [tool.setuptools.package-data]
 transcription = ["py.typed"]
@@ -199,6 +229,7 @@ module = [
     "torch.*",
     "fastapi.*",
     "uvicorn.*",
+    "pyannote.*",
 ]
 ignore_missing_imports = true
 
@@ -219,6 +250,7 @@ markers = [
     "integration: marks tests as integration tests",
     "requires_gpu: marks tests that require GPU",
     "requires_enrich: marks tests that require enrichment dependencies",
+    "requires_diarization: marks tests that require pyannote.audio diarization extra",
 ]
 
 [tool.coverage.run]

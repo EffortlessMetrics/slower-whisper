@@ -631,7 +631,7 @@ When reporting issues, please include:
 4. Diagnostic output from above
 5. Sample audio file (if possible)
 
-**GitHub Issues:** https://github.com/yourusername/slower-whisper/issues
+**GitHub Issues:** https://github.com/EffotlessMetrics/slower-whisper/issues
 
 ---
 
@@ -654,4 +654,4 @@ When reporting issues, please include:
 - [Quickstart Guide](QUICKSTART.md) - Getting started tutorial
 - [Installation Guide](INSTALLATION.md) - Detailed installation
 - [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Stage 2 documentation
-- [GitHub Issues](https://github.com/yourusername/slower-whisper/issues) - Report problems
+- [GitHub Issues](https://github.com/EffotlessMetrics/slower-whisper/issues) - Report problems
