@@ -188,8 +188,74 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cache_group.add_argument(
         "--clear",
-        choices=["all", "whisper", "emotion", "diarization", "hf", "torch"],
+        choices=["all", "whisper", "emotion", "diarization", "hf", "torch", "samples"],
         help="Clear selected cache.",
+    )
+
+    # ============================================================================
+    # samples subcommand
+    # ============================================================================
+    p_samples = subparsers.add_parser(
+        "samples",
+        help="Manage sample datasets for testing and evaluation.",
+    )
+
+    samples_subparsers = p_samples.add_subparsers(dest="samples_action", required=True)
+
+    # samples list
+    samples_subparsers.add_parser(
+        "list",
+        help="List available sample datasets.",
+    )
+
+    # samples download
+    p_samples_download = samples_subparsers.add_parser(
+        "download",
+        help="Download a sample dataset to cache.",
+    )
+    p_samples_download.add_argument(
+        "dataset",
+        help="Dataset name to download (e.g., 'mini_diarization').",
+    )
+    p_samples_download.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download even if already cached.",
+    )
+
+    # samples copy
+    p_samples_copy = samples_subparsers.add_parser(
+        "copy",
+        help="Copy sample dataset to project's raw_audio directory.",
+    )
+    p_samples_copy.add_argument(
+        "dataset",
+        help="Dataset name to copy (e.g., 'mini_diarization').",
+    )
+    p_samples_copy.add_argument(
+        "--root",
+        type=Path,
+        default=Path.cwd(),
+        help="Project root directory (default: current directory).",
+    )
+
+    # samples generate
+    p_samples_generate = samples_subparsers.add_parser(
+        "generate",
+        help="Generate synthetic sample audio for testing.",
+    )
+    p_samples_generate.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output directory (default: ./raw_audio/).",
+    )
+    p_samples_generate.add_argument(
+        "--speakers",
+        type=int,
+        default=2,
+        choices=[2, 3, 4],
+        help="Number of speakers to generate (default: 2).",
     )
 
     return parser
@@ -494,8 +560,10 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
     import shutil
 
     from .cache import CachePaths
+    from .samples import get_samples_cache_dir
 
     paths = CachePaths.from_env().ensure_dirs()
+    samples_dir = get_samples_cache_dir()
 
     if args.show:
         print("slower-whisper cache locations:")
@@ -513,6 +581,7 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
         print(
             f"  Diarization:  {paths.diarization_root} ({_format_size(_get_cache_size(paths.diarization_root))})"
         )
+        print(f"  Samples:      {samples_dir} ({_format_size(_get_cache_size(samples_dir))})")
         total = sum(
             [
                 _get_cache_size(paths.hf_home),
@@ -520,6 +589,7 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
                 _get_cache_size(paths.whisper_root),
                 _get_cache_size(paths.emotion_root),
                 _get_cache_size(paths.diarization_root),
+                _get_cache_size(samples_dir),
             ]
         )
         print(f"\n  Total:        {_format_size(total)}")
@@ -534,6 +604,7 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
                 ("Diarization", paths.diarization_root),
                 ("HF", paths.hf_home),
                 ("Torch", paths.torch_home),
+                ("Samples", samples_dir),
             ]
         elif args.clear == "whisper":
             targets = [("Whisper", paths.whisper_root)]
@@ -545,6 +616,8 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
             targets = [("HF", paths.hf_home)]
         elif args.clear == "torch":
             targets = [("Torch", paths.torch_home)]
+        elif args.clear == "samples":
+            targets = [("Samples", samples_dir)]
 
         for name, target in targets:
             if target.exists():
@@ -556,6 +629,84 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
 
     # Should not reach here due to required=True
     raise RuntimeError("Invalid cache command: expected either --show or --clear")
+
+
+def _handle_samples_command(args: argparse.Namespace) -> int:
+    """Handle samples subcommand: list/download/copy/generate."""
+    from .samples import (
+        copy_sample_to_project,
+        download_sample_dataset,
+        get_sample_test_files,
+        list_sample_datasets,
+    )
+
+    if args.samples_action == "list":
+        datasets = list_sample_datasets()
+        print("Available sample datasets:\n")
+        for name, metadata in datasets.items():
+            print(f"  {name}")
+            print(f"    Description: {metadata['description']}")
+            print(f"    Source:      {metadata['source_url']}")
+            print(f"    License:     {metadata['license']}")
+            print(f"    Test files:  {metadata['test_files']}")
+            print()
+        return 0
+
+    elif args.samples_action == "download":
+        try:
+            download_sample_dataset(args.dataset, force_download=args.force)
+            test_files = get_sample_test_files(args.dataset)
+            print("\nTest files ready:")
+            for f in test_files:
+                print(f"  {f}")
+            return 0
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    elif args.samples_action == "copy":
+        try:
+            project_dir = args.root / "raw_audio"
+            copied_files = copy_sample_to_project(args.dataset, project_dir)
+            print(f"\nCopied {len(copied_files)} files to {project_dir}:")
+            for f in copied_files:
+                print(f"  {f.name}")
+            print("\nReady to transcribe with:")
+            print(f"  cd {args.root}")
+            print("  uv run slower-whisper transcribe --enable-diarization")
+            return 0
+        except (ValueError, FileNotFoundError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    elif args.samples_action == "generate":
+        # Generate synthetic samples
+        from .samples import generate_synthetic_2speaker
+
+        output_dir = args.output or (Path.cwd() / "raw_audio")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        if args.speakers == 2:
+            output_file = output_dir / "synthetic_2speaker.wav"
+            try:
+                generate_synthetic_2speaker(output_file)
+                print("\nReady to transcribe with:")
+                print(
+                    "  uv run slower-whisper transcribe --enable-diarization --min-speakers 2 --max-speakers 2"
+                )
+                return 0
+            except ImportError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
+        else:
+            print(
+                f"Error: Generating {args.speakers}-speaker samples not yet implemented",
+                file=sys.stderr,
+            )
+            return 1
+
+    else:
+        raise RuntimeError(f"Unknown samples action: {args.samples_action}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -591,6 +742,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         elif args.command == "cache":
             return _handle_cache_command(args)
+
+        elif args.command == "samples":
+            return _handle_samples_command(args)
 
         else:
             parser.error(f"Unknown command: {args.command}")
