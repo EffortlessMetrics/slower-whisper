@@ -1,0 +1,552 @@
+================================================================================
+SLOWER-WHISPER v1.1 DIARIZATION DATA FLOW - COMPLETE VERIFICATION
+================================================================================
+
+FLOW: CLI Flag → Config → Pipeline → Diarization → Transcript → JSON Output
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STAGE 1: CLI ENTRY POINT                                                  ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                            ┃
+┃  $ slower-whisper transcribe \                                             ┃
+┃      --enable-diarization \                                                ┃
+┃      --min-speakers 2 \                                                    ┃
+┃      --max-speakers 4                                                      ┃
+┃                                                                            ┃
+┃  File: transcription/cli.py                                                ┃
+┃  Lines: 97-113 (argument definitions)                                      ┃
+┃  Lines: 566-579 (main entry point)                                         ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                   │
+                                   ▼
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STAGE 2: ARGUMENT PARSING                                                 ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                            ┃
+┃  argparse.parse_args() extracts:                                           ┃
+┃  ├─ args.enable_diarization = True                                         ┃
+┃  ├─ args.min_speakers = 2                                                  ┃
+┃  └─ args.max_speakers = 4                                                  ┃
+┃                                                                            ┃
+┃  File: transcription/cli.py                                                ┃
+┃  Lines: 560-564 (parser.parse_args)                                        ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                   │
+                                   ▼ _config_from_transcribe_args(args)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STAGE 3: CONFIG PRECEDENCE (CLI > FILE > ENV > DEFAULTS)                  ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                            ┃
+┃  Step 1: Create TranscriptionConfig with defaults                          ┃
+┃  ├─ enable_diarization: False (default)                                    ┃
+┃  ├─ diarization_device: "auto" (default)                                   ┃
+┃  ├─ min_speakers: None (default)                                           ┃
+┃  ├─ max_speakers: None (default)                                           ┃
+┃  └─ overlap_threshold: 0.3 (default)                                       ┃
+┃                                                                            ┃
+┃  Step 2: Merge with environment variables (if SLOWER_WHISPER_* set)        ┃
+┃                                                                            ┃
+┃  Step 3: Merge with config file (if --config provided)                     ┃
+┃                                                                            ┃
+┃  Step 4: Apply CLI overrides (highest precedence)                          ┃
+┃  │  if args.enable_diarization is not None:                                ┃
+┃  │      config.enable_diarization = args.enable_diarization  # = True      ┃
+┃  │  if args.min_speakers is not None:                                      ┃
+┃  │      config.min_speakers = args.min_speakers              # = 2         ┃
+┃  │  if args.max_speakers is not None:                                      ┃
+┃  │      config.max_speakers = args.max_speakers              # = 4         ┃
+┃  │                                                                         ┃
+┃  └─ diarization_device stays at "auto" (not overridden by CLI)              ┃
+┃                                                                            ┃
+┃  File: transcription/cli.py                                                ┃
+┃  Lines: 360-410 (_config_from_transcribe_args)                              ┃
+┃                                                                            ┃
+┃  File: transcription/config.py                                             ┃
+┃  Lines: 78-107 (TranscriptionConfig dataclass)                              ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                   │
+                                   ▼ transcribe_directory(root, config=cfg)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STAGE 4: API LAYER                                                        ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                            ┃
+┃  Receives: TranscriptionConfig with enable_diarization=True                ┃
+┃                                                                            ┃
+┃  Converts public TranscriptionConfig to internal AppConfig:                ┃
+┃  ├─ AsrConfig(model=cfg.model, device=cfg.device, ...)                     ┃
+┃  └─ AppConfig(asr=asr_cfg, paths=..., skip_existing_json=...)              ┃
+┃                                                                            ┃
+┃  Calls:                                                                    ┃
+┃  └─ run_pipeline(                                                          ┃
+┃       app_cfg,                                                             ┃
+┃       diarization_config=config if config.enable_diarization else None    ┃
+┃     )                                                                      ┃
+┃     └─> PASSES TranscriptionConfig to pipeline if enabled                  ┃
+┃                                                                            ┃
+┃  File: transcription/api.py                                                ┃
+┃  Lines: 151-200 (transcribe_directory)                                      ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                   │
+                                   ▼ run_pipeline(app_cfg, diarization_config)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STAGE 5: PIPELINE ORCHESTRATION                                           ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                            ┃
+┃  For each WAV file:                                                        ┃
+┃  ├─ Step 1: Audio normalization                                            ┃
+┃  │           └─> 16kHz mono WAV                                            ┃
+┃  │                                                                         ┃
+┃  ├─ Step 2: Transcription (faster-whisper)                                 ┃
+┃  │           └─> Transcript with segments populated                        ┃
+┃  │                                                                         ┃
+┃  ├─ Step 3: (v1.1) CONDITIONAL DIARIZATION                                 ┃
+┃  │   IF diarization_config AND diarization_config.enable_diarization:      ┃
+┃  │   │                                                                     ┃
+┃  │   └─> Call _maybe_run_diarization(                                      ┃
+┃  │         transcript=transcript,                                         ┃
+┃  │         wav_path=wav,                                                   ┃
+┃  │         config=diarization_config                                       ┃
+┃  │       )                                                                 ┃
+┃  │                                                                         ┃
+┃  └─ Step 4: Write outputs (JSON, TXT, SRT)                                 ┃
+┃                                                                            ┃
+┃  File: transcription/pipeline.py                                           ┃
+┃  Lines: 51-145 (run_pipeline)                                               ┃
+┃  Lines: 119-126 (diarization conditional)                                   ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                   │
+                        ┌──────────┴──────────┐
+                        │                     │
+        IF ENABLED      ▼                     ▼ IF DISABLED
+      ┌─ True ─────────────────┐    ┌──────────────────────┐
+      │ _maybe_run_diarization  │    │ Skip diarization     │
+      │ (with config)           │    │ Return transcript    │
+      └─────┬───────────────────┘    │ unchanged            │
+            │                        └──────┬───────────────┘
+            │                               │
+            ├───────────────────────────────┤
+            │                               │
+            ▼                               ▼
+            CONTINUE TO STAGE 6             SKIP TO STAGE 8
+            (Diarization Processing)        (JSON Writing)
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STAGE 6: DIARIZATION ORCHESTRATION                                        ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                            ┃
+┃  Function: _maybe_run_diarization(transcript, wav_path, config)            ┃
+┃                                                                            ┃
+┃  TRY BLOCK:                                                                ┃
+┃  ════════════                                                              ┃
+┃  │                                                                         ┃
+┃  ├─ Step 1: Import diarization modules                                     ┃
+┃  │           from .diarization import Diarizer, assign_speakers             ┃
+┃  │           from .turns import build_turns                                 ┃
+┃  │                                                                         ┃
+┃  ├─ Step 2: Instantiate Diarizer with config                               ┃
+┃  │   Diarizer(                                                             ┃
+┃  │       device=config.diarization_device,      # = "auto"                 ┃
+┃  │       min_speakers=config.min_speakers,      # = 2                      ┃
+┃  │       max_speakers=config.max_speakers,      # = 4                      ┃
+┃  │   )                                                                     ┃
+┃  │   └─ Lazy pyannote.audio pipeline loading                               ┃
+┃  │                                                                         ┃
+┃  ├─ Step 3: Run diarization                                                ┃
+┃  │   speaker_turns = diarizer.run(wav_path)                                ┃
+┃  │   └─ Returns list[SpeakerTurn]:                                          ┃
+┃  │       [                                                                 ┃
+┃  │         SpeakerTurn(start=0.0, end=2.5, speaker_id="SPEAKER_00"),       ┃
+┃  │         SpeakerTurn(start=2.5, end=5.0, speaker_id="SPEAKER_01"),       ┃
+┃  │         SpeakerTurn(start=5.0, end=7.5, speaker_id="SPEAKER_00"),       ┃
+┃  │       ]                                                                 ┃
+┃  │                                                                         ┃
+┃  ├─ Step 4: Log warnings if suspicious                                     ┃
+┃  │   ├─ If no speaker turns: logger.warning(...)                           ┃
+┃  │   └─ If > 10 speakers: logger.warning(...)                              ┃
+┃  │                                                                         ┃
+┃  ├─ Step 5: Assign speakers to segments                                    ┃
+┃  │   transcript = assign_speakers(                                         ┃
+┃  │       transcript,                                                       ┃
+┃  │       speaker_turns,                                                    ┃
+┃  │       overlap_threshold=config.overlap_threshold,  # = 0.3              ┃
+┃  │   )                                                                     ┃
+┃  │   └─ For each segment:                                                  ┃
+┃  │       • Compute overlap with all speaker turns                          ┃
+┃  │       • Choose speaker with max overlap                                 ┃
+┃  │       • If overlap_ratio >= 0.3:                                        ┃
+┃  │         segment.speaker = {"id": "spk_0", "confidence": 0.95}           ┃
+┃  │       • Else:                                                           ┃
+┃  │         segment.speaker = None                                          ┃
+┃  │   └─ Build transcript.speakers array with aggregate stats                ┃
+┃  │                                                                         ┃
+┃  ├─ Step 6: Build turns from speaker-attributed segments                   ┃
+┃  │   transcript = build_turns(transcript)                                  ┃
+┃  │   └─ Group contiguous segments by speaker:                              ┃
+┃  │       [                                                                 ┃
+┃  │         {                                                               ┃
+┃  │           "id": "turn_0",                                               ┃
+┃  │           "speaker_id": "spk_0",                                        ┃
+┃  │           "start": 0.0,                                                 ┃
+┃  │           "end": 2.5,                                                   ┃
+┃  │           "segment_ids": [0, 1],                                        ┃
+┃  │           "text": "Hello world how are you"                              ┃
+┃  │         },                                                              ┃
+┃  │         ...                                                             ┃
+┃  │       ]                                                                 ┃
+┃  │                                                                         ┃
+┃  ├─ Step 7: Record SUCCESS in metadata                                     ┃
+┃  │   transcript.meta["diarization"] = {                                    ┃
+┃  │       "status": "success",                                              ┃
+┃  │       "requested": True,                                                ┃
+┃  │       "backend": "pyannote.audio",                                      ┃
+┃  │       "num_speakers": 2,                                                ┃
+┃  │   }                                                                     ┃
+┃  │                                                                         ┃
+┃  └─ Return updated transcript ✅                                            ┃
+┃                                                                            ┃
+┃  EXCEPT Exception AS exc:                                                  ┃
+┃  ═════════════════════════════                                             ┃
+┃  │                                                                         ┃
+┃  ├─ Log warning                                                            ┃
+┃  │                                                                         ┃
+┃  ├─ Categorize error:                                                      ┃
+┃  │   • "HF_TOKEN" in error → error_type = "auth"                           ┃
+┃  │   • "pyannote.audio" in error → error_type = "missing_dependency"       ┃
+┃  │   • "not found" in error → error_type = "file_not_found"                ┃
+┃  │   • Else → error_type = "unknown"                                       ┃
+┃  │                                                                         ┃
+┃  ├─ Record FAILURE in metadata                                             ┃
+┃  │   transcript.meta["diarization"] = {                                    ┃
+┃  │       "status": "failed",                                               ┃
+┃  │       "requested": True,                                                ┃
+┃  │       "error": str(exc),                                                ┃
+┃  │       "error_type": error_type,                                         ┃
+┃  │   }                                                                     ┃
+┃  │                                                                         ┃
+┃  ├─ ✅ GRACEFUL DEGRADATION:                                               ┃
+┃  │   • Return original transcript UNCHANGED                                ┃
+┃  │   • segment.speaker remains None                                        ┃
+┃  │   • transcript.speakers remains None                                    ┃
+┃  │   • transcript.turns remains None                                       ┃
+┃  │   • Only metadata indicates failure                                     ┃
+┃  │                                                                         ┃
+┃  └─ Continue pipeline (do not crash) ✅                                     ┃
+┃                                                                            ┃
+┃  File: transcription/api.py                                                ┃
+┃  Lines: 39-148 (_maybe_run_diarization)                                     ┃
+┃                                                                            ┃
+┃  File: transcription/diarization.py                                        ┃
+┃  Lines: 78-212 (Diarizer class)                                             ┃
+┃  Lines: 248-355 (assign_speakers function)                                  ┃
+┃                                                                            ┃
+┃  File: transcription/turns.py                                              ┃
+┃  Lines: 62-138 (build_turns function)                                       ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                   │
+                                   ▼
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STAGE 7: TRANSCRIPT STATE AFTER DIARIZATION                               ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                            ┃
+┃  ✅ IF SUCCESS:                                                             ┃
+┃  ├─ transcript.segments[i].speaker = {"id": "spk_0", "confidence": 0.95}   ┃
+┃  ├─ transcript.speakers = [                                                ┃
+┃  │     {"id": "spk_0", "label": null, "total_speech_time": 10.5, ...},     ┃
+┃  │     {"id": "spk_1", "label": null, "total_speech_time": 8.2, ...},      ┃
+┃  │   ]                                                                     ┃
+┃  ├─ transcript.turns = [                                                   ┃
+┃  │     {"id": "turn_0", "speaker_id": "spk_0", "start": 0.0, ...},         ┃
+┃  │     {"id": "turn_1", "speaker_id": "spk_1", "start": 2.5, ...},         ┃
+┃  │   ]                                                                     ┃
+┃  └─ transcript.meta["diarization"] = {                                     ┃
+┃       "status": "success",                                                 ┃
+┃       "requested": true,                                                   ┃
+┃       "backend": "pyannote.audio",                                         ┃
+┃       "num_speakers": 2                                                    ┃
+┃     }                                                                      ┃
+┃                                                                            ┃
+┃  ❌ IF FAILURE:                                                             ┃
+┃  ├─ transcript.segments[i].speaker = None (unchanged)                      ┃
+┃  ├─ transcript.speakers = None (unchanged)                                 ┃
+┃  ├─ transcript.turns = None (unchanged)                                    ┃
+┃  └─ transcript.meta["diarization"] = {                                     ┃
+┃       "status": "failed",                                                  ┃
+┃       "requested": true,                                                   ┃
+┃       "error": "...",                                                      ┃
+┃       "error_type": "auth|missing_dependency|file_not_found|unknown"       ┃
+┃     }                                                                      ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                   │
+                                   ▼ writers.write_json(transcript, json_path)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STAGE 8: JSON SERIALIZATION & OUTPUT                                      ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                            ┃
+┃  Function: write_json(transcript, out_path)                                ┃
+┃                                                                            ┃
+┃  Serializes:                                                               ┃
+┃  ├─ "schema_version": 2                                                    ┃
+┃  ├─ "file": transcript.file_name                                           ┃
+┃  ├─ "language": transcript.language                                        ┃
+┃  ├─ "meta": {                                                              ┃
+┃  │     "diarization": { ... },  ← v1.1 diarization metadata                 ┃
+┃  │     ...other metadata...                                                ┃
+┃  │   }                                                                     ┃
+┃  ├─ "segments": [                                                          ┃
+┃  │     {                                                                   ┃
+┃  │       "id": 0,                                                          ┃
+┃  │       "start": 0.0,                                                     ┃
+┃  │       "end": 2.5,                                                       ┃
+┃  │       "text": "Hello world",                                            ┃
+┃  │       "speaker": {               ← v1.1 speaker assignment               ┃
+┃  │         "id": "spk_0",                                                  ┃
+┃  │         "confidence": 0.95                                              ┃
+┃  │       },                                                                ┃
+┃  │       "tone": null,                                                     ┃
+┃  │       "audio_state": null                                               ┃
+┃  │     },                                                                  ┃
+┃  │     ...                                                                 ┃
+┃  │   ]                                                                     ┃
+┃  ├─ "speakers": [                    ← v1.1 global speaker array            ┃
+┃  │     {                                                                   ┃
+┃  │       "id": "spk_0",                                                    ┃
+┃  │       "label": null,                                                    ┃
+┃  │       "total_speech_time": 10.5,                                        ┃
+┃  │       "num_segments": 5                                                 ┃
+┃  │     },                                                                  ┃
+┃  │     ...                                                                 ┃
+┃  │   ]                                                                     ┃
+┃  └─ "turns": [                      ← v1.1 turn structure                   ┃
+┃       {                                                                    ┃
+┃         "id": "turn_0",                                                    ┃
+┃         "speaker_id": "spk_0",                                             ┃
+┃         "start": 0.0,                                                      ┃
+┃         "end": 2.5,                                                        ┃
+┃         "segment_ids": [0, 1],                                             ┃
+┃         "text": "Hello world how are you"                                   ┃
+┃       },                                                                   ┃
+┃       ...                                                                  ┃
+┃     ]                                                                      ┃
+┃                                                                            ┃
+┃  File: transcription/writers.py                                            ┃
+┃  Lines: 7-43 (write_json)                                                   ┃
+┃                                                                            ┃
+┃  CONDITIONAL SERIALIZATION:                                                ┃
+┃  ├─ IF transcript.speakers is not None:                                    ┃
+┃  │   data["speakers"] = transcript.speakers                                ┃
+┃  └─ IF transcript.turns is not None:                                       ┃
+┃      data["turns"] = transcript.turns                                      ┃
+┃                                                                            ┃
+┃  ✅ Optional fields handled gracefully:                                     ┃
+┃     - Missing speakers? → Not included in JSON (v1.0 compatible)            ┃
+┃     - Missing turns? → Not included in JSON (v1.0 compatible)               ┃
+┃     - schema_version still = 2 (v1.1)                                      ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                   │
+                                   ▼
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ FINAL OUTPUT: JSON FILE                                                   ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃                                                                            ┃
+┃  whisper_json/audio.json (Schema v2, v1.1 fields)                          ┃
+┃                                                                            ┃
+┃  {                                                                         ┃
+┃    "schema_version": 2,                                                    ┃
+┃    "file": "audio.wav",                                                    ┃
+┃    "language": "en",                                                       ┃
+┃    "meta": {                                                               ┃
+┃      "generated_at": "2025-11-15T10:30:00+00:00",                          ┃
+┃      "model_name": "large-v3",                                             ┃
+┃      "device": "cuda",                                                     ┃
+┃      "diarization": {                                                      ┃
+┃        "status": "success",                    ← ✅ or "failed"             ┃
+┃        "requested": true,                     ← True if flag was enabled    ┃
+┃        "backend": "pyannote.audio",           ← Implementation details      ┃
+┃        "num_speakers": 2,                     ← Count from assignment       ┃
+┃        "error": null,                         ← null if success, msg if fail ┃
+┃        "error_type": null                     ← null if success, type if fail┃
+┃      }                                                                      ┃
+┃    },                                                                      ┃
+┃    "segments": [                                                           ┃
+┃      {                                                                     ┃
+┃        "id": 0,                                                            ┃
+┃        "start": 0.0,                                                       ┃
+┃        "end": 2.47,                                                        ┃
+┃        "text": "Hello everyone welcome to the meeting",                     ┃
+┃        "speaker": {                           ← ✅ v1.1 diarization        ┃
+┃          "id": "spk_0",                                                    ┃
+┃          "confidence": 0.95                                                ┃
+┃        },                                                                  ┃
+┃        "tone": null,                                                       ┃
+┃        "audio_state": null                                                 ┃
+┃      },                                                                    ┃
+┃      {                                                                     ┃
+┃        "id": 1,                                                            ┃
+┃        "start": 2.47,                                                      ┃
+┃        "end": 4.15,                                                        ┃
+┃        "text": "Thanks for joining us",                                     ┃
+┃        "speaker": {                           ← Different speaker          ┃
+┃          "id": "spk_1",                                                    ┃
+┃          "confidence": 0.87                                                ┃
+┃        },                                                                  ┃
+┃        "tone": null,                                                       ┃
+┃        "audio_state": null                                                 ┃
+┃      }                                                                     ┃
+┃    ],                                                                      ┃
+┃    "speakers": [                               ← ✅ v1.1 global array       ┃
+┃      {                                                                     ┃
+┃        "id": "spk_0",                                                      ┃
+┃        "label": null,                                                      ┃
+┃        "total_speech_time": 10.45,                                         ┃
+┃        "num_segments": 4                                                   ┃
+┃      },                                                                    ┃
+┃      {                                                                     ┃
+┃        "id": "spk_1",                                                      ┃
+┃        "label": null,                                                      ┃
+┃        "total_speech_time": 8.20,                                          ┃
+┃        "num_segments": 3                                                   ┃
+┃      }                                                                     ┃
+┃    ],                                                                      ┃
+┃    "turns": [                                  ← ✅ v1.1 turn structure      ┃
+┃      {                                                                     ┃
+┃        "id": "turn_0",                                                     ┃
+┃        "speaker_id": "spk_0",                                              ┃
+┃        "start": 0.0,                                                       ┃
+┃        "end": 2.47,                                                        ┃
+┃        "segment_ids": [0],                                                 ┃
+┃        "text": "Hello everyone welcome to the meeting"                      ┃
+┃      },                                                                    ┃
+┃      {                                                                     ┃
+┃        "id": "turn_1",                                                     ┃
+┃        "speaker_id": "spk_1",                                              ┃
+┃        "start": 2.47,                                                      ┃
+┃        "end": 4.15,                                                        ┃
+┃        "segment_ids": [1],                                                 ┃
+┃        "text": "Thanks for joining us"                                      ┃
+┃      }                                                                     ┃
+┃    ]                                                                       ┃
+┃  }                                                                         ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+================================================================================
+INTEGRATION POINTS VERIFICATION SUMMARY
+================================================================================
+
+✅ Point 1: CLI Flag → TranscriptionConfig
+   Location: cli.py lines 402-407
+   Status: CONNECTED
+   Fields: enable_diarization, diarization_device, min_speakers, max_speakers
+
+✅ Point 2: TranscriptionConfig → API (transcribe_directory)
+   Location: api.py line 200
+   Status: CONNECTED
+   Mechanism: Passed as diarization_config parameter
+
+✅ Point 3: API → Pipeline (run_pipeline)
+   Location: pipeline.py line 51
+   Status: CONNECTED
+   Mechanism: Passed as diarization_config parameter
+
+✅ Point 4: Pipeline → Diarization Orchestrator
+   Location: pipeline.py lines 119-126
+   Status: CONNECTED
+   Condition: Checks config.enable_diarization before calling
+
+✅ Point 5: Diarizer Instantiation
+   Location: api.py lines 74-78
+   Status: CONNECTED
+   Fields Used: device, min_speakers, max_speakers
+
+✅ Point 6: Diarizer.run() → SpeakerTurn List
+   Location: diarization.py lines 166-211
+   Status: CONNECTED
+   Output: list[SpeakerTurn] with speaker_id, start, end
+
+✅ Point 7: assign_speakers() → Segment Population
+   Location: diarization.py lines 248-355
+   Status: CONNECTED
+   Output: Each segment.speaker populated with id and confidence
+
+✅ Point 8: assign_speakers() → Speakers Array
+   Location: diarization.py line 353
+   Status: CONNECTED
+   Output: transcript.speakers list with aggregate stats
+
+✅ Point 9: build_turns() → Turns Array
+   Location: turns.py lines 62-138
+   Status: CONNECTED
+   Output: transcript.turns list with turn groupings
+
+✅ Point 10: Metadata Recording
+   Location: api.py lines 105-115 (success), 140-147 (failure)
+   Status: CONNECTED
+   Output: transcript.meta["diarization"] with status, error details
+
+✅ Point 11: write_json() → JSON Serialization
+   Location: writers.py lines 7-43
+   Status: CONNECTED
+   Output: JSON with speakers, turns, segment.speaker fields
+
+================================================================================
+ERROR HANDLING VERIFICATION
+================================================================================
+
+✅ Graceful Degradation: IMPLEMENTED
+   - Transcript returned unchanged on failure
+   - segment.speaker remains None
+   - transcript.speakers remains None
+   - transcript.turns remains None
+   - meta.diarization.status = "failed" (informative)
+
+✅ Error Categorization: IMPLEMENTED
+   - "auth" → Missing HF_TOKEN
+   - "missing_dependency" → Missing pyannote.audio
+   - "file_not_found" → Audio file not found
+   - "unknown" → Other exceptions
+
+✅ Exception Handling: COMPREHENSIVE
+   - Try/except wraps entire diarization block
+   - Exceptions logged with context
+   - Pipeline continues despite failures
+   - No data loss on error
+
+================================================================================
+BACKWARD COMPATIBILITY VERIFICATION
+================================================================================
+
+✅ Optional Fields: IMPLEMENTED
+   - speakers = None (default)
+   - turns = None (default)
+   - segment.speaker = None (default)
+
+✅ Schema Versioning: MAINTAINED
+   - schema_version = 2 (regardless of diarization)
+   - v1.0 transcripts still load/process correctly
+   - Writers check for None before serializing optional fields
+
+✅ JSON Reader: FORWARD COMPATIBLE
+   - Gracefully handles missing speakers field
+   - Gracefully handles missing turns field
+   - Gracefully handles missing segment.speaker field
+
+================================================================================
+CONCLUSION: COMPLETE DATA FLOW VERIFICATION ✅
+================================================================================
+
+All 11 integration points are connected and functional.
+All error handling is properly implemented.
+Graceful degradation works as designed.
+Backward compatibility is maintained.
+
+The diarization data flow is PRODUCTION-READY for v1.1.
+
+================================================================================
