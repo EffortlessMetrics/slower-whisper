@@ -86,7 +86,7 @@ pip install slower-whisper
 # pip install slower-whisper --require-hashes
 
 # Install from source (verify git tag)
-git clone https://github.com/EffotlessMetrics/slower-whisper.git
+git clone https://github.com/EffortlessMetrics/slower-whisper.git
 cd slower-whisper
 git verify-tag v1.0.0  # Verify GPG signature
 pip install -e .
@@ -157,30 +157,57 @@ du -sh raw_audio/
 Models are automatically downloaded from:
 - **Whisper models:** `Systran/faster-whisper-*` (HuggingFace)
 - **Emotion models:** `audeering/*`, `ehcalabres/*` (HuggingFace)
+- **Diarization models:** `pyannote/speaker-diarization-3.1` (HuggingFace)
 
 **Security Measures:**
 - Models downloaded via HTTPS
-- Handled by trusted libraries (transformers, faster-whisper)
+- Handled by trusted libraries (transformers, faster-whisper, pyannote.audio)
 - Cached locally after first download
 
 **Model Cache Locations:**
-```bash
-# HuggingFace cache
-~/.cache/huggingface/
 
-# CTranslate2 cache
-~/.cache/ctranslate2/
+By default, slower-whisper configures:
+- `SLOWER_WHISPER_CACHE_ROOT` (default: `~/.cache/slower-whisper`)
+- `HF_HOME` → `$SLOWER_WHISPER_CACHE_ROOT/hf`
+- `TORCH_HOME` → `$SLOWER_WHISPER_CACHE_ROOT/torch`
+- `HF_HUB_CACHE` → `$HF_HOME/hub`
+
+Specific model caches:
+```bash
+~/.cache/slower-whisper/
+  ├── hf/          # HuggingFace hub cache (HF_HOME)
+  ├── torch/       # PyTorch cache (TORCH_HOME)
+  ├── whisper/     # Whisper model weights
+  ├── emotion/     # Emotion recognition models
+  └── diarization/ # Pyannote diarization models
 ```
 
-**To verify models:**
+**To verify and manage models:**
 
 ```bash
-# List downloaded models
-ls -lh ~/.cache/huggingface/hub/
+# Inspect cache locations and sizes
+slower-whisper cache --show
 
-# Clear cache if needed (will re-download)
-rm -rf ~/.cache/huggingface/hub/models--*
+# List downloaded HuggingFace models
+ls -lh ~/.cache/slower-whisper/hf/hub/
+
+# Clear specific cache (will re-download on next use)
+slower-whisper cache --clear whisper
+slower-whisper cache --clear emotion
+slower-whisper cache --clear diarization
+
+# Clear all caches
+slower-whisper cache --clear all
 ```
+
+**Custom cache location:**
+```bash
+# Set before running to override default location
+export SLOWER_WHISPER_CACHE_ROOT=/secure/models/cache
+slower-whisper transcribe
+```
+
+See [`docs/MODEL_CACHE.md`](docs/MODEL_CACHE.md) for detailed cache management and security considerations.
 
 ---
 

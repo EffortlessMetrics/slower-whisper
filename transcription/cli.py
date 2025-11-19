@@ -16,6 +16,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from . import __version__
 from .api import enrich_directory, transcribe_directory
 from .config import EnrichmentConfig, TranscriptionConfig
 from .exceptions import SlowerWhisperError
@@ -26,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="slower-whisper",
         description="Local transcription and audio enrichment pipeline.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -97,7 +103,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--enable-diarization",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Enable speaker diarization (v1.1 experimental, default: False).",
+        help="Enable speaker diarization (experimental, default: False). See docs/SPEAKER_DIARIZATION.md for setup.",
+    )
+    p_trans.add_argument(
+        "--min-speakers",
+        type=int,
+        default=None,
+        help="Minimum number of speakers expected (diarization hint, optional).",
+    )
+    p_trans.add_argument(
+        "--max-speakers",
+        type=int,
+        default=None,
+        help="Maximum number of speakers expected (diarization hint, optional).",
     )
 
     # ============================================================================
@@ -152,6 +170,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         choices=["cpu", "cuda"],
         help="Device to run emotion models on (default: cpu).",
+    )
+
+    # ============================================================================
+    # cache subcommand
+    # ============================================================================
+    p_cache = subparsers.add_parser(
+        "cache",
+        help="Inspect or clear model caches.",
+    )
+
+    cache_group = p_cache.add_mutually_exclusive_group(required=True)
+    cache_group.add_argument(
+        "--show",
+        action="store_true",
+        help="Show cache locations and sizes.",
+    )
+    cache_group.add_argument(
+        "--clear",
+        choices=["all", "whisper", "emotion", "diarization", "hf", "torch"],
+        help="Clear selected cache.",
     )
 
     return parser
@@ -211,6 +249,18 @@ def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> 
             skip_existing_json=override.skip_existing_json
             if override.skip_existing_json != base.skip_existing_json
             else base.skip_existing_json,
+            enable_diarization=override.enable_diarization
+            if override.enable_diarization != base.enable_diarization
+            else base.enable_diarization,
+            diarization_device=override.diarization_device
+            if override.diarization_device != base.diarization_device
+            else base.diarization_device,
+            min_speakers=override.min_speakers
+            if override.min_speakers != base.min_speakers
+            else base.min_speakers,
+            max_speakers=override.max_speakers
+            if override.max_speakers != base.max_speakers
+            else base.max_speakers,
         )
 
     # Use source_fields to determine which values to override
@@ -229,6 +279,18 @@ def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> 
         skip_existing_json=override.skip_existing_json
         if "skip_existing_json" in source_fields
         else base.skip_existing_json,
+        enable_diarization=override.enable_diarization
+        if "enable_diarization" in source_fields
+        else base.enable_diarization,
+        diarization_device=override.diarization_device
+        if "diarization_device" in source_fields
+        else base.diarization_device,
+        min_speakers=override.min_speakers
+        if "min_speakers" in source_fields
+        else base.min_speakers,
+        max_speakers=override.max_speakers
+        if "max_speakers" in source_fields
+        else base.max_speakers,
     )
 
 
@@ -343,6 +405,12 @@ def _config_from_transcribe_args(args: argparse.Namespace) -> TranscriptionConfi
         skip_existing_json=args.skip_existing_json
         if args.skip_existing_json is not None
         else config.skip_existing_json,
+        enable_diarization=args.enable_diarization
+        if args.enable_diarization is not None
+        else config.enable_diarization,
+        diarization_device=config.diarization_device,
+        min_speakers=args.min_speakers if args.min_speakers is not None else config.min_speakers,
+        max_speakers=args.max_speakers if args.max_speakers is not None else config.max_speakers,
     )
 
     return config
@@ -398,6 +466,98 @@ def _config_from_enrich_args(args: argparse.Namespace) -> EnrichmentConfig:
     return config
 
 
+def _get_cache_size(path: Path) -> int:
+    """Get total size of directory in bytes."""
+    if not path.exists():
+        return 0
+    total = 0
+    for item in path.rglob("*"):
+        if item.is_file():
+            try:
+                total += item.stat().st_size
+            except (OSError, PermissionError):
+                pass
+    return total
+
+
+def _format_size(bytes_size: int) -> str:
+    """Format bytes as human-readable string."""
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if bytes_size < 1024.0:
+            return f"{bytes_size:.1f} {unit}"
+        bytes_size /= 1024.0
+    return f"{bytes_size:.1f} PB"
+
+
+def _handle_cache_command(args: argparse.Namespace) -> int:
+    """Handle cache subcommand: --show or --clear."""
+    import shutil
+
+    from .cache import CachePaths
+
+    paths = CachePaths.from_env().ensure_dirs()
+
+    if args.show:
+        print("slower-whisper cache locations:")
+        print(f"  Root:         {paths.root}")
+        print(f"  HF_HOME:      {paths.hf_home} ({_format_size(_get_cache_size(paths.hf_home))})")
+        print(
+            f"  TORCH_HOME:   {paths.torch_home} ({_format_size(_get_cache_size(paths.torch_home))})"
+        )
+        print(
+            f"  Whisper:      {paths.whisper_root} ({_format_size(_get_cache_size(paths.whisper_root))})"
+        )
+        print(
+            f"  Emotion:      {paths.emotion_root} ({_format_size(_get_cache_size(paths.emotion_root))})"
+        )
+        print(
+            f"  Diarization:  {paths.diarization_root} ({_format_size(_get_cache_size(paths.diarization_root))})"
+        )
+        total = sum(
+            [
+                _get_cache_size(paths.hf_home),
+                _get_cache_size(paths.torch_home),
+                _get_cache_size(paths.whisper_root),
+                _get_cache_size(paths.emotion_root),
+                _get_cache_size(paths.diarization_root),
+            ]
+        )
+        print(f"\n  Total:        {_format_size(total)}")
+        return 0
+
+    if args.clear:
+        targets = []
+        if args.clear == "all":
+            targets = [
+                ("Whisper", paths.whisper_root),
+                ("Emotion", paths.emotion_root),
+                ("Diarization", paths.diarization_root),
+                ("HF", paths.hf_home),
+                ("Torch", paths.torch_home),
+            ]
+        elif args.clear == "whisper":
+            targets = [("Whisper", paths.whisper_root)]
+        elif args.clear == "emotion":
+            targets = [("Emotion", paths.emotion_root)]
+        elif args.clear == "diarization":
+            targets = [("Diarization", paths.diarization_root)]
+        elif args.clear == "hf":
+            targets = [("HF", paths.hf_home)]
+        elif args.clear == "torch":
+            targets = [("Torch", paths.torch_home)]
+
+        for name, target in targets:
+            if target.exists():
+                shutil.rmtree(target)
+                print(f"Cleared {name} cache: {target}")
+            target.mkdir(parents=True, exist_ok=True)
+
+        return 0
+
+    # Should not reach here due to required=True
+    raise RuntimeError("Invalid cache command: expected either --show or --clear")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """
     Main CLI entry point.
@@ -410,12 +570,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(argv)
 
         if args.command == "transcribe":
-            # Check for experimental diarization flag (v1.1 skeleton)
+            # Check for experimental diarization flag (v1.1 experimental)
             if getattr(args, "enable_diarization", False):
                 print(
-                    "\n[WARNING] --enable-diarization is NOT YET IMPLEMENTED (v1.1 skeleton).\n"
-                    "This flag will enable speaker diarization in a future release.\n"
-                    "See docs/SPEAKER_DIARIZATION.md for implementation roadmap.\n",
+                    "\n[INFO] Speaker diarization is EXPERIMENTAL in v1.1.\n"
+                    "Requires: uv sync --extra diarization\n"
+                    "Requires: HF_TOKEN environment variable (huggingface.co/settings/tokens)\n"
+                    "See docs/SPEAKER_DIARIZATION.md for details.\n",
                     file=sys.stderr,
                 )
 
@@ -427,6 +588,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             enrich_cfg = _config_from_enrich_args(args)
             enriched = enrich_directory(args.root, config=enrich_cfg)
             print(f"\n[done] Enriched {len(enriched)} transcripts")
+
+        elif args.command == "cache":
+            return _handle_cache_command(args)
 
         else:
             parser.error(f"Unknown command: {args.command}")

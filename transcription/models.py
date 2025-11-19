@@ -19,7 +19,9 @@ class Segment:
         start: Start time in seconds.
         end: End time in seconds.
         text: Transcribed text for this segment.
-        speaker: Optional speaker label (for future diarization).
+        speaker: Optional speaker metadata dict (v1.1+ diarization).
+                 Structure: {"id": "spk_0", "confidence": 0.87}
+                 None when diarization is disabled or speaker is unknown.
         tone: Optional tone label (for future tone tagging).
         audio_state: Optional dictionary containing enriched audio features and
                      prosodic information for this segment. This field supports
@@ -37,7 +39,7 @@ class Segment:
     start: float
     end: float
     text: str
-    speaker: str | None = None
+    speaker: dict[str, Any] | None = None
     tone: str | None = None
     audio_state: dict[str, Any] | None = None
 

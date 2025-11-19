@@ -140,9 +140,13 @@ class Diarizer:
         device_str = None if self.device == "auto" else self.device
 
         try:
+            from .cache import CachePaths
+
+            paths = CachePaths.from_env().ensure_dirs()
             self._pipeline = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
                 use_auth_token=True,  # Uses HF_TOKEN env var
+                cache_dir=str(paths.diarization_root),
             )
 
             if device_str:

@@ -203,6 +203,8 @@ Scenario: Calm neutral segment
 
 ## Layer 2: Speaker Diarization (v1.1+)
 
+> **Note:** As of v1.1, diarization is implemented and experimental. The quality thresholds below (e.g., DER < 0.25 on AMI corpus) are forward-looking targets for v1.2+ and are not currently enforced as hard CI gates. Current v1.1 testing focuses on correctness and robustness on synthetic fixtures.
+
 **Responsibility:** Identify "who spoke when" and populate `speakers[]` and `segment.speaker`.
 
 ### What We Test
@@ -490,7 +492,7 @@ Before releasing any version:
 - [ ] All unit tests pass
 - [ ] All BDD scenarios pass (library + API smoke)
 - [ ] Benchmarks run without degradation
-- [ ] DER < 0.25 on AMI subset (if diarization changed)
+- [ ] DER < 0.25 on AMI subset (**v1.1+ only** - once diarization is fully implemented)
 - [ ] Emotion accuracy > 60% on IEMOCAP subset (if emotion changed)
 - [ ] Prosody synthetic tests pass 100%
 - [ ] Docker smoke tests pass

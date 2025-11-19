@@ -4,15 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slower-whisper"
-version = "1.0.0"
-description = "Local audio transcription pipeline with optional prosody and emotion enrichment"
+version = "1.1.0"
+description = "Local-first conversation signal engine: transform audio into LLM-ready structured data with speaker diarization, prosody, and emotion"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Steven", email = "steven@example.com"}
 ]
-keywords = ["whisper", "transcription", "audio", "speech-to-text", "prosody", "emotion"]
+keywords = [
+    "whisper",
+    "transcription",
+    "audio",
+    "speech-to-text",
+    "prosody",
+    "emotion",
+    "diarization",
+    "speaker-identification",
+    "conversation-intelligence",
+    "llm-integration",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -22,8 +33,10 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
 ]
 
 # Minimum viable dependencies (Stage 1: Transcription only, ~2.5GB)

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from faster_whisper import WhisperModel
 
+from .cache import CachePaths
 from .config import AsrConfig
 from .models import Segment, Transcript
 
@@ -19,10 +20,13 @@ class TranscriptionEngine:
             f"{cfg.model_name} on {cfg.device} ({cfg.compute_type}) ==="
         )
         try:
+            # Use centralized cache for Whisper model downloads
+            paths = CachePaths.from_env().ensure_dirs()
             self.model = WhisperModel(
                 cfg.model_name,
                 device=cfg.device,
                 compute_type=cfg.compute_type,
+                download_root=str(paths.whisper_root),
             )
         except Exception as e:
             msg = (

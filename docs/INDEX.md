@@ -91,6 +91,9 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [AUDIO_ENRICHMENT.md](AUDIO_ENRICHMENT.md) | Stage 2 audio feature extraction | Prosody, emotion, workflow |
 | [PROSODY.md](PROSODY.md) | Prosodic feature extraction details | Pitch, energy, rate, pauses |
 | [PROSODY_QUICK_REFERENCE.md](PROSODY_QUICK_REFERENCE.md) | Quick reference for prosody features | API, thresholds, examples |
+| [SPEAKER_DIARIZATION.md](SPEAKER_DIARIZATION.md) | Speaker diarization design and implementation | Who spoke when, turn structure |
+| [LLM_PROMPT_PATTERNS.md](LLM_PROMPT_PATTERNS.md) | Reference prompts for LLM conversation analysis | Prompts, rendering, use cases |
+| [MODEL_CACHE.md](MODEL_CACHE.md) | Model cache management | Cache location, cleanup, troubleshooting |
 
 ### System Documentation
 
@@ -191,9 +194,10 @@ These documents are historical artifacts from the development process and transf
 3. [Architecture](ARCHITECTURE.md) - Understanding the design
 
 ### "I want to analyze enriched transcripts with LLMs"
-1. [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Understand the rendering
-2. [LLM Integration Examples](../examples/llm_integration/README.md) - Example code
-3. [Examples Index](../examples/llm_integration/INDEX.md) - Catalog of examples
+1. [LLM Prompt Patterns](LLM_PROMPT_PATTERNS.md) - Reference prompts and rendering strategies
+2. [LLM Integration Examples](../examples/llm_integration/README.md) - Working scripts (summarization, QA scoring, coaching)
+3. [README Python API](../README.md#llm-integration-analyze-conversations) - Quick API example with speaker labels
+4. [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Understand the prosody/emotion features
 
 ### "I want to deploy this in production"
 1. [Docker Guide](../DOCKER.md) - Containerization

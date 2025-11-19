@@ -1,8 +1,13 @@
 # Speaker Diarization in slower-whisper
 
-**Status:** v1.1 - Design and skeleton implementation (NOT YET FUNCTIONAL)
+**Status:** v1.1 - Functional, experimental feature (requires extra dependencies)
 
 **Target Release:** v1.1.0 (Q1 2026)
+
+**Requirements:**
+- Install diarization dependencies: `uv sync --extra diarization`
+- HuggingFace token with access to pyannote models: `export HF_TOKEN=...`
+- ffmpeg (system dependency, required for all slower-whisper operations)
 
 ---
 
@@ -354,63 +359,47 @@ logger.warning(
 
 ## Implementation Plan (v1.1)
 
-### Phase 1: Skeleton API ✅ (Current)
+### Phase 1: Skeleton API ✅ Completed
 
 **Completed:**
-- [x] `transcription/diarization.py` with `Diarizer` class (raises NotImplementedError)
-- [x] `transcription/turns.py` with `build_turns()` function (raises NotImplementedError)
-- [x] `--enable-diarization` CLI flag (shows warning, doesn't crash)
+- [x] `transcription/diarization.py` with `Diarizer` class
+- [x] `transcription/turns.py` with `build_turns()` function
+- [x] `--enable-diarization` CLI flag (shows experimental warning)
 - [x] BDD scenarios for nullable speaker fields
 - [x] Schema updated with `speakers` and `turns` fields
 
-**Purpose:** Establish contracts, test structure, and API shape before touching pyannote.
+### Phase 2: pyannote Integration ✅ Completed
 
-### Phase 2: pyannote Integration (Next)
+**Completed:**
+1. [x] pyannote.audio dependency added (optional extra: `diarization`)
+2. [x] `Diarizer.run()` implemented
+   - Lazy model loading with GPU/CPU device selection
+   - Runs diarization on 16kHz mono WAV
+   - Converts pyannote output to `List[SpeakerTurn]`
+   - Handles min/max speaker constraints
+3. [x] `assign_speakers_to_segments()` implemented
+   - Overlap-based assignment with 0.3 threshold
+   - Builds `SpeakerInfo` aggregates
+   - Handles low-confidence cases (speaker = null)
+4. [x] Wired into `transcribe_directory()` in `api.py`
+   - Runs after ASR completes when diarization enabled
+   - Assigns speakers to segments
+   - Updates transcript with speakers and turns
+5. [x] Tested on synthetic 2-speaker audio
+   - `tests/fixtures/synthetic_2speaker.wav` generated
+   - 14 assignment tests + 28 turn tests passing
 
-**Tasks:**
-1. Add pyannote.audio dependency (optional extra: `diarization`)
-   ```toml
-   [project.optional-dependencies]
-   diarization = [
-       "pyannote.audio>=3.1.0",
-       "torch>=2.0.0",  # Required by pyannote
-   ]
-   ```
+### Phase 3: Turn Building ✅ Completed
 
-2. Implement `Diarizer.run()`
-   - Load pyannote pipeline (lazy init, GPU/CPU device selection)
-   - Run diarization on 16kHz mono WAV
-   - Convert pyannote output to `List[SpeakerTurn]`
-   - Handle min/max speaker constraints
+**Completed:**
+1. [x] `build_turns()` implemented
+   - Groups contiguous segments by speaker
+   - Handles segments with no speaker attribution
+   - Populates basic turn metadata (id, speaker_id, start, end, segment_ids, text)
+2. [x] Wired into pipeline after speaker assignment
+3. [x] Tested on synthetic multi-turn conversation
 
-3. Implement `assign_speakers_to_segments()`
-   - Overlap-based assignment (IoU or duration threshold)
-   - Build `SpeakerInfo` aggregates
-   - Handle ambiguous cases (overlap < threshold → speaker = null)
-
-4. Wire into `transcribe_directory()` in `api.py`
-   - After ASR completes, check if diarization enabled
-   - Run diarizer on normalized WAV
-   - Assign speakers to segments
-   - Update transcript object
-
-5. Test on synthetic 2-speaker audio
-   - Generate `tests/fixtures/synthetic_2speaker.wav` (TTS-based)
-   - BDD: Verify 2 speakers detected, A-B-A-B pattern, DER = 0.00
-
-### Phase 3: Turn Building (After Phase 2)
-
-**Tasks:**
-1. Implement `build_turns()`
-   - Group contiguous segments by speaker
-   - Handle pause-based splitting (optional threshold)
-   - Populate basic turn metadata
-
-2. Wire into pipeline after speaker assignment
-
-3. Test on synthetic multi-turn conversation
-
-### Phase 4: Real-World Validation (v1.2)
+### Phase 4: Real-World Validation (Future: v1.2+)
 
 **Tasks:**
 1. Acquire AMI Meeting Corpus subset (5-10 excerpts, 30-60s each)
@@ -614,6 +603,8 @@ Before releasing v1.1 with diarization:
 - [ ] CLI flag works end-to-end
 - [ ] Cache invalidation tested
 - [ ] Error handling tested (GPU OOM, missing model, invalid audio)
+
+**Quality thresholds and test scenarios:** See [`docs/TESTING_STRATEGY.md`](TESTING_STRATEGY.md#layer-2-speaker-diarization-v11) for detailed DER thresholds, BDD scenarios, and acceptance criteria that must pass before promoting v1.1 to stable.
 
 ---
 
