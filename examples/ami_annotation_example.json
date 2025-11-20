@@ -1,0 +1,30 @@
+{
+  "transcript": "Good morning everyone. Let's start by reviewing the agenda. I think we should begin with the budget discussion. That sounds good to me. I agree, the budget is critical.",
+  "summary": "The team held their weekly project meeting to review the agenda and prioritize the budget discussion. All participants agreed that budget planning should be the first topic addressed.",
+  "speakers": [
+    {
+      "id": "SPEAKER_00",
+      "segments": [
+        {"start": 0.0, "end": 4.2},
+        {"start": 8.5, "end": 12.1}
+      ]
+    },
+    {
+      "id": "SPEAKER_01",
+      "segments": [
+        {"start": 4.5, "end": 7.8}
+      ]
+    },
+    {
+      "id": "SPEAKER_02",
+      "segments": [
+        {"start": 12.3, "end": 15.0}
+      ]
+    }
+  ],
+  "metadata": {
+    "scenario": "weekly_standup",
+    "duration": 15.0,
+    "num_speakers": 3
+  }
+}

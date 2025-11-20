@@ -132,6 +132,11 @@ output/
 temp/
 tmp/
 
+# Benchmark evaluation results (transient)
+benchmarks/results/
+benchmarks/tmp/
+benchmarks/cache/
+
 # ===========================
 # Documentation
 # ===========================

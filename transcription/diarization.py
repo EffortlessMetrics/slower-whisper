@@ -145,7 +145,7 @@ class Diarizer:
             paths = CachePaths.from_env().ensure_dirs()
             self._pipeline = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
-                use_auth_token=True,  # Uses HF_TOKEN env var
+                token=True,  # Uses HF_TOKEN env var (renamed from use_auth_token)
                 cache_dir=str(paths.diarization_root),
             )
 

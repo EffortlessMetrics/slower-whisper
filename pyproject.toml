@@ -107,6 +107,7 @@ dev = [
     "pytest-xdist>=3.0",
     "pytest-bdd>=7.0",
     "httpx>=0.24.0",  # For API BDD tests
+    "jiwer>=3.0.0",  # For WER computation in benchmarks
     # Code quality
     "black>=23.0",
     "flake8>=6.0",

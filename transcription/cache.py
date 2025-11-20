@@ -40,6 +40,8 @@ class CachePaths:
         whisper_root: Whisper model weights (faster-whisper download_root)
         emotion_root: Emotion recognition models (transformers cache_dir)
         diarization_root: Pyannote diarization models (pipeline cache_dir)
+        samples_root: Sample datasets for testing (synthetic + mini datasets)
+        benchmarks_root: Benchmark evaluation datasets (AMI, IEMOCAP, LibriCSS, etc.)
     """
 
     root: Path
@@ -48,6 +50,8 @@ class CachePaths:
     whisper_root: Path
     emotion_root: Path
     diarization_root: Path
+    samples_root: Path
+    benchmarks_root: Path
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> CachePaths:
@@ -71,6 +75,10 @@ class CachePaths:
         emotion_root = root / "emotion"
         diarization_root = root / "diarization"
 
+        # Dataset directories
+        samples_root = root / "samples"
+        benchmarks_root = root / "benchmarks"
+
         return cls(
             root=root,
             hf_home=hf_home,
@@ -78,6 +86,8 @@ class CachePaths:
             whisper_root=whisper_root,
             emotion_root=emotion_root,
             diarization_root=diarization_root,
+            samples_root=samples_root,
+            benchmarks_root=benchmarks_root,
         )
 
     def ensure_dirs(self) -> CachePaths:
@@ -93,6 +103,8 @@ class CachePaths:
             self.whisper_root,
             self.emotion_root,
             self.diarization_root,
+            self.samples_root,
+            self.benchmarks_root,
         ]:
             path.mkdir(parents=True, exist_ok=True)
         return self
