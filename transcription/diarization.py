@@ -186,7 +186,9 @@ class Diarizer:
         pipeline = self._ensure_pipeline()
 
         # Run diarization
-        # pyannote returns an Annotation object with segments
+        # pyannote returns different output types depending on version:
+        # - Older versions: Annotation object with itertracks()
+        # - v3.1+: DiarizeOutput wrapper with .speaker_diarization attribute (Annotation)
         diarization_result = pipeline(
             str(audio_path),
             min_speakers=self.min_speakers,
@@ -194,8 +196,19 @@ class Diarizer:
         )
 
         # Convert pyannote output to list[SpeakerTurn]
+        # Handle both old (Annotation) and new (DiarizeOutput) API
         turns: list[SpeakerTurn] = []
-        for segment, _, label in diarization_result.itertracks(yield_label=True):
+
+        # Extract Annotation object from result
+        if hasattr(diarization_result, "speaker_diarization"):
+            # New API (v3.1+): DiarizeOutput.speaker_diarization
+            annotation = diarization_result.speaker_diarization
+        else:
+            # Old API: result is already an Annotation
+            annotation = diarization_result
+
+        # Iterate over annotation tracks
+        for segment, _, label in annotation.itertracks(yield_label=True):
             turns.append(
                 SpeakerTurn(
                     start=float(segment.start),
