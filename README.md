@@ -180,6 +180,34 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 Or visit [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
+### Alternative: Nix Development Environment (Optional)
+
+For **reproducible development environments**, you can use [Nix](https://nixos.org/) to manage system dependencies:
+
+```bash
+# One-time setup: Install Nix
+sh <(curl -L https://nixos.org/nix/install) --daemon
+
+# Enable flakes (required)
+mkdir -p ~/.config/nix
+echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+
+# Enter dev shell (provides ffmpeg, Python, and all system deps)
+nix develop
+
+# Then install Python packages as usual
+uv sync --extra full --extra dev
+```
+
+**Benefits:**
+- ✅ Same environment on any machine (WSL, NixOS, macOS, CI)
+- ✅ Run local CI checks: `nix flake check`
+- ✅ Automatic direnv integration available
+
+See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for full details.
+
+**Note:** Nix is optional and recommended for contributors or teams wanting reproducible environments. Traditional installation (ffmpeg + uv) works perfectly fine.
+
 ### Installing Python Dependencies
 
 This project uses `pyproject.toml` with dependency groups for flexible installation. Choose the installation that matches your needs:

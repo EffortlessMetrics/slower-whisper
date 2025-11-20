@@ -171,3 +171,15 @@ secrets/
 *.pem
 credentials.json
 /.scratch/
+
+# ===========================
+# Nix
+# ===========================
+# Nix build outputs (symlinks created by nix build)
+result
+result-*
+
+# direnv cache
+.direnv/
+
+# Note: flake.nix and flake.lock should be committed
