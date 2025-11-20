@@ -105,7 +105,39 @@ Available checks:
 - `test-integration` - integration tests
 - `bdd-library` - library BDD contract tests
 - `bdd-api` - API BDD smoke tests
+- `verify` - slower-whisper-verify --quick (full verification)
+- `dogfood-smoke` - dogfood smoke test (synthetic audio, no LLM)
 - `ci-all` - runs all checks (combined)
+
+### Dogfooding & Verification
+
+Nix exposes apps for dogfooding and verification workflows:
+
+**Run dogfooding workflow:**
+
+```bash
+# From inside nix develop shell
+nix run .#dogfood -- --sample synthetic --skip-llm
+nix run .#dogfood -- --sample LS_TEST001 --skip-llm
+
+# Or use uv directly
+uv run slower-whisper-dogfood --sample synthetic --skip-llm
+```
+
+**Run verification:**
+
+```bash
+# Quick verification (recommended for local dev)
+nix run .#verify -- --quick
+
+# Full verification
+nix run .#verify
+
+# Or use uv directly
+uv run slower-whisper-verify --quick
+```
+
+These apps ensure you're in the correct Nix environment before running.
 
 ### Optional: direnv Integration
 
@@ -174,6 +206,10 @@ The `flake.nix` checks mirror the jobs in `.github/workflows/ci.yml`:
 | `test-integration` | `test-integration`| integration tests                    |
 | `bdd-library`      | `bdd-library`     | library BDD contract                 |
 | `bdd-api`          | `bdd-api`         | API BDD smoke tests                  |
+| `verify`           | (new)             | slower-whisper-verify --quick        |
+| `dogfood-smoke`    | (new)             | dogfood synthetic smoke test         |
+
+**New in Nix CI:** The `ci-nix.yml` workflow runs `nix flake check`, exercising all checks in a single reproducible environment.
 
 ## Troubleshooting
 

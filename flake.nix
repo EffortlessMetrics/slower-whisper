@@ -67,7 +67,12 @@
             echo "  3) uv run slower-whisper transcribe --help"
             echo ""
             echo "Run local CI:"
-            echo "  nix flake check      # run all CI checks"
+            echo "  nix flake check              # run all CI checks"
+            echo "  nix build .#checks.${system}.lint     # individual checks"
+            echo ""
+            echo "Dogfooding:"
+            echo "  nix run .#dogfood -- --sample synthetic --skip-llm"
+            echo "  nix run .#verify -- --quick"
             echo ""
           '';
         };
@@ -260,6 +265,54 @@
             touch $out
           '';
 
+          # Verification check (slower-whisper-verify --quick)
+          verify = pkgs.runCommand "slower-whisper-verify" {
+            buildInputs = systemDeps;
+            src = ./.;
+          } ''
+            set -euo pipefail
+            cd $src
+
+            echo "[CI/verify] Installing uv and dependencies..."
+            export HOME=$(mktemp -d)
+            export UV_CACHE_DIR=$HOME/.cache/uv
+            export SLOWER_WHISPER_CACHE_ROOT=$HOME/.cache/slower-whisper
+
+            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="$HOME/.cargo/bin:$PATH"
+
+            uv sync --extra full --extra diarization --extra dev
+
+            echo "[CI/verify] Running slower-whisper-verify --quick..."
+            uv run slower-whisper-verify --quick
+
+            touch $out
+          '';
+
+          # Dogfood smoke test (synthetic audio, no network)
+          dogfood-smoke = pkgs.runCommand "slower-whisper-dogfood-smoke" {
+            buildInputs = systemDeps;
+            src = ./.;
+          } ''
+            set -euo pipefail
+            cd $src
+
+            echo "[CI/dogfood-smoke] Installing uv and dependencies..."
+            export HOME=$(mktemp -d)
+            export UV_CACHE_DIR=$HOME/.cache/uv
+            export SLOWER_WHISPER_CACHE_ROOT=$HOME/.cache/slower-whisper
+
+            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="$HOME/.cargo/bin:$PATH"
+
+            uv sync --extra full --extra dev
+
+            echo "[CI/dogfood-smoke] Running dogfood smoke test (synthetic audio, no LLM)..."
+            uv run slower-whisper-dogfood --sample synthetic --skip-llm
+
+            touch $out
+          '';
+
           # Combined CI check (runs all checks)
           ci-all = pkgs.runCommand "slower-whisper-ci-all" {
             buildInputs = systemDeps ++ [
@@ -270,6 +323,8 @@
               self.checks.${system}.test-integration
               self.checks.${system}.bdd-library
               self.checks.${system}.bdd-api
+              self.checks.${system}.verify
+              self.checks.${system}.dogfood-smoke
             ];
           } ''
             echo "✅ All CI checks passed!"
@@ -280,9 +335,50 @@
             echo "  ✅ Integration tests passed"
             echo "  ✅ Library BDD contract enforced"
             echo "  ✅ API BDD contract enforced"
+            echo "  ✅ Verification suite passed"
+            echo "  ✅ Dogfood smoke test passed"
             echo ""
             touch $out
           '';
+        };
+
+        # Apps: nix run .#<app>
+        apps = {
+          # Dogfooding workflow (runs slower-whisper-dogfood)
+          dogfood = {
+            type = "app";
+            program = toString (pkgs.writeShellScript "dogfood" ''
+              set -euo pipefail
+              export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
+
+              # Ensure we're in a uv environment
+              if ! command -v uv &> /dev/null; then
+                echo "❌ uv not found. Please run 'nix develop' first."
+                exit 1
+              fi
+
+              # Run dogfood with all args passed through
+              exec uv run slower-whisper-dogfood "$@"
+            '');
+          };
+
+          # Verification workflow (runs slower-whisper-verify)
+          verify = {
+            type = "app";
+            program = toString (pkgs.writeShellScript "verify" ''
+              set -euo pipefail
+              export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
+
+              # Ensure we're in a uv environment
+              if ! command -v uv &> /dev/null; then
+                echo "❌ uv not found. Please run 'nix develop' first."
+                exit 1
+              fi
+
+              # Run verify with all args passed through
+              exec uv run slower-whisper-verify "$@"
+            '');
+          };
         };
 
         # Default package (for nix build)
