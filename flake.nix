@@ -15,10 +15,7 @@
         systemDeps = with pkgs; [
           # Python
           python312
-
-          # uv (Astral's fast Python package manager)
-          # Note: If uv is not available in your nixpkgs, you can install it via curl
-          # in the shellHook or package it separately
+          uv
 
           # Audio processing
           ffmpeg
@@ -43,13 +40,6 @@
         commonShellHook = ''
           export SLOWER_WHISPER_CACHE_ROOT="''${HOME}/.cache/slower-whisper"
           export PYTHONPATH="$PWD:''${PYTHONPATH:-}"
-
-          # Ensure uv is available (if not in nixpkgs)
-          if ! command -v uv &> /dev/null; then
-            echo "⚠️  uv not found in PATH"
-            echo "   Install via: curl -LsSf https://astral.sh/uv/install.sh | sh"
-            echo "   Or add to your Nix config"
-          fi
         '';
 
       in {
@@ -102,12 +92,9 @@
             set -euo pipefail
             cd $src
 
-            echo "[CI/lint] Installing uv and dependencies..."
+            echo "[CI/lint] Installing dependencies..."
             export HOME=$(mktemp -d)
             export UV_CACHE_DIR=$HOME/.cache/uv
-
-            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="$HOME/.cargo/bin:$PATH"
 
             uv sync --no-dev
             uv pip install ruff
@@ -126,13 +113,11 @@
             set -euo pipefail
             cd $src
 
-            echo "[CI/format] Installing uv and dependencies..."
+            echo "[CI/format] Installing dependencies..."
             export HOME=$(mktemp -d)
             export UV_CACHE_DIR=$HOME/.cache/uv
 
-            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="$HOME/.cargo/bin:$PATH"
-
+            uv sync --no-dev
             uv pip install ruff
 
             echo "[CI/format] Checking code formatting..."
@@ -149,15 +134,11 @@
             set -euo pipefail
             cd $src
 
-            echo "[CI/type-check] Installing uv and dependencies..."
+            echo "[CI/type-check] Installing dependencies..."
             export HOME=$(mktemp -d)
             export UV_CACHE_DIR=$HOME/.cache/uv
 
-            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="$HOME/.cargo/bin:$PATH"
-
-            uv sync --all-extras
-            uv pip install mypy
+            uv sync --extra dev
 
             echo "[CI/type-check] Running mypy..."
             # Allow type check failures (continue-on-error: true in CI)
@@ -174,15 +155,11 @@
             set -euo pipefail
             cd $src
 
-            echo "[CI/test-fast] Installing uv and dependencies..."
+            echo "[CI/test-fast] Installing dependencies..."
             export HOME=$(mktemp -d)
             export UV_CACHE_DIR=$HOME/.cache/uv
 
-            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="$HOME/.cargo/bin:$PATH"
-
-            uv sync --all-extras
-            uv pip install pytest pytest-cov pytest-xdist pytest-mock
+            uv sync --extra dev
 
             echo "[CI/test-fast] Running fast test suite..."
             uv run pytest \
@@ -203,15 +180,11 @@
             set -euo pipefail
             cd $src
 
-            echo "[CI/test-integration] Installing uv and dependencies..."
+            echo "[CI/test-integration] Installing dependencies..."
             export HOME=$(mktemp -d)
             export UV_CACHE_DIR=$HOME/.cache/uv
 
-            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="$HOME/.cargo/bin:$PATH"
-
-            uv sync --all-extras
-            uv pip install pytest pytest-mock
+            uv sync --extra dev
 
             echo "[CI/test-integration] Running integration tests..."
             uv run pytest tests/test_*integration*.py -v --tb=short
@@ -227,12 +200,9 @@
             set -euo pipefail
             cd $src
 
-            echo "[CI/bdd-library] Installing uv and dependencies..."
+            echo "[CI/bdd-library] Installing dependencies..."
             export HOME=$(mktemp -d)
             export UV_CACHE_DIR=$HOME/.cache/uv
-
-            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="$HOME/.cargo/bin:$PATH"
 
             uv sync --extra dev
 
@@ -250,12 +220,9 @@
             set -euo pipefail
             cd $src
 
-            echo "[CI/bdd-api] Installing uv and dependencies..."
+            echo "[CI/bdd-api] Installing dependencies..."
             export HOME=$(mktemp -d)
             export UV_CACHE_DIR=$HOME/.cache/uv
-
-            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="$HOME/.cargo/bin:$PATH"
 
             uv sync --extra dev
 
@@ -273,13 +240,10 @@
             set -euo pipefail
             cd $src
 
-            echo "[CI/verify] Installing uv and dependencies..."
+            echo "[CI/verify] Installing dependencies..."
             export HOME=$(mktemp -d)
             export UV_CACHE_DIR=$HOME/.cache/uv
             export SLOWER_WHISPER_CACHE_ROOT=$HOME/.cache/slower-whisper
-
-            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="$HOME/.cargo/bin:$PATH"
 
             uv sync --extra full --extra diarization --extra dev
 
@@ -297,13 +261,10 @@
             set -euo pipefail
             cd $src
 
-            echo "[CI/dogfood-smoke] Installing uv and dependencies..."
+            echo "[CI/dogfood-smoke] Installing dependencies..."
             export HOME=$(mktemp -d)
             export UV_CACHE_DIR=$HOME/.cache/uv
             export SLOWER_WHISPER_CACHE_ROOT=$HOME/.cache/slower-whisper
-
-            ${pkgs.curl}/bin/curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="$HOME/.cargo/bin:$PATH"
 
             uv sync --extra full --extra dev
 
@@ -315,23 +276,26 @@
 
           # Combined CI check (runs all checks)
           ci-all = pkgs.runCommand "slower-whisper-ci-all" {
-            buildInputs = systemDeps ++ [
-              self.checks.${system}.lint
-              self.checks.${system}.format
-              self.checks.${system}.type-check
-              self.checks.${system}.test-fast
-              self.checks.${system}.test-integration
-              self.checks.${system}.bdd-library
-              self.checks.${system}.bdd-api
-              self.checks.${system}.verify
-              self.checks.${system}.dogfood-smoke
-            ];
+            buildInputs = systemDeps;
           } ''
+            set -euo pipefail
+
+            # Force all checks to be built / evaluated
+            test -f ${self.checks.${system}.lint}
+            test -f ${self.checks.${system}.format}
+            test -f ${self.checks.${system}.type-check}
+            test -f ${self.checks.${system}.test-fast}
+            test -f ${self.checks.${system}.test-integration}
+            test -f ${self.checks.${system}.bdd-library}
+            test -f ${self.checks.${system}.bdd-api}
+            test -f ${self.checks.${system}.verify}
+            test -f ${self.checks.${system}.dogfood-smoke}
+
             echo "✅ All CI checks passed!"
             echo ""
             echo "  ✅ Code quality verified (lint + format)"
             echo "  ✅ Type check completed"
-            echo "  ✅ Unit tests passed"
+            echo "  ✅ Fast tests passed"
             echo "  ✅ Integration tests passed"
             echo "  ✅ Library BDD contract enforced"
             echo "  ✅ API BDD contract enforced"
@@ -351,14 +315,8 @@
               set -euo pipefail
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
 
-              # Ensure we're in a uv environment
-              if ! command -v uv &> /dev/null; then
-                echo "❌ uv not found. Please run 'nix develop' first."
-                exit 1
-              fi
-
               # Run dogfood with all args passed through
-              exec uv run slower-whisper-dogfood "$@"
+              exec ${pkgs.uv}/bin/uv run slower-whisper-dogfood "$@"
             '');
           };
 
@@ -369,14 +327,8 @@
               set -euo pipefail
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
 
-              # Ensure we're in a uv environment
-              if ! command -v uv &> /dev/null; then
-                echo "❌ uv not found. Please run 'nix develop' first."
-                exit 1
-              fi
-
               # Run verify with all args passed through
-              exec uv run slower-whisper-verify "$@"
+              exec ${pkgs.uv}/bin/uv run slower-whisper-verify "$@"
             '');
           };
         };

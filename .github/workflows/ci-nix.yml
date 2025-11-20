@@ -10,10 +10,21 @@ jobs:
   nix-ci:
     name: Nix flake check
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            hf-models-
 
       - name: Install Nix
         uses: cachix/install-nix-action@v27
@@ -37,6 +48,9 @@ jobs:
   nix-ci-individual:
     name: Nix check (${{ matrix.check }})
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     strategy:
       fail-fast: false
@@ -55,6 +69,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            hf-models-
 
       - name: Install Nix
         uses: cachix/install-nix-action@v27
