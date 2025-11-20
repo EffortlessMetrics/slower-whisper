@@ -34,6 +34,37 @@ See [VISION.md](VISION.md) for strategic positioning and [ROADMAP.md](ROADMAP.md
 
 **Key principle**: Each layer adds value without blocking earlier layers. All layers independently cacheable and resumable.
 
+## Development Environment (Nix-First)
+
+**Recommended approach:** Use **Nix** for reproducible development and CI environments.
+
+### Nix Setup (Recommended)
+
+```bash
+# Enter Nix dev shell (provides ffmpeg, Python, system deps)
+nix develop
+
+# Install Python dependencies
+uv sync --extra full --extra diarization --extra dev
+
+# Run local CI checks (mirrors GitHub Actions)
+nix flake check
+```
+
+**Why Nix?**
+- ✅ **Reproducible builds** - Same environment on WSL, NixOS, macOS, CI
+- ✅ **Local CI** - `nix flake check` runs identical tests to GitHub Actions
+- ✅ **No "works on my machine"** - Isolated, versioned system dependencies
+- ✅ **Optional direnv** - Auto-activate shell on `cd` into repo
+
+See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for complete setup.
+
+### Fallback: Traditional Setup
+
+> ⚠️ **Only use this if Nix installation is blocked.** Traditional setup works but lacks reproducibility guarantees.
+
+Install system dependencies manually (ffmpeg, libsndfile) via apt/brew/choco, then use uv for Python packages.
+
 ## Package Management
 
 This project uses **uv** (Astral's fast Python package manager) with `pyproject.toml`:

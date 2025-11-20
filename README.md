@@ -52,19 +52,44 @@ slower-whisper is a **local-first, open-source conversation signal engine** that
 
 ## Quick Start
 
-Get started in 3 steps:
+**Recommended:** Run the setup script to detect your environment and get guided setup:
 
 ```bash
-# 1. Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh  # macOS/Linux
-# or: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+# Clone the repository
+git clone https://github.com/yourusername/slower-whisper.git
+cd slower-whisper
 
-# 2. Install dependencies (choose your level)
-uv sync              # Basic transcription only (~2.5GB)
-# or: uv sync --extra full  # Full audio enrichment (~6.5GB total)
+# Run guided setup (detects Nix, shows appropriate instructions)
+bash scripts/setup-env.sh
+```
+
+The script will:
+- ✅ Detect if Nix is installed (recommended)
+- ✅ Guide you through the best setup for your system
+- ⚠️ Warn if using fallback (traditional) setup
+- ✅ Check for required dependencies
+
+**Quick path with Nix (recommended):**
+
+```bash
+# 1. Install Nix (one-time setup)
+sh <(curl -L https://nixos.org/nix/install) --daemon
+
+# 2. Enter dev shell and install dependencies
+nix develop
+uv sync --extra full --extra diarization --extra dev
 
 # 3. Run transcription
 uv run slower-whisper
+```
+
+**Fallback path (if Nix unavailable):**
+
+```bash
+# 1. Install system deps (ffmpeg, libsndfile) via apt/brew/choco
+# 2. Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh
+# 3. Install Python deps: uv sync --extra full
+# 4. Run: uv run slower-whisper
 ```
 
 Place your audio files in `raw_audio/` and find transcripts in `whisper_json/`, `transcripts/`.
@@ -140,49 +165,19 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete design details.
 
 ## Requirements
 
-- Windows, Linux, or macOS (any OS with Python and ffmpeg).
-- Python 3.10+.
-- NVIDIA GPU with a recent CUDA-capable driver (for GPU acceleration).
-- `ffmpeg` on PATH.
-- [uv](https://docs.astral.sh/uv/) for package management (recommended).
+- Windows, Linux, or macOS (any OS with Nix or Python + ffmpeg)
+- Python 3.10+ (managed by Nix or system package manager)
+- NVIDIA GPU recommended for GPU acceleration (CPU fallback supported)
+- **Recommended:** [Nix](https://nixos.org/) for reproducible environments
+- **Fallback:** Manual ffmpeg + [uv](https://docs.astral.sh/uv/) installation
 
-### Installing System Dependencies
+## Installation
 
-**Install ffmpeg:**
+### Option 1: Nix (Recommended)
 
-- **Windows (PowerShell, elevated):**
+**Best for:** Contributors, teams, anyone wanting reproducible environments and local CI.
 
-  ```powershell
-  choco install ffmpeg -y
-  ```
-
-- **macOS:**
-
-  ```bash
-  brew install ffmpeg
-  ```
-
-- **Linux (Ubuntu/Debian):**
-
-  ```bash
-  sudo apt-get update && sudo apt-get install -y ffmpeg
-  ```
-
-**Install uv (recommended package manager):**
-
-```bash
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Or visit [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
-
-### Alternative: Nix Development Environment (Optional)
-
-For **reproducible development environments**, you can use [Nix](https://nixos.org/) to manage system dependencies:
+Nix provides **guaranteed reproducibility** across machines and mirrors your CI environment locally.
 
 ```bash
 # One-time setup: Install Nix
@@ -195,20 +190,66 @@ echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
 # Enter dev shell (provides ffmpeg, Python, and all system deps)
 nix develop
 
-# Then install Python packages as usual
-uv sync --extra full --extra dev
+# Install Python packages
+uv sync --extra full --extra diarization --extra dev
+
+# Run local CI checks (same as GitHub Actions)
+nix flake check
 ```
 
 **Benefits:**
-- ✅ Same environment on any machine (WSL, NixOS, macOS, CI)
-- ✅ Run local CI checks: `nix flake check`
-- ✅ Automatic direnv integration available
+- ✅ **Same environment everywhere** - WSL, NixOS, macOS, CI runners
+- ✅ **Local CI** - `nix flake check` runs identical tests to GitHub Actions
+- ✅ **No system dependency conflicts** - isolated, reproducible builds
+- ✅ **Optional direnv integration** - auto-activate on `cd`
 
-See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for full details.
+See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for detailed setup, troubleshooting, and direnv integration.
 
-**Note:** Nix is optional and recommended for contributors or teams wanting reproducible environments. Traditional installation (ffmpeg + uv) works perfectly fine.
+---
 
-### Installing Python Dependencies
+### Option 2: Traditional Setup (Fallback)
+
+> ⚠️ **Notice:** This method works but lacks reproducibility guarantees. You may encounter environment-specific issues that don't occur in CI or on other machines. **Consider using Nix (Option 1) for a better development experience.**
+
+**Best for:** Quick testing, environments where Nix can't be installed, one-off usage.
+
+#### Install System Dependencies
+
+**Install ffmpeg:**
+
+- **Linux (Ubuntu/Debian):**
+
+  ```bash
+  sudo apt-get update && sudo apt-get install -y ffmpeg libsndfile1
+  ```
+
+- **macOS:**
+
+  ```bash
+  brew install ffmpeg
+  ```
+
+- **Windows (PowerShell, elevated):**
+
+  ```powershell
+  choco install ffmpeg -y
+  ```
+
+**Install uv (Python package manager):**
+
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Or visit [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+
+#### Install Python Dependencies (Traditional Setup)
+
+> 📝 **Note:** If you're using **Nix (Option 1)**, skip this section and use the commands shown in Option 1 above.
 
 This project uses `pyproject.toml` with dependency groups for flexible installation. Choose the installation that matches your needs:
 

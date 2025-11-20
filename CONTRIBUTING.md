@@ -89,32 +89,113 @@ See [VISION.md](VISION.md) for detailed positioning.
 
 ## Quick Start for Contributors
 
+**Recommended: Use Nix for reproducible development**
+
 ```bash
 # 1. Fork and clone the repository
 git clone https://github.com/<your-username>/slower-whisper.git
 cd slower-whisper
 
-# 2. Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh  # Linux/macOS
-# Or on Windows: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+# 2. Install Nix (if not already installed)
+sh <(curl -L https://nixos.org/nix/install) --daemon
 
-# 3. Install all dependencies including dev tools
-uv sync --extra dev
+# 3. Enable flakes
+mkdir -p ~/.config/nix
+echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
 
-# 4. Set up pre-commit hooks (recommended)
-uv run pre-commit install
+# 4. Enter Nix dev shell
+nix develop
 
-# 5. Run tests to verify everything works
-uv run pytest
+# 5. Install Python dependencies
+uv sync --extra full --extra diarization --extra dev
 
-# 6. Start developing!
+# 6. Run local CI checks (same as GitHub Actions)
+nix flake check
+
+# 7. Start developing!
+```
+
+**Fallback: Traditional setup (if Nix unavailable)**
+
+> ⚠️ **Notice:** Traditional setup works but lacks reproducibility guarantees. Strongly recommend Nix for contributors.
+
+```bash
+# 1-2. Install system deps (ffmpeg, libsndfile) + uv manually
+# 3. uv sync --extra dev
+# 4. uv run pre-commit install
+# 5. uv run pytest
+```
+
+See the guided setup script for automatic environment detection:
+
+```bash
+bash scripts/setup-env.sh
 ```
 
 ---
 
 ## Development Environment Setup
 
-### Prerequisites
+### Option 1: Nix (Strongly Recommended for Contributors)
+
+**All contributors should use Nix** for reproducible development that mirrors CI.
+
+#### Prerequisites
+
+- Git - For version control
+- Nix - Reproducible package manager
+
+#### Setup Steps
+
+1. **Install Nix** (if not already installed):
+
+   ```bash
+   sh <(curl -L https://nixos.org/nix/install) --daemon
+   ```
+
+2. **Enable flakes**:
+
+   ```bash
+   mkdir -p ~/.config/nix
+   echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+   ```
+
+3. **Clone and enter dev shell**:
+
+   ```bash
+   git clone https://github.com/yourusername/slower-whisper.git
+   cd slower-whisper
+   nix develop
+   ```
+
+4. **Install Python dependencies**:
+
+   ```bash
+   uv sync --extra full --extra diarization --extra dev
+   ```
+
+5. **Verify setup**:
+
+   ```bash
+   # Run local CI checks (same as GitHub Actions)
+   nix flake check
+   ```
+
+**Benefits:**
+- ✅ Same environment as CI and other developers
+- ✅ No "works on my machine" issues
+- ✅ Reproducible across WSL, NixOS, macOS
+- ✅ Optional direnv auto-activation
+
+See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for complete Nix documentation.
+
+---
+
+### Option 2: Traditional Setup (Fallback Only)
+
+> ⚠️ **Warning:** This method works but lacks reproducibility guarantees. You may encounter environment-specific issues that don't occur in CI or on other machines. **Strongly consider using Nix (Option 1) instead.**
+
+#### Prerequisites (Traditional)
 
 Before you begin, ensure you have:
 
