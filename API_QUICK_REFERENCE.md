@@ -125,6 +125,11 @@ TranscriptionConfig(
 | `skip_existing_json` | `bool` | `True` | Skip files with existing JSON output | `--skip-existing-json` | `SLOWER_WHISPER_SKIP_EXISTING_JSON` |
 | `vad_min_silence_ms` | `int` | `500` | VAD silence threshold in milliseconds (100-2000) | `--vad-min-silence-ms` | `SLOWER_WHISPER_VAD_MIN_SILENCE_MS` |
 | `beam_size` | `int` | `5` | Beam search size (1-10, higher = more accurate but slower) | `--beam-size` | `SLOWER_WHISPER_BEAM_SIZE` |
+| `enable_diarization` | `bool` | `False` | Enable speaker diarization (pyannote.audio) | `--enable-diarization` | `SLOWER_WHISPER_ENABLE_DIARIZATION` |
+| `diarization_device` | `str` | `"auto"` | Device for diarization: "cuda", "cpu", or "auto" | N/A (env/config) | `SLOWER_WHISPER_DIARIZATION_DEVICE` |
+| `min_speakers` | `int \| None` | `None` | Minimum expected speakers (hint for diarization model) | `--min-speakers` | `SLOWER_WHISPER_MIN_SPEAKERS` |
+| `max_speakers` | `int \| None` | `None` | Maximum expected speakers (hint for diarization model) | `--max-speakers` | `SLOWER_WHISPER_MAX_SPEAKERS` |
+| `overlap_threshold` | `float` | `0.3` | Minimum overlap ratio to assign a speaker to a segment | N/A (env/config) | `SLOWER_WHISPER_OVERLAP_THRESHOLD` |
 
 **Model Sizes:**
 
@@ -219,6 +224,18 @@ config = EnrichmentConfig(enable_prosody=True, device="cuda")
   "skip_existing_json": true,
   "vad_min_silence_ms": 500,
   "beam_size": 5
+}
+```
+
+**Transcription JSON (with diarization):**
+```json
+{
+  "model": "large-v3",
+  "enable_diarization": true,
+  "diarization_device": "auto",
+  "min_speakers": 2,
+  "max_speakers": 4,
+  "overlap_threshold": 0.3
 }
 ```
 

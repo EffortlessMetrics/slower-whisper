@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse
 
 from .api import enrich_transcript as _enrich_transcript
 from .api import load_transcript, transcribe_file
-from .config import EnrichmentConfig, TranscriptionConfig
+from .config import EnrichmentConfig, TranscriptionConfig, validate_compute_type
 from .exceptions import ConfigurationError, EnrichmentError, TranscriptionError
 from .models import SCHEMA_VERSION, Transcript
 
@@ -130,6 +130,45 @@ async def transcribe_audio(
             examples=["transcribe", "translate"],
         ),
     ] = "transcribe",
+    enable_diarization: Annotated[
+        bool,
+        Query(
+            description="Run speaker diarization (pyannote.audio)",
+            examples=[False, True],
+        ),
+    ] = False,
+    diarization_device: Annotated[
+        str,
+        Query(
+            description="Device for diarization ('cuda', 'cpu', or 'auto')",
+            examples=["auto"],
+        ),
+    ] = "auto",
+    min_speakers: Annotated[
+        int | None,
+        Query(
+            description="Minimum number of speakers expected (hint to diarization model)",
+            ge=1,
+            examples=[2],
+        ),
+    ] = None,
+    max_speakers: Annotated[
+        int | None,
+        Query(
+            description="Maximum number of speakers expected (hint to diarization model)",
+            ge=1,
+            examples=[4],
+        ),
+    ] = None,
+    overlap_threshold: Annotated[
+        float | None,
+        Query(
+            description="Minimum overlap ratio (0.0-1.0) required to assign a speaker to a segment",
+            ge=0.0,
+            le=1.0,
+            examples=[0.3],
+        ),
+    ] = None,
 ) -> JSONResponse:
     """
     Transcribe an uploaded audio file using faster-whisper.
@@ -147,6 +186,11 @@ async def transcribe_audio(
         device: Device to use ('cuda' for GPU, 'cpu' for CPU)
         compute_type: Precision for model inference
         task: 'transcribe' or 'translate' (to English)
+        enable_diarization: Whether to run speaker diarization (pyannote.audio)
+        diarization_device: Device for diarization ('cuda', 'cpu', or 'auto')
+        min_speakers: Minimum expected speaker count hint
+        max_speakers: Maximum expected speaker count hint
+        overlap_threshold: Minimum overlap ratio required to assign a speaker
 
     Returns:
         JSON response containing the Transcript object with segments and metadata
@@ -170,6 +214,24 @@ async def transcribe_audio(
             detail=f"Invalid device '{device}'. Must be 'cuda' or 'cpu'.",
         )
 
+    # Validate diarization device early for clearer error messages
+    if diarization_device not in ("cuda", "cpu", "auto"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid diarization_device '{diarization_device}'. "
+                "Must be 'cuda', 'cpu', or 'auto'."
+            ),
+        )
+
+    try:
+        normalized_compute_type = validate_compute_type(compute_type)
+    except ConfigurationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
+
     # Create temporary directory for processing
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
@@ -192,14 +254,26 @@ async def transcribe_audio(
 
         # Create transcription config
         try:
-            config = TranscriptionConfig(
-                model=model,
-                language=language,
-                device=device,
-                compute_type=compute_type,
-                task=task,  # type: ignore
-                skip_existing_json=False,
+            config_kwargs = {
+                "model": model,
+                "language": language,
+                "device": device,
+                "compute_type": normalized_compute_type,
+                "task": task,  # type: ignore
+                "skip_existing_json": False,
+            }
+            config_kwargs.update(
+                {
+                    "enable_diarization": enable_diarization,
+                    "diarization_device": diarization_device,
+                    "min_speakers": min_speakers,
+                    "max_speakers": max_speakers,
+                }
             )
+            if overlap_threshold is not None:
+                config_kwargs["overlap_threshold"] = overlap_threshold
+
+            config = TranscriptionConfig(**config_kwargs)
         except (ValueError, TypeError) as e:
             raise HTTPException(
                 status_code=400,
@@ -405,7 +479,7 @@ def _transcript_to_dict(transcript: Transcript) -> dict[str, Any]:
     Returns:
         Dictionary representation suitable for JSON response
     """
-    return {
+    data: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "file_name": transcript.file_name,
         "language": transcript.language,
@@ -423,6 +497,14 @@ def _transcript_to_dict(transcript: Transcript) -> dict[str, Any]:
             for seg in transcript.segments
         ],
     }
+
+    # Include optional diarization fields when present (v1.1+)
+    if transcript.speakers is not None:
+        data["speakers"] = transcript.speakers
+    if transcript.turns is not None:
+        data["turns"] = transcript.turns
+
+    return data
 
 
 # =============================================================================

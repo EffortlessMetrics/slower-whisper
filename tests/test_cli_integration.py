@@ -136,6 +136,11 @@ def test_transcribe_default_args():
     assert args.vad_min_silence_ms is None
     assert args.beam_size is None
     assert args.skip_existing_json is None
+    assert args.enable_diarization is None
+    assert args.diarization_device is None
+    assert args.min_speakers is None
+    assert args.max_speakers is None
+    assert args.overlap_threshold is None
 
 
 def test_transcribe_custom_root():
@@ -242,6 +247,36 @@ def test_transcribe_all_options():
     assert args.vad_min_silence_ms == 700
     assert args.beam_size == 8
     assert args.skip_existing_json is False
+    assert args.enable_diarization is None
+    assert args.diarization_device is None
+    assert args.min_speakers is None
+    assert args.max_speakers is None
+    assert args.overlap_threshold is None
+
+
+def test_transcribe_diarization_options():
+    """Test diarization-related arguments are parsed."""
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "transcribe",
+            "--enable-diarization",
+            "--diarization-device",
+            "cpu",
+            "--min-speakers",
+            "2",
+            "--max-speakers",
+            "4",
+            "--overlap-threshold",
+            "0.45",
+        ]
+    )
+
+    assert args.enable_diarization is True
+    assert args.diarization_device == "cpu"
+    assert args.min_speakers == 2
+    assert args.max_speakers == 4
+    assert args.overlap_threshold == 0.45
 
 
 # ============================================================================
@@ -366,6 +401,11 @@ def test_config_from_transcribe_args_defaults():
     assert config.vad_min_silence_ms == 500
     assert config.beam_size == 5
     assert config.skip_existing_json is True
+    assert config.enable_diarization is False
+    assert config.diarization_device == "auto"
+    assert config.min_speakers is None
+    assert config.max_speakers is None
+    assert config.overlap_threshold == 0.3
 
 
 def test_config_from_transcribe_args_custom():
@@ -402,6 +442,38 @@ def test_config_from_transcribe_args_custom():
     assert config.vad_min_silence_ms == 1000
     assert config.beam_size == 3
     assert config.skip_existing_json is False
+    assert config.enable_diarization is False
+    assert config.diarization_device == "auto"
+    assert config.min_speakers is None
+    assert config.max_speakers is None
+    assert config.overlap_threshold == 0.3
+
+
+def test_config_from_transcribe_args_diarization_fields():
+    """Test conversion from transcribe args includes diarization settings."""
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "transcribe",
+            "--enable-diarization",
+            "--diarization-device",
+            "cpu",
+            "--min-speakers",
+            "2",
+            "--max-speakers",
+            "4",
+            "--overlap-threshold",
+            "0.45",
+        ]
+    )
+
+    config = _config_from_transcribe_args(args)
+
+    assert config.enable_diarization is True
+    assert config.diarization_device == "cpu"
+    assert config.min_speakers == 2
+    assert config.max_speakers == 4
+    assert config.overlap_threshold == 0.45
 
 
 def test_config_from_enrich_args_defaults():

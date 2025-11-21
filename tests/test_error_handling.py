@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import json
 import os
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from transcription import (
+    AsrConfig,
     EnrichmentConfig,
     TranscriptionConfig,
     enrich_directory,
@@ -33,7 +35,9 @@ from transcription import (
     transcribe_directory,
     transcribe_file,
 )
+from transcription.cli import _config_from_transcribe_args
 from transcription.cli import main as cli_main
+from transcription.config import validate_diarization_settings
 from transcription.exceptions import (
     ConfigurationError,
     EnrichmentError,
@@ -208,6 +212,27 @@ class TestMissingInputFiles:
 class TestInvalidConfiguration:
     """Test error handling for invalid configuration values."""
 
+    def _cli_args(self, **overrides):
+        """Build a minimal argparse-like namespace for CLI config tests."""
+        base = {
+            "config": None,
+            "model": None,
+            "device": None,
+            "compute_type": None,
+            "language": None,
+            "task": None,
+            "vad_min_silence_ms": None,
+            "beam_size": None,
+            "skip_existing_json": None,
+            "enable_diarization": True,
+            "diarization_device": None,
+            "min_speakers": None,
+            "max_speakers": None,
+            "overlap_threshold": None,
+        }
+        base.update(overrides)
+        return SimpleNamespace(**base)
+
     def test_config_from_file_missing_file(self, tmp_path):
         """Test TranscriptionConfig.from_file raises FileNotFoundError for missing file."""
         nonexistent = tmp_path / "nonexistent.json"
@@ -237,6 +262,32 @@ class TestInvalidConfiguration:
 
         assert "must contain a JSON object" in str(exc_info.value)
 
+    def test_config_from_file_invalid_compute_type(self, tmp_path):
+        """Invalid compute_type in config files should raise ValueError."""
+        config_file = tmp_path / "bad_compute_type.json"
+        config_file.write_text('{"compute_type": "fp99"}', encoding="utf-8")
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_file(config_file)
+
+        assert "Invalid compute_type" in str(exc_info.value)
+
+    def test_config_from_env_invalid_compute_type(self, monkeypatch):
+        """Environment compute_type should be validated and rejected when unknown."""
+        monkeypatch.setenv("SLOWER_WHISPER_COMPUTE_TYPE", "fp99")
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_env()
+
+        assert "Invalid compute_type" in str(exc_info.value)
+
+    def test_asr_config_invalid_compute_type(self):
+        """Direct AsrConfig construction should validate compute_type."""
+        with pytest.raises(ConfigurationError) as exc_info:
+            AsrConfig(compute_type="fp99")
+
+        assert "Invalid compute_type" in str(exc_info.value)
+
     def test_config_invalid_task_value(self, tmp_path):
         """Test TranscriptionConfig.from_file raises ValueError for invalid task."""
         config_file = tmp_path / "config.json"
@@ -261,6 +312,19 @@ class TestInvalidConfiguration:
         assert "cuda" in str(exc_info.value)
         assert "cpu" in str(exc_info.value)
 
+    def test_config_invalid_diarization_device_value(self, tmp_path):
+        """TranscriptionConfig.from_file should validate diarization_device choices."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text('{"diarization_device": "tpu"}', encoding="utf-8")
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_file(config_file)
+
+        assert "Invalid diarization_device value" in str(exc_info.value)
+        assert "cuda" in str(exc_info.value)
+        assert "cpu" in str(exc_info.value)
+        assert "auto" in str(exc_info.value)
+
     def test_config_negative_vad_min_silence_ms(self, tmp_path):
         """Test TranscriptionConfig.from_file raises ValueError for negative VAD silence."""
         config_file = tmp_path / "config.json"
@@ -280,6 +344,50 @@ class TestInvalidConfiguration:
             TranscriptionConfig.from_file(config_file)
 
         assert "beam_size must be a positive integer" in str(exc_info.value)
+
+    def test_config_invalid_skip_existing_json_type(self, tmp_path):
+        """Config files should reject non-boolean skip_existing_json values."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text('{"skip_existing_json": "yes"}', encoding="utf-8")
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_file(config_file)
+
+        assert "skip_existing_json must be a boolean" in str(exc_info.value)
+
+    def test_config_invalid_enable_diarization_type(self, tmp_path):
+        """Config files should reject non-boolean enable_diarization values."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text('{"enable_diarization": "true"}', encoding="utf-8")
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_file(config_file)
+
+        assert "enable_diarization must be a boolean" in str(exc_info.value)
+
+    def test_config_invalid_overlap_threshold_from_file(self, tmp_path):
+        """Config files should reject out-of-range diarization overlap thresholds."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text(
+            '{"enable_diarization": true, "overlap_threshold": 1.2}', encoding="utf-8"
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_file(config_file)
+
+        assert "overlap_threshold" in str(exc_info.value)
+
+    def test_config_invalid_overlap_threshold_type_from_file(self, tmp_path):
+        """Config files should reject non-numeric diarization overlap thresholds."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text(
+            '{"enable_diarization": true, "overlap_threshold": "high"}', encoding="utf-8"
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_file(config_file)
+
+        assert "overlap_threshold" in str(exc_info.value)
 
     def test_config_from_env_invalid_device(self, monkeypatch):
         """Test TranscriptionConfig.from_env raises ValueError for invalid device."""
@@ -316,6 +424,101 @@ class TestInvalidConfiguration:
             TranscriptionConfig.from_env()
 
         assert "Invalid SLOWER_WHISPER_VAD_MIN_SILENCE_MS" in str(exc_info.value)
+
+    def test_config_from_env_invalid_diarization_device(self, monkeypatch):
+        """Test TranscriptionConfig.from_env validates diarization device choices."""
+        monkeypatch.setenv("SLOWER_WHISPER_DIARIZATION_DEVICE", "tpu")
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_env()
+
+        assert "Invalid SLOWER_WHISPER_DIARIZATION_DEVICE" in str(exc_info.value)
+
+    def test_config_from_env_invalid_overlap_threshold(self, monkeypatch):
+        """Test TranscriptionConfig.from_env validates overlap_threshold range."""
+        monkeypatch.setenv("SLOWER_WHISPER_OVERLAP_THRESHOLD", "1.5")
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_env()
+
+        assert "Invalid SLOWER_WHISPER_OVERLAP_THRESHOLD" in str(exc_info.value)
+
+    def test_config_from_env_invalid_min_speakers(self, monkeypatch):
+        """Test TranscriptionConfig.from_env rejects non-positive min_speakers."""
+        monkeypatch.setenv("SLOWER_WHISPER_MIN_SPEAKERS", "0")
+
+        with pytest.raises(ValueError) as exc_info:
+            TranscriptionConfig.from_env()
+
+        assert "Invalid SLOWER_WHISPER_MIN_SPEAKERS" in str(exc_info.value)
+
+    def test_cli_invalid_min_speakers_raises_configuration_error(self):
+        """CLI helper should reject non-positive min_speakers values."""
+        args = self._cli_args(min_speakers=0)
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _config_from_transcribe_args(args)
+
+        assert "min_speakers must be a positive integer" in str(exc_info.value)
+
+    def test_cli_invalid_max_speakers_raises_configuration_error(self):
+        """CLI helper should reject non-positive max_speakers values."""
+        args = self._cli_args(max_speakers=-1)
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _config_from_transcribe_args(args)
+
+        assert "max_speakers must be a positive integer" in str(exc_info.value)
+
+    def test_validate_diarization_settings_invalid_overlap(self):
+        """Helper should reject overlap thresholds outside [0.0, 1.0]."""
+        with pytest.raises(ConfigurationError) as exc_info:
+            validate_diarization_settings(
+                min_speakers=None, max_speakers=None, overlap_threshold=1.5
+            )
+
+        assert "overlap_threshold" in str(exc_info.value)
+
+    def test_cli_min_speakers_cannot_exceed_max(self):
+        """CLI helper should enforce min_speakers <= max_speakers."""
+        args = self._cli_args(min_speakers=4, max_speakers=2)
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            _config_from_transcribe_args(args)
+
+        assert "min_speakers (4) cannot be greater than max_speakers (2)" in str(exc_info.value)
+
+    def test_transcribe_directory_rejects_inconsistent_speaker_bounds(self, temp_project_root):
+        """Programmatic API should validate inconsistent diarization bounds."""
+        config = TranscriptionConfig(
+            model="base",
+            device="cpu",
+            enable_diarization=True,
+            min_speakers=3,
+            max_speakers=1,
+        )
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            transcribe_directory(temp_project_root, config)
+
+        assert "min_speakers (3) cannot be greater than max_speakers (1)" in str(exc_info.value)
+
+    def test_transcribe_file_rejects_inconsistent_speaker_bounds(
+        self, temp_project_root, test_audio_file
+    ):
+        """transcribe_file should fail fast on invalid diarization bounds."""
+        config = TranscriptionConfig(
+            model="base",
+            device="cpu",
+            enable_diarization=True,
+            min_speakers=5,
+            max_speakers=2,
+        )
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            transcribe_file(test_audio_file, temp_project_root, config)
+
+        assert "min_speakers (5) cannot be greater than max_speakers (2)" in str(exc_info.value)
 
     def test_enrich_config_from_file_invalid_device(self, tmp_path):
         """Test EnrichmentConfig.from_file raises ValueError for invalid device."""

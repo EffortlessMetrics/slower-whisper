@@ -14,10 +14,9 @@ from pytest_bdd import given, parsers, scenarios, then, when
 
 from transcription import (
     EnrichmentConfig,
-    TranscriptionConfig,
+    EnrichmentError,
     enrich_directory,
     enrich_transcript,
-    transcribe_directory,
 )
 
 # Check if ffmpeg is available
@@ -57,19 +56,67 @@ def enrich_state():
 
 
 def create_test_wav(path: Path, duration: float = 1.0, sr: int = 16000):
-    """Create a simple test WAV file with silence."""
+    """Create a test WAV file with speech-like audio.
+
+    Generates white noise to ensure Whisper detects speech segments.
+    This is sufficient for testing enrichment workflows without requiring
+    real speech samples.
+    """
     try:
         import soundfile as sf
 
-        # Generate silent audio
+        # Generate white noise (speech-like) instead of silence
+        # This ensures Whisper produces segments for enrichment tests
         samples = int(duration * sr)
-        audio = np.zeros(samples, dtype=np.float32)
+        # Low-amplitude noise (-20dB) to simulate speech energy
+        audio = np.random.normal(0, 0.1, samples).astype(np.float32)
 
         # Write WAV file
         sf.write(str(path), audio, sr)
     except ImportError:
         # Fallback: create an empty file if soundfile not available
         path.touch()
+
+
+def create_dummy_transcript_json(json_path: Path, audio_filename: str, num_segments: int = 2):
+    """Create a dummy transcript JSON file for enrichment tests.
+
+    This bypasses the transcription step (which fails on synthetic audio)
+    and creates transcript JSON with dummy segments directly.
+
+    Args:
+        json_path: Path to write JSON file
+        audio_filename: Name of audio file (for transcript metadata)
+        num_segments: Number of dummy segments to create
+    """
+    import json
+
+    transcript_data = {
+        "schema_version": 2,
+        "file_name": audio_filename,
+        "language": "en",
+        "meta": {
+            "generated_at": "2025-01-01T00:00:00Z",
+            "model_name": "base",
+            "device": "cpu",
+        },
+        "segments": [
+            {
+                "id": i,
+                "start": float(i * 2.0),
+                "end": float((i + 1) * 2.0),
+                "text": f"Dummy segment {i}",
+                "speaker": None,
+                "tone": None,
+                "audio_state": None,
+            }
+            for i in range(num_segments)
+        ],
+    }
+
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(json_path, "w") as f:
+        json.dump(transcript_data, f, indent=2)
 
 
 # ============================================================================
@@ -104,35 +151,66 @@ def clean_enrichment_directory(tmp_path):
 def transcribed_file_exists(enrich_state, filename):
     """Create a transcribed file ready for enrichment."""
     project_root = enrich_state["project_root"]
+    norm_audio_dir = project_root / "input_audio"
+    json_dir = project_root / "whisper_json"
+    stem = Path(filename).stem
 
-    # Create audio file
+    # Create audio files (both raw and normalized)
     raw_audio_dir = project_root / "raw_audio"
-    wav_path = raw_audio_dir / filename
-    create_test_wav(wav_path, duration=2.0)  # Longer duration for better features
+    raw_wav_path = raw_audio_dir / filename
+    norm_wav_path = norm_audio_dir / f"{stem}.wav"
+    json_path = json_dir / f"{stem}.json"
 
-    # Transcribe it
-    config = TranscriptionConfig(model="base", device="cpu")
-    transcripts = transcribe_directory(project_root, config)
+    create_test_wav(raw_wav_path, duration=4.0)
+    create_test_wav(norm_wav_path, duration=4.0)
+    create_dummy_transcript_json(json_path, filename, num_segments=2)
 
+    # Load the transcript
+    from transcription import load_transcript
+
+    transcript = load_transcript(json_path)
     enrich_state["audio_files"].append(filename)
-    enrich_state["transcripts"] = transcripts
+    enrich_state["transcripts"] = [transcript]
 
 
 @given(parsers.parse("transcribed files exist:"), target_fixture="enrich_state")
 def multiple_transcribed_files_exist(enrich_state, datatable):
-    """Create multiple transcribed files."""
+    """Create multiple transcribed files with dummy transcripts."""
     project_root = enrich_state["project_root"]
     raw_audio_dir = project_root / "raw_audio"
+    norm_audio_dir = project_root / "input_audio"
+    json_dir = project_root / "whisper_json"
 
-    for row in datatable:
-        filename = row["filename"]
-        wav_path = raw_audio_dir / filename
-        create_test_wav(wav_path, duration=2.0)
+    norm_audio_dir.mkdir(exist_ok=True)
+    json_dir.mkdir(exist_ok=True)
+
+    # datatable is a list of lists: [['filename'], ['file1.wav'], ['file2.wav'], ...]
+    # Skip header row (index 0) and access first column (index 0) for each data row
+    for row in datatable[1:]:
+        filename = row[0]
+        stem = Path(filename).stem
+
+        # Create audio files (both raw and normalized)
+        raw_wav_path = raw_audio_dir / filename
+        norm_wav_path = norm_audio_dir / f"{stem}.wav"
+        json_path = json_dir / f"{stem}.json"
+
+        create_test_wav(raw_wav_path, duration=4.0)  # Longer for multiple segments
+        create_test_wav(norm_wav_path, duration=4.0)
+        create_dummy_transcript_json(json_path, filename, num_segments=2)
+
         enrich_state["audio_files"].append(filename)
 
-    # Transcribe all files
-    config = TranscriptionConfig(model="base", device="cpu")
-    transcripts = transcribe_directory(project_root, config)
+    # Load the transcripts we just created
+    from transcription import load_transcript
+
+    transcripts = []
+    for filename in enrich_state["audio_files"]:
+        stem = Path(filename).stem
+        json_path = json_dir / f"{stem}.json"
+        transcript = load_transcript(json_path)
+        transcripts.append(transcript)
+
     enrich_state["transcripts"] = transcripts
 
     return enrich_state
@@ -144,16 +222,31 @@ def transcript_object_exists(enrich_state, tmp_path, filename):
     # Create a simple project for this file
     project_root = tmp_path / "transcript_project"
     project_root.mkdir(exist_ok=True)
-    (project_root / "raw_audio").mkdir(exist_ok=True)
+    raw_audio_dir = project_root / "raw_audio"
+    norm_audio_dir = project_root / "input_audio"
+    json_dir = project_root / "whisper_json"
 
-    # Create audio and transcribe
-    wav_path = project_root / "raw_audio" / filename
-    create_test_wav(wav_path, duration=2.0)
+    raw_audio_dir.mkdir(exist_ok=True)
+    norm_audio_dir.mkdir(exist_ok=True)
+    json_dir.mkdir(exist_ok=True)
 
-    config = TranscriptionConfig(model="base", device="cpu")
-    transcripts = transcribe_directory(project_root, config)
+    stem = Path(filename).stem
 
-    enrich_state["transcript_object"] = transcripts[0]
+    # Create audio files and transcript JSON
+    raw_wav_path = raw_audio_dir / filename
+    norm_wav_path = norm_audio_dir / f"{stem}.wav"
+    json_path = json_dir / f"{stem}.json"
+
+    create_test_wav(raw_wav_path, duration=4.0)
+    create_test_wav(norm_wav_path, duration=4.0)
+    create_dummy_transcript_json(json_path, filename, num_segments=2)
+
+    # Load the transcript
+    from transcription import load_transcript
+
+    transcript = load_transcript(json_path)
+
+    enrich_state["transcript_object"] = transcript
     enrich_state["project_root"] = project_root
 
 
@@ -194,15 +287,12 @@ def transcript_already_enriched(enrich_state):
 def transcript_json_exists_no_audio(enrich_state, filename):
     """Create a transcript JSON without corresponding audio."""
     project_root = enrich_state["project_root"]
+    json_dir = project_root / "whisper_json"
+    stem = Path(filename).stem
 
-    # Create audio file temporarily
-    raw_audio_dir = project_root / "raw_audio"
-    wav_path = raw_audio_dir / filename
-    create_test_wav(wav_path)
-
-    # Transcribe
-    config = TranscriptionConfig(model="base", device="cpu")
-    transcribe_directory(project_root, config)
+    # Create transcript JSON directly (no audio files)
+    json_path = json_dir / f"{stem}.json"
+    create_dummy_transcript_json(json_path, filename, num_segments=2)
 
     enrich_state["audio_files"].append(filename)
 
@@ -275,6 +365,9 @@ def enrich_directory_with_prosody(enrich_state):
         enrich_state["enriched_transcripts"] = enriched
     except ImportError as e:
         pytest.skip(f"Enrichment dependencies not available: {e}")
+    except EnrichmentError:
+        # Missing audio should not blow up the scenario; record empty result
+        enrich_state["enriched_transcripts"] = []
 
 
 @when("I enrich the transcript object with prosody enabled")

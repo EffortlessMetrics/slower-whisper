@@ -81,6 +81,7 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
     print("\n=== Step 3: Transcribing normalized audio ===")
     total = len(norm_files)
     processed = skipped = failed = 0
+    diarized_only = 0
     total_audio = 0.0
     total_time = 0.0
 
@@ -92,8 +93,49 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
         srt_path = paths.transcripts_dir / f"{stem}.srt"
 
         if cfg.skip_existing_json and json_path.exists():
-            print(f"[skip-transcribe] {wav.name} because {json_path.name} already exists")
-            skipped += 1
+            if diarization_config and diarization_config.enable_diarization:
+                # Upgrade existing transcript with diarization without re-transcribing
+                try:
+                    transcript = writers.load_transcript_from_json(json_path)
+                except Exception as exc:
+                    print(f"[error-diarization] Failed to load {json_path.name}: {exc}")
+                    failed += 1
+                    continue
+
+                diar_meta = (transcript.meta or {}).get("diarization", {})
+                if diar_meta.get("status") == "success":
+                    print(
+                        f"[skip-transcribe] {wav.name} because {json_path.name} already exists "
+                        "(diarization present)"
+                    )
+                    skipped += 1
+                    continue
+
+                print(f"[diarize-existing] {wav.name} (reusing existing transcript)")
+                try:
+                    from .api import _maybe_run_diarization
+
+                    transcript = _maybe_run_diarization(
+                        transcript=transcript,
+                        wav_path=wav,
+                        config=diarization_config,
+                    )
+                except Exception as exc:
+                    print(f"[error-diarization] Failed to run diarization for {wav.name}: {exc}")
+                    failed += 1
+                    continue
+
+                writers.write_json(transcript, json_path)
+                writers.write_txt(transcript, txt_path)
+                writers.write_srt(transcript, srt_path)
+
+                diarized_only += 1
+                print(f"  → [diarization-only] {json_path}")
+                print(f"  → [diarization-only] {txt_path}")
+                print(f"  → [diarization-only] {srt_path}")
+            else:
+                print(f"[skip-transcribe] {wav.name} because {json_path.name} already exists")
+                skipped += 1
             continue
 
         duration = _get_duration_seconds(wav)
@@ -136,7 +178,10 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
         processed += 1
 
     print("\n=== Summary ===")
-    print(f"  processed={processed}, skipped={skipped}, failed={failed}, total={total}")
+    print(
+        f"  transcribed={processed}, diarized_only={diarized_only}, skipped={skipped}, "
+        f"failed={failed}, total={total}"
+    )
     if total_audio > 0 and total_time > 0:
         overall_rtf = total_time / total_audio
         print(

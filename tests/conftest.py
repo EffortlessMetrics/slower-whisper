@@ -8,7 +8,15 @@ This module provides:
 """
 
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
+
+# Ensure the project package is importable when running pytest as an installed script
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 # ============================================================================
 # Mock unavailable dependencies to allow tests to run
@@ -27,14 +35,14 @@ def mock_module(module_name, attrs=None):
 # Mock faster_whisper if not available
 try:
     import faster_whisper  # noqa: F401
-except ImportError:
+except Exception:
     sys.modules["faster_whisper"] = mock_module("faster_whisper", {"WhisperModel": MagicMock})
 
 
 # Mock transformers if not available (for emotion tests)
 try:
     import transformers  # noqa: F401
-except ImportError:
+except Exception:
     sys.modules["transformers"] = mock_module(
         "transformers",
         {
@@ -48,7 +56,7 @@ except ImportError:
 # Mock torch if not available (for emotion tests)
 try:
     import torch  # noqa: F401
-except ImportError:
+except Exception:
     sys.modules["torch"] = mock_module(
         "torch",
         {
@@ -65,7 +73,7 @@ except ImportError:
 # Mock parselmouth if not available (for prosody tests)
 try:
     import parselmouth  # noqa: F401
-except ImportError:
+except Exception:
     sys.modules["parselmouth"] = mock_module(
         "parselmouth",
         {
@@ -78,11 +86,12 @@ except ImportError:
 # Mock librosa if not available (for prosody tests)
 try:
     import librosa  # noqa: F401
-except ImportError:
+except Exception:
     sys.modules["librosa"] = mock_module(
         "librosa",
         {
-            "feature": mock_module("librosa.feature", {"rms": MagicMock(return_value=[[0.1]])}),
+            # Return near-silence energy so prosody tests treat audio as very quiet
+            "feature": mock_module("librosa.feature", {"rms": MagicMock(return_value=[[1e-6]])}),
             "frames_to_time": lambda frames, sr, hop_length: frames * hop_length / sr,
         },
     )
@@ -94,37 +103,49 @@ try:
     import soundfile  # noqa: F401
 
     SOUNDFILE_AVAILABLE = True
-except ImportError:
+except Exception:
+    import wave
+
     import numpy as np
 
     class MockSoundFile:
         def __init__(self, path, mode="r"):
-            self.samplerate = 16000
-            self.channels = 1
+            self._wf = wave.open(path, mode)
+            self.samplerate = self._wf.getframerate()
+            self.channels = self._wf.getnchannels()
 
         def __len__(self):
-            return 16000  # 1 second
+            return self._wf.getnframes()
 
         def __enter__(self):
             return self
 
         def __exit__(self, *args):
-            pass
+            self._wf.close()
 
         def seek(self, frame):
-            pass
+            self._wf.setpos(frame)
 
         def read(self, frames, dtype="float32"):
-            return np.zeros(frames, dtype=dtype)
+            raw = self._wf.readframes(frames)
+            data = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+            return data
 
     def mock_read(path, dtype="float32"):
-        return (np.zeros(16000, dtype=dtype), 16000)
+        with wave.open(path, "rb") as wf:
+            raw = wf.readframes(wf.getnframes())
+            data = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+            return (data.astype(dtype), wf.getframerate())
 
     def mock_write(path, data, sr):
-        # Create an empty file so file existence checks pass
-        import pathlib
-
-        pathlib.Path(path).touch()
+        pcm = (np.array(data, dtype=np.float32) * 32767).astype("<i2")
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sr)
+            wf.writeframes(pcm.tobytes())
 
     sys.modules["soundfile"] = mock_module(
         "soundfile", {"SoundFile": MockSoundFile, "read": mock_read, "write": mock_write}
@@ -139,3 +160,16 @@ except ImportError:
     raise ImportError(
         "numpy is required for tests. Please install with: pip install numpy"
     ) from None
+
+
+# Skip heavy diarization tests when pyannote.audio isn't available
+PYANNOTE_AVAILABLE = True
+try:
+    import pyannote.audio  # noqa: F401
+except Exception:
+    PYANNOTE_AVAILABLE = False
+
+
+def pytest_runtest_setup(item):
+    if item.get_closest_marker("requires_diarization") and not PYANNOTE_AVAILABLE:
+        pytest.skip("pyannote.audio not available; skipping diarization tests")

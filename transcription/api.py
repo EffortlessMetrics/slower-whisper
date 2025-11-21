@@ -20,15 +20,48 @@ Example usage:
 
 from __future__ import annotations
 
+import copy
 import logging
 from pathlib import Path
+from typing import Any
 
-from .config import AsrConfig, EnrichmentConfig, Paths, TranscriptionConfig
+from .config import (
+    AsrConfig,
+    EnrichmentConfig,
+    Paths,
+    TranscriptionConfig,
+    validate_diarization_settings,
+)
 from .exceptions import EnrichmentError, TranscriptionError
 from .models import Transcript
 from .writers import load_transcript_from_json, write_json
 
 logger = logging.getLogger(__name__)
+
+
+def _neutral_audio_state(error: str | None = None) -> dict[str, Any]:
+    """Create a minimal audio_state placeholder used when enrichment fails."""
+    extraction_status = {
+        "prosody": "skipped",
+        "emotion_dimensional": "skipped",
+        "emotion_categorical": "skipped",
+        "errors": [error] if error else [],
+    }
+    return {
+        "prosody": {
+            "pitch": {"level": "unknown", "mean_hz": None, "std_hz": None, "contour": "unknown"},
+            "energy": {"level": "unknown", "db_rms": None, "variation": "unknown"},
+            "rate": {"level": "unknown", "syllables_per_sec": None, "words_per_sec": None},
+            "pauses": {"count": 0, "longest_ms": 0, "density": "unknown"},
+        },
+        "emotion": {
+            "valence": {"level": "neutral", "score": 0.5},
+            "arousal": {"level": "medium", "score": 0.5},
+            "dominance": {"level": "neutral", "score": 0.5},
+        },
+        "rendering": "[audio: neutral]",
+        "extraction_status": extraction_status,
+    }
 
 
 # ============================================================================
@@ -44,15 +77,12 @@ def _maybe_run_diarization(
     """
     Run diarization and turn building if enabled.
 
-    v1.1 skeleton: does not actually run diarization yet.
-    It only records that diarization was requested but is not implemented.
-
-    When pyannote is integrated, this function will:
-    1. Initialize Diarizer with config.diarization_device, min/max_speakers
-    2. Run diarizer.run(wav_path) -> speaker_turns
-    3. Call assign_speakers(transcript, speaker_turns, overlap_threshold)
-    4. Call build_turns(transcript)
-    5. Catch any exceptions and mark diarization as "failed" in meta
+    Workflow:
+    1. Instantiate pyannote-based Diarizer with provided device/min/max hints.
+    2. Run diarizer on the normalized WAV to get speaker turns.
+    3. Map turns onto ASR segments via assign_speakers().
+    4. Group contiguous segments into turns with build_turns().
+    5. Record status and error details in transcript.meta["diarization"].
 
     Args:
         transcript: Transcript from ASR (with segments populated).
@@ -65,6 +95,11 @@ def _maybe_run_diarization(
     """
     if not config.enable_diarization:
         return transcript
+
+    # Keep a snapshot so failures can't leave partial speaker state behind
+    original_segment_speakers = [copy.deepcopy(seg.speaker) for seg in transcript.segments]
+    original_speakers = copy.deepcopy(transcript.speakers)
+    original_turns = copy.deepcopy(transcript.turns)
 
     # v1.1: Real diarization implementation with pyannote.audio
     try:
@@ -104,19 +139,47 @@ def _maybe_run_diarization(
         # Record success in metadata
         if transcript.meta is None:
             transcript.meta = {}
-        diar_meta = transcript.meta.setdefault("diarization", {})
-        diar_meta.update(
-            {
-                "status": "success",
-                "requested": True,
-                "backend": "pyannote.audio",
-                "num_speakers": len(transcript.speakers) if transcript.speakers else 0,
-            }
-        )
+        transcript.meta["diarization"] = {
+            "status": "success",
+            "requested": True,
+            "backend": "pyannote.audio",
+            "num_speakers": len(transcript.speakers) if transcript.speakers else 0,
+            "error": None,
+            "error_type": None,
+        }
 
         return transcript
 
     except Exception as exc:
+        # Restore original speaker annotations if anything was partially written
+        try:
+            segment_pairs = zip(
+                transcript.segments,
+                original_segment_speakers,
+                strict=True,
+            )
+        except ValueError:
+            logger.warning(
+                "Diarization failure changed segment count (expected %d, got %d); "
+                "resetting speaker labels best-effort.",
+                len(original_segment_speakers),
+                len(transcript.segments),
+            )
+            segment_pairs = zip(
+                transcript.segments,
+                original_segment_speakers,
+                strict=False,
+            )
+
+        for seg, speaker in segment_pairs:
+            seg.speaker = speaker
+        if len(transcript.segments) > len(original_segment_speakers):
+            for seg in transcript.segments[len(original_segment_speakers) :]:
+                seg.speaker = None
+
+        transcript.speakers = original_speakers
+        transcript.turns = original_turns
+
         logger.warning(
             "Diarization failed for %s: %s. Proceeding without speakers/turns.",
             wav_path.name,
@@ -124,7 +187,6 @@ def _maybe_run_diarization(
         )
         if transcript.meta is None:
             transcript.meta = {}
-        diar_meta = transcript.meta.setdefault("diarization", {})
 
         # Categorize error for better debugging
         error_msg = str(exc)
@@ -132,19 +194,17 @@ def _maybe_run_diarization(
 
         if "HF_TOKEN" in error_msg or "use_auth_token" in error_msg:
             error_type = "auth"
-        elif "pyannote.audio" in error_msg or "ImportError" in str(type(exc)):
+        elif isinstance(exc, (ImportError, ModuleNotFoundError)) or "pyannote.audio" in error_msg:
             error_type = "missing_dependency"
         elif "not found" in error_msg.lower() or isinstance(exc, FileNotFoundError):
             error_type = "file_not_found"
 
-        diar_meta.update(
-            {
-                "status": "failed",
-                "requested": True,
-                "error": error_msg,
-                "error_type": error_type,
-            }
-        )
+        transcript.meta["diarization"] = {
+            "status": "failed",
+            "requested": True,
+            "error": error_msg,
+            "error_type": error_type,
+        }
         return transcript
 
 
@@ -177,6 +237,11 @@ def transcribe_directory(
     from .pipeline import run_pipeline
 
     root = Path(root)
+    validate_diarization_settings(
+        config.min_speakers,
+        config.max_speakers,
+        config.overlap_threshold,
+    )
 
     # Convert public config to internal AppConfig
     paths = Paths(root=root)
@@ -251,6 +316,11 @@ def transcribe_file(
 
     audio_path = Path(audio_path)
     root = Path(root)
+    validate_diarization_settings(
+        config.min_speakers,
+        config.max_speakers,
+        config.overlap_threshold,
+    )
 
     # Validate input
     if not audio_path.exists():
@@ -323,7 +393,7 @@ def transcribe_file(
 
     from . import __version__
 
-    meta = {
+    base_meta = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "audio_file": transcript.file_name,
         "model_name": config.model,
@@ -336,7 +406,9 @@ def transcribe_file(
         "pipeline_version": __version__,
         "root": str(root),
     }
-    transcript.meta = meta
+    combined_meta = (transcript.meta or {}).copy()
+    combined_meta.update(base_meta)
+    transcript.meta = combined_meta
 
     writers.write_json(transcript, json_path)
     writers.write_txt(transcript, txt_path)
@@ -401,6 +473,7 @@ def enrich_directory(
 
         if not wav_path.exists():
             errors.append(f"{json_path.name}: Audio file not found at {wav_path}")
+            # Skip gracefully without failing the entire directory
             continue
 
         # Load transcript
@@ -441,8 +514,9 @@ def enrich_directory(
             ) from e
         except Exception as e:
             errors.append(f"{json_path.name}: Enrichment failed - {e}")
+            logger.warning(f"Enrichment failed for {json_path.name}: {e}")
+            # Skip this transcript but continue processing others
 
-    # If we had errors but got some results, the user may want to know
     if errors and not enriched_transcripts:
         raise EnrichmentError(
             "Failed to enrich any transcripts. Errors encountered:\n"
@@ -509,13 +583,14 @@ def enrich_transcript(
             enable_categorical_emotion=config.enable_categorical_emotion,
             compute_baseline=True,
         )
+        return enriched
     except Exception as e:
-        raise EnrichmentError(
-            f"Failed to enrich transcript for {audio_path.name}: {e}. "
-            f"Check that the audio file is a valid WAV file and enrichment features are properly configured."
-        ) from e
-
-    return enriched
+        logger.warning(
+            f"Enrichment failed for {audio_path.name}: {e}; returning neutral audio_state"
+        )
+        for segment in transcript.segments:
+            segment.audio_state = _neutral_audio_state(str(e))
+        return transcript
 
 
 # Convenience I/O wrappers for public API

@@ -10,13 +10,13 @@ from typing import Any
 
 import numpy as np
 
-# Optional emotion dependencies - gracefully handle missing packages
+# Optional emotion dependencies - gracefully handle missing/broken packages
 try:
     import torch
     from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
 
     EMOTION_AVAILABLE = True
-except ImportError:
+except Exception:
     EMOTION_AVAILABLE = False
     torch = None  # type: ignore[misc]
     AutoModelForAudioClassification = None  # type: ignore[misc]
@@ -322,11 +322,37 @@ class EmotionRecognizer:
 _recognizer_instance: EmotionRecognizer | None = None
 
 
+class DummyEmotionRecognizer:
+    """Fallback emotion extractor that returns neutral scores."""
+
+    def extract_emotion_dimensional(self, audio: np.ndarray, sr: int) -> dict[str, dict[str, Any]]:
+        return {
+            "valence": {"level": "neutral", "score": 0.5},
+            "arousal": {"level": "medium", "score": 0.5},
+            "dominance": {"level": "neutral", "score": 0.5},
+        }
+
+    def extract_emotion_categorical(self, audio: np.ndarray, sr: int) -> dict[str, dict[str, Any]]:
+        return {
+            "categorical": {
+                "primary": "neutral",
+                "confidence": 1.0,
+                "secondary": None,
+                "secondary_confidence": 0.0,
+                "all_scores": {"neutral": 1.0},
+            }
+        }
+
+
 def get_emotion_recognizer() -> EmotionRecognizer:
     """Get or create the singleton EmotionRecognizer instance."""
     global _recognizer_instance
     if _recognizer_instance is None:
-        _recognizer_instance = EmotionRecognizer()
+        if EMOTION_AVAILABLE:
+            _recognizer_instance = EmotionRecognizer()
+        else:
+            logger.warning("Emotion dependencies unavailable; using dummy recognizer")
+            _recognizer_instance = DummyEmotionRecognizer()  # type: ignore[assignment]
     return _recognizer_instance
 
 

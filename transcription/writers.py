@@ -48,7 +48,9 @@ def load_transcript_from_json(json_path: Path) -> Transcript:
     Load transcript from JSON file and reconstruct Transcript objects.
 
     This function gracefully handles both old JSON files (without audio_state)
-    and new ones (with audio_state), ensuring backward compatibility.
+    and new ones (with audio_state), ensuring backward compatibility. It also
+    accepts both the canonical "file" key and API-style "file_name" to keep
+    REST responses loadable.
 
     Args:
         json_path: Path to the JSON file to load.
@@ -78,7 +80,8 @@ def load_transcript_from_json(json_path: Path) -> Transcript:
         segments.append(segment)
 
     transcript = Transcript(
-        file_name=data.get("file", ""),
+        # Prefer canonical "file", but fall back to "file_name" for API responses.
+        file_name=data.get("file") or data.get("file_name", ""),
         language=data.get("language", ""),
         segments=segments,
         meta=data.get("meta"),

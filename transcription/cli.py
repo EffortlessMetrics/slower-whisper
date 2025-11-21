@@ -17,9 +17,18 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
-from .api import enrich_directory, transcribe_directory
-from .config import EnrichmentConfig, TranscriptionConfig
+from . import api as api_module
+from .config import EnrichmentConfig, TranscriptionConfig, validate_diarization_settings
 from .exceptions import SlowerWhisperError
+
+
+# Expose API functions for compatibility with tests/patching while delegating to api module
+def transcribe_directory(*args, **kwargs):
+    return api_module.transcribe_directory(*args, **kwargs)
+
+
+def enrich_directory(*args, **kwargs):
+    return api_module.enrich_directory(*args, **kwargs)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -106,6 +115,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enable speaker diarization (experimental, default: False). See docs/SPEAKER_DIARIZATION.md for setup.",
     )
     p_trans.add_argument(
+        "--diarization-device",
+        choices=["auto", "cuda", "cpu"],
+        default=None,
+        help="Device for diarization ('auto', 'cuda', or 'cpu'). Defaults to 'auto'.",
+    )
+    p_trans.add_argument(
         "--min-speakers",
         type=int,
         default=None,
@@ -116,6 +131,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Maximum number of speakers expected (diarization hint, optional).",
+    )
+    p_trans.add_argument(
+        "--overlap-threshold",
+        type=float,
+        default=None,
+        help="Minimum overlap ratio (0.0-1.0) required to assign a speaker to a segment (default: 0.3).",
     )
 
     # ============================================================================
@@ -327,6 +348,9 @@ def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> 
             max_speakers=override.max_speakers
             if override.max_speakers != base.max_speakers
             else base.max_speakers,
+            overlap_threshold=override.overlap_threshold
+            if override.overlap_threshold != base.overlap_threshold
+            else base.overlap_threshold,
         )
 
     # Use source_fields to determine which values to override
@@ -357,6 +381,9 @@ def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> 
         max_speakers=override.max_speakers
         if "max_speakers" in source_fields
         else base.max_speakers,
+        overlap_threshold=override.overlap_threshold
+        if "overlap_threshold" in source_fields
+        else base.overlap_threshold,
     )
 
 
@@ -450,11 +477,18 @@ def _config_from_transcribe_args(args: argparse.Namespace) -> TranscriptionConfi
 
     # Step 2: Override with environment variables
     env_config = TranscriptionConfig.from_env()
+    env_compute_type_explicit = "compute_type" in getattr(env_config, "_source_fields", set())
     config = _merge_configs(config, env_config)
 
     # Step 3: Override with config file if provided
+    file_compute_type_explicit = False
     if args.config is not None:
         file_config = TranscriptionConfig.from_file(args.config)
+        file_compute_type_explicit = "compute_type" in getattr(
+            file_config,
+            "_source_fields",
+            set(),
+        )
         config = _merge_configs(config, file_config)
 
     # Step 4: Override with explicit CLI flags (only if not None)
@@ -474,9 +508,28 @@ def _config_from_transcribe_args(args: argparse.Namespace) -> TranscriptionConfi
         enable_diarization=args.enable_diarization
         if args.enable_diarization is not None
         else config.enable_diarization,
-        diarization_device=config.diarization_device,
+        diarization_device=args.diarization_device
+        if args.diarization_device is not None
+        else config.diarization_device,
         min_speakers=args.min_speakers if args.min_speakers is not None else config.min_speakers,
         max_speakers=args.max_speakers if args.max_speakers is not None else config.max_speakers,
+        overlap_threshold=args.overlap_threshold
+        if args.overlap_threshold is not None
+        else config.overlap_threshold,
+    )
+
+    # If compute_type wasn't explicitly provided by CLI, file, or env,
+    # re-derive the default based on the final device selection.
+    compute_type_explicit = (
+        args.compute_type is not None or env_compute_type_explicit or file_compute_type_explicit
+    )
+    if not compute_type_explicit:
+        config.compute_type = "int8" if config.device == "cpu" else "float16"
+
+    validate_diarization_settings(
+        config.min_speakers,
+        config.max_speakers,
+        config.overlap_threshold,
     )
 
     return config

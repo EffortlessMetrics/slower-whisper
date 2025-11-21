@@ -169,6 +169,27 @@ def test_load_transcript_backward_compatibility(tmp_path: Path) -> None:
     assert loaded_transcript.segments[0].audio_state is None  # Should default to None
 
 
+def test_load_transcript_accepts_file_name_key(tmp_path: Path) -> None:
+    """API responses use file_name; loader should handle it as well."""
+    api_payload = {
+        "schema_version": 2,
+        "file_name": "api_response.wav",
+        "language": "en",
+        "meta": {"model_name": "tiny"},
+        "segments": [
+            {"id": 0, "start": 0.0, "end": 1.0, "text": "hello", "speaker": None, "tone": None}
+        ],
+    }
+
+    json_path = tmp_path / "api_response.json"
+    json_path.write_text(json.dumps(api_payload, indent=2), encoding="utf-8")
+
+    loaded = writers.load_transcript_from_json(json_path)
+    assert loaded.file_name == "api_response.wav"
+    assert loaded.language == "en"
+    assert loaded.segments[0].text == "hello"
+
+
 def test_segment_speaker_dict_serialization(tmp_path: Path) -> None:
     """Test serialization of v1.1 speaker dict structure in segments."""
     # Create segment with speaker dict (v1.1 format)

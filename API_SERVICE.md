@@ -77,11 +77,20 @@ Upload an audio file and receive a transcription in JSON format.
   - Options: `float16`, `float32`, `int8`
 - `task` (query, optional): Task type (default: `transcribe`)
   - Options: `transcribe`, `translate` (to English)
+- `enable_diarization` (query, optional): Run speaker diarization (default: `false`)
+- `diarization_device` (query, optional): Device for diarization (default: `auto`)
+  - Options: `cpu`, `cuda`, `auto`
+- `min_speakers` / `max_speakers` (query, optional): Speaker count hints for diarization
+- `overlap_threshold` (query, optional): Minimum overlap ratio (0.0–1.0) to assign a speaker (default: `0.3`)
 
 **Example:**
 ```bash
 curl -X POST -F "audio=@interview.mp3" \
   "http://localhost:8000/transcribe?model=large-v3&language=en&device=cpu"
+
+# With diarization enabled
+curl -X POST -F "audio=@meeting.wav" \
+  "http://localhost:8000/transcribe?enable_diarization=true&min_speakers=2&max_speakers=4"
 ```
 
 **Response:**

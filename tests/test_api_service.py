@@ -13,10 +13,10 @@ import pytest
 pytest.importorskip("fastapi")
 pytest.importorskip("uvicorn")
 
-from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient  # noqa: E402
 
-from transcription.models import Segment, Transcript
-from transcription.service import app
+from transcription.models import Segment, Transcript  # noqa: E402
+from transcription.service import app  # noqa: E402
 
 
 @pytest.fixture
@@ -145,6 +145,68 @@ class TestTranscribeEndpoint:
         assert response.status_code == 400
         assert "Invalid task" in response.json()["detail"]
 
+    def test_transcribe_invalid_compute_type(self, client, sample_audio_wav):
+        """Invalid compute_type should return a 400 error."""
+        with open(sample_audio_wav, "rb") as f:
+            response = client.post(
+                "/transcribe",
+                files={"audio": ("test.wav", f, "audio/wav")},
+                params={"compute_type": "fp99"},
+            )
+
+        assert response.status_code == 400
+        assert "Invalid compute_type" in response.json()["detail"]
+
+    def test_transcribe_with_diarization_flags(self, client, sample_audio_wav):
+        """Diarization options should be accepted and reflected in metadata."""
+        with open(sample_audio_wav, "rb") as f:
+            response = client.post(
+                "/transcribe",
+                files={"audio": ("test.wav", f, "audio/wav")},
+                params={
+                    "enable_diarization": True,
+                    "diarization_device": "auto",
+                    "min_speakers": 1,
+                    "max_speakers": 2,
+                    "overlap_threshold": 0.25,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        diar_meta = data["meta"].get("diarization", {})
+        assert diar_meta.get("requested") is True
+        assert diar_meta.get("status") in {"success", "failed"}
+
+    def test_transcribe_invalid_diarization_bounds(self, client, sample_audio_wav):
+        """min_speakers > max_speakers should return a 400 error."""
+        with open(sample_audio_wav, "rb") as f:
+            response = client.post(
+                "/transcribe",
+                files={"audio": ("test.wav", f, "audio/wav")},
+                params={
+                    "enable_diarization": True,
+                    "min_speakers": 3,
+                    "max_speakers": 2,
+                },
+            )
+
+        assert response.status_code == 400
+        assert "min_speakers" in response.json()["detail"]
+
+    def test_transcribe_invalid_diarization_device(self, client, sample_audio_wav):
+        """Invalid diarization_device should return a 400 error."""
+        with open(sample_audio_wav, "rb") as f:
+            response = client.post(
+                "/transcribe",
+                files={"audio": ("test.wav", f, "audio/wav")},
+                params={"diarization_device": "tpu"},
+            )
+
+        assert response.status_code == 400
+        assert "diarization_device" in response.json()["detail"]
+
 
 class TestEnrichEndpoint:
     """Tests for the /enrich endpoint."""
@@ -213,6 +275,31 @@ class TestEnrichEndpoint:
 
         assert response.status_code == 400
         assert "Invalid transcript JSON" in response.json()["detail"]
+
+
+def test_transcript_to_dict_includes_optional_fields(sample_transcript):
+    """Helper serializer should emit diarization fields when present."""
+    from transcription.service import _transcript_to_dict
+
+    sample_transcript.speakers = [
+        {"id": "spk_0", "label": None, "total_speech_time": 1.5, "num_segments": 1}
+    ]
+    sample_transcript.turns = [
+        {
+            "id": "turn_0",
+            "speaker_id": "spk_0",
+            "start": 0.0,
+            "end": 2.0,
+            "segment_ids": [0],
+            "text": "Hello world",
+        }
+    ]
+
+    payload = _transcript_to_dict(sample_transcript)
+
+    assert payload["speakers"] == sample_transcript.speakers
+    assert payload["turns"] == sample_transcript.turns
+    assert payload["segments"]  # ensure base fields remain
 
 
 class TestOpenAPIDocumentation:

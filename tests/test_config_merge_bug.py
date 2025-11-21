@@ -24,8 +24,8 @@ from pathlib import Path
 
 import pytest
 
-from transcription.cli import _merge_configs, _merge_enrich_configs
-from transcription.config import EnrichmentConfig, TranscriptionConfig
+from transcription.cli import _config_from_transcribe_args, _merge_configs, _merge_enrich_configs
+from transcription.config import AsrConfig, EnrichmentConfig, TranscriptionConfig
 
 
 class TestConfigMergeBugFix:
@@ -43,6 +43,29 @@ class TestConfigMergeBugFix:
         """Restore environment after each test."""
         os.environ.clear()
         os.environ.update(self.original_env)
+
+    def test_env_loads_diarization_fields(self):
+        """Environment variables should populate diarization settings."""
+        os.environ["SLOWER_WHISPER_ENABLE_DIARIZATION"] = "true"
+        os.environ["SLOWER_WHISPER_DIARIZATION_DEVICE"] = "cpu"
+        os.environ["SLOWER_WHISPER_MIN_SPEAKERS"] = "2"
+        os.environ["SLOWER_WHISPER_MAX_SPEAKERS"] = "4"
+        os.environ["SLOWER_WHISPER_OVERLAP_THRESHOLD"] = "0.45"
+
+        env_config = TranscriptionConfig.from_env()
+
+        assert env_config.enable_diarization is True
+        assert env_config.diarization_device == "cpu"
+        assert env_config.min_speakers == 2
+        assert env_config.max_speakers == 4
+        assert env_config.overlap_threshold == 0.45
+        assert {
+            "enable_diarization",
+            "diarization_device",
+            "min_speakers",
+            "max_speakers",
+            "overlap_threshold",
+        }.issubset(env_config._source_fields)
 
     def test_file_overrides_env_when_value_equals_default(self):
         """
@@ -303,8 +326,10 @@ class TestConfigMergeBugFix:
                 beam_size=None,
                 skip_existing_json=None,
                 enable_diarization=None,  # Diarization fields added in v1.1
+                diarization_device=None,
                 min_speakers=None,
                 max_speakers=None,
+                overlap_threshold=None,
             )
 
             config = _config_from_transcribe_args(args)
@@ -313,6 +338,108 @@ class TestConfigMergeBugFix:
             assert config.model == "base"
             # File overrides env (even though file value equals default)
             assert config.device == "cuda"
+
+        finally:
+            config_file.unlink()
+
+    def test_compute_type_defaults_follow_final_device(self):
+        """
+        compute_type should follow the final device when not explicitly set.
+
+        If env forces device=cpu (which makes compute_type=int8 by default) but the CLI
+        overrides device to cuda, compute_type should return to the CUDA default (float16).
+        """
+        os.environ["SLOWER_WHISPER_DEVICE"] = "cpu"
+
+        from argparse import Namespace
+
+        args = Namespace(
+            config=None,
+            model=None,
+            device="cuda",  # CLI override
+            language=None,
+            task=None,
+            compute_type=None,  # Not explicitly set anywhere
+            vad_min_silence_ms=None,
+            beam_size=None,
+            skip_existing_json=None,
+            enable_diarization=None,
+            diarization_device=None,
+            min_speakers=None,
+            max_speakers=None,
+            overlap_threshold=None,
+        )
+
+        config = _config_from_transcribe_args(args)
+
+        assert config.device == "cuda"
+        assert config.compute_type == "float16"
+
+    def test_explicit_compute_type_preserved(self):
+        """
+        Explicit compute_type should not be auto-overridden based on device.
+
+        Regression test for bug where compute_type was forced to int8 on CPU even
+        when explicitly set to float16.
+        """
+        cfg = TranscriptionConfig(device="cpu", compute_type="float16")
+        assert cfg.compute_type == "float16"
+
+        asr_cfg = AsrConfig(device="cpu", compute_type="float16")
+        assert asr_cfg.compute_type == "float16"
+
+    def test_diarization_file_overrides_env_and_preserves_threshold(self):
+        """
+        File diarization settings should override env and survive CLI rebuild.
+
+        This guards against regression where overlap_threshold was dropped when
+        reconstructing the TranscriptionConfig in _config_from_transcribe_args.
+        """
+        os.environ["SLOWER_WHISPER_ENABLE_DIARIZATION"] = "false"
+        os.environ["SLOWER_WHISPER_MIN_SPEAKERS"] = "1"
+        os.environ["SLOWER_WHISPER_MAX_SPEAKERS"] = "1"
+        os.environ["SLOWER_WHISPER_OVERLAP_THRESHOLD"] = "0.2"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                {
+                    "enable_diarization": True,
+                    "diarization_device": "cpu",
+                    "min_speakers": 2,
+                    "max_speakers": 4,
+                    "overlap_threshold": 0.6,
+                },
+                f,
+            )
+            config_file = Path(f.name)
+
+        try:
+            from argparse import Namespace
+
+            args = Namespace(
+                config=config_file,
+                model=None,
+                device=None,
+                language=None,
+                task=None,
+                compute_type=None,
+                vad_min_silence_ms=None,
+                beam_size=None,
+                skip_existing_json=None,
+                enable_diarization=None,
+                diarization_device=None,
+                min_speakers=None,
+                max_speakers=None,
+                overlap_threshold=None,
+            )
+
+            config = _config_from_transcribe_args(args)
+
+            assert config.enable_diarization is True
+            assert config.diarization_device == "cpu"
+            assert config.min_speakers == 2
+            assert config.max_speakers == 4
+            assert config.overlap_threshold == 0.6
 
         finally:
             config_file.unlink()

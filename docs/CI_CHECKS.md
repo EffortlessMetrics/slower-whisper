@@ -1,251 +1,335 @@
 # CI Checks & Nix Integration
 
-This document explains how the Nix flake–based CI checks map to the actual
-commands under the hood, and when you should run which check locally.
+This document explains how the Nix-based CI works and how to run checks locally.
 
-The goal: if `nix flake check` passes on your laptop, you can assume the Nix CI
-job in GitHub Actions will pass as well.
+The goal: **one command to run the same CI locally as in GitHub Actions**.
+
+---
+
+## Quick Start
+
+```bash
+# Enter Nix dev shell
+nix develop
+
+# Install Python dependencies (first time)
+uv sync --extra full --extra diarization --extra dev
+
+# Run full CI suite
+nix run .#ci
+
+# Run fast checks only (lint, format, typecheck, fast tests)
+nix run .#ci -- fast
+```
 
 ---
 
 ## Overview
 
-CI is defined in two places:
+The Nix + uv CI is structured in two layers:
 
-- `flake.nix` — defines:
-  - `devShells` (local dev environment)
-  - `checks` (lint, tests, BDD, verify, dogfood, etc.)
-  - `apps` (wrappers for dogfood/verify)
-- `.github/workflows/ci-nix.yml` — runs `nix flake check` in CI, plus each
-  check individually via a matrix, with `HF_TOKEN` and HuggingFace caching.
+### 1. Pure Offline Checks (Hermetic)
 
-The flake uses a hybrid approach:
+`nix flake check` runs lint + format checks using ruff from nixpkgs. These are:
+- ✅ Pure/hermetic (no network, no writable state)
+- ✅ Fast (~10 seconds)
+- ✅ Safe for pre-commit hooks
 
-- **Nix** manages system dependencies: `ffmpeg`, `libsndfile`, Python, etc.
-- **uv** manages Python dependencies: faster-whisper, torch, pytest, ruff, etc.
+```bash
+nix flake check
+```
+
+### 2. Full CI Suite (Online, via Apps)
+
+`nix run .#ci` orchestrates all checks via a shell script running inside the Nix dev environment. This includes:
+- Lint + format (using uv-installed ruff)
+- Type-check (mypy)
+- Fast tests (pytest, no slow/heavy markers)
+- Integration tests (full mode only)
+- BDD scenarios (full mode only)
+- Verification suite (full mode only, requires HF_TOKEN)
+- Dogfood smoke (full mode only)
+
+```bash
+# Fast mode (lint, format, typecheck, fast tests)
+nix run .#ci -- fast
+
+# Full mode (all checks)
+nix run .#ci -- full  # or just: nix run .#ci
+```
 
 ---
 
-## Dev Shell & Global CI Command
+## Architecture
 
-### Enter the dev shell
+CI is defined in two places:
 
-From the repo root:
+- **`flake.nix`**:
+  - `devShells`: Reproducible dev environment (Python, uv, ffmpeg, etc.)
+  - `checks`: Pure lint + format checks (offline)
+  - `apps.ci`: CI orchestrator script
+  - `apps.dogfood` / `apps.verify`: Convenience wrappers
+
+- **`.github/workflows/ci-nix.yml`**:
+  - `nix-pure`: Runs `nix flake check` (fast, hermetic)
+  - `nix-ci-fast`: Runs `nix run .#ci -- fast` (~5-10 minutes)
+  - `nix-ci-full`: Runs `nix run .#ci -- full` (~30-60 minutes)
+
+The CI script:
+1. Checks if `.venv` exists (runs `uv sync` if not)
+2. Runs each check in sequence
+3. Tracks failures and emits a summary
+4. Returns exit code 0 (all passed) or 1 (any failed)
+
+---
+
+## CI Modes
+
+| Mode   | What it runs                                         | Duration | When to use                     |
+| ------ | ---------------------------------------------------- | -------- | ------------------------------- |
+| `fast` | Lint, format, typecheck, fast tests                  | ~5 min   | During development, pre-commit  |
+| `full` | Fast mode + integration, BDD, verify, dogfood        | ~30 min  | Before PR, before release       |
+
+### Fast Mode
+
+```bash
+nix run .#ci -- fast
+```
+
+Runs:
+1. **Lint** (ruff check)
+2. **Format** (ruff format --check)
+3. **Type-check** (mypy, warnings allowed)
+4. **Fast tests** (pytest -m "not slow and not heavy")
+
+Skips: integration tests, BDD, verify, dogfood.
+
+### Full Mode
+
+```bash
+nix run .#ci  # or: nix run .#ci -- full
+```
+
+Runs everything in fast mode, plus:
+5. **Integration tests** (pytest *integration*.py)
+6. **BDD library** (pytest tests/steps/)
+7. **BDD API** (pytest features/)
+8. **Verify** (slower-whisper-verify --quick, requires HF_TOKEN)
+9. **Dogfood smoke** (synthetic audio, no LLM)
+
+---
+
+## Environment Setup
+
+### Nix Dev Shell
+
+The dev shell provides:
+- Python 3.12
+- uv (package manager)
+- ffmpeg, libsndfile, portaudio (audio processing)
+- ruff, mypy (code quality)
+- git, jq, curl (utilities)
+
+Environment variables set automatically:
+- `UV_PYTHON`: Points to Nix's Python
+- `UV_PROJECT_ENVIRONMENT`: Uses `.venv` in project root
+- `UV_CACHE_DIR`: Uses `.cache/uv` in project root
+- `SLOWER_WHISPER_CACHE_ROOT`: Uses `~/.cache/slower-whisper`
+
+Enter the shell:
 
 ```bash
 nix develop
 ```
 
-Inside the shell:
+### Python Dependencies
+
+Inside the dev shell:
 
 ```bash
-# Install all Python deps (once per environment)
+# Full install (recommended for CI/development)
 uv sync --extra full --extra diarization --extra dev
 
-# Run full CI (all checks)
-nix flake check
-```
-
-> If `nix flake check` passes here, `ci-nix.yml` should pass in GitHub Actions
-> (assuming `HF_TOKEN` is configured in repo secrets).
-
----
-
-## Checks: What They Do
-
-The flake exposes the following checks under
-`checks.<system>.<name>`, e.g. `checks.x86_64-linux.lint`.
-
-You can build any check with:
-
-```bash
-nix build .#checks.x86_64-linux.<name>
-```
-
-### Summary Table
-
-| Check name         | What it runs                                           | Cost / when to run                               |
-| ------------------ | ------------------------------------------------------ | ------------------------------------------------ |
-| `lint`             | `ruff` lint via `uv`                                   | Fast. Run before commits touching Python.        |
-| `format`           | `ruff format --check` (no auto-fix)                    | Fast. Run before major PRs.                      |
-| `type-check`       | `mypy` on `transcription/` and `tests/`                | Medium. Run when changing types/APIs.            |
-| `test-fast`        | `pytest` fast suite (no slow/GPU marks)                | Medium. Run regularly during dev.                |
-| `test-integration` | `pytest` integration tests                             | Medium/slow. Run before feature branches.        |
-| `bdd-library`      | Library BDD (pytest-bdd scenarios)                     | Medium. Run when touching core behaviors.        |
-| `bdd-api`          | API BDD smoke (REST service behavior)                  | Medium. Run before API-related changes.          |
-| `verify`           | `slower-whisper-verify --quick` (verification spine)   | Medium/slow. Run before release / big refactors. |
-| `dogfood-smoke`    | `slower-whisper-dogfood --sample synthetic --skip-llm` | Medium. Run when touching pipeline wiring.       |
-| `ci-all`           | Aggregates all of the above via `test -f` dependencies | Slowest. Mirrors `nix flake check`.              |
-
-### Examples
-
-```bash
-# Lint only
-nix build .#checks.x86_64-linux.lint
-
-# Formatting check only
-nix build .#checks.x86_64-linux.format
-
-# Fast tests
-nix build .#checks.x86_64-linux.test-fast
-
-# Full verification
-nix build .#checks.x86_64-linux.verify
-
-# Dogfood synthetic audio
-nix build .#checks.x86_64-linux.dogfood-smoke
-
-# Everything
-nix flake check          # or:
-nix build .#checks.x86_64-linux.ci-all
-```
-
----
-
-## Apps: `nix run` Helpers
-
-The flake also exposes convenient apps under `apps` so you don't have to
-remember the underlying `uv` commands.
-
-### Dogfood
-
-```bash
-# Inside or outside nix develop (recommended inside)
-nix run .#dogfood -- --sample synthetic --skip-llm
-nix run .#dogfood -- --sample LS_TEST001 --skip-llm
-```
-
-These are thin wrappers around:
-
-```bash
-uv run slower-whisper-dogfood ...
-```
-
-They set `SLOWER_WHISPER_CACHE_ROOT` and use Nix's `uv` so you get the right
-tooling automatically.
-
-### Verify
-
-```bash
-# Quick verification
-nix run .#verify -- --quick
-
-# Full verification (if you define it in slower-whisper-verify)
-nix run .#verify
-```
-
-These are thin wrappers for:
-
-```bash
-uv run slower-whisper-verify ...
+# Minimal install (ASR only, no enrichment)
+uv sync --extra dev
 ```
 
 ---
 
 ## HF_TOKEN & HuggingFace Cache
 
-Some checks (notably `verify` and `dogfood-smoke`) run diarization and require
-access to pyannote models on HuggingFace.
+Some checks (verify, dogfood) require diarization models from HuggingFace.
 
-### Local
+### Local Setup
 
-Set `HF_TOKEN` in your environment:
+1. Create a HuggingFace account and token: https://huggingface.co/settings/tokens
+2. Accept terms for pyannote models:
+   - https://huggingface.co/pyannote/segmentation-3.0
+   - https://huggingface.co/pyannote/speaker-diarization-3.1
+3. Export the token:
 
 ```bash
 export HF_TOKEN=hf_...
 ```
 
-You should also accept the terms for:
-
-* `pyannote/segmentation-3.0`
-* `pyannote/speaker-diarization-3.1`
-* `pyannote/speaker-diarization-community-1`
-
-Then:
+Then run CI:
 
 ```bash
-nix flake check
-# or:
-nix build .#checks.x86_64-linux.verify
-nix build .#checks.x86_64-linux.dogfood-smoke
+nix run .#ci  # full mode will use HF_TOKEN
 ```
 
-### CI
+Without `HF_TOKEN`, the verify check is skipped (other checks still run).
 
-`.github/workflows/ci-nix.yml`:
+### CI (GitHub Actions)
 
-* Passes `HF_TOKEN` from GitHub secrets into jobs.
-* Caches `~/.cache/huggingface` keyed on `pyproject.toml`.
-
-If you add or change model usage, update secrets as needed; no changes to the
-flake are required.
+The workflow uses the `HF_TOKEN` secret from GitHub repository settings. It also caches:
+- `~/.cache/huggingface` (model downloads)
+- `.venv` (Python packages)
+- `.cache/uv` (uv cache)
 
 ---
 
-## When to Run What (Practical Guidance)
+## Workflow Comparison
 
-### During normal feature work
+### Traditional uv-only (manual)
 
-* On small changes (docs, minor refactors):
+```bash
+uv sync --extra dev
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy transcription/
+uv run pytest -m "not slow and not heavy"
+# ... (manually run each check)
+```
 
-  ```bash
-  nix build .#checks.x86_64-linux.lint
-  nix build .#checks.x86_64-linux.test-fast
-  ```
+### Nix + uv (automated)
 
-* When touching CLI / API / core pipeline:
+```bash
+nix run .#ci -- fast
+```
 
-  ```bash
-  nix build .#checks.x86_64-linux.lint
-  nix build .#checks.x86_64-linux.test-fast
-  nix build .#checks.x86_64-linux.bdd-library
-  nix build .#checks.x86_64-linux.dogfood-smoke
-  ```
+**Advantages**:
+- ✅ One command runs all checks
+- ✅ Same environment as CI (reproducible)
+- ✅ Structured output (✓/✗ per check)
+- ✅ Failure summary at the end
+- ✅ Can run offline (`nix flake check`)
+
+---
+
+## Local Development Workflow
+
+### Day-to-day coding
+
+```bash
+# Enter shell once per session
+nix develop
+
+# Make changes, run specific tools
+uv run pytest tests/test_models.py
+uv run ruff check transcription/
+uv run mypy transcription/api.py
+
+# Before committing
+nix run .#ci -- fast
+```
 
 ### Before opening a PR
 
 ```bash
-nix build .#checks.x86_64-linux.lint
-nix build .#checks.x86_64-linux.format
-nix build .#checks.x86_64-linux.test-fast
-nix build .#checks.x86_64-linux.bdd-library
+# Full suite (with HF_TOKEN if you have it)
+export HF_TOKEN=hf_...
+nix run .#ci
 ```
 
-(Optionally add `test-integration` if you touched integration surfaces.)
+### Before tagging a release
 
-### Before tagging a release / major refactor
+```bash
+# Full suite + pure checks
+nix flake check
+nix run .#ci
+```
+
+---
+
+## Troubleshooting
+
+### "Could not find Python"
+
+The dev shell sets `UV_PYTHON` automatically. If you see this error outside `nix develop`, enter the shell first:
+
+```bash
+nix develop
+nix run .#ci -- fast
+```
+
+### "No module named 'pytest'"
+
+Run `uv sync` to install Python dependencies:
+
+```bash
+uv sync --extra dev
+```
+
+### "HF_TOKEN not set" (verify skipped)
+
+This is expected if you don't have a HuggingFace token. The verify check is optional in fast mode. To enable it:
+
+1. Get a token from https://huggingface.co/settings/tokens
+2. Accept pyannote model terms
+3. Export the token:
 
 ```bash
 export HF_TOKEN=hf_...
-
-nix flake check          # or:
-nix build .#checks.x86_64-linux.ci-all
+nix run .#ci
 ```
 
-This gives you:
+### Test failures unrelated to code changes
 
-* Lint + formatting
-* Type-checking
-* Fast + integration tests
-* BDD (library + API)
-* Verification suite
-* Dogfood smoke
+Some tests may fail due to missing dependencies or environment issues. Check:
 
-In other words: "this is as close to CI as you can get locally."
+1. **Missing Python packages**: Run `uv sync --extra full --extra diarization --extra dev`
+2. **Missing system packages**: The Nix dev shell provides all required system deps
+3. **Stale .venv**: Delete `.venv` and re-run `uv sync`
+
+### Nix flake check fails but uv ruff passes
+
+The pure checks use ruff from nixpkgs (0.7.x), which may have different defaults than uv's ruff. For consistency, use `nix run .#ci -- fast` which uses the same ruff as CI.
 
 ---
 
 ## FAQ
 
-**Q: Do I still need to install uv manually?**
-**A:** No. `uv` is provided by Nix in `systemDeps`. Inside `nix develop`, `uv` is on `PATH`.
+**Q: Do I need to use Nix?**
+**A:** For contributors and CI-adjacent work, yes. For casual users or quick experiments, traditional `uv sync` + manual testing still works.
 
-**Q: Do I *have* to use Nix?**
-**A:** No, but traditional setup is now treated as a fallback and may diverge from CI. For contributors and for anything CI-adjacent, Nix is the expected path.
+**Q: Can I run individual checks?**
+**A:** Yes, inside `nix develop`:
 
-**Q: Why do checks use temporary `$HOME`?**
-**A:** To isolate CI runs and avoid leaking your personal cache into flake builds. For persistent speed locally, just run `uv sync` once in your dev shell and then call `pytest` / `ruff` directly.
+```bash
+uv run ruff check .
+uv run pytest -m "not slow"
+```
+
+**Q: Why is CI split into fast/full modes?**
+**A:** Fast mode (~5 min) catches most issues during development. Full mode (~30 min) runs expensive checks (model downloads, integration tests) that are only needed before PR/release.
+
+**Q: Does nix run .#ci download models every time?**
+**A:** No. Models are cached in `~/.cache/huggingface`. Only the first run downloads them (~3-5GB).
+
+**Q: Can I skip specific checks?**
+**A:** Not currently. The CI script runs all checks in the selected mode. You can run checks manually via `uv run` if needed.
 
 ---
 
-This file is intentionally pragmatic: enough detail that you don't have to remember the flake internals, and clear mapping from "what I want to check" → "which `nix build` line to run."
+## Summary
+
+| Command                   | What it does                          | Use case                 |
+| ------------------------- | ------------------------------------- | ------------------------ |
+| `nix flake check`         | Pure lint + format (offline)          | Pre-commit, quick sanity |
+| `nix run .#ci -- fast`    | Lint, format, typecheck, fast tests   | During development       |
+| `nix run .#ci`            | Full test suite                       | Before PR, before tag    |
+| `nix run .#verify`        | Run verification spine                | Dogfooding, smoke test   |
+| `nix run .#dogfood`       | Run dogfood workflow                  | Testing with real audio  |
+
+**Bottom line**: `nix run .#ci -- fast` is your main local CI button. It mirrors what GitHub Actions runs, ensuring "if it passes locally, it'll pass in CI."
