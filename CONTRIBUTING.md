@@ -1,8 +1,10 @@
 # Contributing to slower-whisper
 
-Thank you for your interest in contributing! This guide will help you set up your development environment and understand the project workflow.
+Thank you for your interest in contributing! This guide will help you set up
+your development environment and understand the project workflow.
 
-Whether you're fixing a bug, adding a feature, or improving documentation, this guide has you covered. We welcome contributions of all kinds and skill levels!
+Whether you're fixing a bug, adding a feature, or improving documentation, this
+guide has you covered. We welcome contributions of all kinds and skill levels!
 
 ---
 
@@ -28,38 +30,45 @@ Whether you're fixing a bug, adding a feature, or improving documentation, this 
 
 ## Who This Project Is For
 
-Before contributing, it's helpful to understand who slower-whisper serves and how we prioritize features:
+Before contributing, it's helpful to understand who slower-whisper serves and
+how we prioritize features:
 
 ### Primary Users (v1.x Focus)
 
-**1. Infrastructure / Platform Engineers**
+#### 1. Infrastructure / Platform Engineers
+
 - Building internal conversation processing systems
 - On-prem transcription stacks (compliance, security)
 - Multi-tenant platforms with conversation analytics
 
-**What they need:**
+##### What infrastructure teams need
+
 - ✅ Stability, contracts, Docker/K8s deployment
 - ✅ Versioned JSON schema (build on it without fear)
 - ✅ BDD/IaC guarantees (infrastructure-grade quality)
 
-**2. Research Labs (Linguistics, HCI, Psychology, UX)**
+#### 2. Research Labs (Linguistics, HCI, Psychology, UX)
+
 - Analyzing conversations for academic research
 - Prosody and emotion studies
 - Speaker interaction patterns
 
-**What they need:**
+##### What research labs need
+
 - ✅ Accurate prosody/emotion features
 - ✅ Reproducible pipelines (same input → same output)
 - ✅ Export to research tools (Praat, ELAN)
 
 ### Secondary Users (v1.2+)
 
-**3. LLM Application Developers**
+#### 3. LLM Application Developers
+
 - Building conversation-aware LLM apps
 - RAG/vector search with acoustic metadata
 - Meeting summarization and action-item extraction
 
-**What they need:**
+##### What LLM app developers need
+
 - ✅ LangChain/LlamaIndex adapters
 - ✅ Prompt builder utilities
 - ✅ Easy chunking and formatting
@@ -73,12 +82,14 @@ When contributing, keep these priorities in mind:
 3. **Infrastructure users first** — Reliability over novelty
 4. **BDD scenarios are contracts** — Breaking them requires discussion
 
-**This is NOT:**
+#### This is NOT
+
 - A consumer transcription app
 - A SaaS platform or cloud API
 - A "meeting notes" product
 
-**This IS:**
+#### This IS
+
 - Infrastructure for building conversation-aware systems
 - "OpenTelemetry for audio conversations"
 - A stable foundation for production use
@@ -89,7 +100,7 @@ See [VISION.md](VISION.md) for detailed positioning.
 
 ## Quick Start for Contributors
 
-**Recommended: Use Nix for reproducible development**
+### Recommended: Use Nix for reproducible development
 
 ```bash
 # 1. Fork and clone the repository
@@ -115,9 +126,10 @@ nix flake check
 # 7. Start developing!
 ```
 
-**Fallback: Traditional setup (if Nix unavailable)**
+### Fallback: Traditional setup (if Nix unavailable)
 
-> ⚠️ **Notice:** Traditional setup works but lacks reproducibility guarantees. Strongly recommend Nix for contributors.
+> ⚠️ **Notice:** Traditional setup works but lacks reproducibility guarantees.
+> Strongly recommend Nix for contributors.
 
 ```bash
 # 1-2. Install system deps (ffmpeg, libsndfile) + uv manually
@@ -138,7 +150,7 @@ bash scripts/setup-env.sh
 
 ### Option 1: Nix (Strongly Recommended for Contributors)
 
-**All contributors should use Nix** for reproducible development that mirrors CI.
+#### Use Nix for reproducible development that mirrors CI
 
 #### Prerequisites
 
@@ -182,6 +194,7 @@ bash scripts/setup-env.sh
    ```
 
 **Benefits:**
+
 - ✅ Same environment as CI and other developers
 - ✅ No "works on my machine" issues
 - ✅ Reproducible across WSL, NixOS, macOS
@@ -193,7 +206,9 @@ See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for complete Nix documentation.
 
 ### Option 2: Traditional Setup (Fallback Only)
 
-> ⚠️ **Warning:** This method works but lacks reproducibility guarantees. You may encounter environment-specific issues that don't occur in CI or on other machines. **Strongly consider using Nix (Option 1) instead.**
+> ⚠️ **Warning:** This method works but lacks reproducibility guarantees.
+> You may encounter environment-specific issues that don't occur in CI or on
+> other machines. **Strongly consider using Nix (Option 1) instead.**
 
 #### Prerequisites (Traditional)
 
@@ -209,33 +224,41 @@ Before you begin, ensure you have:
 
 ### Installing uv
 
-uv is a fast, modern Python package manager that handles virtual environments and dependencies. It's **much faster** than pip and makes development smoother.
+uv is a fast, modern Python package manager that handles virtual environments
+and dependencies. It's **much faster** than pip and makes development smoother.
 
-**Linux/macOS:**
+#### Linux/macOS
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-**Windows (PowerShell):**
+#### Windows (PowerShell)
+
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c `
+  "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-**Alternative (using pip):**
+#### Alternative (using pip)
+
 ```bash
 pip install uv
 ```
 
 Verify installation:
+
 ```bash
 uv --version
 ```
 
 ### Setting Up Your Development Environment
 
-The project uses `pyproject.toml` with dependency groups. Use `uv sync` to install everything:
+The project uses `pyproject.toml` with dependency groups. Use `uv sync` to
+install everything:
 
-**Full development setup (recommended for contributors):**
+#### Full development setup (recommended for contributors)
+
 ```bash
 # Install ALL dependencies including dev tools, testing, linting, etc.
 uv sync --extra dev
@@ -250,7 +273,8 @@ uv sync --extra dev
 # - Build tools
 ```
 
-**Minimal setup (if you have disk space constraints):**
+#### Minimal setup (if you have disk space constraints)
+
 ```bash
 # Base install only (transcription features)
 uv sync
@@ -260,6 +284,7 @@ uv pip install pytest pytest-cov ruff mypy pre-commit
 ```
 
 **Verify your installation:**
+
 ```bash
 # Run tests to ensure everything is working
 uv run pytest
@@ -272,6 +297,7 @@ uv run pytest
 While we recommend uv, you can also use traditional tools:
 
 **Using pip:**
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
@@ -281,6 +307,7 @@ pip install -e ".[dev]"  # Editable install with dev dependencies
 ```
 
 **Using poetry:**
+
 ```bash
 poetry install --with dev
 poetry shell
@@ -290,7 +317,7 @@ poetry shell
 
 ## Project Structure
 
-```
+```text
 slower-whisper/
 ├── transcription/          # Core package
 │   ├── models.py          # Data models (Segment, Transcript)
@@ -317,7 +344,8 @@ slower-whisper/
 
 ## Running Tests
 
-All test commands should be run with `uv run` to ensure you're using the virtual environment:
+All test commands should be run with `uv run` to ensure you're using the virtual
+environment:
 
 ### Basic Test Commands
 
@@ -367,21 +395,23 @@ uv run pytest -m "not slow"
 
 The project has 191 tests across multiple categories:
 
-| Category | Count | Description |
-|----------|-------|-------------|
-| Audio Enrichment | 19 | Prosody + emotion extraction |
-| Audio Rendering | 12 | Text formatting with audio features |
-| Prosody | 12 | Pitch, energy, rate extraction |
-| Integration | 8 | End-to-end pipeline tests |
-| Writers | 6 | JSON, TXT, SRT output |
-| BDD Scenarios | 15+ | Behavioral acceptance tests |
-| Other | 119+ | Unit tests across all modules |
+| Category          | Count | Description                               |
+| ----------------- | ----- | ----------------------------------------- |
+| Audio Enrichment  | 19    | Prosody + emotion extraction              |
+| Audio Rendering   | 12    | Text formatting with audio features       |
+| Prosody           | 12    | Pitch, energy, rate extraction            |
+| Integration       | 8     | End-to-end pipeline tests                 |
+| Writers           | 6     | JSON, TXT, SRT output                     |
+| BDD Scenarios     | 15+   | Behavioral acceptance tests               |
+| Other             | 119+  | Unit tests across all modules             |
 
-**Expected result:** All tests should pass unless you're actively developing new features.
+**Expected result:** All tests should pass unless you're actively developing
+new features.
 
 ### Continuous Testing During Development
 
-For rapid feedback during development, use pytest's watch mode or run specific tests:
+For rapid feedback during development, use pytest's watch mode or run specific
+tests:
 
 ```bash
 # Run tests related to your changes only
@@ -396,7 +426,8 @@ uv run ptw -- tests/test_prosody.py
 
 ## Code Style and Linting
 
-This project uses **Ruff** for both linting and formatting. Ruff is extremely fast and handles everything in one tool.
+This project uses **Ruff** for both linting and formatting. Ruff is extremely
+fast and handles everything in one tool.
 
 ### Running Linters and Formatters
 
@@ -419,12 +450,15 @@ uv run ruff format .
 uv run mypy transcription tests
 
 # Run all checks at once (what CI runs)
-uv run ruff check . && uv run ruff format --check . && uv run mypy transcription tests
+uv run ruff check . \
+  && uv run ruff format --check . \
+  && uv run mypy transcription tests
 ```
 
 ### Pre-commit Hooks (Recommended)
 
-Pre-commit hooks automatically run linters before each commit, catching issues early:
+Pre-commit hooks automatically run linters before each commit, catching issues
+early:
 
 ```bash
 # Install pre-commit hooks (one-time setup)
@@ -440,6 +474,7 @@ git commit --no-verify -m "message"
 ```
 
 **What pre-commit checks:**
+
 - Ruff linting with auto-fix
 - Ruff formatting
 - Type checking with mypy (warning only)
@@ -450,7 +485,9 @@ git commit --no-verify -m "message"
 - Merge conflict markers
 - Debug statement detection
 
-Pre-commit.ci will auto-apply fixes on PRs when possible (look for `chore: pre-commit autofix`), so fixable lint/format issues shouldn't block you. Unfixable findings still need manual fixes.
+Pre-commit.ci will auto-apply fixes on PRs when possible (look for
+`chore: pre-commit autofix`), so fixable lint/format issues shouldn't block you.
+Unfixable findings still need manual fixes.
 
 ### Code Style Guidelines
 
@@ -458,7 +495,9 @@ We follow PEP 8 with some project-specific conventions:
 
 **1. Line Length:** 100 characters (enforced by Ruff)
 
-**2. Type Hints:** Use them for function signatures (helpful but not strictly required)
+**2. Type Hints:** Use them for function signatures (helpful but not strictly
+required)
+
 ```python
 # Good
 def extract_pitch(audio: np.ndarray, sr: int) -> float:
@@ -470,6 +509,7 @@ def helper_function(value):
 ```
 
 **3. Docstrings:** Add for all public functions and classes
+
 ```python
 def extract_prosody(
     audio: np.ndarray,
@@ -498,6 +538,7 @@ def extract_prosody(
 ```
 
 **4. Error Handling:** Prefer graceful degradation over hard failures
+
 ```python
 # Good - graceful fallback
 try:
@@ -511,6 +552,7 @@ pitch = extract_pitch_praat(audio, sr)  # Crashes if praat not installed
 ```
 
 **5. Logging:** Use Python's logging module, not print()
+
 ```python
 import logging
 logger = logging.getLogger(__name__)
@@ -524,6 +566,7 @@ print(f"Processing {len(segments)} segments")
 ```
 
 **6. Import Organization:** Ruff handles this automatically
+
 ```python
 # Standard library
 import logging
@@ -549,7 +592,8 @@ from transcription.config import Config
 
 Follow these steps when contributing:
 
-**1. Create a feature branch**
+#### 1. Create a feature branch
+
 ```bash
 # Update main branch first
 git checkout main
@@ -562,17 +606,18 @@ git checkout -b fix/issue-description
 ```
 
 **Branch naming conventions:**
+
 - `feature/add-voice-quality-extraction` - New features
 - `fix/pitch-extraction-short-audio` - Bug fixes
 - `docs/update-installation-guide` - Documentation updates
 - `refactor/simplify-audio-loading` - Code refactoring
 - `test/add-emotion-tests` - Test additions
 
-**2. Make your changes**
+#### 2. Make your changes
 
 Edit code, add features, fix bugs, etc.
 
-**3. Add tests**
+#### 3. Add tests
 
 For new features or bug fixes, add tests:
 
@@ -586,9 +631,10 @@ def test_your_new_feature():
     assert result == expected_output
 ```
 
-See the [Testing Guidelines](#testing-guidelines) section below for more details.
+See the [Testing Guidelines](#testing-guidelines) section below for more
+details.
 
-**4. Run tests locally**
+#### 4. Run tests locally
 
 ```bash
 # Run all tests
@@ -601,9 +647,10 @@ uv run pytest tests/test_your_feature.py -v
 uv run pytest --cov=transcription --cov-report=term-missing
 ```
 
-**5. Verify contracts (REQUIRED before pushing)**
+#### 5. Verify contracts (REQUIRED before pushing)
 
-Before pushing your changes, **you must run the verification CLI** to ensure you haven't broken the behavioral or deployment contracts:
+Before pushing your changes, **you must run the verification CLI** to ensure you
+haven't broken the behavioral or deployment contracts:
 
 ```bash
 # Quick verification (code quality + tests + BDD + API BDD)
@@ -616,6 +663,7 @@ uv run slower-whisper-verify
 ```
 
 **What this verifies:**
+
 - ✅ Code quality (ruff linting and formatting)
 - ✅ Unit tests pass
 - ✅ Library BDD scenarios (behavioral contract)
@@ -623,9 +671,11 @@ uv run slower-whisper-verify
 - ✅ Docker images build correctly (full mode only)
 - ✅ Kubernetes manifests are valid (full mode only)
 
-If any step fails, **do not push**. Fix the issues first. This verification ensures you're not breaking the project's **behavioral contracts** (BDD scenarios) or **deployment contracts** (Docker/K8s).
+If any step fails, **do not push**. Fix the issues first. This verification
+ensures you're not breaking the project's **behavioral contracts** (BDD
+scenarios) or **deployment contracts** (Docker/K8s).
 
-**6. Format and lint your code**
+#### 6. Format and lint your code
 
 ```bash
 # Auto-format code
@@ -638,15 +688,16 @@ uv run ruff check --fix .
 uv run pre-commit run --all-files
 ```
 
-**7. Update documentation**
+#### 7. Update documentation
 
 If your changes affect usage:
+
 - Update relevant files in `docs/`
 - Update README.md if adding user-facing features
 - Add examples if helpful
 - Update docstrings
 
-**8. Commit your changes**
+#### 8. Commit your changes
 
 ```bash
 # Stage your changes
@@ -660,7 +711,7 @@ git add .
 git commit -m "Add pause density feature to prosody extraction"
 ```
 
-**9. Push and create a pull request**
+#### 9. Push and create a pull request
 
 ```bash
 # Push your branch
@@ -675,6 +726,7 @@ git push origin feature/your-feature-name
 Write clear, descriptive commit messages that explain **what** and **why**:
 
 **Good commit messages:**
+
 ```bash
 git commit -m "Add pause density calculation to prosody features
 
@@ -690,6 +742,7 @@ git commit -m "Update installation docs to use uv sync instead of pip"
 ```
 
 **Avoid vague messages:**
+
 ```bash
 # Too vague
 git commit -m "fix bug"
@@ -703,6 +756,7 @@ git commit -m "Refactor audio loading to reduce memory usage"
 ```
 
 **Format:**
+
 - First line: Short summary (50-72 characters)
 - Blank line
 - Detailed explanation if needed (wrap at 72 characters)
@@ -715,6 +769,7 @@ git commit -m "Refactor audio loading to reduce memory usage"
 ### Stage 1: Transcription Pipeline
 
 If adding transcription features:
+
 1. Update `transcription/asr_engine.py` or `transcription/pipeline.py`
 2. Update `transcription/models.py` if schema changes
 3. Add tests to `tests/test_integration.py`
@@ -723,6 +778,7 @@ If adding transcription features:
 ### Stage 2: Audio Enrichment
 
 If adding audio features:
+
 1. Add extraction logic to appropriate module:
    - Prosody → `transcription/prosody.py`
    - Emotion → `transcription/emotion.py`
@@ -789,11 +845,13 @@ def test_emotion_extraction_handles_short_audio():
 ### Test Coverage
 
 Aim for:
+
 - **New features:** 100% coverage
 - **Bug fixes:** Add regression test
 - **Existing code:** Don't reduce coverage
 
 Check coverage:
+
 ```bash
 pytest tests/ --cov=transcription --cov-report=term-missing
 ```
@@ -805,6 +863,7 @@ pytest tests/ --cov=transcription --cov-report=term-missing
 ### When to Update Documentation
 
 Update docs when:
+
 - Adding new features
 - Changing CLI arguments
 - Modifying JSON schema
@@ -813,13 +872,13 @@ Update docs when:
 
 ### Which Files to Update
 
-| Change | Update Files |
-|--------|-------------|
-| New feature | README.md, docs/AUDIO_ENRICHMENT.md or docs/PROSODY.md |
-| CLI change | README.md, docs/QUICKSTART.md |
-| Installation | README.md, CONTRIBUTING.md |
-| Troubleshooting | docs/TROUBLESHOOTING.md (if exists) |
-| Examples | examples/README.md, add example script |
+| Change          | Update Files                                              |
+| --------------- | --------------------------------------------------------- |
+| New feature     | README.md, docs/AUDIO_ENRICHMENT.md or docs/PROSODY.md    |
+| CLI change      | README.md, docs/QUICKSTART.md                             |
+| Installation    | README.md, CONTRIBUTING.md                                |
+| Troubleshooting | docs/TROUBLESHOOTING.md (if exists)                       |
+| Examples        | examples/README.md, add example script                    |
 
 ### Documentation Style
 
@@ -837,6 +896,7 @@ Update docs when:
 Run through this checklist before creating your pull request:
 
 **Required (Hard gates - PR will be rejected without these):**
+
 - [ ] **Verification CLI passes**: `uv run slower-whisper-verify --quick`
   - This verifies code quality, tests, and behavioral contracts (BDD scenarios)
   - If this fails, **do not create a PR**
@@ -845,6 +905,7 @@ Run through this checklist before creating your pull request:
 - [ ] No BDD scenarios broken (verification CLI checks this)
 
 **Strongly Recommended:**
+
 - [ ] Full verification passes: `uv run slower-whisper-verify`
   - Includes Docker and K8s validation
   - Required for releases, recommended for PRs
@@ -854,7 +915,9 @@ Run through this checklist before creating your pull request:
 - [ ] Pre-commit hooks installed and passing
 
 **Behavioral Contract Awareness:**
-If your changes affect any BDD scenarios (`tests/features/` or `features/`), you **must**:
+If your changes affect any BDD scenarios (`tests/features/` or `features/`), you
+**must**:
+
 - [ ] Document why the behavioral contract is changing
 - [ ] Discuss versioning impact (major/minor/patch)
 - [ ] Update `CHANGELOG.md` with contract changes
@@ -863,6 +926,7 @@ If your changes affect any BDD scenarios (`tests/features/` or `features/`), you
 ### Creating a Pull Request
 
 1. **Push your branch:**
+
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -880,7 +944,8 @@ If your changes affect any BDD scenarios (`tests/features/` or `features/`), you
 
    - [ ] Bug fix (non-breaking change which fixes an issue)
    - [ ] New feature (non-breaking change which adds functionality)
-   - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+   - [ ] Breaking change (fix or feature that would cause existing
+         functionality to not work as expected)
    - [ ] Documentation update
    - [ ] Code refactoring
    - [ ] Performance improvement
@@ -910,7 +975,8 @@ If your changes affect any BDD scenarios (`tests/features/` or `features/`), you
    - [ ] I have commented my code, particularly in hard-to-understand areas
    - [ ] I have made corresponding changes to the documentation
    - [ ] My changes generate no new warnings
-   - [ ] I have added tests that prove my fix is effective or that my feature works
+   - [ ] I have added tests that prove my fix is effective or that my
+         feature works
    - [ ] New and existing unit tests pass locally with my changes
    - [ ] Any dependent changes have been merged and published
    ```
@@ -930,6 +996,7 @@ If your changes affect any BDD scenarios (`tests/features/` or `features/`), you
    - Provide feedback or request changes
 
 3. **Address feedback** - If changes are requested:
+
    ```bash
    # Make changes
    git add .
@@ -947,6 +1014,7 @@ If your changes affect any BDD scenarios (`tests/features/` or `features/`), you
 The project uses GitHub Actions for continuous integration:
 
 **On every PR:**
+
 - Lint check (ruff)
 - Format check (ruff format)
 - Type check (mypy, continue-on-error)
@@ -954,11 +1022,13 @@ The project uses GitHub Actions for continuous integration:
 - Integration tests
 
 **On main branch:**
+
 - All of the above
 - Heavy tests (emotion models, optional)
 - Code coverage reporting
 
 **Expected behavior:**
+
 - All required checks must pass before merge
 - Type check failures are warnings only
 - Heavy tests are optional (run on main branch only)
@@ -1034,6 +1104,7 @@ sf.write("test_audio.wav", audio, sr)
 ### Debugging
 
 **Enable debug logging:**
+
 ```python
 # Add to code for debugging
 import logging
@@ -1046,6 +1117,7 @@ logger.debug(f"Audio shape: {audio.shape}, dtype: {audio.dtype}")
 ```
 
 **Use Python debugger:**
+
 ```bash
 # Run with debugger
 uv run python -m pdb transcription/cli.py
@@ -1056,6 +1128,7 @@ uv pip install ipdb
 ```
 
 **Debug tests:**
+
 ```bash
 # Run single test with verbose output
 uv run pytest tests/test_prosody.py::test_syllable_counting -vv
@@ -1070,6 +1143,7 @@ uv run pytest tests/test_prosody.py --pdb
 ### Common Development Tasks
 
 **Update dependencies:**
+
 ```bash
 # Update all dependencies to latest compatible versions
 uv sync --upgrade
@@ -1082,6 +1156,7 @@ uv sync
 ```
 
 **Clean up environment:**
+
 ```bash
 # Remove virtual environment and reinstall
 rm -rf .venv
@@ -1095,6 +1170,7 @@ rm -rf .coverage htmlcov/
 ```
 
 **Build distribution packages:**
+
 ```bash
 # Build wheel and source distribution
 uv run python -m build
@@ -1106,6 +1182,7 @@ uv pip install -e .
 ### Troubleshooting
 
 **Tests failing:**
+
 ```bash
 # Clear cache and rerun
 uv run pytest --cache-clear
@@ -1118,6 +1195,7 @@ uv pip list
 ```
 
 **Import errors:**
+
 ```bash
 # Make sure you're using uv run
 uv run python script.py
@@ -1130,6 +1208,7 @@ uv sync --reinstall
 ```
 
 **Pre-commit hooks failing:**
+
 ```bash
 # Update hooks to latest version
 uv run pre-commit autoupdate
@@ -1142,6 +1221,7 @@ git commit --no-verify -m "message"
 ```
 
 **GPU/CUDA issues:**
+
 ```bash
 # Check if CUDA is available
 uv run python -c "import torch; print(torch.cuda.is_available())"
@@ -1154,6 +1234,7 @@ nvidia-smi
 ```
 
 **Memory issues:**
+
 ```bash
 # Use smaller Whisper model
 uv run slower-whisper --model tiny
@@ -1173,6 +1254,7 @@ uv run python -c "import psutil; print(psutil.virtual_memory())"
 ### Testing GPU Code
 
 If you have NVIDIA GPU:
+
 ```bash
 # Use GPU
 python audio_enrich.py --device cuda
@@ -1196,7 +1278,9 @@ python audio_enrich.py --device cpu
 - **Documentation:** See `docs/` directory for detailed guides
 - **Examples:** See `examples/` directory for working code samples
 - **Tests:** See `tests/` directory for usage examples
-- **Issues:** Check [GitHub Issues](https://github.com/steven/slower-whisper/issues) for known problems
+- **Issues:** Check
+  [GitHub Issues](https://github.com/steven/slower-whisper/issues) for known
+  problems
 
 ### Asking Questions
 
@@ -1212,7 +1296,8 @@ When asking for help, provide context:
    - Dependency versions (`uv pip list`)
 
 **Good question example:**
-```
+
+```text
 I'm trying to add a new prosody feature for voice quality. I added
 a function in prosody.py but getting:
 
@@ -1231,6 +1316,7 @@ installed via `uv sync --extra dev`. Here's my code: [paste code]
 **Q: I'm new to open source. Where should I start?**
 
 A: Great! Here's a beginner-friendly path:
+
 1. Start by reading the README and trying the tool yourself
 2. Look for issues labeled "good first issue" or "documentation"
 3. Fix typos or improve documentation (great first contribution!)
@@ -1239,6 +1325,7 @@ A: Great! Here's a beginner-friendly path:
 **Q: Do I need to know machine learning to contribute?**
 
 A: No! Many contributions don't require ML knowledge:
+
 - Documentation improvements
 - Bug fixes in file I/O or data processing
 - Test additions
@@ -1248,6 +1335,7 @@ A: No! Many contributions don't require ML knowledge:
 **Q: How do I find something to work on?**
 
 A:
+
 1. Check the [GitHub Issues](https://github.com/steven/slower-whisper/issues)
 2. Look for "good first issue" or "help wanted" labels
 3. Read the code and find areas that could be improved
@@ -1256,6 +1344,7 @@ A:
 **Q: What if I break something?**
 
 A: Don't worry! That's what tests and reviews are for:
+
 - Tests will catch most issues before merge
 - Maintainers review all PRs
 - You can always ask for help
@@ -1266,6 +1355,7 @@ A: Don't worry! That's what tests and reviews are for:
 **Q: Should I use `uv run` or activate the virtual environment?**
 
 A: Either works, but `uv run` is recommended:
+
 ```bash
 # Recommended: uv run automatically uses the right environment
 uv run pytest
@@ -1278,6 +1368,7 @@ pytest
 **Q: How do I run only the tests for my changes?**
 
 A: Use pytest's file/function selection:
+
 ```bash
 # Run specific test file
 uv run pytest tests/test_prosody.py
@@ -1292,6 +1383,7 @@ uv run pytest -k "pitch"
 **Q: My pre-commit hooks are slow. Can I skip them?**
 
 A: Pre-commit hooks save time by catching issues early. But for rapid iteration:
+
 ```bash
 # Skip for one commit (not recommended)
 git commit --no-verify -m "WIP: testing"
@@ -1307,6 +1399,7 @@ uv run pre-commit run --all-files  # Run manually when ready
 **Q: How do I add a dependency?**
 
 A: Add it to the appropriate section in `pyproject.toml`:
+
 ```bash
 # 1. Edit pyproject.toml and add your dependency
 # 2. Re-sync to install it
@@ -1320,12 +1413,14 @@ uv sync
 **Q: Tests pass locally but fail in CI. Why?**
 
 A: Common reasons:
+
 - Different Python version (CI tests 3.10, 3.11, 3.12)
 - Missing test markers (slow/heavy tests)
 - File paths (use `Path` from pathlib)
 - Platform differences (use `os.path.join` or `pathlib`)
 
 Debug with:
+
 ```bash
 # Test on multiple Python versions locally with tox
 uv pip install tox
@@ -1340,15 +1435,18 @@ uv run --python 3.10 pytest
 
 ## Code of Conduct
 
-We are committed to providing a welcoming and inclusive environment for all contributors. Please:
+We are committed to providing a welcoming and inclusive environment for all
+contributors. Please:
 
 - **Be respectful** - Treat others with respect and consideration
 - **Be constructive** - Provide helpful feedback and suggestions
 - **Be collaborative** - Work together to improve the project
-- **Be patient** - Remember that everyone has different skill levels and backgrounds
+- **Be patient** - Remember that everyone has different skill levels and
+  backgrounds
 - **Be open-minded** - Consider other perspectives and approaches
 
-If you encounter unacceptable behavior, please report it to the project maintainers.
+If you encounter unacceptable behavior, please report it to the project
+maintainers.
 
 ---
 
@@ -1365,14 +1463,18 @@ slower-whisper uses semantic versioning (MAJOR.MINOR.PATCH):
 - **PATCH** (0.0.x): Bug fixes, no new features
 
 Additionally, the project maintains:
-- **SCHEMA_VERSION** in `transcription/models.py`: Incremented only for breaking JSON schema changes
-- **AUDIO_STATE_VERSION** in `transcription/models.py`: Incremented for changes to the `audio_state` field structure
+
+- **SCHEMA_VERSION** in `transcription/models.py`: Incremented only for
+  breaking JSON schema changes
+- **AUDIO_STATE_VERSION** in `transcription/models.py`: Incremented for changes
+  to the `audio_state` field structure
 
 ### Pre-Release Checklist
 
 Before creating a release, ensure:
 
 1. **All tests pass**
+
    ```bash
    # Run full test suite including slow and heavy tests
    uv run pytest
@@ -1384,6 +1486,7 @@ Before creating a release, ensure:
    ```
 
 2. **Code quality checks pass**
+
    ```bash
    # Run all linters and formatters
    uv run ruff check .
@@ -1395,6 +1498,7 @@ Before creating a release, ensure:
    ```
 
 3. **Examples and documentation are up-to-date**
+
    ```bash
    # Verify all example scripts work
    uv run python examples/basic_transcription.py
@@ -1411,7 +1515,7 @@ Before creating a release, ensure:
 
 ### Creating a Release
 
-**Step 1: Update version numbers**
+#### Step 1: Update version numbers
 
 ```bash
 # Edit pyproject.toml
@@ -1424,7 +1528,7 @@ Before creating a release, ensure:
 # AUDIO_STATE_VERSION = "2.0.0"  # Major.Minor.Patch
 ```
 
-**Step 2: Update CHANGELOG.md**
+#### Step 2: Update CHANGELOG.md
 
 ```markdown
 ## [x.y.z] - YYYY-MM-DD
@@ -1451,7 +1555,7 @@ Before creating a release, ensure:
 - Security vulnerability fix (if applicable)
 ```
 
-**Step 3: Commit version changes**
+#### Step 3: Commit version changes
 
 ```bash
 # Commit version bump and changelog
@@ -1462,7 +1566,7 @@ git commit -m "Bump version to x.y.z"
 git push origin main
 ```
 
-**Step 4: Create and push git tag**
+#### Step 4: Create and push git tag
 
 ```bash
 # Create annotated tag
@@ -1477,7 +1581,7 @@ Major changes:
 git push origin vx.y.z
 ```
 
-**Step 5: Build distribution packages**
+#### Step 5: Build distribution packages
 
 ```bash
 # Clean old builds
@@ -1493,7 +1597,7 @@ ls dist/
 # slower-whisper-x.y.z.tar.gz
 ```
 
-**Step 6: Test the distribution (optional but recommended)**
+#### Step 6: Test the distribution (optional but recommended)
 
 ```bash
 # Create a fresh virtual environment
@@ -1512,7 +1616,7 @@ deactivate
 rm -rf test_env
 ```
 
-**Step 7: Publish to PyPI (if applicable)**
+#### Step 7: Publish to PyPI (if applicable)
 
 ```bash
 # Install/upgrade twine
@@ -1523,16 +1627,17 @@ uv run twine check dist/*
 
 # Upload to TestPyPI first (recommended)
 uv run twine upload --repository testpypi dist/*
-# Then test install: pip install --index-url https://test.pypi.org/simple/ slower-whisper
+# Then test install:
+pip install --index-url https://test.pypi.org/simple/ slower-whisper
 
 # Upload to PyPI (production)
 uv run twine upload dist/*
 # You'll be prompted for PyPI credentials or API token
 ```
 
-**Step 8: Create GitHub Release**
+#### Step 8: Create GitHub Release
 
-1. Go to https://github.com/EffotlessMetrics/slower-whisper/releases/new
+1. Go to <https://github.com/EffotlessMetrics/slower-whisper/releases/new>
 2. Select the tag you just pushed (vx.y.z)
 3. Title: "Release x.y.z" or "Version x.y.z - Feature Name"
 4. Description: Copy relevant sections from CHANGELOG.md
@@ -1542,10 +1647,10 @@ uv run twine upload dist/*
 6. Check "Set as the latest release"
 7. Click "Publish release"
 
-**Step 9: Post-release tasks**
+#### Step 9: Post-release tasks
 
-```bash
-# Add "Unreleased" section back to CHANGELOG.md
+Add the "Unreleased" section back to `CHANGELOG.md`:
+
 ```markdown
 ## [Unreleased]
 
@@ -1556,7 +1661,9 @@ uv run twine upload dist/*
 ### Fixed
 ```
 
-# Commit and push
+Then commit and push:
+
+```bash
 git add CHANGELOG.md
 git commit -m "Prepare CHANGELOG for next release"
 git push origin main
@@ -1565,12 +1672,14 @@ git push origin main
 ### Release Types
 
 **Patch Release (x.y.Z)** - Bug fixes only
+
 - No new features
 - No breaking changes
 - Backward compatible
 - Example: 1.0.0 → 1.0.1
 
 **Minor Release (x.Y.0)** - New features
+
 - New features added
 - Backward compatible
 - No breaking changes
@@ -1578,6 +1687,7 @@ git push origin main
 - Example: 1.0.1 → 1.1.0
 
 **Major Release (X.0.0)** - Breaking changes
+
 - Breaking changes to public API
 - Breaking changes to JSON schema
 - May remove deprecated features
@@ -1587,12 +1697,15 @@ git push origin main
 ### Schema Versioning Guidelines
 
 **SCHEMA_VERSION** (in `transcription/models.py`):
+
 - Increment ONLY for breaking changes to core JSON schema fields
-- Core fields: `file_name`, `language`, `segments`, segment `id`/`start`/`end`/`text`
+- Core fields: `file_name`, `language`, `segments`, segment
+  `id`/`start`/`end`/`text`
 - Adding optional fields does NOT require version bump
 - Document migration path in CHANGELOG
 
 **AUDIO_STATE_VERSION** (in `transcription/models.py`):
+
 - Follow semantic versioning for `audio_state` field structure
 - MAJOR: Breaking changes (removing/renaming fields)
 - MINOR: New optional fields or feature additions
@@ -1604,17 +1717,19 @@ git push origin main
 For critical bugs in production:
 
 1. Create hotfix branch from tagged release:
+
    ```bash
    git checkout -b hotfix/x.y.z vx.y.z-1
    ```
 
-2. Fix the bug and add tests
+1. Fix the bug and add tests
 
-3. Update version to x.y.Z (increment patch)
+1. Update version to x.y.Z (increment patch)
 
-4. Follow normal release process
+1. Follow normal release process
 
-5. Merge hotfix back to main:
+1. Merge hotfix back to main:
+
    ```bash
    git checkout main
    git merge hotfix/x.y.z
@@ -1624,6 +1739,7 @@ For critical bugs in production:
 ### Release Announcement
 
 After publishing:
+
 - Announce on project discussion/forum
 - Update documentation website (if applicable)
 - Notify users of breaking changes (major releases)
@@ -1650,7 +1766,8 @@ After publishing:
 
 ### External Resources
 
-- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) - Transcription engine
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) - Transcription
+  engine
 - [librosa](https://librosa.org/) - Audio analysis library
 - [Praat-parselmouth](https://parselmouth.readthedocs.io/) - Prosody extraction
 
@@ -1689,7 +1806,7 @@ rm -rf .venv && uv sync --extra dev # Clean reinstall
 
 ---
 
-## Thank You!
+## Thank You
 
 Your contributions make this project better. Whether it's:
 
@@ -1703,6 +1820,7 @@ Your contributions make this project better. Whether it's:
 
 **All contributions are valued and appreciated!**
 
-We're excited to see what you'll contribute. Don't hesitate to ask questions, and welcome to the community!
+We're excited to see what you'll contribute. Don't hesitate to ask questions,
+and welcome to the community!
 
 Happy coding!
