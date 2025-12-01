@@ -450,6 +450,8 @@ git commit --no-verify -m "message"
 - Merge conflict markers
 - Debug statement detection
 
+Pre-commit.ci will auto-apply fixes on PRs when possible (look for `chore: pre-commit autofix`), so fixable lint/format issues shouldn't block you. Unfixable findings still need manual fixes.
+
 ### Code Style Guidelines
 
 We follow PEP 8 with some project-specific conventions:
