@@ -131,7 +131,7 @@ TranscriptionConfig(
 | `max_speakers` | `int \| None` | `None` | Maximum expected speakers (hint for diarization model) | `--max-speakers` | `SLOWER_WHISPER_MAX_SPEAKERS` |
 | `overlap_threshold` | `float` | `0.3` | Minimum overlap ratio to assign a speaker to a segment | `--overlap-threshold` | `SLOWER_WHISPER_OVERLAP_THRESHOLD` |
 | _backend mode_ | `str` | `"auto"` | pyannote backend selector: `auto`, `stub` (fake), `missing` (simulate dep error) | _env only_ | `SLOWER_WHISPER_PYANNOTE_MODE` |
-| _hf token_ | `str` | _required_ | Hugging Face token for pyannote (needed for real and stub runs) | _env only_ | `HF_TOKEN` |
+| _hf token_ | `str` | _none_ | Hugging Face token for pyannote backend (required unless forcing stub/missing) | _env only_ | `HF_TOKEN` |
 
 **Model Sizes:**
 

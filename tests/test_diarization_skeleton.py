@@ -467,6 +467,22 @@ def test_diarizer_backwards_token_param(monkeypatch, tmp_path):
     assert called_kwargs.get("cache_dir") == str(expected_cache)
 
 
+def test_stub_mode_does_not_require_hf_token(monkeypatch):
+    """
+    Stub backend should work without HF_TOKEN because it never hits Hugging Face.
+    """
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("SLOWER_WHISPER_PYANNOTE_MODE", "stub")
+
+    from transcription.diarization import Diarizer
+
+    diarizer = Diarizer()
+    pipeline = diarizer._ensure_pipeline()
+
+    assert pipeline is diarizer._pipeline
+    assert pipeline.__class__.__name__ == "_StubPipeline"
+
+
 # ============================================================================
 # Integration test with synthetic fixture (ready for pyannote)
 # ============================================================================

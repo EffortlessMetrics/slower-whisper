@@ -6,12 +6,12 @@
 
 **Requirements:**
 - Install diarization dependencies: `uv sync --extra diarization`
-- HuggingFace token with access to pyannote models: `export HF_TOKEN=...`
 - ffmpeg (system dependency, required for all slower-whisper operations)
+- HuggingFace token with access to pyannote models when using the real backend (`auto`): `export HF_TOKEN=...` (not needed for `stub`/`missing`)
 
 **Backend modes (env: `SLOWER_WHISPER_PYANNOTE_MODE`, default `auto`):**
 - `auto`: real pyannote if installed (requires HF_TOKEN)
-- `stub`: lightweight fake diarization for tests (still requires HF_TOKEN)
+- `stub`: lightweight fake diarization for tests (no HF_TOKEN needed; no model download)
 - `missing`: simulate missing dependency/import error for graceful-failure paths
 
 ---

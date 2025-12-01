@@ -20,7 +20,7 @@ the `speakers[]` and `segment.speaker` fields in the transcript schema.
 
 **Requirements**:
 - Install with: uv sync --extra diarization
-- Requires HF_TOKEN environment variable for pyannote model access
+- HF_TOKEN required only when using the real pyannote backend (auto)
 - Accept license at: https://huggingface.co/pyannote/speaker-diarization-3.1
 """
 
@@ -188,14 +188,15 @@ class Diarizer:
             raise ImportError(
                 "pyannote.audio is unavailable (forced via SLOWER_WHISPER_PYANNOTE_MODE=missing)"
             )
+        if mode == "stub":
+            self._pipeline = _make_stub_pyannote_pipeline()
+            return self._pipeline
+
         token = os.getenv("HF_TOKEN")
         if token is None:
             raise RuntimeError(
                 "HF_TOKEN environment variable is required for pyannote.audio diarization"
             )
-        if mode == "stub":
-            self._pipeline = _make_stub_pyannote_pipeline()
-            return self._pipeline
 
         try:
             from pyannote.audio import Pipeline

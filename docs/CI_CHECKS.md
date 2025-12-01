@@ -158,9 +158,9 @@ uv sync --extra dev
 
 ## HF_TOKEN, pyannote mode, & HuggingFace Cache
 
-Some checks (verify, dogfood) require diarization models from HuggingFace. Even the
-lightweight stub backend expects an `HF_TOKEN`, so set a dummy token if you are not
-running the real model.
+Some checks (verify, dogfood) pull pyannote diarization models from HuggingFace.
+Set `HF_TOKEN` when running the real backend; the lightweight stub backend works
+without it.
 
 ### Local Setup
 
