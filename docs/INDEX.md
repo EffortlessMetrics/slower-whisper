@@ -27,7 +27,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 1. Start with [README](../README.md) — project overview, installation, architecture
 2. Read [VISION.md](../VISION.md) — understand the "why" and positioning
 3. Follow [Quickstart Guide](QUICKSTART.md) — your first transcription
-4. Check [API Quick Reference](../API_QUICK_REFERENCE.md) — function usage
+4. Check [API Quick Reference](API_QUICK_REFERENCE.md) — function usage
 
 **Need help?**
 
@@ -43,9 +43,9 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 ---
 
-## Core Documentation (Root Level)
+## Core Documentation
 
-### Essential Documents
+### Repo root essentials
 
 | Document | Description | Audience |
 |----------|-------------|----------|
@@ -58,20 +58,31 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Community standards and expectations | Community members |
 | [CLAUDE.md](../CLAUDE.md) | Project guidance for AI coding assistants | Developers using AI tools |
 
-### API & CLI References
+### API & CLI References (docs/)
 
 | Document | Description | Topics |
 |----------|-------------|--------|
-| [API_QUICK_REFERENCE.md](../API_QUICK_REFERENCE.md) | Quick reference for Python API | Functions, configs, examples |
-| [CLI_REFERENCE.md](../CLI_REFERENCE.md) | Command-line interface documentation | Commands, options, workflows |
+| [API_QUICK_REFERENCE.md](API_QUICK_REFERENCE.md) | Quick reference for Python API | Functions, configs, examples |
+| [CLI_REFERENCE.md](CLI_REFERENCE.md) | Command-line interface documentation | Commands, options, workflows |
 
-### Infrastructure & Deployment
+### Infrastructure & Deployment (docs/)
 
 | Document | Description | Topics |
 |----------|-------------|--------|
-| [DOCKER.md](../DOCKER.md) | Docker containerization guide | Images, builds, usage |
-| [DOCKER_DEPLOYMENT_GUIDE.md](../DOCKER_DEPLOYMENT_GUIDE.md) | Production deployment with Docker | Compose, scaling, best practices |
-| [API_SERVICE.md](../API_SERVICE.md) | RESTful API service setup | Web API, endpoints, integration |
+| [DOCKER.md](DOCKER.md) | Docker containerization guide | Images, builds, usage |
+| [DOCKER_DEPLOYMENT_GUIDE.md](DOCKER_DEPLOYMENT_GUIDE.md) | Production deployment with Docker | Compose, scaling, best practices |
+| [API_SERVICE.md](API_SERVICE.md) | RESTful API service setup | Web API, endpoints, integration |
+
+### Release & Packaging (docs/releases/)
+
+| Document | Description |
+|----------|-------------|
+| [releases/RELEASE.md](releases/RELEASE.md) | Release playbook and checklist pointers |
+| [releases/RELEASE_CHECKLIST.md](releases/RELEASE_CHECKLIST.md) | Full release checklist |
+| [releases/PRE_RELEASE_TEST_PLAN.md](releases/PRE_RELEASE_TEST_PLAN.md) | Pre-release validation steps |
+| [releases/FINAL_VERIFICATION_CHECKLIST.md](releases/FINAL_VERIFICATION_CHECKLIST.md) | Final verification before tagging |
+| [releases/PACKAGING.md](releases/PACKAGING.md) | Packaging and distribution guide |
+| [releases/GITHUB_RELEASE_v1.1.0.md](releases/GITHUB_RELEASE_v1.1.0.md) | GitHub release template for v1.1.0 |
 
 ---
 
@@ -179,7 +190,7 @@ These documents are historical artifacts from the development process and transf
 ### "I want to transcribe audio files"
 1. [README](../README.md) - Overview and installation
 2. [Quickstart](QUICKSTART.md) - First transcription
-3. [CLI Reference](../CLI_REFERENCE.md) - Command details
+3. [CLI Reference](CLI_REFERENCE.md) - Command details
 4. [Troubleshooting](TROUBLESHOOTING.md) - If issues arise
 
 ### "I want to extract audio features (prosody, emotion)"
@@ -189,7 +200,7 @@ These documents are historical artifacts from the development process and transf
 4. [Examples](../examples/) - Working examples
 
 ### "I want to use the Python API"
-1. [API Quick Reference](../API_QUICK_REFERENCE.md) - Function reference
+1. [API Quick Reference](API_QUICK_REFERENCE.md) - Function reference
 2. [API Examples](../examples/API_EXAMPLES_README.md) - Usage examples
 3. [Architecture](ARCHITECTURE.md) - Understanding the design
 
@@ -200,9 +211,9 @@ These documents are historical artifacts from the development process and transf
 4. [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Understand the prosody/emotion features
 
 ### "I want to deploy this in production"
-1. [Docker Guide](../DOCKER.md) - Containerization
-2. [Docker Deployment Guide](../DOCKER_DEPLOYMENT_GUIDE.md) - Production deployment
-3. [API Service](../API_SERVICE.md) - Web API setup
+1. [Docker Guide](DOCKER.md) - Containerization
+2. [Docker Deployment Guide](DOCKER_DEPLOYMENT_GUIDE.md) - Production deployment
+3. [API Service](API_SERVICE.md) - Web API setup
 
 ### "I want to contribute code"
 1. [Contributing Guide](../CONTRIBUTING.md) - Process and standards
@@ -212,7 +223,7 @@ These documents are historical artifacts from the development process and transf
 
 ### "I want to understand the system design"
 1. [Architecture](ARCHITECTURE.md) - Complete architecture overview
-2. [API Quick Reference](../API_QUICK_REFERENCE.md) - API structure
+2. [API Quick Reference](API_QUICK_REFERENCE.md) - API structure
 3. [Prosody Guide](PROSODY.md) - Feature extraction details
 
 ### "I encountered an error"

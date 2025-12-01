@@ -424,7 +424,7 @@ If evaluating many meetings:
 - `docs/AMI_SETUP.md` - AMI corpus setup guide
 - `docs/IEMOCAP_SETUP.md` - IEMOCAP setup (TODO)
 - `docs/LLM_PROMPT_PATTERNS.md` - Prompt engineering guide
-- `DOGFOOD_SETUP.md` - Dogfooding workflow (synthetic samples)
+- [DOGFOOD_SETUP.md](../docs/DOGFOOD_SETUP.md) - Dogfooding workflow (synthetic samples)
 - `transcription/benchmarks.py` - Dataset iterator API
 - `transcription/llm_utils.py` - LLM rendering utilities
 - `README.md` - Performance benchmarking (throughput, memory)

@@ -212,7 +212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("Next steps:")
     print("  1. Review stats output above")
     print(f"  2. Inspect JSON: jq . {json_file} | less")
-    print("  3. Record findings in DOGFOOD_NOTES.md")
+    print("  3. Record findings in docs/DOGFOOD_NOTES.md")
     print()
 
     return 0

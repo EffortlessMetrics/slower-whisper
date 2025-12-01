@@ -253,7 +253,7 @@ After running dogfood, record observations in `DOGFOOD_NOTES.md`:
 1. Run dogfood on 1-2 samples (synthetic + real dataset)
 2. Record findings in DOGFOOD_NOTES.md
 3. Make release decision (ship / polish / defer)
-4. If shipping: Create GitHub Release with GITHUB_RELEASE_v1.1.0.md
+4. If shipping: Create GitHub Release with `releases/GITHUB_RELEASE_v1.1.0.md`
 
 ---
 

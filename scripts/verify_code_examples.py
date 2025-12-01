@@ -2,8 +2,8 @@
 """
 Verify all code examples from documentation files.
 
-This script extracts Python code blocks from README.md, ARCHITECTURE.md,
-and API_QUICK_REFERENCE.md and validates them for:
+This script extracts Python code blocks from README.md, docs/ARCHITECTURE.md,
+and docs/API_QUICK_REFERENCE.md and validates them for:
 - Syntax correctness
 - Import correctness (matching actual exports)
 - Function signature correctness
@@ -268,7 +268,7 @@ def main():
     doc_files = [
         Path("README.md"),
         Path("docs/ARCHITECTURE.md"),
-        Path("API_QUICK_REFERENCE.md"),
+        Path("docs/API_QUICK_REFERENCE.md"),
     ]
 
     # Extract examples

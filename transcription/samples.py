@@ -212,7 +212,7 @@ def download_sample_dataset(
             f"Or use the Kaggle CLI:\n"
             f"  kaggle datasets download -d wiradkp/mini-speech-diarization \\\n"
             f"    -p {cache_dir} --unzip\n"
-            f"See DOGFOOD_SETUP.md for detailed instructions."
+            f"See docs/DOGFOOD_SETUP.md for detailed instructions."
         )
 
     # Download if URL is provided

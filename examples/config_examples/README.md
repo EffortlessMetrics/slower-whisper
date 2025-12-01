@@ -307,6 +307,6 @@ print(f'✓ Valid: prosody={cfg.enable_prosody}, emotion={cfg.enable_emotion}')
 
 ## See Also
 
-- [API Quick Reference](../../API_QUICK_REFERENCE.md) - Configuration field documentation
+- [API Quick Reference](../../docs/API_QUICK_REFERENCE.md) - Configuration field documentation
 - [README](../../README.md) - Main usage guide
 - [CLAUDE.md](../../CLAUDE.md) - Developer documentation

@@ -1,8 +1,8 @@
 # RELEASE.md
 
 Concise release playbook for slower-whisper. Follow this alongside the detailed
-checklists in `RELEASE_CHECKLIST.md`, `docs/releases/FINAL_VERIFICATION_CHECKLIST.md`,
-and `docs/RELEASE_CHECKLIST_NIX.md`.
+checklists in `releases/RELEASE_CHECKLIST.md`, `releases/FINAL_VERIFICATION_CHECKLIST.md`,
+and `../RELEASE_CHECKLIST_NIX.md`.
 
 ## Quick preflight
 

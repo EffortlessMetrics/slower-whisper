@@ -425,7 +425,7 @@ See [examples/config_examples/](examples/config_examples/) for complete configur
 For detailed configuration documentation, see:
 
 - [examples/config_examples/README.md](examples/config_examples/README.md) - Configuration file examples
-- [API_QUICK_REFERENCE.md](API_QUICK_REFERENCE.md) - Complete API reference with all config options
+- [API_QUICK_REFERENCE.md](docs/API_QUICK_REFERENCE.md) - Complete API reference with all config options
 
 ## Usage
 
@@ -773,7 +773,7 @@ curl -X POST \
 # http://localhost:8000/redoc (ReDoc)
 ```
 
-For complete API documentation, examples, and deployment guides, see [API_SERVICE.md](API_SERVICE.md).
+For complete API documentation, examples, and deployment guides, see [API_SERVICE.md](docs/API_SERVICE.md).
 
 ### Legacy CLI (Backward Compatibility)
 
@@ -1452,11 +1452,11 @@ docker run -p 8000:8000 slower-whisper:api
 
 For detailed deployment guides and infrastructure-as-code configurations:
 
-- **[DOCKER.md](DOCKER.md)** - Complete Docker setup guide with GPU support
+- **[DOCKER.md](docs/DOCKER.md)** - Complete Docker setup guide with GPU support
 - **[k8s/](k8s/)** - Kubernetes manifests and Kustomize configurations
 - **[docker-compose.yml](docker-compose.yml)** - Production Docker Compose setup
 - **[docker-compose.dev.yml](docker-compose.dev.yml)** - Development environment
-- **[API_SERVICE.md](API_SERVICE.md)** - REST API service documentation
+- **[API_SERVICE.md](docs/API_SERVICE.md)** - REST API service documentation
 
 ### Deployment Configuration
 

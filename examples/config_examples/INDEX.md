@@ -3,7 +3,7 @@
 ## Quick Start
 
 1. **New to configuration?** Start with [README.md](README.md) - Configuration Precedence section
-2. **Need field reference?** See [../../API_QUICK_REFERENCE.md](../../API_QUICK_REFERENCE.md) - Configuration section
+2. **Need field reference?** See [../../docs/API_QUICK_REFERENCE.md](../../docs/API_QUICK_REFERENCE.md) - Configuration section
 3. **Want to see it in action?** Run `python config_demo.py`
 
 ## Configuration Files in This Directory
@@ -165,7 +165,7 @@ export SLOWER_WHISPER_ENRICH_DEVICE=cuda
 ## Documentation Links
 
 - **Main README**: [../../README.md](../../README.md) - Configuration section
-- **API Reference**: [../../API_QUICK_REFERENCE.md](../../API_QUICK_REFERENCE.md) - Complete field documentation
+- **API Reference**: [../../docs/API_QUICK_REFERENCE.md](../../docs/API_QUICK_REFERENCE.md) - Complete field documentation
 - **This Directory**: [README.md](README.md) - Detailed configuration guide
 - **Demo Script**: [config_demo.py](config_demo.py) - Interactive demonstrations
 
@@ -209,5 +209,5 @@ print(f'✓ Valid: prosody={cfg.enable_prosody}, emotion={cfg.enable_emotion}')
 ## Need Help?
 
 - Configuration not working? Check [README.md](README.md) for precedence rules
-- Need field details? See [../../API_QUICK_REFERENCE.md](../../API_QUICK_REFERENCE.md)
+- Need field details? See [../../docs/API_QUICK_REFERENCE.md](../../docs/API_QUICK_REFERENCE.md)
 - Want examples? Run `python config_demo.py`

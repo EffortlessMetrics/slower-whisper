@@ -186,7 +186,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Review stats output above"
 echo "  2. Inspect JSON: jq . $JSON_FILE | less"
-echo "  3. Record findings in DOGFOOD_NOTES.md"
+echo "  3. Record findings in docs/DOGFOOD_NOTES.md"
 echo ""
 echo "Quick commands:"
 if [ -f "examples/llm_integration/summarize_with_diarization.py" ]; then

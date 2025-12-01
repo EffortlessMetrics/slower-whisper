@@ -25,7 +25,7 @@ Tests:
 
 ### verify_code_examples.py
 
-Extract and validate Python code examples from documentation files (README.md, ARCHITECTURE.md, API_QUICK_REFERENCE.md).
+Extract and validate Python code examples from documentation files (README.md, docs/ARCHITECTURE.md, docs/API_QUICK_REFERENCE.md).
 
 **Usage:**
 ```bash
