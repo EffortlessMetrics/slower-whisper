@@ -6,7 +6,8 @@ into text blocks optimized for LLM consumption, following the patterns
 documented in docs/LLM_PROMPT_PATTERNS.md.
 """
 
-from typing import Any
+from dataclasses import asdict, is_dataclass
+from typing import Any, cast
 
 from transcription.models import Segment, Transcript
 
@@ -33,6 +34,22 @@ def _resolve_speaker_label(
     if speaker_labels:
         return speaker_labels.get(speaker_id, speaker_id)
     return speaker_id
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Coerce dataclasses or objects with to_dict into plain dicts."""
+    if isinstance(value, dict):
+        return value
+    # Reject classes (types) early - we only work with instances
+    if isinstance(value, type):
+        raise TypeError(f"Unsupported object type: {type(value)}")
+    to_dict_fn = getattr(value, "to_dict", None)
+    if callable(to_dict_fn):
+        result: dict[str, Any] = to_dict_fn()
+        return result
+    if is_dataclass(value):
+        return asdict(cast(Any, value))
+    raise TypeError(f"Unsupported object type: {type(value)}")
 
 
 def render_segment(
@@ -89,7 +106,7 @@ def render_segment(
 
 
 def _render_turn_dict(
-    turn_dict: dict[str, Any],
+    turn_obj: dict[str, Any] | Any,
     transcript: Transcript,
     include_audio_cues: bool = True,
     include_timestamps: bool = False,
@@ -110,6 +127,19 @@ def _render_turn_dict(
     Returns:
         Rendered turn text
     """
+    turn_dict: dict[str, Any]
+    if isinstance(turn_obj, dict):
+        turn_dict = turn_obj
+    elif isinstance(turn_obj, type):
+        # Reject classes (types) early - we only work with instances
+        raise TypeError(f"Unsupported turn type: {type(turn_obj)}")
+    elif callable(getattr(turn_obj, "to_dict", None)):
+        turn_dict = turn_obj.to_dict()
+    elif is_dataclass(turn_obj):
+        turn_dict = asdict(cast(Any, turn_obj))
+    else:
+        raise TypeError(f"Unsupported turn type: {type(turn_obj)}")
+
     parts: list[str] = []
 
     # Timestamp prefix (if requested)
@@ -281,7 +311,8 @@ def render_conversation_compact(
 
     # Use turns if available, else segments
     if transcript.turns:
-        for turn_dict in transcript.turns:
+        for turn_item in transcript.turns:
+            turn_dict = _as_dict(turn_item)
             speaker_label = (
                 _resolve_speaker_label(turn_dict.get("speaker_id"), speaker_labels) or "unknown"
             )
@@ -304,3 +335,170 @@ def render_conversation_compact(
             result = result[:max_chars] + "\n[...truncated]"
 
     return result
+
+
+def _format_timestamp(seconds: float) -> str:
+    """Format seconds as HH:MM:SS.s for readability."""
+    secs = max(float(seconds), 0.0)
+    minutes, secs = divmod(secs, 60)
+    hours, minutes = divmod(int(minutes), 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:04.1f}"
+
+
+def _format_time_range(start: float, end: float) -> str:
+    """Render a start/end time window."""
+    return f"{_format_timestamp(start)}-{_format_timestamp(end)}"
+
+
+def _collect_audio_descriptors(
+    segment_ids: list[Any], segment_index: dict[Any, Segment]
+) -> list[str]:
+    """Return sorted audio descriptors aggregated from a set of segments."""
+    descriptors: set[str] = set()
+    for seg_id in segment_ids:
+        segment = segment_index.get(seg_id)
+        if segment and segment.audio_state and segment.audio_state.get("rendering"):
+            rendering = segment.audio_state["rendering"]
+            if rendering.startswith("[audio:") and rendering.endswith("]"):
+                desc = rendering[7:-1].strip()
+                for item in desc.split(","):
+                    cleaned = item.strip()
+                    if cleaned:
+                        descriptors.add(cleaned)
+    return sorted(descriptors)
+
+
+def to_turn_view(
+    transcript: Transcript,
+    turns: list[dict[str, Any] | Any] | None = None,
+    include_audio_state: bool = True,
+    include_timestamps: bool = True,
+    speaker_labels: dict[str, str] | None = None,
+) -> str:
+    """
+    Render turn-level view with analytics metadata for LLM prompts.
+
+    Args:
+        transcript: Transcript containing segments/turns.
+        turns: Optional turn list; defaults to transcript.turns.
+        include_audio_state: If True, aggregate audio cues from segments.
+        include_timestamps: If True, prefix each turn with start/end time window.
+        speaker_labels: Optional mapping of speaker IDs to human-readable labels.
+
+    Returns:
+        Multi-line string with one line per turn including speaker, metadata, and text.
+    """
+    turn_list = turns if turns is not None else transcript.turns
+    if not turn_list:
+        return render_conversation_for_llm(
+            transcript,
+            mode="segments",
+            include_audio_cues=include_audio_state,
+            include_timestamps=include_timestamps,
+            include_metadata=False,
+            speaker_labels=speaker_labels,
+        )
+
+    segment_index = {seg.id: seg for seg in transcript.segments or []}
+    lines: list[str] = []
+
+    for turn in turn_list:
+        turn_dict = _as_dict(turn)
+        meta = turn_dict.get("metadata") or turn_dict.get("meta") or {}
+        cues: list[str] = []
+
+        if include_timestamps:
+            start = float(turn_dict.get("start", 0.0))
+            end = float(turn_dict.get("end", start))
+            cues.append(_format_time_range(start, end))
+
+        speaker_label = _resolve_speaker_label(turn_dict.get("speaker_id"), speaker_labels)
+        if speaker_label:
+            cues.append(speaker_label)
+
+        if meta:
+            if "question_count" in meta:
+                cues.append(f"question_count={int(meta.get('question_count') or 0)}")
+            if meta.get("interruption_started_here"):
+                cues.append("interruption_started_here=true")
+            if meta.get("avg_pause_ms") is not None:
+                cues.append(f"avg_pause_ms={int(meta.get('avg_pause_ms') or 0)}")
+            if meta.get("disfluency_ratio") is not None:
+                cues.append(f"disfluency={float(meta.get('disfluency_ratio') or 0.0):.2f}")
+
+        if include_audio_state:
+            seg_ids = turn_dict.get("segment_ids") or []
+            descriptors = _collect_audio_descriptors(seg_ids, segment_index)
+            if descriptors:
+                cues.append(f"audio={', '.join(descriptors)}")
+
+        text = str(turn_dict.get("text") or "").strip()
+        prefix = f"[{' | '.join(cues)}]" if cues else ""
+
+        if prefix or text:
+            lines.append(f"{prefix} {text}".strip())
+
+    return "\n".join(lines)
+
+
+def to_speaker_summary(
+    transcript: Transcript,
+    speaker_stats: list[dict[str, Any] | Any] | None = None,
+    speaker_labels: dict[str, str] | None = None,
+) -> str:
+    """
+    Render per-speaker analytics into a concise summary block.
+
+    Args:
+        transcript: Transcript holding analytics (used as default source).
+        speaker_stats: Optional explicit stats list; defaults to transcript.speaker_stats.
+        speaker_labels: Optional mapping of speaker IDs to human-readable labels.
+
+    Returns:
+        Multi-line string describing talk time, interruptions, and questions per speaker.
+    """
+    stats_source = speaker_stats if speaker_stats is not None else (transcript.speaker_stats or [])
+    if not stats_source:
+        return (
+            "Speaker stats summary:\n- Analytics not available (enable_speaker_stats to populate)"
+        )
+
+    lines = ["Speaker stats summary:"]
+
+    for stat in stats_source:
+        stat_dict = _as_dict(stat)
+        speaker_label = _resolve_speaker_label(stat_dict.get("speaker_id"), speaker_labels)
+        display_name = speaker_label or (stat_dict.get("speaker_id") or "unknown")
+
+        total_talk = float(stat_dict.get("total_talk_time") or 0.0)
+        num_turns = int(stat_dict.get("num_turns") or 0)
+        avg_turn = float(stat_dict.get("avg_turn_duration") or 0.0)
+        initiated = int(stat_dict.get("interruptions_initiated") or 0)
+        received = int(stat_dict.get("interruptions_received") or 0)
+        questions = int(stat_dict.get("question_turns") or 0)
+
+        prosody = stat_dict.get("prosody_summary") or {}
+        sentiment = stat_dict.get("sentiment_summary") or {}
+        extras: list[str] = []
+
+        pitch_val = prosody.get("pitch_median_hz")
+        if pitch_val is not None:
+            extras.append(f"pitch~={float(pitch_val):.0f}Hz")
+        energy_val = prosody.get("energy_median_db")
+        if energy_val is not None:
+            extras.append(f"energy~={float(energy_val):.1f}dB")
+
+        pos = sentiment.get("positive")
+        neg = sentiment.get("negative")
+        if pos is not None or neg is not None:
+            extras.append(f"sentiment+={float(pos or 0.0):.2f}/-={float(neg or 0.0):.2f}")
+
+        extras_suffix = f"; {'; '.join(extras)}" if extras else ""
+
+        lines.append(
+            f"- {display_name}: {total_talk:.1f}s across {num_turns} turns "
+            f"(avg {avg_turn:.1f}s); {initiated} interruptions started, "
+            f"{received} received; {questions} question turns{extras_suffix}"
+        )
+
+    return "\n".join(lines)

@@ -31,7 +31,7 @@ class EnrichmentConfig:
         enable_categorical_emotion: bool = False,
         device: str = "cuda",
         single_file: str | None = None,
-    ):
+    ) -> None:
         self.paths = Paths(root=root)
         self.skip_existing = skip_existing
         self.enable_prosody = enable_prosody

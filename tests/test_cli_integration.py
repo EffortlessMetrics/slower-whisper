@@ -14,6 +14,7 @@ Tests the slower-whisper command-line interface including:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -27,6 +28,8 @@ from transcription.cli import (
     main,
 )
 from transcription.config import EnrichmentConfig, TranscriptionConfig
+
+pytestmark = pytest.mark.integration
 
 # ============================================================================
 # Fixtures
@@ -61,6 +64,58 @@ def temp_project_root(tmp_path):
     (root / "whisper_json").mkdir()
     (root / "transcripts").mkdir()
     return root
+
+
+@pytest.fixture
+def sample_transcript_file(tmp_path: Path) -> Path:
+    """Write a minimal, schema-valid transcript JSON for export/validate commands."""
+    path = tmp_path / "sample_transcript.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "file": "sample.wav",
+                "language": "en",
+                "segments": [
+                    {
+                        "id": 0,
+                        "start": 0.0,
+                        "end": 1.2,
+                        "text": "Hello there",
+                        "speaker": {"id": "spk_0", "confidence": 0.98},
+                    },
+                    {
+                        "id": 1,
+                        "start": 1.3,
+                        "end": 2.1,
+                        "text": "Testing export flow",
+                        "speaker": {"id": "spk_1", "confidence": 0.97},
+                    },
+                ],
+                "turns": [
+                    {
+                        "id": "turn_0",
+                        "speaker_id": "spk_0",
+                        "segment_ids": [0],
+                        "start": 0.0,
+                        "end": 1.2,
+                        "text": "Hello there",
+                    },
+                    {
+                        "id": "turn_1",
+                        "speaker_id": "spk_1",
+                        "segment_ids": [1],
+                        "start": 1.3,
+                        "end": 2.1,
+                        "text": "Testing export flow",
+                    },
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 # ============================================================================
@@ -299,6 +354,7 @@ def test_enrich_default_args():
     assert args.enable_prosody is None
     assert args.enable_emotion is None
     assert args.enable_categorical_emotion is None
+    assert args.enable_semantic_annotator is None
     assert args.device is None
 
 
@@ -488,6 +544,9 @@ def test_config_from_enrich_args_defaults():
     assert config.enable_prosody is True
     assert config.enable_emotion is True
     assert config.enable_categorical_emotion is False
+    assert config.enable_turn_metadata is True
+    assert config.enable_speaker_stats is True
+    assert config.enable_semantic_annotator is False
     assert config.device == "cpu"
 
 
@@ -501,6 +560,8 @@ def test_config_from_enrich_args_custom():
             "--no-enable-prosody",
             "--no-enable-emotion",
             "--enable-categorical-emotion",
+            "--no-enable-turn-metadata",
+            "--no-enable-speaker-stats",
             "--device",
             "cuda",
         ]
@@ -512,7 +573,30 @@ def test_config_from_enrich_args_custom():
     assert config.enable_prosody is False
     assert config.enable_emotion is False
     assert config.enable_categorical_emotion is True
+    assert config.enable_turn_metadata is False
+    assert config.enable_speaker_stats is False
+    assert config.enable_semantic_annotator is False
     assert config.device == "cuda"
+
+
+def test_config_from_enrich_args_speaker_analytics_toggle():
+    """Speaker analytics convenience flag should set both underlying toggles."""
+    parser = build_parser()
+    args = parser.parse_args(["enrich", "--no-enable-speaker-analytics"])
+
+    config = _config_from_enrich_args(args)
+
+    assert config.enable_turn_metadata is False
+    assert config.enable_speaker_stats is False
+
+
+def test_enrich_semantic_annotator_flag():
+    """Semantic annotator flag should propagate into EnrichmentConfig."""
+    parser = build_parser()
+    args = parser.parse_args(["enrich", "--enable-semantics"])
+
+    config = _config_from_enrich_args(args)
+    assert config.enable_semantic_annotator is True
 
 
 # ============================================================================
@@ -679,6 +763,63 @@ def test_main_global_help(capsys):
 
 
 # ============================================================================
+# Export / Validate Subcommand Tests
+# ============================================================================
+
+
+def test_export_cli_writes_csv(sample_transcript_file: Path, tmp_path: Path, capsys):
+    """Export command should write CSV using turn rows when requested."""
+    csv_path = tmp_path / "out.csv"
+    exit_code = main(
+        [
+            "export",
+            str(sample_transcript_file),
+            "--format",
+            "csv",
+            "--unit",
+            "turns",
+            "--output",
+            str(csv_path),
+        ]
+    )
+
+    assert exit_code == 0
+    csv_text = csv_path.read_text(encoding="utf-8")
+    assert "id,start,end,speaker,text" in csv_text
+    assert "turn_0" in csv_text and "turn_1" in csv_text
+    captured = capsys.readouterr()
+    assert "[done] Wrote csv" in captured.out
+
+
+def test_validate_cli_reports_failures(sample_transcript_file: Path, tmp_path: Path, capsys):
+    """Validate command should succeed on valid files and report schema errors."""
+    pytest.importorskip("jsonschema")
+    ok_exit = main(["validate", str(sample_transcript_file)])
+    ok_output = capsys.readouterr()
+    assert ok_exit == 0
+    assert "[ok] 1 transcript(s) valid" in ok_output.out
+
+    invalid = tmp_path / "bad_transcript.json"
+    invalid.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "file": "bad.wav",
+                "segments": [{"id": 0, "start": 0.0, "end": 1.0}],
+                "turns": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    fail_exit = main(["validate", str(invalid)])
+    fail_output = capsys.readouterr()
+    assert fail_exit == 1
+    assert "Validation failed" in fail_output.out
+    assert "text" in fail_output.out or "language" in fail_output.out
+
+
+# ============================================================================
 # Edge Cases and Error Handling
 # ============================================================================
 
@@ -705,6 +846,8 @@ def test_enrich_with_minimal_args(mock_enrich_directory, capsys):
     # Should use default values
     assert config.enable_prosody is True
     assert config.enable_emotion is True
+    assert config.enable_turn_metadata is True
+    assert config.enable_speaker_stats is True
     assert config.device == "cpu"
 
 

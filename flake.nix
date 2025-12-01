@@ -50,6 +50,8 @@
           # slower-whisper cache
           export SLOWER_WHISPER_CACHE_ROOT="''${HOME}/.cache/slower-whisper"
           export PYTHONPATH="$PWD:''${PYTHONPATH:-}"
+          # Make sure Python wheels (numpy/torch) find runtime libs
+          export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc pkgs.zlib ]}:''${LD_LIBRARY_PATH:-}"
         '';
 
       in {
@@ -278,7 +280,7 @@
         # Default package (minimal, for nix build)
         packages.default = pkgs.python312Packages.buildPythonPackage {
           pname = "slower-whisper";
-          version = "1.1.0-dev";
+          version = "1.3.0";
           src = ./.;
 
           propagatedBuildInputs = systemDeps;

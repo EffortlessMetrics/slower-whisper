@@ -1,6 +1,6 @@
 # LLM Prompt Patterns for slower-whisper
 
-**Status:** v1.1 - Production-ready patterns for conversation analysis
+**Status:** v1.2 - Production-ready patterns for conversation analysis (includes speaker analytics)
 
 **Target audience:** Application developers building LLM-powered conversation intelligence
 
@@ -27,6 +27,7 @@ This guide shows how to:
 - Rendering for LLM consumption
 - Sending to Claude/GPT for analysis
 - Speaker role inference and labeling
+- For a tiny bake-off and expected lift (modest, clearest on attribution tasks), see [`benchmarks/SPEAKER_ANALYTICS_MVP.md`](../benchmarks/SPEAKER_ANALYTICS_MVP.md).
 
 ---
 
@@ -530,6 +531,92 @@ Focus on **inclusive, productive conversation dynamics**.
 4. **Check-in**: Ask spk_3 directly if they felt they had space to contribute
 
 **Overall Score: 7/10** - Well-structured, but minor inclusion gap
+```
+
+---
+
+## Pattern 6: Speaker Analytics with Turn Metadata
+
+**Use case:** Prepend per-speaker analytics and turn-level metadata so the LLM can reason about interruptions, disfluency, and question frequency.
+
+### Example Input (with analytics)
+
+```json
+{
+  "speaker_stats": [
+    {
+      "speaker_id": "spk_0",
+      "total_talk_time": 45.3,
+      "num_turns": 12,
+      "avg_turn_duration": 3.8,
+      "interruptions_initiated": 2,
+      "interruptions_received": 1,
+      "question_turns": 4
+    },
+    {
+      "speaker_id": "spk_1",
+      "total_talk_time": 32.1,
+      "num_turns": 10,
+      "avg_turn_duration": 3.2,
+      "interruptions_initiated": 1,
+      "interruptions_received": 3,
+      "question_turns": 1
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn_3",
+      "speaker_id": "spk_1",
+      "text": "Uh, I think we should push this to tomorrow?",
+      "start": 12.0,
+      "end": 14.5,
+      "metadata": {
+        "question_count": 1,
+        "interruption_started_here": true,
+        "avg_pause_ms": 60.0,
+        "disfluency_ratio": 0.42
+      }
+    }
+  ]
+}
+```
+
+### Example Prompt
+
+````markdown
+<conversation_analytics>
+Speaker stats summary:
+- spk_0: 45.3s talk time across 12 turns; 2 interruptions started, 1 received; 4 question turns
+- spk_1: 32.1s talk time across 10 turns; 1 interruption started, 3 received; 1 question turn
+
+Focus:
+- Which speaker is most interrupted?
+- Which turns show high disfluency (metadata.disfluency_ratio > 0.35)?
+</conversation_analytics>
+
+<conversation_turns>
+[spk_1 | interruption_started_here=true | disfluency=0.42] Uh, I think we should push this to tomorrow?
+[spk_0 | interruption_started_here=false | disfluency=0.08] Let's keep today and remove scope instead.
+</conversation_turns>
+
+Provide:
+1. Who dominates the conversation vs. who is interrupted most (cite speaker_stats).
+2. List turns with interruptions (`interruption_started_here=true`) and high disfluency (`disfluency_ratio>0.35`) with timestamps.
+3. Coaching tips to reduce interruptions and disfluency.
+````
+
+### Expected LLM Output
+
+```markdown
+## Participation + Interruptions
+- spk_0 leads (45.3s, 12 turns); spk_1 is interrupted most (3 received vs 1 initiated).
+
+## High-Disfluency / Interruption Turns
+- [12.0s-14.5s] spk_1: disfluency=0.42, interruption_started_here=true — struggles to finish thought.
+
+## Coaching
+- Invite spk_1 to finish before responding; pause 0.5s after they start speaking.
+- Ask spk_1 to restate key points without fillers; offer guided questions to reduce disfluency.
 ```
 
 ---

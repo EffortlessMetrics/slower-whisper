@@ -90,6 +90,12 @@ The CI script:
 | `fast` | Lint, format, typecheck, fast tests                  | ~5 min   | During development, pre-commit  |
 | `full` | Fast mode + integration, BDD, verify, dogfood        | ~30 min  | Before PR, before release       |
 
+### Verify workflow split
+
+- PRs run `.github/workflows/verify.yml` in quick mode via `nix develop --command uv run slower-whisper-verify --quick`.
+- Nightly schedule/manual dispatch runs the same workflow in full mode (`uv run slower-whisper-verify`), which includes Docker + K8s checks and benefits from `HF_TOKEN` when running real pyannote.
+- Both paths share the Nix dev shell, so local runs match CI output.
+
 ### Fast Mode
 
 ```bash

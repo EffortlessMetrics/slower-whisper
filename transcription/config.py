@@ -145,6 +145,13 @@ class TranscriptionConfig:
     vad_min_silence_ms: int = 500
     beam_size: int = 5
 
+    # Chunking (v1.3 preview)
+    enable_chunking: bool = False
+    chunk_target_duration_s: float = 30.0
+    chunk_max_duration_s: float = 45.0
+    chunk_target_tokens: int = 400
+    chunk_pause_split_threshold_s: float = 1.5
+
     def __post_init__(self):
         """Auto-detect compute_type based on device if using default."""
         compute_type = self.compute_type
@@ -154,6 +161,15 @@ class TranscriptionConfig:
 
         validated = validate_compute_type(compute_type) or compute_type
         object.__setattr__(self, "compute_type", validated)
+
+        if self.chunk_target_duration_s <= 0 or self.chunk_max_duration_s <= 0:
+            raise ConfigurationError("Chunk durations must be positive")
+        if self.chunk_max_duration_s < self.chunk_target_duration_s:
+            object.__setattr__(self, "chunk_max_duration_s", self.chunk_target_duration_s)
+        if self.chunk_target_tokens <= 0:
+            raise ConfigurationError("chunk_target_tokens must be positive")
+        if self.chunk_pause_split_threshold_s < 0:
+            raise ConfigurationError("chunk_pause_split_threshold_s cannot be negative")
 
     # v1.1+ diarization (L2) — opt-in
     enable_diarization: bool = False
@@ -327,6 +343,11 @@ class TranscriptionConfig:
         - {prefix}MIN_SPEAKERS -> min_speakers
         - {prefix}MAX_SPEAKERS -> max_speakers
         - {prefix}OVERLAP_THRESHOLD -> overlap_threshold
+        - {prefix}ENABLE_CHUNKING -> enable_chunking
+        - {prefix}CHUNK_TARGET_DURATION_S -> chunk_target_duration_s
+        - {prefix}CHUNK_MAX_DURATION_S -> chunk_max_duration_s
+        - {prefix}CHUNK_TARGET_TOKENS -> chunk_target_tokens
+        - {prefix}CHUNK_PAUSE_SPLIT_THRESHOLD_S -> chunk_pause_split_threshold_s
 
         Args:
             prefix: Environment variable prefix (default: "SLOWER_WHISPER_")
@@ -388,6 +409,17 @@ class TranscriptionConfig:
                     f"Invalid {prefix}SKIP_EXISTING_JSON: {skip_existing}. "
                     "Must be true/false, 1/0, yes/no, or on/off"
                 )
+        if enable_chunking := os.getenv(f"{prefix}ENABLE_CHUNKING"):
+            enable_lower = enable_chunking.lower()
+            if enable_lower in ("true", "1", "yes", "on"):
+                config_dict["enable_chunking"] = True
+            elif enable_lower in ("false", "0", "no", "off"):
+                config_dict["enable_chunking"] = False
+            else:
+                raise ValueError(
+                    f"Invalid {prefix}ENABLE_CHUNKING: {enable_chunking}. "
+                    "Must be true/false, 1/0, yes/no, or on/off"
+                )
 
         # Integer fields
         if vad_silence := os.getenv(f"{prefix}VAD_MIN_SILENCE_MS"):
@@ -412,6 +444,18 @@ class TranscriptionConfig:
             except ValueError as e:
                 raise ValueError(
                     f"Invalid {prefix}BEAM_SIZE: {beam_size}. Must be a positive integer."
+                ) from e
+        if chunk_tokens := os.getenv(f"{prefix}CHUNK_TARGET_TOKENS"):
+            try:
+                token_value = int(chunk_tokens)
+                if token_value <= 0:
+                    raise ValueError(
+                        f"{prefix}CHUNK_TARGET_TOKENS must be positive, got {token_value}"
+                    )
+                config_dict["chunk_target_tokens"] = token_value
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid {prefix}CHUNK_TARGET_TOKENS: {chunk_tokens}. Must be a positive integer."
                 ) from e
 
         # Diarization fields
@@ -480,6 +524,44 @@ class TranscriptionConfig:
                     f"Invalid {prefix}OVERLAP_THRESHOLD: {overlap}. "
                     "Must be a floating point value between 0.0 and 1.0"
                 ) from e
+        if chunk_target := os.getenv(f"{prefix}CHUNK_TARGET_DURATION_S"):
+            try:
+                target_value = float(chunk_target)
+                if target_value <= 0:
+                    raise ValueError(
+                        f"{prefix}CHUNK_TARGET_DURATION_S must be positive, got {target_value}"
+                    )
+                config_dict["chunk_target_duration_s"] = target_value
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid {prefix}CHUNK_TARGET_DURATION_S: {chunk_target}. Must be a positive float."
+                ) from e
+
+        if chunk_max := os.getenv(f"{prefix}CHUNK_MAX_DURATION_S"):
+            try:
+                chunk_max_val = float(chunk_max)
+                if chunk_max_val <= 0:
+                    raise ValueError(
+                        f"{prefix}CHUNK_MAX_DURATION_S must be positive, got {chunk_max_val}"
+                    )
+                config_dict["chunk_max_duration_s"] = chunk_max_val
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid {prefix}CHUNK_MAX_DURATION_S: {chunk_max}. Must be a positive float."
+                ) from e
+
+        if pause_thresh := os.getenv(f"{prefix}CHUNK_PAUSE_SPLIT_THRESHOLD_S"):
+            try:
+                pause_value = float(pause_thresh)
+                if pause_value < 0:
+                    raise ValueError(
+                        f"{prefix}CHUNK_PAUSE_SPLIT_THRESHOLD_S cannot be negative, got {pause_value}"
+                    )
+                config_dict["chunk_pause_split_threshold_s"] = pause_value
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid {prefix}CHUNK_PAUSE_SPLIT_THRESHOLD_S: {pause_thresh}. Must be a float."
+                ) from e
 
         config = cls(**config_dict)
         # Track which fields were explicitly set from environment
@@ -536,6 +618,7 @@ class EnrichmentConfig:
     High-level enrichment configuration for public API and CLI.
 
     Controls prosody/emotion extraction and device selection for Stage 2.
+    Also gates optional turn/speaker analytics (v1.2).
     """
 
     # What to enrich
@@ -543,6 +626,10 @@ class EnrichmentConfig:
     enable_prosody: bool = True
     enable_emotion: bool = True
     enable_categorical_emotion: bool = False
+    enable_turn_metadata: bool = True
+    enable_speaker_stats: bool = True
+    enable_semantic_annotator: bool = False
+    semantic_annotator: Any | None = field(default=None, repr=False, compare=False)
 
     # Runtime
     device: str = "cpu"  # "cpu" or "cuda"
@@ -576,6 +663,8 @@ class EnrichmentConfig:
                 "enable_prosody": true,
                 "enable_emotion": true,
                 "enable_categorical_emotion": false,
+                "enable_turn_metadata": true,
+                "enable_speaker_stats": true,
                 "device": "cpu",
                 "dimensional_model_name": null,
                 "categorical_model_name": null
@@ -611,6 +700,9 @@ class EnrichmentConfig:
             "enable_prosody",
             "enable_emotion",
             "enable_categorical_emotion",
+            "enable_turn_metadata",
+            "enable_speaker_stats",
+            "enable_semantic_annotator",
         ]
         for field_name in bool_fields:
             if field_name in data and not isinstance(data[field_name], bool):
@@ -624,6 +716,9 @@ class EnrichmentConfig:
             "enable_prosody",
             "enable_emotion",
             "enable_categorical_emotion",
+            "enable_turn_metadata",
+            "enable_speaker_stats",
+            "enable_semantic_annotator",
             "device",
             "dimensional_model_name",
             "categorical_model_name",
@@ -648,6 +743,8 @@ class EnrichmentConfig:
         - {prefix}ENABLE_PROSODY -> enable_prosody
         - {prefix}ENABLE_EMOTION -> enable_emotion
         - {prefix}ENABLE_CATEGORICAL_EMOTION -> enable_categorical_emotion
+        - {prefix}ENABLE_TURN_METADATA -> enable_turn_metadata
+        - {prefix}ENABLE_SPEAKER_STATS -> enable_speaker_stats
         - {prefix}DEVICE -> device
         - {prefix}DIMENSIONAL_MODEL_NAME -> dimensional_model_name
         - {prefix}CATEGORICAL_MODEL_NAME -> categorical_model_name
@@ -675,6 +772,9 @@ class EnrichmentConfig:
             "ENABLE_PROSODY": "enable_prosody",
             "ENABLE_EMOTION": "enable_emotion",
             "ENABLE_CATEGORICAL_EMOTION": "enable_categorical_emotion",
+            "ENABLE_TURN_METADATA": "enable_turn_metadata",
+            "ENABLE_SPEAKER_STATS": "enable_speaker_stats",
+            "ENABLE_SEMANTIC_ANNOTATOR": "enable_semantic_annotator",
         }
 
         for env_suffix, field_name in bool_mapping.items():

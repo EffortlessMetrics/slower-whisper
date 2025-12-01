@@ -65,6 +65,29 @@ follow-up.
 
 ## How It Works
 
+### `speaker_aware_summary.py`
+
+**What it does:**
+- Loads an enriched transcript (turn metadata + speaker_stats)
+- Renders a speaker analytics block and turn-by-turn view with metadata
+- Prints a ready-to-use prompt for LLMs (Pattern 6 in `docs/LLM_PROMPT_PATTERNS.md`)
+
+**Usage:**
+```bash
+uv run python examples/llm_integration/speaker_aware_summary.py whisper_json/meeting.json
+```
+
+**Output (example):**
+```
+Speaker stats summary:
+- Agent: 45.3s across 12 turns (avg 3.8s); 2 interruptions started, 1 received; 4 question turns
+- Customer: 32.1s across 10 turns (avg 3.2s); 1 interruptions started, 3 received; 1 question turns
+
+Conversation:
+[00:00:00.0-00:00:12.5 | Agent | question_count=1 | disfluency=0.02 | audio=calm tone] Welcome to support, how can I help?
+[00:00:12.5-00:00:22.0 | Customer | interruption_started_here=true | disfluency=0.36 | audio=tense, high pitch] Uh, I... I need to change my plan?
+```
+
 ### Step 1: Transcribe Audio
 
 ```bash
@@ -130,6 +153,24 @@ Please summarize this call and provide coaching feedback for the agent.
 
 print(response.content[0].text)
 ```
+
+### Adapters for RAG (LangChain + LlamaIndex)
+
+```python
+from integrations.langchain_loader import SlowerWhisperLoader
+
+loader = SlowerWhisperLoader("whisper_json/sample.json")  # file or directory
+docs = loader.load()  # returns langchain_core.documents.Document[]
+```
+
+```python
+from integrations.llamaindex_reader import SlowerWhisperReader
+
+reader = SlowerWhisperReader("whisper_json/sample.json")
+docs = reader.load_data()  # returns llama_index.core.Document[]
+```
+
+Both loaders auto-build turn-aware chunks (30s target, 45s max by default). Override with `ChunkingConfig` if you want shorter/longer chunks or different pause thresholds.
 
 ## More Patterns
 

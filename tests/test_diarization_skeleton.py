@@ -48,11 +48,14 @@ def test_maybe_run_diarization_disabled():
 
     result = _maybe_run_diarization(transcript, Path("dummy.wav"), config)
 
-    # Should return transcript unchanged
+    # Should return transcript unchanged but with explicit disabled metadata
     assert result is transcript
     assert result.speakers is None
     assert result.turns is None
-    assert "diarization" not in (result.meta or {})
+    assert result.meta is not None
+    diar_meta = result.meta.get("diarization", {})
+    assert diar_meta.get("status") == "disabled"
+    assert diar_meta.get("requested") is False
 
 
 def test_maybe_run_diarization_graceful_failure():
@@ -85,7 +88,7 @@ def test_maybe_run_diarization_graceful_failure():
     # Metadata should indicate failure with detailed error info
     assert result.meta is not None
     assert "diarization" in result.meta
-    assert result.meta["diarization"]["status"] == "failed"
+    assert result.meta["diarization"]["status"] == "error"
     assert result.meta["diarization"]["requested"] is True
     assert "error" in result.meta["diarization"]
     assert "Audio file not found" in result.meta["diarization"]["error"]
@@ -116,7 +119,7 @@ def test_maybe_run_diarization_missing_dependency(monkeypatch, tmp_path):
     result = _maybe_run_diarization(transcript, wav_path, config)
 
     diar_meta = result.meta["diarization"]
-    assert diar_meta["status"] == "failed"
+    assert diar_meta["status"] == "skipped"
     assert diar_meta["error_type"] == "missing_dependency"
     assert diar_meta["requested"] is True
     assert result.segments[0].speaker is None
@@ -153,7 +156,7 @@ def test_maybe_run_diarization_wrapped_missing_dependency(monkeypatch, tmp_path)
     result = _maybe_run_diarization(transcript, wav_path, config)
 
     diar_meta = result.meta["diarization"]
-    assert diar_meta["status"] == "failed"
+    assert diar_meta["status"] == "skipped"
     assert diar_meta["error_type"] == "missing_dependency"
     assert diar_meta["requested"] is True
     assert result.segments[0].speaker is None
@@ -198,7 +201,7 @@ def test_maybe_run_diarization_rolls_back_on_failure(monkeypatch):
     assert result.speakers is None
     assert result.turns is None
     assert result.meta is not None
-    assert result.meta["diarization"]["status"] == "failed"
+    assert result.meta["diarization"]["status"] == "error"
     assert result.meta["diarization"]["requested"] is True
 
 
@@ -261,19 +264,12 @@ def test_maybe_run_diarization_replaces_old_error_metadata(monkeypatch, tmp_path
     result = _maybe_run_diarization(transcript, wav_path, config)
 
     diar_meta = result.meta["diarization"]
-    assert diar_meta["status"] == "success"
+    assert diar_meta["status"] == "ok"
     assert diar_meta["backend"] == "pyannote.audio"
     assert diar_meta["num_speakers"] == 1
-    assert diar_meta["error"] is None
+    assert diar_meta.get("error") is None
     assert diar_meta["error_type"] is None
-    assert set(diar_meta.keys()) == {
-        "status",
-        "requested",
-        "backend",
-        "num_speakers",
-        "error",
-        "error_type",
-    }
+    assert set(diar_meta.keys()) == {"status", "requested", "backend", "num_speakers", "error_type"}
 
 
 def test_maybe_run_diarization_failure_overrides_prior_success(monkeypatch, tmp_path):
@@ -312,12 +308,12 @@ def test_maybe_run_diarization_failure_overrides_prior_success(monkeypatch, tmp_
     result = _maybe_run_diarization(transcript, wav_path, config)
 
     diar_meta = result.meta["diarization"]
-    assert diar_meta["status"] == "failed"
+    assert diar_meta["status"] == "skipped"
     assert diar_meta["requested"] is True
     assert "pyannote.audio missing" in diar_meta["error"]
     assert diar_meta["error_type"] == "missing_dependency"
-    assert "backend" not in diar_meta
-    assert "num_speakers" not in diar_meta
+    assert diar_meta.get("backend") == "pyannote.audio"
+    assert diar_meta.get("num_speakers") is None
 
 
 def test_transcription_config_diarization_fields():
@@ -407,7 +403,7 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
                 "text": "hello",
             }
         ]
-        transcript.meta = {"diarization": {"status": "success", "requested": True}}
+        transcript.meta = {"diarization": {"status": "ok", "requested": True}}
         return transcript
 
     monkeypatch.setattr("transcription.api._maybe_run_diarization", _fake_maybe_run_diarization)
@@ -426,7 +422,7 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
     assert updated.speakers is not None
     assert updated.turns is not None
     assert updated.meta is not None
-    assert updated.meta.get("diarization", {}).get("status") == "success"
+    assert updated.meta.get("diarization", {}).get("status") in {"ok", "success"}
 
 
 def test_diarizer_backwards_token_param(monkeypatch, tmp_path):
@@ -488,6 +484,7 @@ def test_stub_mode_does_not_require_hf_token(monkeypatch):
 # ============================================================================
 
 
+@pytest.mark.heavy
 @pytest.mark.requires_diarization
 @pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not available")
 def test_synthetic_2speaker_diarization(tmp_path, monkeypatch):
@@ -544,7 +541,7 @@ def test_synthetic_2speaker_diarization(tmp_path, monkeypatch):
     # Meta should indicate success
     assert transcript.meta is not None
     assert "diarization" in transcript.meta
-    assert transcript.meta["diarization"]["status"] == "success"
+    assert transcript.meta["diarization"]["status"] == "ok"
     assert transcript.meta["diarization"]["requested"] is True
     assert transcript.meta["diarization"]["backend"] == "pyannote.audio"
 
@@ -589,11 +586,9 @@ def test_transcribe_file_with_diarization_skeleton(tmp_path, sample_audio_path):
 
     Expected behavior (skeleton):
     - Transcription succeeds
-    - speakers = None (not yet implemented)
-    - turns = None (not yet implemented)
-    - meta.diarization.status = "not_implemented"
+    - speakers/turns may be None when diarization backend unavailable
+    - meta.diarization.status reflects outcome ("ok", "skipped", or "error")
     - meta.diarization.requested = True
-    - Warning logged about diarization not being implemented
     """
     config = TranscriptionConfig(
         model="base",  # Use small model for faster tests
@@ -624,14 +619,14 @@ def test_transcribe_file_with_diarization_skeleton(tmp_path, sample_audio_path):
     assert "diarization" in transcript.meta
 
     diar_meta = transcript.meta["diarization"]
-    assert diar_meta["status"] in {"not_implemented", "failed"}
+    assert diar_meta["status"] in {"ok", "skipped", "error"}
     assert diar_meta["requested"] is True
 
 
 @pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not available")
 def test_transcribe_file_without_diarization(tmp_path, sample_audio_path):
     """
-    Test that enable_diarization=False works as before (no diarization metadata).
+    Test that enable_diarization=False records disabled diarization metadata.
 
     This ensures we haven't broken the default path.
     """
@@ -651,10 +646,12 @@ def test_transcribe_file_without_diarization(tmp_path, sample_audio_path):
     assert isinstance(transcript, Transcript)
     assert len(transcript.segments) > 0
 
-    # No diarization metadata should be present
     assert transcript.speakers is None
     assert transcript.turns is None
-    assert "diarization" not in (transcript.meta or {})
+    assert transcript.meta is not None
+    diar_meta = transcript.meta.get("diarization", {})
+    assert diar_meta.get("status") == "disabled"
+    assert diar_meta.get("requested") is False
 
 
 @pytest.fixture

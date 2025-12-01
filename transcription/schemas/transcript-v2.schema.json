@@ -190,6 +190,101 @@
       "items": {
         "$ref": "#/$defs/segment"
       }
+    },
+    "annotations": {
+      "type": ["object", "null"],
+      "description": "Optional semantic or downstream annotations attached to the transcript",
+      "properties": {
+        "semantic": {
+          "type": ["object", "null"],
+          "description": "Lightweight semantic tags derived from transcript text",
+          "properties": {
+            "tags": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Set of semantic tags applied to the transcript"
+            },
+            "matches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tag": {"type": "string"},
+                  "keyword": {"type": "string"}
+                },
+                "additionalProperties": true
+              },
+              "description": "Keyword matches that triggered semantic tags"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "speaker_stats": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "description": "Per-speaker aggregates (v1.2+)",
+          "items": {
+            "type": "object",
+            "required": ["speaker_id", "total_talk_time", "num_turns"],
+            "properties": {
+              "speaker_id": {"type": "string", "description": "Speaker identifier"},
+              "total_talk_time": {"type": "number", "minimum": 0, "description": "Total speech time in seconds"},
+              "num_turns": {"type": "integer", "minimum": 0, "description": "Number of conversational turns"},
+              "avg_turn_duration": {"type": "number", "minimum": 0, "description": "Average turn duration in seconds"},
+              "interruptions_initiated": {"type": "integer", "minimum": 0, "description": "Number of interruptions initiated"},
+              "interruptions_received": {"type": "integer", "minimum": 0, "description": "Number of interruptions received"},
+              "question_turns": {"type": "integer", "minimum": 0, "description": "Number of turns containing questions"},
+              "prosody_summary": {
+                "type": "object",
+                "properties": {
+                  "pitch_median_hz": {"type": ["number", "null"], "description": "Median pitch in Hz"},
+                  "energy_median_db": {"type": ["number", "null"], "description": "Median energy in dB"}
+                }
+              },
+              "sentiment_summary": {
+                "type": "object",
+                "properties": {
+                  "positive": {"type": "number", "minimum": 0, "maximum": 1, "description": "Ratio of positive sentiment"},
+                  "neutral": {"type": "number", "minimum": 0, "maximum": 1, "description": "Ratio of neutral sentiment"},
+                  "negative": {"type": "number", "minimum": 0, "maximum": 1, "description": "Ratio of negative sentiment"}
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      ],
+      "description": "Per-speaker statistics and aggregates (v1.2+, null if not computed)"
+    },
+    "chunks": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "description": "RAG-friendly chunks (v1.3+)",
+          "items": {
+            "type": "object",
+            "required": ["id", "start", "end", "text"],
+            "properties": {
+              "id": {"type": "string", "description": "Chunk identifier"},
+              "start": {"type": "number", "minimum": 0, "description": "Chunk start time in seconds"},
+              "end": {"type": "number", "minimum": 0, "description": "Chunk end time in seconds"},
+              "segment_ids": {"type": "array", "items": {"type": "integer"}, "description": "Segment IDs included in chunk"},
+              "turn_ids": {"type": "array", "items": {"type": "string"}, "description": "Turn IDs included in chunk"},
+              "speaker_ids": {"type": "array", "items": {"type": "string"}, "description": "Speaker IDs in chunk"},
+              "token_count_estimate": {"type": "integer", "minimum": 0, "description": "Estimated token count"},
+              "text": {"type": "string", "description": "Concatenated text from chunk"}
+            },
+            "additionalProperties": true
+          }
+        }
+      ],
+      "description": "Turn-aware chunks for RAG pipelines (v1.3+, null if not generated)"
     }
   },
   "$defs": {

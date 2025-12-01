@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slower-whisper"
-version = "1.1.0"
+version = "1.3.0"
 description = "Local-first conversation signal engine: transform audio into LLM-ready structured data with speaker diarization, prosody, and emotion"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -108,19 +108,14 @@ dev = [
     "pytest-bdd>=7.0",
     "httpx>=0.24.0",  # For API BDD tests
     "jiwer>=3.0.0",  # For WER computation in benchmarks
-    # Code quality
-    "black>=23.0",
-    "flake8>=6.0",
-    "isort>=5.0",
+    "jsonschema>=4.21.0",  # For schema validation CLI/tests
+    # Code quality (ruff replaces black, isort, flake8)
     "mypy>=1.0",
     "ruff>=0.1.0",
-    # Flake8 plugins
-    "flake8-docstrings>=1.7",
-    "flake8-bugbear>=23.0",
-    "flake8-comprehensions>=3.10",
     # Type stubs
     "types-requests",
     "types-PyYAML",
+    "types-jsonschema",
     # Documentation
     "sphinx>=5.0",
     "sphinx-rtd-theme>=1.0",
@@ -173,7 +168,7 @@ Repository = "https://github.com/steven/slower-whisper"
 Issues = "https://github.com/steven/slower-whisper/issues"
 
 [tool.setuptools]
-packages = ["transcription", "scripts"]
+packages = ["transcription", "scripts", "integrations"]
 
 [tool.setuptools.package-data]
 transcription = ["py.typed"]
@@ -226,11 +221,27 @@ module = [
     "parselmouth.*",
     "librosa.*",
     "soundfile.*",
-    "transformers.*",
     "torch.*",
     "fastapi.*",
     "uvicorn.*",
     "pyannote.*",
+]
+ignore_missing_imports = true
+
+# Transformers needs special handling: skip following imports entirely
+# to avoid mypy 1.11.x crash on DIA module (processing_dia.py)
+[[tool.mypy.overrides]]
+module = ["transformers.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+# Strategic test files that should be type-checked
+[[tool.mypy.overrides]]
+module = [
+    "tests.test_llm_utils",
+    "tests.test_writers",
+    "tests.test_turn_helpers",
+    "tests.test_audio_state_schema",
 ]
 ignore_missing_imports = true
 
@@ -248,8 +259,9 @@ addopts = [
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "heavy: marks tests requiring heavy ML models (emotion, diarization)",
     "integration: marks tests as integration tests",
-    "requires_gpu: marks tests that require GPU",
+    "requires_gpu: marks tests that require GPU (reserved for future GPU-specific tests)",
     "requires_enrich: marks tests that require enrichment dependencies",
     "requires_diarization: marks tests that require pyannote.audio diarization extra",
 ]

@@ -1,0 +1,99 @@
+name: Verify (slower-whisper-verify)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Nightly full verify (UTC)
+    - cron: "0 6 * * *"
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-quick:
+    name: Verify (quick)
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            .cache/uv
+          key: verify-uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            verify-uv-${{ runner.os }}-
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-24.11
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Set up Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Sync dependencies (dev + diarization + full extras)
+        run: nix develop .# --command uv sync --extra full --extra diarization --extra dev
+
+      - name: Run verification (quick)
+        run: nix develop .# --command uv run slower-whisper-verify --quick
+
+  verify-full:
+    name: Verify (full)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            .cache/uv
+          key: verify-uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            verify-uv-${{ runner.os }}-
+
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            hf-models-${{ runner.os }}-
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-24.11
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Set up Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Sync dependencies (dev + diarization + full extras)
+        run: nix develop .# --command uv sync --extra full --extra diarization --extra dev
+
+      - name: Run verification (full)
+        run: nix develop .# --command uv run slower-whisper-verify

@@ -2,7 +2,7 @@
 
 ## Local-first conversation signal engine for LLMs
 
-![Version](https://img.shields.io/badge/version-1.1.0--dev-blue)
+![Version](https://img.shields.io/badge/version-1.3.0-blue)
 ![Tests](https://img.shields.io/badge/tests-267%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-57%25-yellow)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
@@ -96,6 +96,30 @@ uv run slower-whisper
 Place your audio files in `raw_audio/` and find transcripts in `whisper_json/`, `transcripts/`.
 
 See detailed instructions below for setup, configuration, and advanced features.
+
+## First 5 minutes (transcribe → validate → export)
+
+See the end-to-end contract immediately using the built-in sample transcript (swap in your own JSON later):
+
+```bash
+# 1. Run a quick sample transcription (uses raw_audio/ fixtures)
+uv run slower-whisper transcribe --root .
+
+# 2. Inspect and validate the shipped sample JSON
+uv run slower-whisper validate whisper_json/sample.json
+
+# 3. Export to HTML and CSV
+uv run slower-whisper export whisper_json/sample.json --format html --output sample.html
+uv run slower-whisper export whisper_json/sample.json --format csv --output sample.csv
+```
+
+## Evaluation & Benchmarks
+
+We run three small, transparent checks on the shipped fixtures so quality isn't hand-wavy:
+
+- ASR WER on a tiny manifest — see `benchmarks/ASR_REPORT.md`.
+- Diarization DER + speaker-count accuracy — see `benchmarks/DIARIZATION_REPORT.md`.
+- Speaker analytics preference check (enriched vs baseline summaries) — see `benchmarks/SPEAKER_ANALYTICS_MVP.md`.
 
 ## Architecture Overview
 
@@ -492,11 +516,20 @@ ls transcripts/     # Human-readable TXT and SRT
 - `transcripts/your_audio.txt` - Clean text output
 - `transcripts/your_audio.srt` - Subtitle file
 
+**After transcribing (share + sanity check):**
+
+```bash
+uv run slower-whisper export whisper_json/your_audio.json --format html --output transcripts/your_audio.html
+uv run slower-whisper validate whisper_json/your_audio.json
+```
+
 **Next steps:**
 
 - Analyze with LLMs: See [LLM Integration](#llm-integration-analyze-conversations) below
 - Add prosody/emotion: `uv sync --extra full && slower-whisper enrich`
 - Add speaker diarization: See [docs/SPEAKER_DIARIZATION.md](docs/SPEAKER_DIARIZATION.md)
+- Compute talk ratios/interruption stats: [docs/METRICS_EXAMPLES.md](docs/METRICS_EXAMPLES.md)
+- Redact PII before sharing: [docs/REDACTION.md](docs/REDACTION.md)
 
 ### Unified CLI (Recommended)
 
@@ -1196,6 +1229,37 @@ uv run pytest tests/test_prosody.py      # Run specific test file
 
 Tests are not required for running the pipeline but are essential for contributors and those extending the codebase.
 
+### Verification
+
+Run the same checks that CI runs locally:
+
+```bash
+# Quick verification (code quality + types + tests + BDD)
+uv run slower-whisper-verify --quick
+
+# Full verification (includes Docker + K8s validation)
+uv run slower-whisper-verify
+
+# Or via make
+make verify-quick
+make verify
+```
+
+CI usage:
+- PRs run `.github/workflows/verify.yml` in quick mode (`nix develop --command uv run slower-whisper-verify --quick`).
+- Nightly/manual dispatch runs the full suite in the same workflow (includes Docker + K8s; set `HF_TOKEN` for real pyannote backend).
+
+The verification script runs:
+
+1. **Code quality** (ruff check)
+2. **Type checking** (mypy on transcription/ + strategic tests)
+3. **Unit tests** (pytest, excluding slow/heavy)
+4. **Schema validation** (sample transcripts)
+5. **BDD scenarios** (library + API contracts)
+6. **Docker/K8s** (full mode only)
+
+Before opening a PR, run `uv run slower-whisper-verify --quick` to ensure all checks pass.
+
 ## Contributing
 
 Contributions are welcome! Whether you're fixing bugs, adding features, improving documentation, or helping with issues, your help makes this project better.
@@ -1442,7 +1506,6 @@ kubectl apply -f k8s/job.yaml
 - Persistent volume claims for data
 - ConfigMaps for environment-specific settings
 - CronJobs for scheduled processing
-
 **Best for**: Enterprise deployments, cloud infrastructure, high availability, multi-tenant environments
 
 ---
@@ -1469,7 +1532,6 @@ docker run -p 8000:8000 slower-whisper:api
 - `POST /enrich` - Enrich existing transcripts
 - `GET /health` - Health check
 - `GET /docs` - Interactive API documentation
-
 **Best for**: Web applications, microservices architecture, API-first integrations
 
 ---

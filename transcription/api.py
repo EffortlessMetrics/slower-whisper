@@ -25,7 +25,7 @@ import logging
 import os
 import wave
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .config import (
     AsrConfig,
@@ -36,7 +36,7 @@ from .config import (
 )
 from .exceptions import EnrichmentError, TranscriptionError
 from .meta_utils import build_generation_metadata
-from .models import Transcript
+from .models import DiarizationMeta, Transcript
 from .writers import load_transcript_from_json, write_json
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,83 @@ def _neutral_audio_state(error: str | None = None) -> dict[str, Any]:
     }
 
 
+def _turns_have_metadata(turns: Any) -> bool:
+    """Return True when turns are present and each has metadata/meta."""
+    if not turns:
+        return False
+
+    for turn in turns:
+        meta = None
+        if isinstance(turn, dict):
+            meta = turn.get("metadata") or turn.get("meta")
+        elif hasattr(turn, "metadata"):
+            meta = getattr(turn, "metadata", None)
+        elif hasattr(turn, "meta"):
+            meta = getattr(turn, "meta", None)
+
+        if not meta:
+            return False
+    return True
+
+
+def _run_speaker_analytics(transcript: Transcript, config: EnrichmentConfig) -> Transcript:
+    """Populate turn metadata and speaker_stats when enabled in config."""
+    needs_turn_meta = config.enable_turn_metadata or config.enable_speaker_stats
+
+    if needs_turn_meta and not transcript.turns:
+        from .turns import build_turns
+
+        transcript = build_turns(transcript)
+
+    if needs_turn_meta:
+        from .turns_enrich import enrich_turns_metadata
+
+        enrich_turns_metadata(transcript)
+
+    if config.enable_speaker_stats:
+        from .speaker_stats import compute_speaker_stats
+
+        compute_speaker_stats(transcript)
+
+    return transcript
+
+
+def _run_semantic_annotator(transcript: Transcript, config: EnrichmentConfig) -> Transcript:
+    """Invoke semantic annotator hook when enabled."""
+    if not getattr(config, "enable_semantic_annotator", False):
+        return transcript
+
+    annotator = getattr(config, "semantic_annotator", None)
+    if annotator is None:
+        from .semantic import KeywordSemanticAnnotator
+
+        annotator = KeywordSemanticAnnotator()
+
+    try:
+        updated = annotator.annotate(transcript)
+        return updated or transcript
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Semantic annotator failed: %s", exc)
+        return transcript
+
+
+def _maybe_build_chunks(transcript: Transcript, config: TranscriptionConfig) -> Transcript:
+    """Attach RAG-friendly chunks when enabled."""
+    if not getattr(config, "enable_chunking", False):
+        return transcript
+
+    from .chunking import ChunkingConfig, build_chunks
+
+    chunk_cfg = ChunkingConfig(
+        target_duration_s=config.chunk_target_duration_s,
+        max_duration_s=config.chunk_max_duration_s,
+        target_tokens=config.chunk_target_tokens,
+        pause_split_threshold_s=config.chunk_pause_split_threshold_s,
+    )
+    build_chunks(transcript, chunk_cfg)
+    return transcript
+
+
 # ============================================================================
 # Internal helper: Diarization orchestration (v1.1)
 # ============================================================================
@@ -109,6 +186,16 @@ def _maybe_run_diarization(
         or original transcript with meta.diarization.status set).
     """
     if not config.enable_diarization:
+        if transcript.meta is None:
+            transcript.meta = {}
+        transcript.meta["diarization"] = DiarizationMeta(
+            requested=False,
+            status="disabled",
+            backend=None,
+            num_speakers=None,
+            error=None,
+            error_type=None,
+        ).to_dict()
         return transcript
 
     # Keep a snapshot so failures can't leave partial speaker state behind
@@ -193,14 +280,15 @@ def _maybe_run_diarization(
         # Record success in metadata
         if transcript.meta is None:
             transcript.meta = {}
-        transcript.meta["diarization"] = {
-            "status": "success",
-            "requested": True,
-            "backend": "pyannote.audio",
-            "num_speakers": len(transcript.speakers) if transcript.speakers else 0,
-            "error": None,
-            "error_type": None,
-        }
+        diar_meta = DiarizationMeta(
+            status="ok",
+            requested=True,
+            backend="pyannote.audio",
+            num_speakers=len(transcript.speakers) if transcript.speakers else 0,
+            error=None,
+            error_type=None,
+        )
+        transcript.meta["diarization"] = diar_meta.to_dict()
 
         return transcript
 
@@ -265,12 +353,19 @@ def _maybe_run_diarization(
         ):
             error_type = "file_not_found"
 
-        transcript.meta["diarization"] = {
-            "status": "failed",
-            "requested": True,
-            "error": error_msg,
-            "error_type": error_type,
-        }
+        status: Literal["skipped", "error"] = (
+            "skipped" if error_type in {"missing_dependency", "auth"} else "error"
+        )
+
+        diar_meta = DiarizationMeta(
+            status=status,
+            requested=True,
+            backend="pyannote.audio",
+            num_speakers=None,
+            error=error_msg,
+            error_type=error_type,
+        )
+        transcript.meta["diarization"] = diar_meta.to_dict()
         return transcript
 
 
@@ -328,7 +423,7 @@ def transcribe_directory(
 
     # Run the pipeline (modifies files on disk)
     # Pass the config for diarization if enabled
-    run_pipeline(app_cfg, diarization_config=config if config.enable_diarization else None)
+    run_pipeline(app_cfg, diarization_config=config)
 
     # Load and return all transcripts
     json_dir = paths.json_dir
@@ -460,6 +555,7 @@ def transcribe_file(
         wav_path=norm_wav,
         config=config,
     )
+    transcript = _maybe_build_chunks(transcript, config)
 
     # Write outputs
     from . import writers
@@ -564,12 +660,32 @@ def enrich_directory(
             errors.append(f"{json_path.name}: Failed to load transcript - {e}")
             continue
 
+        audio_ready = bool(transcript.segments) and all(
+            seg.audio_state is not None for seg in transcript.segments
+        )
+        turns_ready = _turns_have_metadata(transcript.turns)
+        stats_ready = bool(transcript.speaker_stats)
+        semantic_ready = not getattr(config, "enable_semantic_annotator", False) or bool(
+            (getattr(transcript, "annotations", None) or {}).get("semantic")
+        )
+        already_enriched = (
+            audio_ready
+            and (not config.enable_turn_metadata or turns_ready)
+            and (not config.enable_speaker_stats or stats_ready)
+            and semantic_ready
+        )
+
         # Skip if already enriched and skip_existing=True
         if config.skip_existing:
-            already_enriched = bool(transcript.segments) and all(
-                seg.audio_state is not None for seg in transcript.segments
-            )
             if already_enriched:
+                enriched_transcripts.append(transcript)
+                continue
+
+            if audio_ready:
+                # Use existing audio_state but upgrade analytics
+                transcript = _run_speaker_analytics(transcript, config)
+                transcript = _run_semantic_annotator(transcript, config)
+                write_json(transcript, json_path)
                 enriched_transcripts.append(transcript)
                 continue
 
@@ -585,6 +701,8 @@ def enrich_directory(
                 enable_categorical_emotion=config.enable_categorical_emotion,
                 compute_baseline=True,
             )
+            enriched = _run_speaker_analytics(enriched, config)
+            enriched = _run_semantic_annotator(enriched, config)
 
             # Write back
             write_json(enriched, json_path)
@@ -643,6 +761,25 @@ def enrich_transcript(
     """
     audio_path = Path(audio_path)
 
+    audio_ready = bool(transcript.segments) and all(
+        seg.audio_state is not None for seg in transcript.segments
+    )
+    turns_ready = _turns_have_metadata(transcript.turns)
+    stats_ready = bool(transcript.speaker_stats)
+    semantic_ready = not getattr(config, "enable_semantic_annotator", False) or bool(
+        (getattr(transcript, "annotations", None) or {}).get("semantic")
+    )
+
+    already_enriched = (
+        audio_ready
+        and (not config.enable_turn_metadata or turns_ready)
+        and (not config.enable_speaker_stats or stats_ready)
+        and semantic_ready
+    )
+
+    if config.skip_existing and already_enriched:
+        return transcript
+
     if not audio_path.exists():
         raise EnrichmentError(
             f"Audio file not found: {audio_path}. "
@@ -667,6 +804,8 @@ def enrich_transcript(
             enable_categorical_emotion=config.enable_categorical_emotion,
             compute_baseline=True,
         )
+        enriched = _run_speaker_analytics(enriched, config)
+        enriched = _run_semantic_annotator(enriched, config)
         return enriched
     except Exception as e:
         logger.warning(
@@ -674,7 +813,7 @@ def enrich_transcript(
         )
         for segment in transcript.segments:
             segment.audio_state = _neutral_audio_state(str(e))
-        return transcript
+        return _run_semantic_annotator(_run_speaker_analytics(transcript, config), config)
 
 
 # Convenience I/O wrappers for public API

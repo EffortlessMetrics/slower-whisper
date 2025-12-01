@@ -34,6 +34,8 @@ from transcription import (
 )
 from transcription.models import Segment, Transcript
 
+pytestmark = pytest.mark.integration
+
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -221,6 +223,8 @@ def test_enrichment_config_defaults():
     assert config.enable_prosody is True
     assert config.enable_emotion is True
     assert config.enable_categorical_emotion is False
+    assert config.enable_turn_metadata is True
+    assert config.enable_speaker_stats is True
     assert config.device == "cpu"
     assert config.dimensional_model_name is None
     assert config.categorical_model_name is None
@@ -233,6 +237,8 @@ def test_enrichment_config_custom():
         enable_prosody=False,
         enable_emotion=True,
         enable_categorical_emotion=True,
+        enable_turn_metadata=False,
+        enable_speaker_stats=False,
         device="cuda",
         dimensional_model_name="custom-dim-model",
         categorical_model_name="custom-cat-model",
@@ -242,6 +248,8 @@ def test_enrichment_config_custom():
     assert config.enable_prosody is False
     assert config.enable_emotion is True
     assert config.enable_categorical_emotion is True
+    assert config.enable_turn_metadata is False
+    assert config.enable_speaker_stats is False
     assert config.device == "cuda"
     assert config.dimensional_model_name == "custom-dim-model"
     assert config.categorical_model_name == "custom-cat-model"
@@ -700,13 +708,23 @@ def test_transcribe_directory_custom_config(mock_run_pipeline, temp_project_root
 # ============================================================================
 
 
+@patch("transcription.api._run_semantic_annotator")
+@patch("transcription.api._run_speaker_analytics")
 @patch("transcription.audio_enrichment.enrich_transcript_audio")
 def test_enrich_transcript_basic(
-    mock_enrich_internal, test_transcript, enriched_transcript, test_audio_file
+    mock_enrich_internal,
+    mock_speaker_analytics,
+    mock_semantic_annotator,
+    test_transcript,
+    enriched_transcript,
+    test_audio_file,
 ):
     """Test enrich_transcript with basic configuration."""
     # Mock the internal enrichment function
     mock_enrich_internal.return_value = enriched_transcript
+    # Mock speaker analytics and semantic annotator as passthrough
+    mock_speaker_analytics.side_effect = lambda t, c: t
+    mock_semantic_annotator.side_effect = lambda t, c: t
 
     config = EnrichmentConfig(enable_prosody=True, enable_emotion=True)
 
@@ -721,6 +739,10 @@ def test_enrich_transcript_basic(
     assert call_kwargs["enable_emotion"] is True
     assert call_kwargs["enable_categorical_emotion"] is False
     assert call_kwargs["compute_baseline"] is True
+
+    # Verify speaker analytics and semantic annotator were called
+    mock_speaker_analytics.assert_called_once()
+    mock_semantic_annotator.assert_called_once()
 
     # Verify result
     assert result == enriched_transcript
@@ -1036,6 +1058,8 @@ def test_transcription_config_invalid_task():
 # ============================================================================
 
 
+@patch("transcription.api._run_semantic_annotator")
+@patch("transcription.api._run_speaker_analytics")
 @patch("transcription.asr_engine.TranscriptionEngine")
 @patch("transcription.audio_io.normalize_all")
 @patch("transcription.audio_enrichment.enrich_transcript_audio")
@@ -1043,6 +1067,8 @@ def test_full_workflow_transcribe_and_enrich(
     mock_enrich_internal,
     mock_normalize,
     mock_engine_class,
+    mock_speaker_analytics,
+    mock_semantic_annotator,
     test_audio_file,
     temp_project_root,
 ):
@@ -1088,6 +1114,9 @@ def test_full_workflow_transcribe_and_enrich(
         return transcript
 
     mock_enrich_internal.side_effect = enrich_side_effect
+    # Mock speaker analytics and semantic annotator as passthrough
+    mock_speaker_analytics.side_effect = lambda t, c: t
+    mock_semantic_annotator.side_effect = lambda t, c: t
 
     # Step 4: Enrich
     audio_path = temp_project_root / "input_audio" / f"{test_audio_file.stem}.wav"

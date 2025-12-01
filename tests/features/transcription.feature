@@ -71,7 +71,7 @@ Feature: Transcribing audio into transcripts
     And the HF_TOKEN environment variable is set
     When I transcribe the project with diarization enabled
     Then the transcription completes successfully
-    And the transcript JSON has meta.diarization.status "success"
+    And the transcript JSON has meta.diarization.status "ok"
     And meta.diarization.backend is "pyannote.audio"
     And meta.diarization.requested is true
     And the "speakers" array is populated with detected speakers
@@ -82,7 +82,7 @@ Feature: Transcribing audio into transcripts
     Given a project with the synthetic 2-speaker fixture
     And the HF_TOKEN environment variable is set
     When I transcribe the project with diarization enabled (min=2, max=2)
-    Then the transcript JSON has meta.diarization.status "success"
+    Then the transcript JSON has meta.diarization.status "ok"
     And meta.diarization.requested is true
     And meta.diarization.num_speakers equals 2
     And the "speakers" array has exactly 2 speakers
@@ -94,7 +94,7 @@ Feature: Transcribing audio into transcripts
     And pyannote.audio is not installed
     When I transcribe the project with diarization enabled
     Then the transcription completes successfully
-    And the transcript JSON has meta.diarization.status "failed"
+    And the transcript JSON has meta.diarization.status "skipped"
     And meta.diarization.requested is true
     And meta.diarization.error_type is "missing_dependency"
     And the "speakers" field is null
@@ -105,7 +105,7 @@ Feature: Transcribing audio into transcripts
     And the HF_TOKEN environment variable is not set
     When I transcribe the project with diarization enabled
     Then the transcription completes successfully
-    And the transcript JSON has meta.diarization.status "failed"
+    And the transcript JSON has meta.diarization.status "skipped"
     And meta.diarization.requested is true
     And meta.diarization.error_type is "auth"
     And the "speakers" field is null

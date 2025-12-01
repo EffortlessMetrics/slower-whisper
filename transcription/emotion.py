@@ -6,22 +6,73 @@ classification for audio segments.
 """
 
 import logging
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import numpy as np
 from numpy.typing import NDArray
+
+
+class EmotionRecognizerLike(Protocol):
+    """
+    Protocol defining the interface for emotion recognizers.
+
+    This protocol allows callers to work with either the real EmotionRecognizer
+    or the DummyEmotionRecognizer without type-checker complaints.
+    """
+
+    def extract_emotion_dimensional(
+        self, audio: NDArray[np.floating[Any]], sr: int
+    ) -> dict[str, dict[str, Any]]:
+        """
+        Extract dimensional emotion features (valence, arousal, dominance).
+
+        Args:
+            audio: Audio samples as numpy array (mono)
+            sr: Sample rate of the audio
+
+        Returns:
+            Dictionary with valence, arousal, dominance scores and levels.
+        """
+        ...
+
+    def extract_emotion_categorical(
+        self, audio: NDArray[np.floating[Any]], sr: int
+    ) -> dict[str, dict[str, Any]]:
+        """
+        Extract categorical emotion classification.
+
+        Args:
+            audio: Audio samples as numpy array (mono)
+            sr: Sample rate of the audio
+
+        Returns:
+            Dictionary with primary/secondary emotions and confidence scores.
+        """
+        ...
+
 
 # Optional emotion dependencies - gracefully handle missing/broken packages
 torch: Any
 AutoModelForAudioClassification: Any
 Wav2Vec2FeatureExtractor: Any
+EMOTION_AVAILABLE: bool = False
 try:
+    # Suppress torchcodec/FFmpeg warnings from transformers' torch import chain.
+    # These warnings are informational only and clutter the output without providing
+    # actionable information for users of slower-whisper.
+    import warnings
+
+    warnings.filterwarnings("ignore", category=UserWarning, module="torchcodec")
+    warnings.filterwarnings("ignore", message=".*FFmpeg.*")
+
     import torch
-    from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
+    from transformers import (  # type: ignore[no-redef]
+        AutoModelForAudioClassification,
+        Wav2Vec2FeatureExtractor,
+    )
 
     EMOTION_AVAILABLE = True
 except Exception:
-    EMOTION_AVAILABLE = False
     torch = cast(Any, None)
     AutoModelForAudioClassification = cast(Any, None)
     Wav2Vec2FeatureExtractor = cast(Any, None)
@@ -212,6 +263,8 @@ class EmotionRecognizer:
             raise ValueError("Audio validation failed")
 
         # Process audio through model
+        assert self._dimensional_feature_extractor is not None
+        assert self._dimensional_model is not None
         with torch.no_grad():
             inputs = self._dimensional_feature_extractor(
                 audio, sampling_rate=self.TARGET_SAMPLE_RATE, return_tensors="pt", padding=True
@@ -284,6 +337,8 @@ class EmotionRecognizer:
             raise ValueError("Audio validation failed")
 
         # Process audio through model
+        assert self._categorical_feature_extractor is not None
+        assert self._categorical_model is not None
         with torch.no_grad():
             inputs = self._categorical_feature_extractor(
                 audio, sampling_rate=self.TARGET_SAMPLE_RATE, return_tensors="pt", padding=True
@@ -324,10 +379,6 @@ class EmotionRecognizer:
         return result
 
 
-# Singleton instance for easy access
-_recognizer_instance: EmotionRecognizer | None = None
-
-
 class DummyEmotionRecognizer:
     """Fallback emotion extractor that returns neutral scores."""
 
@@ -350,15 +401,24 @@ class DummyEmotionRecognizer:
         }
 
 
-def get_emotion_recognizer() -> EmotionRecognizer:
-    """Get or create the singleton EmotionRecognizer instance."""
+# Singleton instance for easy access
+_recognizer_instance: EmotionRecognizerLike | None = None
+
+
+def get_emotion_recognizer() -> EmotionRecognizerLike:
+    """
+    Get or create the singleton EmotionRecognizer instance.
+
+    Returns an object implementing EmotionRecognizerLike - either the real
+    EmotionRecognizer (if dependencies are available) or DummyEmotionRecognizer.
+    """
     global _recognizer_instance
     if _recognizer_instance is None:
         if EMOTION_AVAILABLE:
             _recognizer_instance = EmotionRecognizer()
         else:
             logger.warning("Emotion dependencies unavailable; using dummy recognizer")
-            _recognizer_instance = DummyEmotionRecognizer()  # type: ignore[assignment]
+            _recognizer_instance = DummyEmotionRecognizer()
     return _recognizer_instance
 
 
@@ -418,7 +478,9 @@ def extract_emotion_categorical(audio: np.ndarray, sr: int) -> dict[str, dict[st
 
 # Export public API
 __all__ = [
+    "DummyEmotionRecognizer",
     "EmotionRecognizer",
+    "EmotionRecognizerLike",
     "extract_emotion_categorical",
     "extract_emotion_dimensional",
     "get_emotion_recognizer",

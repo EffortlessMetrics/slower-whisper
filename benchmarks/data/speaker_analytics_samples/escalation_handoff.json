@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "file": "escalation_handoff.wav",
+  "language": "en",
+  "meta": {
+    "asr_backend": "dummy"
+  },
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 2.9,
+      "text": "Support, this is Mia. How can I help?",
+      "speaker": {
+        "id": "spk_agent"
+      }
+    },
+    {
+      "id": 1,
+      "start": 3.0,
+      "end": 6.5,
+      "text": "My outage ticket has been open for two days. I'm losing customers.",
+      "speaker": {
+        "id": "spk_customer"
+      }
+    },
+    {
+      "id": 2,
+      "start": 6.6,
+      "end": 9.8,
+      "text": "I'm sorry. I see the ticket stuck in engineering triage. I'll escalate now.",
+      "speaker": {
+        "id": "spk_agent"
+      }
+    },
+    {
+      "id": 3,
+      "start": 9.9,
+      "end": 12.7,
+      "text": "Please bring in a supervisor. I need a timeline today.",
+      "speaker": {
+        "id": "spk_customer"
+      }
+    },
+    {
+      "id": 4,
+      "start": 12.8,
+      "end": 16.1,
+      "text": "This is Raj, support lead. We'll move you to our critical queue and update hourly.",
+      "speaker": {
+        "id": "spk_lead"
+      }
+    },
+    {
+      "id": 5,
+      "start": 16.2,
+      "end": 19.3,
+      "text": "Thank you. I need the first update before noon.",
+      "speaker": {
+        "id": "spk_customer"
+      }
+    },
+    {
+      "id": 6,
+      "start": 19.4,
+      "end": 21.8,
+      "text": "Understood. We'll call you within the hour with progress.",
+      "speaker": {
+        "id": "spk_lead"
+      }
+    }
+  ]
+}

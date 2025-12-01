@@ -139,7 +139,13 @@ def project_with_multiple_files(test_state, datatable):
             filename = row["filename"]
         else:
             # datatable may be a list-of-lists in pytest-bdd
-            filename = row[0]
+            if not row:
+                continue
+            first = str(row[0]).strip()
+            if first.lower() == "filename":
+                # Skip header rows like ["filename"]
+                continue
+            filename = first
         wav_path = raw_audio_dir / filename
         create_test_wav(wav_path)
         test_state["audio_files"].append(filename)

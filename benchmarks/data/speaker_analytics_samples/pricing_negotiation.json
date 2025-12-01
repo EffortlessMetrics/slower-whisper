@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "file": "pricing_negotiation.wav",
+  "language": "en",
+  "meta": {
+    "asr_backend": "dummy"
+  },
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 3.1,
+      "text": "Thanks for hopping on. Our Pro plan would be twelve hundred monthly.",
+      "speaker": {
+        "id": "spk_seller"
+      }
+    },
+    {
+      "id": 1,
+      "start": 3.2,
+      "end": 6.8,
+      "text": "That's too high. We budgeted eight hundred and still need onboarding help.",
+      "speaker": {
+        "id": "spk_buyer"
+      }
+    },
+    {
+      "id": 2,
+      "start": 6.9,
+      "end": 10.5,
+      "text": "I can drop base to a thousand if you commit to a year, and include white-glove setup.",
+      "speaker": {
+        "id": "spk_seller"
+      }
+    },
+    {
+      "id": 3,
+      "start": 10.6,
+      "end": 13.4,
+      "text": "Okay, but we need usage overages capped. Last vendor surprised us.",
+      "speaker": {
+        "id": "spk_buyer"
+      }
+    },
+    {
+      "id": 4,
+      "start": 13.5,
+      "end": 16.2,
+      "text": "We'll cap overages at twenty percent and send alerts weekly.",
+      "speaker": {
+        "id": "spk_seller"
+      }
+    },
+    {
+      "id": 5,
+      "start": 16.3,
+      "end": 19.1,
+      "text": "Fine. Send the one-year contract at a thousand with capped overages.",
+      "speaker": {
+        "id": "spk_buyer"
+      }
+    },
+    {
+      "id": 6,
+      "start": 19.2,
+      "end": 21.4,
+      "text": "Will do. I'll include onboarding dates for next week.",
+      "speaker": {
+        "id": "spk_seller"
+      }
+    }
+  ]
+}

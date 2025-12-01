@@ -150,6 +150,7 @@ def test_extract_prosody_empty_audio():
 # ============================================================================
 
 
+@pytest.mark.heavy
 @pytest.mark.skipif(not EMOTION_AVAILABLE, reason="transformers not installed")
 def test_extract_emotion_dimensional(synthetic_audio):
     """Test dimensional emotion extraction (valence, arousal, dominance)."""
@@ -179,6 +180,7 @@ def test_extract_emotion_dimensional(synthetic_audio):
     assert isinstance(result["dominance"]["score"], float)
 
 
+@pytest.mark.heavy
 @pytest.mark.skipif(not EMOTION_AVAILABLE, reason="transformers not installed")
 def test_extract_emotion_categorical(synthetic_audio):
     """Test categorical emotion extraction."""
@@ -204,6 +206,7 @@ def test_extract_emotion_categorical(synthetic_audio):
     assert isinstance(cat["all_scores"], dict)
 
 
+@pytest.mark.heavy
 @pytest.mark.skipif(not EMOTION_AVAILABLE, reason="transformers not installed")
 def test_emotion_short_audio():
     """Test emotion extraction with very short audio (edge case)."""
@@ -280,6 +283,7 @@ def test_audio_segment_extractor_missing_file():
 # ============================================================================
 
 
+@pytest.mark.heavy
 def test_enrich_segment_with_audio_state(synthetic_audio):
     """Test enriching a segment with audio_state (if dependencies available)."""
     audio, sr = synthetic_audio
@@ -313,6 +317,7 @@ def test_enrich_segment_with_audio_state(synthetic_audio):
             assert "emotion" in segment.audio_state
 
 
+@pytest.mark.heavy
 def test_enrich_transcript_full(synthetic_audio_file, sample_transcript, tmp_path):
     """Test enriching an entire transcript with audio features."""
     # This simulates the enrichment process similar to emotion_integration.py
@@ -434,6 +439,7 @@ def test_partial_enrichment_prosody_only(synthetic_audio):
     assert "emotion" not in segment.audio_state
 
 
+@pytest.mark.heavy
 def test_partial_enrichment_emotion_only(synthetic_audio):
     """Test enrichment with only emotion (no prosody)."""
     if not EMOTION_AVAILABLE:

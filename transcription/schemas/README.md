@@ -49,7 +49,14 @@ except jsonschema.ValidationError as e:
     print(f"  Path: {'.'.join(str(p) for p in e.path)}")
 ```
 
-### 2. Validate with CLI (requires `jsonschema` package)
+### 2. Validate with slower-whisper CLI (requires `jsonschema` package)
+
+```bash
+uv run slower-whisper validate transcripts/example.json
+uv run slower-whisper validate transcripts/*.json --schema transcription/schemas/transcript-v2.schema.json
+```
+
+### 3. Validate with jsonschema CLI
 
 ```bash
 # Install validator
@@ -59,7 +66,7 @@ pip install jsonschema
 jsonschema -i transcript.json transcription/schemas/transcript-v2.schema.json
 ```
 
-### 3. VS Code JSON Validation
+### 4. VS Code JSON Validation
 
 Add to your `transcript.json`:
 

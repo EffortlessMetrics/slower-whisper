@@ -1,8 +1,8 @@
 # Speaker Diarization in slower-whisper
 
-**Status:** v1.1 - Functional, experimental feature (requires extra dependencies)
+**Status:** v1.1+ - Stable feature (requires extra dependencies)
 
-**Target Release:** v1.1.0 (Q1 2026)
+**Released:** v1.1.0 (2025-11-18)
 
 **Requirements:**
 - Install diarization dependencies: `uv sync --extra diarization`
@@ -13,6 +13,32 @@
 - `auto`: real pyannote if installed (requires HF_TOKEN)
 - `stub`: lightweight fake diarization for tests (no HF_TOKEN needed; no model download)
 - `missing`: simulate missing dependency/import error for graceful-failure paths
+
+---
+
+## Current quality (tiny benchmark)
+- DER ≈ 0.67 on 3 synthetic fixtures with the **stub** backend (HF_TOKEN not set). Re-run with pyannote for real numbers.
+- Speaker count correct on 3/3 files.
+- Optimized for 2–4 speakers with light overlap; no resegmentation pass yet.
+- See `benchmarks/DIARIZATION_REPORT.md` for run config and per-file DER.
+
+| file                    | DER   | ref_speakers | pred_speakers | speaker_count_ok |
+| ----------------------- | ----- | ------------ | ------------- | ---------------- |
+| synthetic_2speaker      | 0.783 | 2            | 2             | yes              |
+| overlap_tones           | 0.420 | 2            | 2             | yes              |
+| call_mixed              | 0.818 | 2            | 2             | yes              |
+
+To run with the real pyannote backend:
+
+```bash
+uv sync --extra diarization
+export HF_TOKEN=hf_...
+PYTHONPATH=. python benchmarks/eval_diarization.py \
+  --dataset benchmarks/data/diarization \
+  --output-md benchmarks/DIARIZATION_REPORT.md \
+  --output-json benchmarks/DIARIZATION_REPORT.json \
+  --overwrite
+```
 
 ---
 

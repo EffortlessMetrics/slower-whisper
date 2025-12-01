@@ -80,8 +80,15 @@ jobs:
         run: uv pip install mypy
 
       - name: Run mypy
-        run: uv run mypy transcription/ tests/
-        continue-on-error: true  # Allow mypy failures initially while fixing types
+        # Check transcription/ (typed island) plus strategic test modules
+        # that validate public API contracts. Other tests are intentionally
+        # untyped due to pytest patterns mypy can't verify.
+        run: |
+          uv run mypy transcription/ \
+            tests/test_llm_utils.py \
+            tests/test_writers.py \
+            tests/test_turn_helpers.py \
+            tests/test_audio_state_schema.py
 
   test:
     name: Test (Python ${{ matrix.python-version }})

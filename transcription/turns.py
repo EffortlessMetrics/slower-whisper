@@ -22,41 +22,12 @@ bounded by speaker changes or long pauses.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from .models import Turn
 
 if TYPE_CHECKING:
     from transcription.models import Segment, Transcript
-
-
-@dataclass
-class Turn:
-    """
-    A conversational turn (contiguous speech by one speaker).
-
-    v1.1 provides basic turn structure.
-    v1.2 will add rich interaction metadata (questions, interruptions, etc.).
-
-    Attributes:
-        speaker_id: Speaker identifier (matches segment.speaker and speakers[].id).
-        start: Turn start time in seconds (first segment start).
-        end: Turn end time in seconds (last segment end).
-        segment_ids: List of segment IDs composing this turn.
-        text: Concatenated text of all segments in turn.
-        metadata: Optional dict for future turn-level features (v1.2+):
-                  - question_count: Number of questions in turn
-                  - interruptions: Number of times interrupted
-                  - avg_pause_duration: Mean pause between segments in turn
-                  - disfluency_rate: Filler words per minute
-                  - sentiment: Aggregated sentiment for turn
-    """
-
-    speaker_id: str
-    start: float
-    end: float
-    segment_ids: list[int]
-    text: str
-    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def _coerce_speaker_id(speaker: Any) -> str | None:
@@ -129,7 +100,7 @@ def build_turns(
         transcript.turns = []
         return transcript
 
-    turns: list[dict[str, Any]] = []
+    turns: list[Turn | dict[str, Any]] = []
     current_turn_segments: list[Segment] = []
     current_speaker_id: str | None = None
 

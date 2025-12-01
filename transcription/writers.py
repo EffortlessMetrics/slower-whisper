@@ -1,7 +1,40 @@
 import json
+import logging
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
+from typing import Any
 
-from .models import SCHEMA_VERSION, Segment, Transcript
+from .models import SCHEMA_VERSION, Chunk, Segment, Transcript
+
+logger = logging.getLogger(__name__)
+
+
+def _to_dict(obj: object) -> dict[str, Any] | object:
+    """
+    Convert an object to a dict if possible.
+
+    Conversion rules:
+    - dict: returned as-is
+    - classes (types): returned unchanged (we only convert instances)
+    - object with to_dict(): calls to_dict()
+    - dataclass instance: converted via asdict()
+    - other: returned unchanged
+
+    Returns:
+        dict[str, Any] if conversion succeeded, otherwise the original object.
+    """
+    if isinstance(obj, dict):
+        return obj
+    # Skip classes (types) - we only convert instances
+    if isinstance(obj, type):
+        return obj
+    if hasattr(obj, "to_dict"):
+        result: dict[str, Any] = obj.to_dict()
+        return result
+    # Note: mypy's is_dataclass TypeGuard doesn't narrow away type after isinstance check
+    if is_dataclass(obj):
+        return dict(asdict(obj))  # type: ignore[arg-type]
+    return obj
 
 
 def write_json(transcript: Transcript, out_path: Path) -> None:
@@ -12,11 +45,32 @@ def write_json(transcript: Transcript, out_path: Path) -> None:
     - audio_state field for segments (v1.0+)
     - speakers and turns arrays (v1.1+, optional)
     """
+
+    raw_meta: Any = transcript.meta
+    if raw_meta is None:
+        meta_out: dict[str, Any] = {}
+    elif isinstance(raw_meta, dict):
+        meta_out = dict(raw_meta)
+        diar_meta = meta_out.get("diarization")
+        if diar_meta is not None and not isinstance(diar_meta, dict):
+            meta_out["diarization"] = _to_dict(diar_meta)
+    else:
+        converted = _to_dict(raw_meta)
+        if isinstance(converted, dict):
+            meta_out = converted
+        else:
+            logger.warning(
+                "Unexpected transcript.meta type %r could not be converted to dict; "
+                "using empty dict",
+                type(raw_meta).__name__,
+            )
+            meta_out = {}
+
     data = {
         "schema_version": SCHEMA_VERSION,
         "file": transcript.file_name,
         "language": transcript.language,
-        "meta": transcript.meta or {},
+        "meta": meta_out,
         "segments": [
             {
                 "id": s.id,
@@ -32,10 +86,16 @@ def write_json(transcript: Transcript, out_path: Path) -> None:
     }
 
     # Add v1.1+ fields if present
+    if getattr(transcript, "annotations", None) is not None:
+        data["annotations"] = transcript.annotations
     if transcript.speakers is not None:
         data["speakers"] = transcript.speakers
     if transcript.turns is not None:
-        data["turns"] = transcript.turns
+        data["turns"] = [_to_dict(t) for t in transcript.turns]
+    if getattr(transcript, "speaker_stats", None) is not None:
+        data["speaker_stats"] = [_to_dict(s) for s in transcript.speaker_stats or []]
+    if getattr(transcript, "chunks", None) is not None:
+        data["chunks"] = [_to_dict(c) for c in transcript.chunks or []]
 
     out_path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
@@ -79,14 +139,28 @@ def load_transcript_from_json(json_path: Path) -> Transcript:
         )
         segments.append(segment)
 
+    chunk_entries = data.get("chunks")
+    chunks = None
+    if chunk_entries is not None:
+        parsed: list[Chunk | dict] = []
+        for chunk in chunk_entries:
+            if isinstance(chunk, dict):
+                parsed.append(Chunk.from_dict(chunk))
+            else:
+                parsed.append(chunk)
+        chunks = parsed
+
     transcript = Transcript(
         # Prefer canonical "file", but fall back to "file_name" for API responses.
         file_name=data.get("file") or data.get("file_name", ""),
         language=data.get("language", ""),
         segments=segments,
         meta=data.get("meta"),
+        annotations=data.get("annotations"),
         speakers=data.get("speakers"),  # v1.1+ speaker metadata (optional)
         turns=data.get("turns"),  # v1.1+ turn structure (optional)
+        speaker_stats=data.get("speaker_stats"),  # v1.2+ speaker aggregates (optional)
+        chunks=chunks,  # v1.3+ turn-aware chunks (optional)
     )
 
     return transcript

@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "file": "design_review.wav",
+  "language": "en",
+  "meta": {
+    "asr_backend": "dummy"
+  },
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 3.1,
+      "text": "Morning, let's review the checkout redesign scope.",
+      "speaker": {
+        "id": "spk_pm"
+      }
+    },
+    {
+      "id": 1,
+      "start": 3.2,
+      "end": 6.5,
+      "text": "Main risk is the payment form latency; we should keep the old flow as fallback.",
+      "speaker": {
+        "id": "spk_engineer"
+      }
+    },
+    {
+      "id": 2,
+      "start": 6.7,
+      "end": 9.0,
+      "text": "We also need a mobile pass on the error states.",
+      "speaker": {
+        "id": "spk_designer"
+      }
+    },
+    {
+      "id": 3,
+      "start": 9.2,
+      "end": 11.5,
+      "text": "Agreed. Can we ship the MVP by next Wednesday?",
+      "speaker": {
+        "id": "spk_pm"
+      }
+    },
+    {
+      "id": 4,
+      "start": 11.7,
+      "end": 13.4,
+      "text": "If QA has bandwidth, yes.",
+      "speaker": {
+        "id": "spk_engineer"
+      }
+    },
+    {
+      "id": 5,
+      "start": 13.6,
+      "end": 16.0,
+      "text": "I'll draft the test plan and own the mobile QA checklist.",
+      "speaker": {
+        "id": "spk_pm"
+      }
+    },
+    {
+      "id": 6,
+      "start": 16.2,
+      "end": 18.5,
+      "text": "I'll update the designs today and share the prototypes.",
+      "speaker": {
+        "id": "spk_designer"
+      }
+    }
+  ]
+}

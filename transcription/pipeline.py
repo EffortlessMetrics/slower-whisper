@@ -1,6 +1,7 @@
 import time
 import wave
 from pathlib import Path
+from typing import Any
 
 from . import __version__ as PIPELINE_VERSION
 from . import audio_io, writers
@@ -28,7 +29,7 @@ def _get_duration_seconds(path: Path) -> float:
 
 def _build_meta(
     cfg: AppConfig, transcript: Transcript, audio_path: Path, duration_sec: float
-) -> dict:
+) -> dict[str, Any]:
     """
     Build a metadata dictionary describing this transcript generation run.
     """
@@ -92,6 +93,16 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
         srt_path = paths.transcripts_dir / f"{stem}.srt"
 
         if cfg.skip_existing_json and json_path.exists():
+            if diarization_config and getattr(diarization_config, "enable_chunking", False):
+                try:
+                    transcript = writers.load_transcript_from_json(json_path)
+                    from .api import _maybe_build_chunks
+
+                    transcript = _maybe_build_chunks(transcript, diarization_config)
+                    writers.write_json(transcript, json_path)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[error-chunking] Failed to update chunks for {json_path.name}: {exc}")
+
             if diarization_config and diarization_config.enable_diarization:
                 # Upgrade existing transcript with diarization without re-transcribing
                 try:
@@ -102,7 +113,7 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
                     continue
 
                 diar_meta = (transcript.meta or {}).get("diarization", {})
-                if diar_meta.get("status") == "success":
+                if diar_meta.get("status") in {"success", "ok"}:
                     print(
                         f"[skip-transcribe] {wav.name} because {json_path.name} already exists "
                         "(diarization present)"
@@ -156,8 +167,8 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
         # Attach metadata to transcript before writing JSON.
         transcript.meta = _build_meta(cfg, transcript, wav, duration)
 
-        # v1.1: Run diarization if enabled (skeleton for now)
-        if diarization_config and diarization_config.enable_diarization:
+        # v1.1+: Run diarization (or record disabled state) if config provided
+        if diarization_config:
             from .api import _maybe_run_diarization
 
             transcript = _maybe_run_diarization(
@@ -165,6 +176,10 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
                 wav_path=wav,
                 config=diarization_config,
             )
+            if getattr(diarization_config, "enable_chunking", False):
+                from .api import _maybe_build_chunks
+
+                transcript = _maybe_build_chunks(transcript, diarization_config)
 
         writers.write_json(transcript, json_path)
         writers.write_txt(transcript, txt_path)

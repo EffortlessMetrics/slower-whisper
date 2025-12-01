@@ -193,6 +193,22 @@ Recommended settings for `main` branch:
 - None! Uses PyPI Trusted Publishing (OIDC)
 - Must configure trusted publisher on PyPI
 
+### 🤖 `verify.yml` - Verification CLI (quick + full)
+
+Runs the `slower-whisper-verify` CLI inside the Nix dev shell.
+
+**Triggers:**
+- Pull requests and pushes to `main` (quick mode)
+- Nightly schedule (`0 6 * * *`) and manual dispatch (full mode)
+
+**Jobs:**
+1. **Verify (quick)** — `nix develop --command uv sync --extra full --extra diarization --extra dev` then `uv run slower-whisper-verify --quick`
+2. **Verify (full)** — same install step, then `uv run slower-whisper-verify` (includes Docker + K8s; uses `HF_TOKEN` secret for real pyannote)
+
+**Caches:**
+- `.venv` and `.cache/uv` (Python deps)
+- `~/.cache/huggingface` (full mode)
+
 ## Troubleshooting
 
 ### Tests failing on CI but passing locally?

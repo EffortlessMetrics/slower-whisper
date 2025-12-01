@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "file": "project_retro.wav",
+  "language": "en",
+  "meta": {
+    "asr_backend": "dummy"
+  },
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 2.8,
+      "text": "Retro time. Release slipped by a week. Let's root cause.",
+      "speaker": {
+        "id": "spk_manager"
+      }
+    },
+    {
+      "id": 1,
+      "start": 2.9,
+      "end": 6.2,
+      "text": "Deploy failed because I rushed the feature flag migration.",
+      "speaker": {
+        "id": "spk_engineer"
+      }
+    },
+    {
+      "id": 2,
+      "start": 6.3,
+      "end": 9.1,
+      "text": "QA also started late; we didn't get staging builds until Tuesday.",
+      "speaker": {
+        "id": "spk_qa"
+      }
+    },
+    {
+      "id": 3,
+      "start": 9.2,
+      "end": 12.4,
+      "text": "Action items: I own a checklist for flags, and QA needs build cutoffs.",
+      "speaker": {
+        "id": "spk_engineer"
+      }
+    },
+    {
+      "id": 4,
+      "start": 12.5,
+      "end": 15.2,
+      "text": "I'll add the cutoff dates to the release calendar and enforce them.",
+      "speaker": {
+        "id": "spk_manager"
+      }
+    },
+    {
+      "id": 5,
+      "start": 15.3,
+      "end": 18.5,
+      "text": "And I’ll automate smoke tests so we catch regressions earlier.",
+      "speaker": {
+        "id": "spk_qa"
+      }
+    }
+  ]
+}

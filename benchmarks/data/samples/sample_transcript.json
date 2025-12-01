@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "file": "sample.wav",
+  "language": "en",
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 1.4,
+      "text": "Hi Jordan, thanks for joining.",
+      "speaker": {"id": "spk_0", "confidence": 0.96}
+    },
+    {
+      "id": 1,
+      "start": 1.5,
+      "end": 3.2,
+      "text": "Happy to help with the rollout notes.",
+      "speaker": {"id": "spk_1", "confidence": 0.92}
+    },
+    {
+      "id": 2,
+      "start": 3.3,
+      "end": 5.0,
+      "text": "Next steps go to product, I'll follow up Friday.",
+      "speaker": {"id": "spk_0", "confidence": 0.88}
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn_0",
+      "speaker_id": "spk_0",
+      "start": 0.0,
+      "end": 1.4,
+      "segment_ids": [0],
+      "text": "Hi Jordan, thanks for joining."
+    },
+    {
+      "id": "turn_1",
+      "speaker_id": "spk_1",
+      "start": 1.5,
+      "end": 3.2,
+      "segment_ids": [1],
+      "text": "Happy to help with the rollout notes."
+    },
+    {
+      "id": "turn_2",
+      "speaker_id": "spk_0",
+      "start": 3.3,
+      "end": 5.0,
+      "segment_ids": [2],
+      "text": "Next steps go to product, I'll follow up Friday."
+    }
+  ]
+}

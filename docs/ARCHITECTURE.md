@@ -95,6 +95,15 @@ The `speakers` and `turns` fields have intentionally distinct semantics for null
 
 In practice, both `null` and missing are treated identically by readers as "no diarization output," but the distinction helps with debugging (was diarization requested? did it fail?). The `meta.diarization.status` and `meta.diarization.requested` fields provide authoritative information about diarization execution.
 
+`meta.diarization.status` uses an explicit state machine (v1.2+):
+
+- `disabled`: diarization not requested (`enable_diarization=False`)
+- `skipped`: requested but not run (missing dependency, missing HF token, etc.)
+- `ok`: ran successfully
+- `error`: attempted and hit a runtime error
+
+`meta.diarization.error_type` provides coarse categories (`auth`, `missing_dependency`, `file_not_found`, `unknown`), and `meta.diarization.message`/`error` carries a human-readable explanation.
+
 **Breaking Changes:**
 - Major schema version bumps (2 → 3) MAY introduce breaking changes
 - Migration tools will be provided for major version transitions
@@ -132,6 +141,57 @@ for segment in transcript.segments:
         rendering = segment.audio_state.get("rendering", "[audio: neutral]")
         print(rendering)
 ```
+
+### Speaker analytics (v1.2, optional)
+
+Turn-level metadata and per-speaker aggregates are emitted when enabled via `EnrichmentConfig`:
+
+```jsonc
+{
+  "turns": [
+    {
+      "id": "turn_17",
+      "speaker_id": "spk_1",
+      "segment_ids": [23, 24],
+      "start": 123.45,
+      "end": 140.10,
+      "text": "...",
+      "metadata": {
+        "question_count": 1,
+        "interruption_started_here": false,
+        "avg_pause_ms": 320.0,
+        "disfluency_ratio": 0.08
+      }
+    }
+  ],
+  "speaker_stats": [
+    {
+      "speaker_id": "spk_0",
+      "total_talk_time": 512.3,
+      "num_turns": 34,
+      "avg_turn_duration": 15.1,
+      "interruptions_initiated": 4,
+      "interruptions_received": 7,
+      "question_turns": 9,
+      "prosody_summary": {
+        "pitch_median_hz": 180.5,
+        "energy_median_db": -12.3
+      },
+      "sentiment_summary": {
+        "positive": 0.3,
+        "neutral": 0.5,
+        "negative": 0.2
+      }
+    }
+  ]
+}
+```
+
+Notes:
+
+- Present only when `enable_turn_metadata` / `enable_speaker_stats` are enabled.
+- Readers should tolerate these fields being absent.
+- Within schema v2.x, field meanings are stable.
 
 ---
 

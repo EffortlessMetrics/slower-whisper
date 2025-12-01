@@ -19,6 +19,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -52,6 +54,25 @@ def check_ruff() -> None:
     run(["uv", "run", "ruff", "check", "transcription/", "tests/"])
 
 
+def check_mypy() -> None:
+    """Run mypy on transcription/ and strategic test modules."""
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("1.5️⃣  Type checking (mypy)")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    run(
+        [
+            "uv",
+            "run",
+            "mypy",
+            "transcription/",
+            "tests/test_llm_utils.py",
+            "tests/test_writers.py",
+            "tests/test_turn_helpers.py",
+            "tests/test_audio_state_schema.py",
+        ]
+    )
+
+
 def run_tests_fast() -> None:
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("2️⃣  Unit / fast tests (pytest)")
@@ -69,10 +90,40 @@ def run_tests_fast() -> None:
     )
 
 
+def validate_schema_samples() -> None:
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("3️⃣  Schema validation (transcripts)")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    sample_paths = [
+        ROOT / "benchmarks/data/samples/sample_transcript.json",
+    ]
+    existing = [p for p in sample_paths if p.exists()]
+    if not existing:
+        print("⚠️  No sample transcripts found; skipping schema validation")
+        return
+
+    try:
+        from transcription.validation import DEFAULT_SCHEMA_PATH, validate_many
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠️  Skipping schema validation (dependency missing: {exc})")
+        return
+
+    failures = validate_many(existing, schema_path=DEFAULT_SCHEMA_PATH)
+    if failures:
+        print("❌ Schema validation failed:")
+        for err in failures:
+            print(f"- {err}")
+        raise SystemExit(1)
+
+    for path in existing:
+        print(f"Schema validation: OK ({path})")
+    print(f"✅ {len(existing)} transcript(s) valid against {DEFAULT_SCHEMA_PATH}")
+
+
 def verify_bdd() -> None:
     """Run BDD scenarios (Gherkin) via pytest-bdd."""
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("3️⃣  BDD acceptance scenarios (library)")
+    print("4️⃣  BDD acceptance scenarios (library)")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg:
@@ -87,7 +138,7 @@ def verify_bdd() -> None:
 def verify_api_bdd() -> None:
     """Run API BDD scenarios (REST service black-box tests)."""
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("4️⃣  BDD acceptance scenarios (API service)")
+    print("5️⃣  BDD acceptance scenarios (API service)")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     # Check for httpx (required for API tests)
@@ -121,7 +172,7 @@ def verify_api_bdd() -> None:
 def docker_smoke() -> None:
     """Build and smoke-test Docker images."""
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("5️⃣  Docker smoke tests")
+    print("6️⃣  Docker smoke tests")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     if shutil.which("docker") is None:
@@ -177,7 +228,7 @@ def docker_smoke() -> None:
 def validate_k8s() -> None:
     """Validate Kubernetes manifests via kubectl dry-run=client."""
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("6️⃣  Kubernetes manifest validation")
+    print("7️⃣  Kubernetes manifest validation")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     if shutil.which("kubectl") is None:
@@ -209,6 +260,59 @@ def validate_k8s() -> None:
     print("\n✅ All Kubernetes manifests validate")
 
 
+def feature_summary() -> None:
+    """Print a short status summary for analytics + diarization evidence."""
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("Feature summary")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    try:
+        from transcription.config import EnrichmentConfig, TranscriptionConfig
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠️  Skipping feature summary (config import failed: {exc})")
+        return
+
+    enrich_cfg = EnrichmentConfig.from_env()
+    analytics_enabled = enrich_cfg.enable_turn_metadata and enrich_cfg.enable_speaker_stats
+    analytics_bits = []
+    if enrich_cfg.enable_turn_metadata:
+        analytics_bits.append("turn metadata")
+    if enrich_cfg.enable_speaker_stats:
+        analytics_bits.append("speaker_stats")
+    analytics_detail = " + ".join(analytics_bits) if analytics_bits else "off"
+    print(
+        f"Speaker analytics: {'enabled' if analytics_enabled else 'disabled'} ({analytics_detail})"
+    )
+
+    trans_cfg = TranscriptionConfig.from_env()
+    diar_requested = bool(trans_cfg.enable_diarization)
+    has_pyannote = importlib.util.find_spec("pyannote.audio") is not None
+    has_hf_token = bool(os.getenv("HF_TOKEN"))
+    if not diar_requested:
+        diar_status = "disabled"
+    elif has_pyannote and has_hf_token:
+        diar_status = "ready"
+    elif has_pyannote:
+        diar_status = "installed (HF_TOKEN missing)"
+    else:
+        diar_status = "missing dependency"
+    print(f"Diarization: requested={'yes' if diar_requested else 'no'}, status={diar_status}")
+
+    speaker_report = Path("benchmarks/SPEAKER_ANALYTICS_MVP.md")
+    diar_report = Path("benchmarks/DIARIZATION_REPORT.md")
+    speaker_msg = (
+        f"available at {speaker_report}"
+        if speaker_report.exists()
+        else "missing (benchmarks/SPEAKER_ANALYTICS_MVP.md)"
+    )
+    diar_msg = (
+        f"available at {diar_report}"
+        if diar_report.exists()
+        else "missing (benchmarks/DIARIZATION_REPORT.md)"
+    )
+    print(f"Speaker analytics MVP harness: {speaker_msg}")
+    print(f"Diarization harness: {diar_msg}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Run slower-whisper verification checks.",
@@ -226,7 +330,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     check_ruff()
+    check_mypy()
     run_tests_fast()
+    validate_schema_samples()
     verify_bdd()
 
     if not args.skip_api:
@@ -236,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
         docker_smoke()
         validate_k8s()
 
+    feature_summary()
     print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("✅ All verification steps completed")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")

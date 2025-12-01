@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
-**Current Version:** v1.1.0 (Diarization + LLM rendering)
-**Last Updated:** 2025-11-30
+**Current Version:** v1.3.0 (Ecosystem, exports, evaluation)
+**Last Updated:** 2026-01-15
 <!-- cspell:ignore pyannote disfluency disfluencies langchain llamaindex Praat
 cuda qwen Qwen Smol Neur INTERSPEECH IEMOCAP multimodal mypy -->
 
@@ -26,8 +26,7 @@ v1.x JSON is forward-compatible with v2.x readers.
 ## v1.0.0 — Production Foundation (SHIPPED ✅)
 
 **Released:** 2025-11-17
-**Status:** Stable and supported; superseded by v1.1.0 for diarization/LLM
-features
+**Status:** Stable and supported; superseded by v1.3.0 for analytics, exports, and evaluation
 
 ### What Shipped (v1.0.0)
 
@@ -73,7 +72,7 @@ features
 ## v1.1.0 — Speaker Foundation (SHIPPED ✅)
 
 **Released:** 2025-11-18
-**Status:** Stable; diarization is opt-in/experimental
+**Status:** Stable; superseded by v1.3.0 for analytics/export coverage (diarization remains opt-in/experimental)
 
 ### What Shipped (v1.1.0)
 
@@ -108,423 +107,92 @@ features
 
 ---
 
-## v1.2.0 — Speaker Analytics & Evaluation (**Target: Q2 2026**)
+## v1.2.0 — Speaker Analytics & Evaluation (SHIPPED ✅)
 
-**Theme:** Make speaker data **useful for LLMs** with turn metadata, stats, and
-prompt builders built on the v1.1 diarization layer.
+**Released:** 2025-12-01
+**Status:** Stable; folded into v1.3.0 alongside exports/adapters/evaluation.
 
-**Goal:** Enable speaker-aware summarization, QA, and coaching use cases.
+### What Shipped (v1.2.0)
 
-**Status:** *Released when ready. Dates are targets, not commitments.*
+- **Turn metadata (`turns[].metadata`)**: `question_count`,
+  `interruption_started_here`, `avg_pause_ms`, and `disfluency_ratio`, populated
+  during enrichment and serialized to JSON.
+- **Speaker stats (`speaker_stats[]`)**: Talk time, turn counts, average turn
+  duration, interruptions initiated/received, question turns, plus prosody and
+  sentiment summaries.
+- **Analytics controls**: CLI/API flags for turn metadata and speaker stats,
+  honoring `skip_existing` so re-runs do not clobber existing analytics.
+- **Diarization metadata state machine**: `disabled`, `skipped`, `ok`, `error`
+  statuses written to `meta.diarization` even when diarization is turned off.
+- **LLM + serialization**: Pattern 6 in `docs/LLM_PROMPT_PATTERNS.md`; JSON
+  round-tripping for `turns`, `speaker_stats`, and diarization metadata.
 
-### Core Features (v1.2.0)
+### Research / Benchmarks (post-1.2)
 
-#### 1. Turn Metadata
-
-**Extend `turns[]` with interaction metadata:**
-
-```json
-"turns": [
-  {
-    "id": "turn_17",
-    "speaker_id": "spk_1",
-    "segment_ids": [23, 24],
-    "start": 123.45,
-    "end": 140.10,
-    "text": "... concatenated ...",
-    "meta": {
-      "question_count": 1,              // Detected questions
-      "interruption_started_here": false,
-      "avg_pause_ms": 320,
-      "disfluency_ratio": 0.08
-    }
-  }
-]
-```
-
-**Implementation:**
-
-- Detect questions via text heuristics (ends with `?`, starts with wh-words)
-- Detect interruptions via turn overlap timing
-- Aggregate pauses and disfluencies from segments
-
-#### 2. Speaker Stats
-
-**Per-speaker aggregates for LLM prompts:**
-
-```json
-"speaker_stats": [
-  {
-    "speaker_id": "spk_0",
-    "total_talk_time": 512.3,
-    "num_turns": 34,
-    "avg_turn_duration": 15.1,
-    "interruptions_initiated": 4,
-    "interruptions_received": 7,
-    "question_turns": 9,
-    "prosody_summary": {
-      "pitch_median_hz": 180.5,
-      "energy_median_db": -12.3
-    },
-    "sentiment_summary": {
-      "positive": 0.3,
-      "neutral": 0.5,
-      "negative": 0.2
-    }
-  }
-]
-```
-
-#### 3. Prompt Builder Utilities
-
-**Extend v1.1 rendering with analytics-aware helpers:**
-
-```python
-from transcription import load_transcript, to_turn_view, to_speaker_summary
-
-transcript = load_transcript("meeting.json")
-
-# Turn-level dialogue view
-prompt_text = to_turn_view(transcript, include_audio_state=True)
-
-# Speaker summary table
-speaker_info = to_speaker_summary(transcript)
-
-# Combined prompt
-full_prompt = f"{speaker_info}\n\nConversation:\n{prompt_text}"
-```
-
-**Output example:**
-
-```text
-Speakers:
-- Speaker A (spk_0): 65% talk time, 4 interruptions initiated
-- Speaker B (spk_1): 35% talk time, 1 interruption initiated
-
-Conversation (turn-level):
-[00:15.2–00:22.8] Speaker B: I'm not sure this pricing works...
-  [audio: concerned tone, rising pitch]
-[00:23.0–00:35.1] Speaker A: Totally understand. Let me walk through...
-```
-
-#### 4. MVP Evaluation Harness
-
-**Build minimal testbed** (see `docs/TESTING_STRATEGY.md`):
-
-- **20-50 labeled segments** (not 200+)
-- **One task**: "Does speaker labeling improve summarization?"
-- **Two conditions**:
-  - Baseline: text-only transcript
-  - Enriched: text + speaker labels + turn structure
-- **Metric**: LLM-as-judge preference (which summary is better?)
-
-**Implementation:**
-
-```bash
-# Run evaluation on AMI Meeting Corpus subset
-uv run python benchmarks/eval_speaker_utility.py \
-  --dataset ami_subset \
-  --task summarization \
-  --judge gpt-4o-mini
-```
-
-**Success criteria:**
-
-- Enriched condition wins >60% of pairwise comparisons
-- Clear examples where speaker info helps (e.g., "Agent said X, customer
-  objected with Y")
-
-### Developer Experience (v1.2.0)
-
-- `--role-hint` CLI flag for manual speaker role annotation:
-
-  ```bash
-  slower-whisper transcribe --enable-diarization \
-    --role-hint spk_0=agent,spk_1=customer
-  ```
-
-- Progress bars for turn analysis
-- Example scripts showing LLM integration
-
-### Deliverables (v1.2.0)
-
-- [ ] Turn metadata builder (extends `transcription/turns.py`)
-- [ ] Speaker stats aggregator (`transcription/speaker_stats.py`)
-- [ ] Prompt builder utilities (`transcription/llm_utils.py`)
-- [ ] MVP evaluation harness (`benchmarks/eval_speaker_utility.py`)
-- [ ] BDD scenarios for turn metadata correctness
-- [ ] Documentation: `docs/SPEAKER_ANALYTICS.md`
-- [ ] Examples: Speaker-aware summarization, QA
+- MVP evaluation harness for speaker-aware summarization (text vs enriched,
+  LLM-as-judge).
+- Diarization benchmark skeleton (`benchmarks/eval_diarization.py`, dataset in
+  `benchmarks/data/diarization/manifest.jsonl`) emitting JSON/Markdown with DER
+  and speaker-count checks.
+- Role-hint flag and progress UX for long-running analytics.
+- Additional BDD/fixture coverage once evaluation datasets are locked.
 
 ---
 
-## v1.3.0 — LLM Ecosystem Integration (**Target: Q3 2026**)
+## v1.3.0 — Ecosystem & Evaluation (SHIPPED ✅)
 
-**Theme:** Make slower-whisper **trivial to use** with LangChain, LlamaIndex,
-and vector DBs.
+**Released:** 2026-01-15
+**Status:** Current version; consolidates ecosystem adapters, exports, and populated benchmarks.
 
-**Goal:** Become the standard input layer for conversation-aware LLM
-applications.
+### What Shipped (v1.3.0)
 
-**Status:** *Released when ready. Dates are targets, not commitments.*
-
-### Core Features (v1.3.0)
-
-#### 1. Intelligent Chunking
-
-**Implement `chunks[]` with turn-aware boundaries:**
-
-```json
-"chunks": [
-  {
-    "id": "chunk_0",
-    "start": 0.0,
-    "end": 120.0,
-    "segment_ids": [0, 1, 2, 3, 4, 5],
-    "turn_ids": ["turn_0", "turn_1", "turn_2"],
-    "speaker_ids": ["spk_0", "spk_1"],
-    "token_count_estimate": 512
-  }
-]
-```
-
-**Strategy:**
-
-- Target 512-1024 tokens OR 60-120 seconds
-- **Never split mid-turn** (prefer turn boundaries)
-- Fall back to pause boundaries if turns too long
-- Include speaker + audio_state aggregates per chunk
-
-#### 2. LangChain Adapter
-
-**Official integration:**
-
-```python
-from langchain.document_loaders import SlowerWhisperLoader
-
-loader = SlowerWhisperLoader("meeting.json")
-docs = loader.load()  # One Document per chunk
-
-for doc in docs:
-    print(doc.page_content)  # Turn-level text
-    print(doc.metadata)      # Speaker, timestamps, audio_state summary
-```
-
-**Metadata exposed:**
-
-- `speakers`: List of speaker IDs in chunk
-- `start_time`, `end_time`: Chunk boundaries
-- `prosody_summary`: Aggregated pitch/energy/rate
-- `emotion_summary`: Dominant emotion in chunk
-- `turn_count`, `question_count`, `interruption_count`
-
-#### 3. LlamaIndex Reader
-
-**Official integration:**
-
-```python
-from llama_index import SlowerWhisperReader
-
-documents = SlowerWhisperReader().load_data("meeting.json")
-
-index = VectorStoreIndex.from_documents(documents)
-query_engine = index.as_query_engine()
-
-response = query_engine.query("Where did the customer express frustration?")
-```
-
-**Indexing strategy:**
-
-- Chunk-level indexing with acoustic metadata
-- Filterable by speaker, emotion, time range
-- Retrieval considers both text and `audio_state`
-
-#### 4. Export Formats
-
-**Additional outputs for analysis and interoperability:**
-
-- **WebVTT**: Web video subtitles with speaker labels
-- **CSV**: Tabular format (id, start, end, speaker, text, valence, arousal,
-  pitch, energy)
-- **Annotated HTML**: Web viewing with speaker colors and audio_state tooltips
-- **Praat TextGrid**: For phonetics research (tier per speaker, prosody
-  annotations)
-
-**Example:**
-
-```bash
-# Export to CSV for analysis in Excel/pandas
-slower-whisper export meeting.json --format csv --output meeting.csv
-
-# Export to HTML for human review
-slower-whisper export meeting.json --format html --output meeting.html
-```
-
-#### 5. Schema v2 Finalization
-
-**Lock in core schema contract:**
-
-- Document deprecation policy (`docs/SCHEMA_STABILITY.md`)
-- Publish JSON Schema (draft-07) validation file
-- Examples for every optional field
-- Migration guide for future v3
-
-**Stability guarantee:**
-
-> Within schema v2.x, core fields (`audio`, `meta`, `speakers`, `segments`,
-> `turns`, `chunks`) will NOT change meaning. Optional fields may be added but
-> never removed without a major version bump.
-
-### Developer Experience (v1.3.0)
-
-- Compact export mode: `--fields text,speaker,audio_state.rendering`
-- JSON Schema validation: `slower-whisper validate meeting.json`
-- Examples for every integration (LangChain, LlamaIndex, pandas, DuckDB)
-
-### Deliverables (v1.3.0)
-
-- [ ] Chunking implementation (`transcription/chunking.py`)
-- [ ] LangChain loader (`integrations/langchain_loader.py`)
-- [ ] LlamaIndex reader (`integrations/llamaindex_reader.py`)
-- [ ] Export formats (WebVTT, CSV, HTML, Praat TextGrid)
-- [ ] JSON Schema validation file (`schema/transcript-v2.json`)
-- [ ] Documentation: `docs/LLM_INTEGRATION.md`, `docs/SCHEMA_STABILITY.md`
-- [ ] Examples: RAG, summarization, Q&A with LangChain/LlamaIndex
+- **Turn-aware chunking:** `chunks[]` added with turn-preserving boundaries and schema/BDD coverage.
+- **Exports + validation:** `slower-whisper export` (CSV/HTML/VTT/TextGrid) and `slower-whisper validate` (JSON Schema v2) with CLI/API integration tests.
+- **LLM ecosystem adapters:** LangChain and LlamaIndex loaders plus speaker-aware summarization example in `examples/llm_integration/`.
+- **Semantic annotation (opt-in):** Keyword-based `SemanticAnnotator` writing to `annotations.semantic` with guardrails and flags.
+- **Performance harness:** Throughput probe + `docs/PERFORMANCE.md` to baseline CPU/GPU paths.
+- **Benchmarks populated:** ASR WER (`benchmarks/ASR_REPORT.*`), diarization DER (`benchmarks/DIARIZATION_REPORT.*`), and speaker analytics preference check (`benchmarks/SPEAKER_ANALYTICS_MVP.md`).
+- **Examples:** Metrics/KPI script and redaction walkthrough for quick adoption.
 
 ---
 
-## v2.0.0 — Streaming, Semantic Layer & Extensibility (**Target: Q4 2026**)
+## Type System Hardening (DONE ✅)
 
-**Theme:** Real-time processing + optional semantic enrichment (Layer 3) +
-plugin architecture.
+**Completed:** 2026-01-XX (part of v1.3.1 maintenance)
 
-**Goal:** Production-ready for live use cases + semantic understanding for power
-users.
+### What Was Done
 
-**Status:** *Released when ready. Major version = breaking changes allowed.*
+- **Full mypy coverage**: All 39 modules in `transcription/` pass mypy with zero errors (92.9% function-level annotation coverage, 209/225 functions typed).
+- **Strategic test typing**: Four test modules (`test_llm_utils.py`, `test_writers.py`, `test_turn_helpers.py`, `test_audio_state_schema.py`) configured for mypy validation.
+- **Protocol patterns**: `EmotionRecognizerLike`, `WhisperModelProtocol`, `SemanticAnnotator` protocols enable graceful degradation for optional dependencies.
+- **PEP 561 compliance**: `py.typed` marker present for downstream type-checker support.
+- **Typing policy documented**: `docs/TYPING_POLICY.md` captures gradual typing strategy, `cast()` usage rationale, and contribution guidelines.
 
-### Core Features (v2.0.0)
+### Typing Configuration
 
-#### 1. Streaming Transcription & Enrichment
+- **mypy mode**: Gradual (not strict) — `disallow_untyped_defs=false`, `check_untyped_defs=true`
+- **Pre-commit**: mypy non-blocking (`|| true`) to avoid friction during development
+- **CI gate**: mypy runs on `transcription/` and strategic test modules
 
-- Incremental Whisper on sliding windows
-- Real-time diarization and prosody extraction
-- WebSocket API for live results
-- Low-latency mode (<500ms delay)
+### Related Files
 
-**Use cases:**
+- `pyproject.toml`: mypy configuration (lines 203-245)
+- `pyrightconfig.json`: VS Code/Pylance LSP support
+- `transcription/py.typed`: PEP 561 marker
+- `docs/TYPING_POLICY.md`: Typing standards and contribution guidelines
 
-- Live captioning
-- Real-time meeting assistance
-- Call center agent coaching
+---
 
-#### 2. Semantic Layer (L3) — Optional SLM Integration
+## v2.0.0 — Streaming & Semantic Depth (PLANNED 🚧)
 
-**Now that local SLMs are mature (2027), add optional semantic enrichment:**
+**Theme:** Real-time streaming, LLM-backed semantic annotation, and larger benchmark coverage.
 
-**Abstraction:**
+### Focus Areas
 
-```python
-from transcription import SemanticAnnotator
-
-annotator = SemanticAnnotator(model="qwen2.5-vl-7b", device="cuda")
-annotations = annotator.run(transcript, chunk)
-```
-
-**Chunk-level outputs (v2.0+ only):**
-
-```json
-"chunks": [
-  {
-    "summary": "Customer voices pricing concern; agent offers alternatives.",
-    "semantic_tags": ["objection", "pricing_discussion"],
-    "annotations": {
-      "llm": [  // Reserved for v2.0+ semantic layer; empty in v1.x
-        {
-          "type": "interaction_pattern",
-          "label": "objection_handling",
-          "confidence": 0.85
-        }
-      ]
-    }
-  }
-]
-```
-
-**Note:** These fields are **not populated in v1.x** unless you write custom
-plugins.
-
-**Design constraints:**
-
-- **Opt-in only** (`--enable-semantic`)
-- **Chunked processing** (60-120s, not per-token)
-- **Pluggable backends** (Qwen, SmolLM, custom models)
-- **Fully cached** by `(audio_hash, asr_hash, enrichment_hash, slm_model_hash)`
-
-**Evaluation:**
-
-- Compare: text vs text+acoustic vs text+acoustic+semantic
-- Measure: downstream task performance (summarization, QA, coaching)
-
-#### 3. Plugin System
-
-**Allow custom enrichment without forking:**
-
-```python
-from transcription import register_enrichment_plugin
-
-@register_enrichment_plugin("my_feature")
-def extract_custom_feature(segment, audio):
-    # Custom logic
-    return {"my_metric": 0.85}
-```
-
-**Plugin capabilities:**
-
-- Custom feature extractors (Layer 2 or Layer 3)
-- Custom output formatters (export to proprietary formats)
-- Custom chunking strategies
-
-#### 4. Distributed Processing
-
-- Multi-node job queueing (Celery or similar)
-- S3/GCS/Azure storage backends
-- Kubernetes operator for auto-scaling
-
-**Use cases:**
-
-- Enterprise batch processing (1000s of hours)
-- Multi-tenant SaaS deployments
-
-### Breaking Changes (v1.x → v2.0)
-
-**Schema changes:**
-
-- `chunks[]` becomes required (not optional)
-- `audio.id` changes from file path to content hash
-- Deprecated fields from v1.x removed
-
-**API changes:**
-
-- Legacy CLI removed (unified CLI only)
-- Old config format deprecated
-
-**Migration:**
-
-- Automatic migration tool: `slower-whisper migrate v1-to-v2 transcript.json`
-- Compatibility mode: `--schema-version 1` to read old files
-
-### Deliverables (v2.0.0)
-
-- [ ] Streaming ASR module (`transcription/streaming.py`)
-- [ ] Semantic annotator interface (`transcription/semantic.py`)
-- [ ] Qwen/SmolLM backend implementations
-- [ ] Plugin API documentation
-- [ ] Cloud storage backends
-- [ ] K8s operator (CRDs, controllers)
-- [ ] Migration tooling
-- [ ] Documentation: Streaming guide, semantic enrichment guide, plugin
-  development guide
+- **Streaming architecture:** Flesh out concrete partial/final message flows in `docs/STREAMING_ARCHITECTURE.md`; ensure `Transcript`/`Chunk` structures support incremental diarization and analytics.
+- **LLM semantic annotator:** Design LLM-backed annotations (topic/risk/action) written into `annotations.semantic` without breaking v1.x consumers; define config knobs and safety/guardrail strategy.
+- **Benchmarks at scale:** Expand DER/WER datasets beyond fixtures; add streaming + semantic evaluation tracks; harden performance/throughput gates.
+- **DX + APIs:** Keep exports/validation contracts stable while introducing streaming endpoints and integration adapters for live flows.
 
 ---
 
@@ -602,33 +270,22 @@ def extract_custom_feature(segment, audio):
 
 ## Contribution Opportunities
 
-### High Priority (v1.1.x hardening)
+### Near Term (post-1.3.0 stabilization)
 
-- [ ] Diarization benchmarking on AMI subset + synthetic fixtures; publish DER
-  and speaker-count results
-- [ ] CI/BDD coverage for diarization correctness (two-speaker success,
-  overlap resilience)
-- [ ] pyannote download/auth UX and progress messaging for
-  `--enable-diarization`
-- [ ] JSON Schema (draft-07) validation file
+- [ ] Run pyannote-backed diarization benchmark (HF_TOKEN) and refresh `benchmarks/DIARIZATION_REPORT.*` plus `docs/SPEAKER_DIARIZATION.md`.
+- [ ] Broaden CLI/integration smoke tests around `export`, `validate`, and metrics/redaction examples.
+- [ ] Doc polish for LangChain/LlamaIndex adapters, chunking semantics, and KPI scripts.
 
-### Next Up (v1.2 readiness)
+### V2 Prep
 
-- [ ] Turn metadata builder and speaker stats aggregator
-- [ ] Prompt builder utilities aligned with analytics data
-- [ ] MVP evaluation harness on AMI/IEMOCAP for speaker utility
-- [ ] Speaker-aware examples (summarization, QA)
+- [ ] Flesh out streaming message sequences in `docs/STREAMING_ARCHITECTURE.md` and add lightweight contract tests.
+- [ ] Specify LLM-backed `SemanticAnnotator` schema/config (topics/risks/actions) with guardrails.
+- [ ] Grow evaluation datasets (ASR/DER/analytics) and automate gates in `make verify-quick`/CI.
 
-### Integrations & Research (v1.3+)
+### Longer Term
 
-- [ ] LangChain adapter
-- [ ] LlamaIndex adapter
-- [ ] WebVTT / CSV / HTML exporters
-- [ ] Praat TextGrid export
-- [ ] Custom SER (speech emotion recognition) models
-- [ ] Prosody feature experiments
-- [ ] Multi-language support
-- [ ] Acoustic similarity clustering
+- [ ] Streaming endpoints + adapters once contracts are locked.
+- [ ] Additional semantic tasks and domain packs after streaming lands.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started.
 
@@ -712,3 +369,4 @@ enabling truly multimodal understanding of human communication.
 - 2025-11-17: Complete rewrite for layered architecture vision (v1.x focus)
 - 2025-11-30: Updated for v1.1.0 release and diarization/LLM rendering
   shipment; added v1.1.x hardening priorities
+- 2025-12-01: Updated for v1.2.0 (speaker analytics) and v1.3.0 (exports, evaluation)

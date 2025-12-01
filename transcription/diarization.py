@@ -28,9 +28,10 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from transcription.models import Transcript
@@ -46,11 +47,11 @@ def _make_stub_pyannote_pipeline():
 
     def _infer_duration_seconds(audio_path: str | os.PathLike[str]) -> float:
         try:
-            import soundfile as sf  # type: ignore[reportMissingTypeStubs]
+            import soundfile as sf
 
             with sf.SoundFile(audio_path, "r") as f:
                 if f.samplerate:
-                    return max(len(f) / f.samplerate, 0.5)
+                    return float(max(len(f) / f.samplerate, 0.5))
         except Exception:
             pass
         return 4.0
@@ -198,6 +199,13 @@ class Diarizer:
                 "HF_TOKEN environment variable is required for pyannote.audio diarization"
             )
 
+        # Suppress torchcodec/FFmpeg warnings from pyannote.audio's torchaudio import chain.
+        # These warnings are informational only and clutter the output without providing
+        # actionable information for users of slower-whisper.
+        from transcription._import_guards import suppress_optional_dependency_warnings
+
+        suppress_optional_dependency_warnings()
+
         try:
             from pyannote.audio import Pipeline
         except ImportError as exc:
@@ -215,9 +223,10 @@ class Diarizer:
 
             paths = CachePaths.from_env().ensure_dirs()
             token_arg = os.getenv("HF_TOKEN") or True
+            from_pretrained: Callable[..., Any] = cast(Callable[..., Any], Pipeline.from_pretrained)
 
             try:
-                pipeline = Pipeline.from_pretrained(
+                pipeline = from_pretrained(
                     "pyannote/speaker-diarization-3.1",
                     token=token_arg,  # Newer huggingface_hub API
                     cache_dir=str(paths.diarization_root),
@@ -229,13 +238,13 @@ class Diarizer:
                     "Pipeline.from_pretrained() rejected token=..., retrying with use_auth_token",
                     exc_info=exc,
                 )
-                pipeline = Pipeline.from_pretrained(
+                pipeline = from_pretrained(
                     "pyannote/speaker-diarization-3.1",
                     use_auth_token=token_arg,
                     cache_dir=str(paths.diarization_root),
                 )
 
-            if device_str:
+            if device_str and pipeline is not None:
                 import torch
 
                 pipeline = pipeline.to(torch.device(device_str))

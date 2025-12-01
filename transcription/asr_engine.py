@@ -29,7 +29,7 @@ class WhisperModelProtocol(Protocol):
 
 WhisperModel: type[Any] | None
 try:
-    from faster_whisper import WhisperModel as _WhisperModel  # type: ignore[reportMissingTypeStubs]
+    from faster_whisper import WhisperModel as _WhisperModel
 
     WhisperModel = _WhisperModel
     _FASTER_WHISPER_AVAILABLE = True
@@ -56,7 +56,7 @@ class DummyWhisperModel:
         task: str | None = None,
     ) -> TranscriptionResult:
         try:
-            import soundfile as sf  # type: ignore[reportMissingTypeStubs]
+            import soundfile as sf
 
             with sf.SoundFile(audio_path, "r") as f:
                 duration = len(f) / f.samplerate if f.samplerate else 1.0
@@ -393,6 +393,8 @@ class TranscriptionEngine:
                 used_dummy = True
                 fallback_reason = str(exc)
 
+        placeholder_segments = False
+
         try:
             seg_objs = self._build_segments(segments)
         except Exception as exc:
@@ -410,6 +412,23 @@ class TranscriptionEngine:
             used_dummy = True
             fallback_reason = fallback_reason or str(exc)
 
+        if not seg_objs:
+            # Handle edge cases like silent audio where faster-whisper returns no segments.
+            print(
+                f"[warn] Whisper produced no segments for {audio_path.name}; "
+                "falling back to dummy output.",
+                file=sys.stderr,
+            )
+            segments, fallback_info = DummyWhisperModel(self.cfg).transcribe(str(audio_path))
+            info = info or fallback_info
+            seg_objs = self._build_segments(segments)
+            if used_dummy:
+                fallback_reason = fallback_reason or "no segments produced"
+            else:
+                # Keep backend metadata as the real model but surface the placeholder.
+                placeholder_segments = True
+                fallback_reason = fallback_reason or "no segments produced"
+
         self.using_dummy = used_dummy
 
         transcript = Transcript(
@@ -419,7 +438,7 @@ class TranscriptionEngine:
         )
         actual_device = "cpu" if used_dummy else self.cfg.device
         actual_compute_type = "n/a" if used_dummy else (self.cfg.compute_type or "unknown")
-        asr_meta: dict[str, str | list[str]] = {
+        asr_meta: dict[str, str | list[str] | bool] = {
             "asr_backend": "dummy" if used_dummy else "faster-whisper",
             "asr_device": actual_device,
             "asr_compute_type": actual_compute_type,
@@ -427,10 +446,11 @@ class TranscriptionEngine:
         if self.model_load_warnings:
             # Surface model load retries (e.g., GPU→CPU) for downstream diagnostics.
             asr_meta["asr_model_load_warnings"] = list(self.model_load_warnings)
-        if used_dummy:
-            reason = fallback_reason or self.model_load_error
-            if reason:
-                asr_meta["asr_fallback_reason"] = reason
+        reason = fallback_reason or self.model_load_error
+        if reason:
+            asr_meta["asr_fallback_reason"] = reason
+            if placeholder_segments and not used_dummy:
+                asr_meta["asr_placeholder_segments"] = True
 
         transcript.meta = {**(transcript.meta or {}), **asr_meta}
 

@@ -1,13 +1,17 @@
 import json
+import logging
 from pathlib import Path
+
+import pytest
 
 from transcription import (
     __version__,
-    writers,  # type: ignore[attr-defined]
+    writers,
 )
 from transcription.config import AppConfig
-from transcription.models import SCHEMA_VERSION, Segment, Transcript
+from transcription.models import SCHEMA_VERSION, Segment, Transcript, Turn
 from transcription.pipeline import _build_meta
+from transcription.writers import _to_dict
 
 
 def test_write_json_shape(tmp_path: Path) -> None:
@@ -79,7 +83,12 @@ def test_load_transcript_from_json(tmp_path: Path) -> None:
     # Create and write a transcript
     seg1 = Segment(id=0, start=0.0, end=1.5, text="first segment")
     seg2 = Segment(
-        id=1, start=1.5, end=3.0, text="second segment", speaker="Speaker A", tone="positive"
+        id=1,
+        start=1.5,
+        end=3.0,
+        text="second segment",
+        speaker={"id": "Speaker A"},
+        tone="positive",
     )
     original_transcript = Transcript(
         file_name="test_audio.wav",
@@ -111,7 +120,7 @@ def test_load_transcript_from_json(tmp_path: Path) -> None:
 
     # Verify second segment
     assert loaded_transcript.segments[1].id == 1
-    assert loaded_transcript.segments[1].speaker == "Speaker A"
+    assert loaded_transcript.segments[1].speaker == {"id": "Speaker A"}
     assert loaded_transcript.segments[1].tone == "positive"
 
 
@@ -288,8 +297,12 @@ def test_turns_array_serialization(tmp_path: Path) -> None:
     loaded = writers.load_transcript_from_json(json_path)
     assert loaded.turns is not None
     assert len(loaded.turns) == 2
-    assert loaded.turns[0]["speaker_id"] == "spk_0"
-    assert loaded.turns[1]["text"] == "Hi"
+    turn_0 = loaded.turns[0]
+    turn_1 = loaded.turns[1]
+    assert isinstance(turn_0, dict)
+    assert isinstance(turn_1, dict)
+    assert turn_0["speaker_id"] == "spk_0"
+    assert turn_1["text"] == "Hi"
 
 
 def test_null_speakers_and_turns_serialization(tmp_path: Path) -> None:
@@ -314,3 +327,218 @@ def test_null_speakers_and_turns_serialization(tmp_path: Path) -> None:
     loaded = writers.load_transcript_from_json(json_path)
     assert loaded.speakers is None
     assert loaded.turns is None
+
+
+# ============================================================================
+# Tests for _to_dict helper function
+# ============================================================================
+
+
+def test_to_dict_with_plain_dict() -> None:
+    """_to_dict should return plain dicts unchanged."""
+    input_dict = {"key": "value", "number": 42}
+    result = _to_dict(input_dict)
+    assert result == input_dict
+    assert result is input_dict  # Should be the same object
+
+
+def test_to_dict_with_to_dict_object() -> None:
+    """_to_dict should call to_dict() on objects that have it."""
+    turn = Turn(
+        id="turn_0",
+        speaker_id="spk_0",
+        segment_ids=[0, 1],
+        start=0.0,
+        end=2.5,
+        text="Hello world",
+        metadata={"question_count": 1},
+    )
+    result = _to_dict(turn)
+
+    assert isinstance(result, dict)
+    assert result["id"] == "turn_0"
+    assert result["speaker_id"] == "spk_0"
+    assert result["segment_ids"] == [0, 1]
+    assert result["text"] == "Hello world"
+
+
+def test_to_dict_with_dataclass_instance() -> None:
+    """_to_dict should convert dataclass instances using asdict."""
+    segment = Segment(
+        id=0,
+        start=0.0,
+        end=1.5,
+        text="Test segment",
+        speaker={"id": "spk_0"},
+    )
+    result = _to_dict(segment)
+
+    assert isinstance(result, dict)
+    assert result["id"] == 0
+    assert result["start"] == 0.0
+    assert result["end"] == 1.5
+    assert result["text"] == "Test segment"
+    assert result["speaker"] == {"id": "spk_0"}
+
+
+def test_to_dict_with_dataclass_class_returns_unchanged() -> None:
+    """_to_dict should return dataclass classes unchanged (not instances)."""
+    result = _to_dict(Turn)
+    assert result is Turn  # Class itself, not converted
+
+
+def test_to_dict_with_unsupported_type_returns_unchanged() -> None:
+    """_to_dict should return unsupported types unchanged."""
+    assert _to_dict("a string") == "a string"
+    assert _to_dict(42) == 42
+    assert _to_dict([1, 2, 3]) == [1, 2, 3]
+    assert _to_dict(None) is None
+
+
+class CustomObjectWithToDict:
+    """Test object with a to_dict method."""
+
+    def __init__(self, data: dict):
+        self._data = data
+
+    def to_dict(self) -> dict:
+        return self._data
+
+
+def test_to_dict_with_custom_to_dict() -> None:
+    """_to_dict should work with any object that has to_dict()."""
+    custom = CustomObjectWithToDict({"custom": "data", "count": 5})
+    result = _to_dict(custom)
+
+    assert result == {"custom": "data", "count": 5}
+
+
+def test_write_json_logs_warning_for_unexpected_meta(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """write_json should log a warning when meta can't be converted to dict."""
+    transcript = Transcript(
+        file_name="test.wav",
+        language="en",
+        segments=[Segment(id=0, start=0.0, end=1.0, text="test")],
+        meta="invalid meta type",  # type: ignore[arg-type]
+    )
+
+    json_path = tmp_path / "test_meta_warning.json"
+
+    with caplog.at_level(logging.WARNING, logger="transcription.writers"):
+        writers.write_json(transcript, json_path)
+
+    # Verify warning was logged
+    assert any("Unexpected transcript.meta type" in record.message for record in caplog.records)
+
+    # Verify the file was still written with empty meta
+    data = json.loads(json_path.read_text())
+    assert data["meta"] == {}
+
+
+def test_turns_as_turn_dataclass_roundtrip(tmp_path: Path) -> None:
+    """Test round-trip serialization when turns are Turn dataclass objects.
+
+    This verifies that _to_dict properly converts Turn dataclasses during
+    write_json, and that the round-trip preserves all data.
+    """
+    from typing import Any
+
+    # Create turns as Turn dataclass objects, not dicts
+    turns: list[Turn | dict[str, Any]] = [
+        Turn(
+            id="turn_0",
+            speaker_id="spk_0",
+            segment_ids=[0, 1],
+            start=0.0,
+            end=3.5,
+            text="Hello there",
+            metadata={"question_count": 1},
+        ),
+        Turn(
+            id="turn_1",
+            speaker_id="spk_1",
+            segment_ids=[2],
+            start=3.6,
+            end=5.0,
+            text="Hi",
+            metadata={},
+        ),
+    ]
+
+    transcript = Transcript(
+        file_name="test.wav",
+        language="en",
+        segments=[
+            Segment(id=0, start=0.0, end=1.5, text="Hello", speaker={"id": "spk_0"}),
+            Segment(id=1, start=1.5, end=3.5, text="there", speaker={"id": "spk_0"}),
+            Segment(id=2, start=3.6, end=5.0, text="Hi", speaker={"id": "spk_1"}),
+        ],
+        turns=turns,
+    )
+
+    json_path = tmp_path / "test_turn_dataclass.json"
+    writers.write_json(transcript, json_path)
+
+    # Verify JSON structure - Turn.to_dict() was called
+    data = json.loads(json_path.read_text())
+    assert len(data["turns"]) == 2
+    assert data["turns"][0]["speaker_id"] == "spk_0"
+    assert data["turns"][0]["segment_ids"] == [0, 1]
+    assert data["turns"][0]["metadata"]["question_count"] == 1
+    assert data["turns"][1]["id"] == "turn_1"
+
+    # Test round-trip
+    loaded = writers.load_transcript_from_json(json_path)
+    assert loaded.turns is not None
+    assert len(loaded.turns) == 2
+    turn_0 = loaded.turns[0]
+    turn_1 = loaded.turns[1]
+    assert isinstance(turn_0, dict)
+    assert isinstance(turn_1, dict)
+    assert turn_0["speaker_id"] == "spk_0"
+    assert turn_0["metadata"]["question_count"] == 1
+    assert turn_1["text"] == "Hi"
+
+
+def test_meta_with_to_dict_object_roundtrip(tmp_path: Path) -> None:
+    """Test that meta containing objects with to_dict() is properly serialized.
+
+    This verifies the _to_dict helper works for nested meta objects like
+    DiarizationMeta, not just top-level fields.
+    """
+    from transcription.models import DiarizationMeta
+
+    diar_meta = DiarizationMeta(
+        requested=True,
+        status="ok",
+        backend="pyannote",
+        num_speakers=2,
+        error_type=None,
+        message=None,
+    )
+
+    transcript = Transcript(
+        file_name="test.wav",
+        language="en",
+        segments=[Segment(id=0, start=0.0, end=1.0, text="test")],
+        meta={"diarization": diar_meta, "custom_key": "value"},
+    )
+
+    json_path = tmp_path / "test_meta_to_dict.json"
+    writers.write_json(transcript, json_path)
+
+    # Verify JSON structure - DiarizationMeta.to_dict() was called
+    data = json.loads(json_path.read_text())
+    assert data["meta"]["diarization"]["requested"] is True
+    assert data["meta"]["diarization"]["status"] == "ok"
+    assert data["meta"]["diarization"]["backend"] == "pyannote"
+    assert data["meta"]["diarization"]["num_speakers"] == 2
+    assert data["meta"]["custom_key"] == "value"
+
+    # Round-trip loads as plain dict (not DiarizationMeta)
+    loaded = writers.load_transcript_from_json(json_path)
+    assert loaded.meta is not None
+    assert loaded.meta["diarization"]["status"] == "ok"
+    assert loaded.meta["custom_key"] == "value"

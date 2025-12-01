@@ -122,6 +122,23 @@ jq -s '.[0].aggregate_scores, .[1].aggregate_scores' \
 
 ## Available Harnesses
 
+### ASR WER (`eval_asr.py`)
+
+**Status:** ✅ Tiny internal set (3 clips, CPU-friendly profiles)
+
+**What it measures:** Word Error Rate on a small manifest you provide.
+
+**Recent result:** On 3 short TTS clips (narrowband + meeting-style) with `call_center`/`meeting` profiles (CPU, int8), avg WER ≈ **1.8%**. See `benchmarks/ASR_REPORT.md`/`.json`.
+
+**Workflow:**
+1. Populate or extend `benchmarks/data/asr/manifest.jsonl` with `audio_path` and `reference_text` (repo includes 3 seeded clips under `benchmarks/data/asr/audio/`).
+2. Pick a profile (`call_center`, `meeting`, `podcast`) or use defaults.
+3. Run `PYTHONPATH=. python benchmarks/eval_asr.py --output-md benchmarks/ASR_REPORT.md --output-json benchmarks/ASR_REPORT.json`.
+
+**Output:** Markdown + JSON with per-file WER and runtime.
+
+**Dependencies:** `jiwer` for WER (`uv pip install jiwer`).
+
 ### Summary Evaluation (`eval_summaries.py`)
 
 **Status:** ✅ Implemented (v1.1)
@@ -164,20 +181,27 @@ uv run python benchmarks/eval_summaries.py --dataset ami --n 5 \
 
 ### Diarization Evaluation (`eval_diarization.py`)
 
-**Status:** 📋 TODO (v1.2)
+**Status:** ✅ Implemented (tiny synthetic fixtures; pyannote-backed run pending HF_TOKEN)
 
-**What it will measure:**
+**What it measures:**
 - Diarization Error Rate (DER)
 - Speaker count accuracy
-- Turn alternation quality
-- Segment boundary precision
 
-**Planned workflow:**
-1. Load AMI/LibriCSS with speaker annotations
-2. Transcribe with diarization
-3. Convert to pyannote Annotation format
-4. Compute DER using pyannote.metrics
-5. Aggregate statistics
+**Recent result:** Stub backend on 3 synthetic clips: avg DER ≈ 0.67; speaker counts 3/3 (see `benchmarks/DIARIZATION_REPORT.md`).
+
+**Workflow:**
+1. Ensure dataset at `benchmarks/data/diarization` (fixtures already included).
+2. Run with pyannote once HF_TOKEN is available:
+   ```bash
+   uv sync --extra diarization
+   HF_TOKEN=... SLOWER_WHISPER_PYANNOTE_MODE=auto PYTHONPATH=. \
+     python benchmarks/eval_diarization.py \
+       --dataset benchmarks/data/diarization \
+       --output-md benchmarks/DIARIZATION_REPORT.md \
+       --output-json benchmarks/DIARIZATION_REPORT.json \
+       --overwrite
+   ```
+3. Reports land in Markdown/JSON for DER + speaker-count accuracy.
 
 ### Emotion Evaluation (`eval_emotion.py`)
 

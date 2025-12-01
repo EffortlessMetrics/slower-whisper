@@ -1,0 +1,35 @@
+{
+  "average_wer": 0.017543859649122806,
+  "samples": [
+    {
+      "id": "call_center_narrowband",
+      "audio_path": "/home/steven/code/Python/slower-whisper/benchmarks/data/asr/audio/call_center_narrowband.wav",
+      "profile": "call_center",
+      "reference_text": "Thanks for calling support. I can help you reset your password; I just sent a code to your email.",
+      "hypothesis_text": "Thanks for calling support. I can help you reset your password. I just send a code to your email.",
+      "wer": 0.05263157894736842,
+      "duration_sec": 6.32,
+      "runtime_sec": 13.361430644989014
+    },
+    {
+      "id": "team_sync_meeting",
+      "audio_path": "/home/steven/code/Python/slower-whisper/benchmarks/data/asr/audio/team_sync_meeting.wav",
+      "profile": "meeting",
+      "reference_text": "In today's check-in we agreed the release will slip one week and QA will own the regression list.",
+      "hypothesis_text": "In today's check-in we agreed the release will slip one week and QA will own the regression list.",
+      "wer": 0.0,
+      "duration_sec": 6.16,
+      "runtime_sec": 23.937451124191284
+    },
+    {
+      "id": "status_update_clean",
+      "audio_path": "/home/steven/code/Python/slower-whisper/benchmarks/data/asr/audio/status_update_clean.wav",
+      "profile": "meeting",
+      "reference_text": "Let's wrap with next steps. Priya owns the rollout plan and Jordan will confirm the budget by Friday.",
+      "hypothesis_text": "Let's wrap with next steps. Priya owns the rollout plan and Jordan will confirm the budget by Friday.",
+      "wer": 0.0,
+      "duration_sec": 7.04,
+      "runtime_sec": 6.970319986343384
+    }
+  ]
+}

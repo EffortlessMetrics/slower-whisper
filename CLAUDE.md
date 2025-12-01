@@ -400,6 +400,83 @@ Emotion recognition models are large (~4GB) and GPU-intensive:
 - Singleton pattern with lazy initialization
 - GPU/CPU device selection at load time
 
+### Dict Conversion Helpers
+
+Three helpers exist for converting objects to JSON-serializable dicts:
+
+**`turn_to_dict()` in `turn_helpers.py`** (canonical for Turn objects):
+- **This is the canonical way to convert Turn objects to dicts**
+- Handles Turn dataclasses, plain dicts, and objects with `to_dict()` methods
+- Returns plain dicts unchanged (or shallow copy if `copy=True`)
+- Calls `obj.to_dict()` if available
+- Falls back to `asdict()` for dataclasses
+- **Raises TypeError** for unsupported types
+- Exported from `transcription/__init__.py` for public use
+- Use this instead of reinventing Turn conversion logic in new code
+
+**`_to_dict()` in `writers.py`** (lenient):
+- Used for JSON serialization in `write_json()`
+- Returns plain dicts unchanged
+- Calls `obj.to_dict()` if available
+- Falls back to `asdict()` for dataclasses
+- Returns unsupported types unchanged (doesn't raise)
+- Use when you need graceful handling of mixed types
+
+**`_as_dict()` in `llm_utils.py`** (strict):
+- Used for LLM rendering functions (`to_turn_view()`, `render_conversation_compact()`)
+- Returns plain dicts unchanged
+- Calls `obj.to_dict()` if available
+- Falls back to `asdict()` for dataclasses
+- **Raises TypeError** for unsupported types
+- Use when you need guaranteed dict output
+
+**Model `to_dict()` methods**:
+- `DiarizationMeta`, `TurnMeta`, `Turn`, `Chunk`, `SpeakerStats` all implement `to_dict()`
+- These are called by the helpers above during serialization
+- All have docstrings explaining their purpose
+
+**Contract for `transcript.meta`**:
+- Must be a dict, None, or object convertible via `_to_dict()`
+- If meta can't be converted to dict, `write_json()` logs a warning and uses `{}`
+- Nested objects (like `DiarizationMeta`) are converted via their `to_dict()` methods
+
+### Optional Dependency Pattern
+
+For heavy optional dependencies (emotion, diarization), we use a protocol + factory pattern:
+
+```python
+# 1. Define protocol for the interface
+class EmotionRecognizerLike(Protocol):
+    def extract_emotion_dimensional(self, audio, sr) -> dict: ...
+
+# 2. Try/except import with availability flag
+EMOTION_AVAILABLE = False
+try:
+    import torch
+    from transformers import ...
+    EMOTION_AVAILABLE = True
+except Exception:
+    torch = cast(Any, None)
+
+# 3. Dummy implementation for graceful degradation
+class DummyEmotionRecognizer:
+    def extract_emotion_dimensional(self, audio, sr) -> dict:
+        return {"valence": {"level": "neutral", "score": 0.5}, ...}
+
+# 4. Factory function returns appropriate implementation
+def get_emotion_recognizer() -> EmotionRecognizerLike:
+    if EMOTION_AVAILABLE:
+        return EmotionRecognizer()
+    logger.warning("Emotion dependencies unavailable; using dummy recognizer")
+    return DummyEmotionRecognizer()
+```
+
+This pattern is used in:
+- `emotion.py`: `EmotionRecognizerLike` + `get_emotion_recognizer()`
+- `asr_engine.py`: `WhisperModelProtocol` + availability check
+- `semantic.py`: `SemanticAnnotator` + `NoOpSemanticAnnotator`
+- `diarization.py`: Environment-based stub mode (`SLOWER_WHISPER_PYANNOTE_MODE=stub`)
+
 ## Testing Philosophy
 
 **Test organization:**
@@ -412,8 +489,10 @@ Emotion recognition models are large (~4GB) and GPU-intensive:
 
 **Test markers (pytest):**
 - `@pytest.mark.slow`: Skip with `-m "not slow"`
+- `@pytest.mark.heavy`: Heavy ML model tests (emotion, diarization) - skipped in fast CI
 - `@pytest.mark.requires_gpu`: Skip with `-m "not requires_gpu"`
 - `@pytest.mark.requires_enrich`: Requires enrichment dependencies
+- `@pytest.mark.requires_diarization`: Requires pyannote.audio diarization extra
 
 **Running subsets:**
 ```bash
@@ -423,6 +502,69 @@ uv run pytest -m "not slow and not requires_gpu"
 # Unit tests only (no integration)
 uv run pytest tests/test_models.py tests/test_prosody.py
 ```
+
+## Type System Baseline (v1.3.1+)
+
+### Coverage Summary
+
+- **Package modules**: 39/39 pass mypy (92.9% function-level coverage)
+- **Strategic tests**: 4 test modules configured for type checking
+- **PEP 561**: `py.typed` marker present for downstream consumers
+
+### Typed Modules (Full Coverage)
+
+All modules in `transcription/` pass mypy:
+- **Core**: `api.py`, `models.py`, `pipeline.py`, `writers.py`
+- **CLI**: `cli.py`, `audio_enrich_cli.py`, `service.py`
+- **Audio**: `audio_enrichment.py`, `prosody.py`, `emotion.py`, `diarization.py`
+- **LLM**: `llm_utils.py`, `semantic.py`, `chunking.py`
+- **Config**: `config.py`, `cache.py`
+- **Utils**: `turn_helpers.py`, `turns.py`, `exporters.py`, `validation.py`
+
+### Strategic Test Modules
+
+These test modules are also type-checked in CI:
+- `tests/test_llm_utils.py` (96.9% typed)
+- `tests/test_writers.py` (95.5% typed)
+- `tests/test_turn_helpers.py` (93.3% typed)
+- `tests/test_audio_state_schema.py` (fixtures mostly untyped by design)
+
+### Protocol Patterns
+
+For optional dependencies, use the protocol + factory pattern:
+
+```python
+# In transcription/emotion.py
+class EmotionRecognizerLike(Protocol):
+    def extract_emotion_dimensional(self, audio: NDArray, sr: int) -> dict: ...
+
+def get_emotion_recognizer() -> EmotionRecognizerLike:
+    if EMOTION_AVAILABLE:
+        return EmotionRecognizer()
+    return DummyEmotionRecognizer()
+```
+
+Similar patterns in: `asr_engine.py` (WhisperModelProtocol), `semantic.py` (SemanticAnnotator), `diarization.py` (stub mode).
+
+### Type Checking Commands
+
+```bash
+# Run mypy locally (same as CI)
+uv run mypy transcription/ tests/test_llm_utils.py tests/test_writers.py tests/test_turn_helpers.py tests/test_audio_state_schema.py
+
+# Quick verification (includes type checking)
+uv run slower-whisper-verify --quick
+```
+
+### Guidelines for New Code
+
+- **DO**: Add type annotations to new functions and classes
+- **DO**: Use protocols for optional dependency interfaces
+- **DO**: Document `cast()` usage with comments explaining why
+- **DON'T**: Add `# type: ignore` without explanation
+- **DON'T**: Use `Any` in return types of public API functions
+
+See `docs/TYPING_POLICY.md` for complete typing standards.
 
 ## Code Style and Quality
 

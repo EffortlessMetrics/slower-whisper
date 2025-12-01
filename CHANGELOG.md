@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-01-XX
+
+### Maintenance
+
+- **Typed Core Baseline**: All 39 modules in `transcription/` now pass mypy with zero errors. Strategic test modules (`test_llm_utils.py`, `test_writers.py`, `test_turn_helpers.py`, `test_audio_state_schema.py`) are also type-checked.
+- **Type System Documentation**: Added `docs/TYPING_POLICY.md` documenting typing standards, gradual typing strategy, and protocol patterns for optional dependencies.
+- **One-Command Verification**: Enhanced `slower-whisper-verify` to include typed test modules in mypy checks, matching CI exactly.
+- **CI Sync**: Type checking job now runs mypy on both `transcription/` and strategic test modules.
+- **Streaming Skeleton**: Added `transcription/streaming.py` with typed session/event interfaces (NotImplementedError bodies, v2.0 prep).
+- **Semantic CLI Integration**: `--enable-semantics` flag wired into enrich command, invoking `KeywordSemanticAnnotator` to populate `annotations.semantic`.
+
+### Documentation
+
+- Updated CLAUDE.md with "Type System Baseline" section listing typed modules and patterns.
+- Updated ROADMAP.md to mark type hardening as Done.
+- Added concrete Python type definitions to `docs/STREAMING_ARCHITECTURE.md`.
+
+## [1.3.0] - 2026-01-15
+
+### Added
+- **Turn-aware chunking + exports:** Introduced `chunks[]` with turn boundaries, CSV/HTML/VTT/TextGrid exporters, and a `slower-whisper export` CLI command.
+- **Validation pipeline:** `slower-whisper validate` with schema v2 JSON Schema publishing and `validate` CLI/BDD coverage.
+- **LLM ecosystem adapters:** Official LangChain and LlamaIndex loaders plus speaker-aware summarization example (`examples/llm_integration/speaker_aware_summary.py`).
+- **Semantic annotation (opt-in):** Keyword-based `SemanticAnnotator` feeding `annotations.semantic` with guardrails; flags exposed via config/CLI.
+- **Performance harness:** Throughput probe + `docs/PERFORMANCE.md` to baseline GPU/CPU paths.
+
+### Evaluation
+- **ASR WER harness** with `benchmarks/ASR_REPORT.md`/`.json` (tiny manifest, CPU-friendly profiles).
+- **Diarization DER harness** emitting `benchmarks/DIARIZATION_REPORT.md`/`.json` (synthetic fixtures; pyannote-backed run pending HF token).
+- **Speaker analytics MVP** showing enriched prompts preferred 5/5 on the tiny offline set (`benchmarks/SPEAKER_ANALYTICS_MVP.md`).
+
+### Examples
+- Metrics/KPIs script in `examples/metrics/` and redaction walkthrough in `examples/redaction/`.
+
+## [1.2.0] - 2025-12-01
+
+### Added
+- **Speaker analytics layer**:
+  - Turn metadata (`turns[].metadata`): `question_count`,
+    `interruption_started_here`, `avg_pause_ms`, `disfluency_ratio`.
+  - Per-speaker aggregates (`speaker_stats[]`): talk time, turn counts,
+    interruptions initiated/received, question turns, plus prosody and sentiment
+    summaries.
+- **Analytics controls**: Config + CLI flags for turn metadata and speaker
+  stats, respecting `skip_existing`. Diarization metadata now surfaces
+  `disabled`/`skipped`/`ok`/`error` states even when diarization is off.
+- **Serialization + LLM patterns**: JSON round-tripping for turns,
+  speaker_stats, and diarization metadata; `docs/LLM_PROMPT_PATTERNS.md`
+  updated with speaker-aware Pattern 6.
+
+### Fixed
+- `_estimate_disfluency_ratio` now handles empty/punctuation-only text; tests
+  cover disfluency/interruption heuristics plus pipeline/CLI integration.
+
 ## [1.1.0] - 2025-11-18
 
 This release adds **experimental speaker diarization** and **first-class LLM integration** to slower-whisper, enabling speaker-aware conversation analysis with LLMs.

@@ -20,14 +20,17 @@ from . import __version__
 from . import api as api_module
 from .config import EnrichmentConfig, TranscriptionConfig, validate_diarization_settings
 from .exceptions import ConfigurationError, SlowerWhisperError
+from .exporters import SUPPORTED_EXPORT_FORMATS, export_transcript
+from .models import Transcript
+from .validation import DEFAULT_SCHEMA_PATH, validate_many
 
 
 # Expose API functions for compatibility with tests/patching while delegating to api module
-def transcribe_directory(*args, **kwargs):
+def transcribe_directory(*args, **kwargs) -> list[Transcript]:
     return api_module.transcribe_directory(*args, **kwargs)
 
 
-def enrich_directory(*args, **kwargs):
+def enrich_directory(*args, **kwargs) -> list[Transcript]:
     return api_module.enrich_directory(*args, **kwargs)
 
 
@@ -109,6 +112,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip files with existing JSON in whisper_json/ (default: True).",
     )
     p_trans.add_argument(
+        "--enable-chunking",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Emit turn-aware chunks for RAG/export (default: False).",
+    )
+    p_trans.add_argument(
+        "--chunk-target-duration-s",
+        type=float,
+        default=None,
+        help="Soft target chunk duration in seconds (default: 30).",
+    )
+    p_trans.add_argument(
+        "--chunk-max-duration-s",
+        type=float,
+        default=None,
+        help="Hard max chunk duration in seconds (default: 45).",
+    )
+    p_trans.add_argument(
+        "--chunk-target-tokens",
+        type=int,
+        default=None,
+        help="Approximate max tokens per chunk before splitting (default: 400).",
+    )
+    p_trans.add_argument(
+        "--chunk-pause-split-threshold-s",
+        type=float,
+        default=None,
+        help="Split on pauses >= this length when near target size (default: 1.5).",
+    )
+    p_trans.add_argument(
         "--enable-diarization",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -185,6 +218,34 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Enable categorical emotion (slower, default: False).",
+    )
+    p_enrich.add_argument(
+        "--enable-turn-metadata",
+        dest="enable_turn_metadata",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Populate turn metadata (questions, pauses, disfluency) (default: True).",
+    )
+    p_enrich.add_argument(
+        "--enable-speaker-stats",
+        dest="enable_speaker_stats",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Compute per-speaker aggregates (default: True).",
+    )
+    p_enrich.add_argument(
+        "--enable-semantics",
+        dest="enable_semantic_annotator",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Run keyword-based semantic annotation, writing to annotations.semantic (default: False).",
+    )
+    p_enrich.add_argument(
+        "--enable-speaker-analytics",
+        dest="enable_speaker_analytics",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Convenience flag to enable/disable both turn metadata and speaker stats together.",
     )
     p_enrich.add_argument(
         "--device",
@@ -279,6 +340,57 @@ def build_parser() -> argparse.ArgumentParser:
         help="Number of speakers to generate (default: 2).",
     )
 
+    # ============================================================================
+    # export subcommand
+    # ============================================================================
+    p_export = subparsers.add_parser(
+        "export",
+        help="Export a transcript JSON into CSV/HTML/VTT/TextGrid.",
+    )
+    p_export.add_argument(
+        "transcript",
+        type=Path,
+        help="Path to transcript JSON.",
+    )
+    p_export.add_argument(
+        "--format",
+        choices=sorted(SUPPORTED_EXPORT_FORMATS),
+        required=True,
+        help="Target export format.",
+    )
+    p_export.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output path (default: derive from transcript name).",
+    )
+    p_export.add_argument(
+        "--unit",
+        choices=["segments", "turns"],
+        default="segments",
+        help="Row unit to export (default: segments).",
+    )
+
+    # ============================================================================
+    # validate subcommand
+    # ============================================================================
+    p_validate = subparsers.add_parser(
+        "validate",
+        help="Validate transcript JSON against the v2 schema.",
+    )
+    p_validate.add_argument(
+        "transcripts",
+        nargs="+",
+        type=Path,
+        help="Transcript JSON files to validate.",
+    )
+    p_validate.add_argument(
+        "--schema",
+        type=Path,
+        default=None,
+        help=f"Override schema path (default: {DEFAULT_SCHEMA_PATH})",
+    )
+
     return parser
 
 
@@ -336,6 +448,21 @@ def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> 
             skip_existing_json=override.skip_existing_json
             if override.skip_existing_json != base.skip_existing_json
             else base.skip_existing_json,
+            enable_chunking=override.enable_chunking
+            if override.enable_chunking != base.enable_chunking
+            else base.enable_chunking,
+            chunk_target_duration_s=override.chunk_target_duration_s
+            if override.chunk_target_duration_s != base.chunk_target_duration_s
+            else base.chunk_target_duration_s,
+            chunk_max_duration_s=override.chunk_max_duration_s
+            if override.chunk_max_duration_s != base.chunk_max_duration_s
+            else base.chunk_max_duration_s,
+            chunk_target_tokens=override.chunk_target_tokens
+            if override.chunk_target_tokens != base.chunk_target_tokens
+            else base.chunk_target_tokens,
+            chunk_pause_split_threshold_s=override.chunk_pause_split_threshold_s
+            if override.chunk_pause_split_threshold_s != base.chunk_pause_split_threshold_s
+            else base.chunk_pause_split_threshold_s,
             enable_diarization=override.enable_diarization
             if override.enable_diarization != base.enable_diarization
             else base.enable_diarization,
@@ -369,6 +496,21 @@ def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> 
         skip_existing_json=override.skip_existing_json
         if "skip_existing_json" in source_fields
         else base.skip_existing_json,
+        enable_chunking=override.enable_chunking
+        if "enable_chunking" in source_fields
+        else base.enable_chunking,
+        chunk_target_duration_s=override.chunk_target_duration_s
+        if "chunk_target_duration_s" in source_fields
+        else base.chunk_target_duration_s,
+        chunk_max_duration_s=override.chunk_max_duration_s
+        if "chunk_max_duration_s" in source_fields
+        else base.chunk_max_duration_s,
+        chunk_target_tokens=override.chunk_target_tokens
+        if "chunk_target_tokens" in source_fields
+        else base.chunk_target_tokens,
+        chunk_pause_split_threshold_s=override.chunk_pause_split_threshold_s
+        if "chunk_pause_split_threshold_s" in source_fields
+        else base.chunk_pause_split_threshold_s,
         enable_diarization=override.enable_diarization
         if "enable_diarization" in source_fields
         else base.enable_diarization,
@@ -423,6 +565,15 @@ def _merge_enrich_configs(base: EnrichmentConfig, override: EnrichmentConfig) ->
             enable_categorical_emotion=override.enable_categorical_emotion
             if override.enable_categorical_emotion != base.enable_categorical_emotion
             else base.enable_categorical_emotion,
+            enable_semantic_annotator=override.enable_semantic_annotator
+            if override.enable_semantic_annotator != base.enable_semantic_annotator
+            else base.enable_semantic_annotator,
+            enable_turn_metadata=override.enable_turn_metadata
+            if override.enable_turn_metadata != base.enable_turn_metadata
+            else base.enable_turn_metadata,
+            enable_speaker_stats=override.enable_speaker_stats
+            if override.enable_speaker_stats != base.enable_speaker_stats
+            else base.enable_speaker_stats,
             device=override.device if override.device != base.device else base.device,
             dimensional_model_name=override.dimensional_model_name
             if override.dimensional_model_name != base.dimensional_model_name
@@ -430,6 +581,7 @@ def _merge_enrich_configs(base: EnrichmentConfig, override: EnrichmentConfig) ->
             categorical_model_name=override.categorical_model_name
             if override.categorical_model_name != base.categorical_model_name
             else base.categorical_model_name,
+            semantic_annotator=override.semantic_annotator or base.semantic_annotator,
         )
 
     # Use source_fields to determine which values to override
@@ -446,6 +598,15 @@ def _merge_enrich_configs(base: EnrichmentConfig, override: EnrichmentConfig) ->
         enable_categorical_emotion=override.enable_categorical_emotion
         if "enable_categorical_emotion" in source_fields
         else base.enable_categorical_emotion,
+        enable_semantic_annotator=override.enable_semantic_annotator
+        if "enable_semantic_annotator" in source_fields
+        else base.enable_semantic_annotator,
+        enable_turn_metadata=override.enable_turn_metadata
+        if "enable_turn_metadata" in source_fields
+        else base.enable_turn_metadata,
+        enable_speaker_stats=override.enable_speaker_stats
+        if "enable_speaker_stats" in source_fields
+        else base.enable_speaker_stats,
         device=override.device if "device" in source_fields else base.device,
         dimensional_model_name=override.dimensional_model_name
         if "dimensional_model_name" in source_fields
@@ -453,6 +614,7 @@ def _merge_enrich_configs(base: EnrichmentConfig, override: EnrichmentConfig) ->
         categorical_model_name=override.categorical_model_name
         if "categorical_model_name" in source_fields
         else base.categorical_model_name,
+        semantic_annotator=override.semantic_annotator or base.semantic_annotator,
     )
 
 
@@ -492,6 +654,19 @@ def _config_from_transcribe_args(args: argparse.Namespace) -> TranscriptionConfi
         config = _merge_configs(config, file_config)
 
     # Step 4: Override with explicit CLI flags (only if not None)
+    # Older tests/builders may not populate the newer chunking fields, so use
+    # getattr with a default to keep backwards compatibility.
+    enable_chunking = getattr(args, "enable_chunking", None)
+    chunk_target_duration_s = getattr(args, "chunk_target_duration_s", None)
+    chunk_max_duration_s = getattr(args, "chunk_max_duration_s", None)
+    chunk_target_tokens = getattr(args, "chunk_target_tokens", None)
+    chunk_pause_split_threshold_s = getattr(args, "chunk_pause_split_threshold_s", None)
+    enable_diarization = getattr(args, "enable_diarization", None)
+    diarization_device = getattr(args, "diarization_device", None)
+    min_speakers = getattr(args, "min_speakers", None)
+    max_speakers = getattr(args, "max_speakers", None)
+    overlap_threshold = getattr(args, "overlap_threshold", None)
+
     config = TranscriptionConfig(
         model=args.model if args.model is not None else config.model,
         device=args.device if args.device is not None else config.device,
@@ -505,16 +680,29 @@ def _config_from_transcribe_args(args: argparse.Namespace) -> TranscriptionConfi
         skip_existing_json=args.skip_existing_json
         if args.skip_existing_json is not None
         else config.skip_existing_json,
-        enable_diarization=args.enable_diarization
-        if args.enable_diarization is not None
+        enable_chunking=enable_chunking if enable_chunking is not None else config.enable_chunking,
+        chunk_target_duration_s=chunk_target_duration_s
+        if chunk_target_duration_s is not None
+        else config.chunk_target_duration_s,
+        chunk_max_duration_s=chunk_max_duration_s
+        if chunk_max_duration_s is not None
+        else config.chunk_max_duration_s,
+        chunk_target_tokens=chunk_target_tokens
+        if chunk_target_tokens is not None
+        else config.chunk_target_tokens,
+        chunk_pause_split_threshold_s=chunk_pause_split_threshold_s
+        if chunk_pause_split_threshold_s is not None
+        else config.chunk_pause_split_threshold_s,
+        enable_diarization=enable_diarization
+        if enable_diarization is not None
         else config.enable_diarization,
-        diarization_device=args.diarization_device
-        if args.diarization_device is not None
+        diarization_device=diarization_device
+        if diarization_device is not None
         else config.diarization_device,
-        min_speakers=args.min_speakers if args.min_speakers is not None else config.min_speakers,
-        max_speakers=args.max_speakers if args.max_speakers is not None else config.max_speakers,
-        overlap_threshold=args.overlap_threshold
-        if args.overlap_threshold is not None
+        min_speakers=min_speakers if min_speakers is not None else config.min_speakers,
+        max_speakers=max_speakers if max_speakers is not None else config.max_speakers,
+        overlap_threshold=overlap_threshold
+        if overlap_threshold is not None
         else config.overlap_threshold,
     )
 
@@ -577,10 +765,25 @@ def _config_from_enrich_args(args: argparse.Namespace) -> EnrichmentConfig:
         enable_categorical_emotion=args.enable_categorical_emotion
         if args.enable_categorical_emotion is not None
         else config.enable_categorical_emotion,
+        enable_semantic_annotator=args.enable_semantic_annotator
+        if args.enable_semantic_annotator is not None
+        else config.enable_semantic_annotator,
+        enable_turn_metadata=args.enable_turn_metadata
+        if args.enable_turn_metadata is not None
+        else config.enable_turn_metadata,
+        enable_speaker_stats=args.enable_speaker_stats
+        if args.enable_speaker_stats is not None
+        else config.enable_speaker_stats,
         device=args.device if args.device is not None else config.device,
         dimensional_model_name=config.dimensional_model_name,
         categorical_model_name=config.categorical_model_name,
+        semantic_annotator=config.semantic_annotator,
     )
+
+    # Convenience flag overrides granular analytics flags if provided
+    if args.enable_speaker_analytics is not None:
+        config.enable_turn_metadata = args.enable_speaker_analytics
+        config.enable_speaker_stats = args.enable_speaker_analytics
 
     return config
 
@@ -763,6 +966,33 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
         raise RuntimeError(f"Unknown samples action: {args.samples_action}")
 
 
+def _default_export_path(input_path: Path, fmt: str) -> Path:
+    suffix_map = {"csv": ".csv", "html": ".html", "vtt": ".vtt", "textgrid": ".TextGrid"}
+    suffix = suffix_map.get(fmt.lower(), f".{fmt}")
+    return input_path.with_suffix(suffix)
+
+
+def _handle_export_command(args: argparse.Namespace) -> int:
+    transcript = api_module.load_transcript(args.transcript)
+    output_path = args.output or _default_export_path(args.transcript, args.format)
+    export_transcript(transcript, args.format, output_path, unit=args.unit)
+    print(f"[done] Wrote {args.format} to {output_path}")
+    return 0
+
+
+def _handle_validate_command(args: argparse.Namespace) -> int:
+    schema_path = args.schema or DEFAULT_SCHEMA_PATH
+    failures = validate_many(args.transcripts, schema_path=schema_path)
+    if failures:
+        print("Validation failed:")
+        for err in failures:
+            print(f"- {err}")
+        return 1
+
+    print(f"[ok] {len(args.transcripts)} transcript(s) valid against {schema_path}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """
     Main CLI entry point.
@@ -806,6 +1036,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         elif args.command == "samples":
             return _handle_samples_command(args)
+
+        elif args.command == "export":
+            return _handle_export_command(args)
+
+        elif args.command == "validate":
+            return _handle_validate_command(args)
 
         else:
             parser.error(f"Unknown command: {args.command}")

@@ -16,6 +16,8 @@ from transcription.audio_utils import AudioSegmentExtractor
 from transcription.models import SCHEMA_VERSION, Segment, Transcript
 from transcription.writers import load_transcript_from_json, write_json
 
+pytestmark = pytest.mark.integration
+
 # Check for optional dependencies
 EMOTION_AVAILABLE = True
 PROSODY_AVAILABLE = True

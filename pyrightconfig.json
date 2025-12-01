@@ -1,0 +1,17 @@
+{
+  "include": ["transcription"],
+  "exclude": ["tests", "benchmarks", "examples", "integrations"],
+  "typeCheckingMode": "standard",
+  "pythonVersion": "3.10",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning",
+  "reportGeneralTypeIssues": "warning",
+  "reportOptionalMemberAccess": "warning",
+  "reportOptionalSubscript": "warning",
+  "reportPrivateImportUsage": "warning",
+  "stubPath": "",
+  "venvPath": ".",
+  "venv": ".venv"
+}
