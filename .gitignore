@@ -54,6 +54,7 @@ ENV/
 htmlcov/
 .tox/
 .nox/
+.benchmarks/
 coverage.xml
 coverage.json
 *.cover

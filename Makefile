@@ -48,6 +48,6 @@ format:
 	uv run ruff format transcription/ tests/
 
 clean:
-	rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete
+	rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage dist build slower_whisper.egg-info .benchmarks
+	find . -type d -name __pycache__ -not -path "./.venv/*" -not -path "./.direnv/*" -not -path "./.cache/*" -not -path "./.git/*" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -not -path "./.venv/*" -not -path "./.direnv/*" -not -path "./.cache/*" -not -path "./.git/*" -delete
