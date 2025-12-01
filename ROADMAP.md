@@ -1,9 +1,12 @@
 # slower-whisper Roadmap
 
-**Current Version:** v1.0.0 (Production Ready)
-**Last Updated:** 2025-11-17
+**Current Version:** v1.1.0 (Diarization + LLM rendering)
+**Last Updated:** 2025-11-30
+<!-- cspell:ignore pyannote disfluency disfluencies langchain llamaindex Praat
+cuda qwen Qwen Smol Neur INTERSPEECH IEMOCAP multimodal mypy -->
 
-This roadmap outlines the evolution from **transcription tool** to **local conversation intelligence infrastructure**.
+This roadmap outlines the evolution from **transcription tool** to **local
+conversation intelligence infrastructure**.
 
 See [VISION.md](VISION.md) for strategic positioning and long-term goals.
 
@@ -15,16 +18,18 @@ See [VISION.md](VISION.md) for strategic positioning and long-term goals.
 - **v2.x** — Real-time, streaming, and architectural extensibility
 - **v3.x** — Semantic understanding and domain specialization
 
-**Principle**: Each major version adds **layers**, not rewrites. v1.x JSON is forward-compatible with v2.x readers.
+**Principle**: Each major version adds **layers**, not rewrites.
+v1.x JSON is forward-compatible with v2.x readers.
 
 ---
 
 ## v1.0.0 — Production Foundation (SHIPPED ✅)
 
 **Released:** 2025-11-17
-**Status:** Stable, in production use
+**Status:** Stable and supported; superseded by v1.1.0 for diarization/LLM
+features
 
-### What Shipped
+### What Shipped (v1.0.0)
 
 **Core Pipeline (Layer 1):**
 
@@ -65,133 +70,54 @@ See [VISION.md](VISION.md) for strategic positioning and long-term goals.
 
 ---
 
-## v1.1.0 — Speaker Foundation (**Target: Q1 2026**)
+## v1.1.0 — Speaker Foundation (SHIPPED ✅)
 
-**Theme:** Add **speaker diarization** and lock in speaker representation in schema.
+**Released:** 2025-11-18
+**Status:** Stable; diarization is opt-in/experimental
 
-**Goal:** Know *who* spoke *when* with confidence scores.
+### What Shipped (v1.1.0)
 
-**Status:** *Released when ready. Dates are targets, not commitments.*
+- **Speaker diarization + turns (Layer 2):** pyannote backend with overlap-aware
+  segment mapping, `speakers[]` table, `turns[]` grouping, and
+  `meta.diarization` (`status`, `requested`, `backend`, `error_type`).
+- **LLM rendering APIs:** `render_conversation_for_llm`,
+  `render_conversation_compact`, and `render_segment` with speaker-label
+  mapping, timestamp/audio-cue options, and graceful degradation when
+  speakers/turns are absent.
+- **Examples, docs, and tests:** Working scripts in `examples/llm_integration/`;
+  documentation (`docs/SPEAKER_DIARIZATION.md`, `docs/LLM_PROMPT_PATTERNS.md`,
+  `examples/llm_integration/README.md`); 21 new tests covering rendering,
+  speaker labels, and edge cases.
+- **CLI & DX:** `--enable-diarization` flag (extra dependencies via
+  `uv sync --extra diarization`), `--version` flag, and updated help text
+  pointing to diarization docs.
+- **Schema compatibility:** Speakers/turns remain optional in schema v2 with
+  normalized string speaker IDs end-to-end.
 
-### Core Features
+### v1.1.x Hardening (short-term priorities)
 
-#### 1. Speaker Diarization (Layer 2)
-
-**Implementation:**
-
-- Integrate pyannote.audio for speaker diarization
-- Map diarization segments to Whisper segments via time overlap
-- Populate `segment.speaker = {id, confidence, alternatives}`
-- Build global `speakers[]` table with cluster IDs
-
-**Schema additions:**
-
-```json
-"speakers": [
-  {
-    "id": "spk_0",
-    "label": "Speaker A",
-    "role_hint": null,          // Always null in v1.1 (manual annotation in v1.2+)
-    "cluster_confidence": 0.93
-  }
-],
-"segments": [
-  {
-    "speaker": {
-      "id": "spk_1",
-      "confidence": 0.86,
-      "alternatives": [{"id": "spk_0", "confidence": 0.10}],
-      "source": "pyannote-3.1"
-    }
-  }
-]
-```
-
-#### 2. Basic Turn Grouping
-
-**Implementation:**
-
-- Group contiguous segments from same speaker into `turns[]`
-- **No metadata yet** (deferred to v1.2)
-- Simple structure: turn ID, speaker ID, segment IDs, time bounds
-
-**Schema additions:**
-
-```json
-"turns": [
-  {
-    "id": "turn_17",
-    "speaker_id": "spk_1",
-    "segment_ids": [23, 24],
-    "start": 123.45,
-    "end": 140.10
-  }
-]
-```
-
-#### 3. Per-Speaker Prosody Baselines
-
-**Integration with existing prosody:**
-
-- Compute baseline pitch/energy/rate **per speaker** (not global)
-- "high pitch" = above *that speaker's* median
-- Update `audio_enrichment.py` to use speaker-aware baselines
-
-**Testing:**
-
-BDD scenario:
-```gherkin
-Scenario: Per-speaker prosody baselines
-  Given a 2-speaker conversation
-  And Speaker A has low baseline pitch (120 Hz median)
-  And Speaker B has high baseline pitch (220 Hz median)
-  When I enrich the transcript with prosody
-  Then Speaker A at 160 Hz is labeled "high pitch"
-  And Speaker B at 200 Hz is labeled "low pitch"
-```
-
-### Testing & Validation
-
-**Minimal test battery (see `docs/TESTING_STRATEGY.md`):**
-
-- ✅ Synthetic 2-speaker audio → exactly 2 speakers detected
-- ✅ Synthetic A-B-A-B conversation → 4 turns detected
-- ✅ AMI Meeting Corpus (10 files) → DER < 0.25
-- ✅ BDD scenario: "2-speaker file produces speakers[] with 2 entries"
-
-**Success criteria:**
-
-- Diarization error rate (DER) < 0.25 on AMI subset
-- Speaker count correct on 90%+ of synthetic test files
-- No crashes on single-speaker or silent segments
-
-### Developer Experience
-
-- `--enable-diarization` flag for CLI
-- Progress indicators for diarization pass
-- Clear error messages when pyannote models fail to download
-
-### Deliverables
-
-- [ ] Speaker diarization module (`transcription/diarization.py`)
-- [ ] Basic turn builder (`transcription/turns.py`)
-- [ ] Per-speaker baseline integration in `audio_enrichment.py`
-- [ ] BDD scenarios for speaker correctness
-- [ ] Documentation: `docs/SPEAKER_DIARIZATION.md`
-- [ ] Updated JSON schema examples in README
-- [ ] Dependency group: `uv sync --extra diarization`
+- Benchmark diarization on AMI subset and synthetic fixtures (DER < 0.25;
+  correct speaker counts on >90% synthetic cases).
+- Add BDD/fixture coverage for diarization correctness (two-speaker success,
+  overlap resilience) and wire into CI smoke tests.
+- Improve operational UX: clearer pyannote download/auth errors, progress
+  indicators when `--enable-diarization` is used, structured failure reasons
+  surfaced via `meta.diarization`.
+- Document and monitor regression guardrails in `docs/TESTING_STRATEGY.md` and
+  existing diarization trace docs.
 
 ---
 
 ## v1.2.0 — Speaker Analytics & Evaluation (**Target: Q2 2026**)
 
-**Theme:** Make speaker data **useful for LLMs** with turn metadata, stats, and prompt builders.
+**Theme:** Make speaker data **useful for LLMs** with turn metadata, stats, and
+prompt builders built on the v1.1 diarization layer.
 
 **Goal:** Enable speaker-aware summarization, QA, and coaching use cases.
 
 **Status:** *Released when ready. Dates are targets, not commitments.*
 
-### Core Features
+### Core Features (v1.2.0)
 
 #### 1. Turn Metadata
 
@@ -251,7 +177,7 @@ Scenario: Per-speaker prosody baselines
 
 #### 3. Prompt Builder Utilities
 
-**Python utilities for LLM consumption:**
+**Extend v1.1 rendering with analytics-aware helpers:**
 
 ```python
 from transcription import load_transcript, to_turn_view, to_speaker_summary
@@ -270,7 +196,7 @@ full_prompt = f"{speaker_info}\n\nConversation:\n{prompt_text}"
 
 **Output example:**
 
-```
+```text
 Speakers:
 - Speaker A (spk_0): 65% talk time, 4 interruptions initiated
 - Speaker B (spk_1): 35% talk time, 1 interruption initiated
@@ -305,19 +231,22 @@ uv run python benchmarks/eval_speaker_utility.py \
 **Success criteria:**
 
 - Enriched condition wins >60% of pairwise comparisons
-- Clear examples where speaker info helps (e.g., "Agent said X, customer objected with Y")
+- Clear examples where speaker info helps (e.g., "Agent said X, customer
+  objected with Y")
 
-### Developer Experience
+### Developer Experience (v1.2.0)
 
 - `--role-hint` CLI flag for manual speaker role annotation:
+
   ```bash
   slower-whisper transcribe --enable-diarization \
     --role-hint spk_0=agent,spk_1=customer
   ```
+
 - Progress bars for turn analysis
 - Example scripts showing LLM integration
 
-### Deliverables
+### Deliverables (v1.2.0)
 
 - [ ] Turn metadata builder (extends `transcription/turns.py`)
 - [ ] Speaker stats aggregator (`transcription/speaker_stats.py`)
@@ -331,13 +260,15 @@ uv run python benchmarks/eval_speaker_utility.py \
 
 ## v1.3.0 — LLM Ecosystem Integration (**Target: Q3 2026**)
 
-**Theme:** Make slower-whisper **trivial to use** with LangChain, LlamaIndex, and vector DBs.
+**Theme:** Make slower-whisper **trivial to use** with LangChain, LlamaIndex,
+and vector DBs.
 
-**Goal:** Become the standard input layer for conversation-aware LLM applications.
+**Goal:** Become the standard input layer for conversation-aware LLM
+applications.
 
 **Status:** *Released when ready. Dates are targets, not commitments.*
 
-### Core Features
+### Core Features (v1.3.0)
 
 #### 1. Intelligent Chunking
 
@@ -413,9 +344,11 @@ response = query_engine.query("Where did the customer express frustration?")
 **Additional outputs for analysis and interoperability:**
 
 - **WebVTT**: Web video subtitles with speaker labels
-- **CSV**: Tabular format (id, start, end, speaker, text, valence, arousal, pitch, energy)
+- **CSV**: Tabular format (id, start, end, speaker, text, valence, arousal,
+  pitch, energy)
 - **Annotated HTML**: Web viewing with speaker colors and audio_state tooltips
-- **Praat TextGrid**: For phonetics research (tier per speaker, prosody annotations)
+- **Praat TextGrid**: For phonetics research (tier per speaker, prosody
+  annotations)
 
 **Example:**
 
@@ -438,15 +371,17 @@ slower-whisper export meeting.json --format html --output meeting.html
 
 **Stability guarantee:**
 
-> Within schema v2.x, core fields (`audio`, `meta`, `speakers`, `segments`, `turns`, `chunks`) will NOT change meaning. Optional fields may be added but never removed without a major version bump.
+> Within schema v2.x, core fields (`audio`, `meta`, `speakers`, `segments`,
+> `turns`, `chunks`) will NOT change meaning. Optional fields may be added but
+> never removed without a major version bump.
 
-### Developer Experience
+### Developer Experience (v1.3.0)
 
 - Compact export mode: `--fields text,speaker,audio_state.rendering`
 - JSON Schema validation: `slower-whisper validate meeting.json`
 - Examples for every integration (LangChain, LlamaIndex, pandas, DuckDB)
 
-### Deliverables
+### Deliverables (v1.3.0)
 
 - [ ] Chunking implementation (`transcription/chunking.py`)
 - [ ] LangChain loader (`integrations/langchain_loader.py`)
@@ -460,13 +395,15 @@ slower-whisper export meeting.json --format html --output meeting.html
 
 ## v2.0.0 — Streaming, Semantic Layer & Extensibility (**Target: Q4 2026**)
 
-**Theme:** Real-time processing + optional semantic enrichment (Layer 3) + plugin architecture.
+**Theme:** Real-time processing + optional semantic enrichment (Layer 3) +
+plugin architecture.
 
-**Goal:** Production-ready for live use cases + semantic understanding for power users.
+**Goal:** Production-ready for live use cases + semantic understanding for power
+users.
 
 **Status:** *Released when ready. Major version = breaking changes allowed.*
 
-### Core Features
+### Core Features (v2.0.0)
 
 #### 1. Streaming Transcription & Enrichment
 
@@ -499,7 +436,7 @@ annotations = annotator.run(transcript, chunk)
 ```json
 "chunks": [
   {
-    "summary": "Customer expresses pricing concerns; agent offers alternatives.",
+    "summary": "Customer voices pricing concern; agent offers alternatives.",
     "semantic_tags": ["objection", "pricing_discussion"],
     "annotations": {
       "llm": [  // Reserved for v2.0+ semantic layer; empty in v1.x
@@ -514,7 +451,8 @@ annotations = annotator.run(transcript, chunk)
 ]
 ```
 
-**Note:** These fields are **not populated in v1.x** unless you write custom plugins.
+**Note:** These fields are **not populated in v1.x** unless you write custom
+plugins.
 
 **Design constraints:**
 
@@ -576,7 +514,7 @@ def extract_custom_feature(segment, audio):
 - Automatic migration tool: `slower-whisper migrate v1-to-v2 transcript.json`
 - Compatibility mode: `--schema-version 1` to read old files
 
-### Deliverables
+### Deliverables (v2.0.0)
 
 - [ ] Streaming ASR module (`transcription/streaming.py`)
 - [ ] Semantic annotator interface (`transcription/semantic.py`)
@@ -585,7 +523,8 @@ def extract_custom_feature(segment, audio):
 - [ ] Cloud storage backends
 - [ ] K8s operator (CRDs, controllers)
 - [ ] Migration tooling
-- [ ] Documentation: Streaming guide, semantic enrichment guide, plugin development guide
+- [ ] Documentation: Streaming guide, semantic enrichment guide, plugin
+  development guide
 
 ---
 
@@ -593,7 +532,7 @@ def extract_custom_feature(segment, audio):
 
 **Theme:** Semantic understanding + domain specialization.
 
-### Core Features
+### Core Features (v3.0.0)
 
 #### 1. Semantic Audio Analysis
 
@@ -663,22 +602,29 @@ def extract_custom_feature(segment, audio):
 
 ## Contribution Opportunities
 
-### High Priority (v1.1)
+### High Priority (v1.1.x hardening)
 
-- [ ] Speaker diarization implementation
-- [ ] Turn structure builder
-- [ ] Evaluation harness on AMI/IEMOCAP
+- [ ] Diarization benchmarking on AMI subset + synthetic fixtures; publish DER
+  and speaker-count results
+- [ ] CI/BDD coverage for diarization correctness (two-speaker success,
+  overlap resilience)
+- [ ] pyannote download/auth UX and progress messaging for
+  `--enable-diarization`
 - [ ] JSON Schema (draft-07) validation file
 
-### Medium Priority (v1.2)
+### Next Up (v1.2 readiness)
+
+- [ ] Turn metadata builder and speaker stats aggregator
+- [ ] Prompt builder utilities aligned with analytics data
+- [ ] MVP evaluation harness on AMI/IEMOCAP for speaker utility
+- [ ] Speaker-aware examples (summarization, QA)
+
+### Integrations & Research (v1.3+)
 
 - [ ] LangChain adapter
 - [ ] LlamaIndex adapter
 - [ ] WebVTT / CSV / HTML exporters
 - [ ] Praat TextGrid export
-
-### Research Contributions (v1.3+)
-
 - [ ] Custom SER (speech emotion recognition) models
 - [ ] Prosody feature experiments
 - [ ] Multi-language support
@@ -709,7 +655,7 @@ This roadmap is a living document. Priorities shift based on:
 
 ## Deprecation Policy
 
-**Current Deprecations:** None (v1.0.0 is stable)
+**Current Deprecations:** None (v1.1.0 is stable; diarization remains opt-in)
 
 **Future Deprecation Timeline:**
 
@@ -719,7 +665,7 @@ This roadmap is a living document. Priorities shift based on:
 
 **Example:**
 
-```
+```text
 v1.8.0: Deprecate legacy CLI (announce only)
 v1.9.0: Legacy CLI works but logs warnings
 v2.0.0: Legacy CLI removed (unified CLI only)
@@ -731,15 +677,21 @@ v2.0.0: Legacy CLI removed (unified CLI only)
 
 See [VISION.md](VISION.md) for complete strategic vision.
 
-**Mission:** Make acoustic information accessible to text-based AI systems, enabling truly multimodal understanding of human communication.
+**Mission:** Make acoustic information accessible to text-based AI systems,
+enabling truly multimodal understanding of human communication.
 
 **Goals:**
 
-1. **Universal Acoustic Encoding** — Standard format for representing audio-only information
-2. **Research Accelerator** — Tool of choice for speech, linguistics, and psychology researchers
-3. **Production Grade** — Enterprise-ready for commercial transcription and analytics
-4. **Open Science** — Advance open-source speech AI and contribute to academic research
-5. **Accessibility** — Enable better tools for hearing-impaired, language learners, and assistive technology
+1. **Universal Acoustic Encoding** — Standard format for representing
+   audio-only information
+2. **Research Accelerator** — Tool of choice for speech, linguistics, and
+   psychology researchers
+3. **Production Grade** — Enterprise-ready for commercial transcription and
+   analytics
+4. **Open Science** — Advance open-source speech AI and contribute to
+   academic research
+5. **Accessibility** — Enable better tools for hearing-impaired, language
+   learners, and assistive technology
 
 ---
 
@@ -758,3 +710,5 @@ See [VISION.md](VISION.md) for complete strategic vision.
 
 - 2025-11-17: Initial roadmap created (v1.0.0 release)
 - 2025-11-17: Complete rewrite for layered architecture vision (v1.x focus)
+- 2025-11-30: Updated for v1.1.0 release and diarization/LLM rendering
+  shipment; added v1.1.x hardening priorities
