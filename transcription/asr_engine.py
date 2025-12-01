@@ -32,10 +32,12 @@ try:
     from faster_whisper import WhisperModel as _WhisperModel  # type: ignore[reportMissingTypeStubs]
 
     WhisperModel = _WhisperModel
-    _faster_whisper_available = True
+    _FASTER_WHISPER_AVAILABLE = True
 except Exception:
     WhisperModel = None
-    _faster_whisper_available = False
+    _FASTER_WHISPER_AVAILABLE = False
+# Backward-compatible alias for older references.
+_faster_whisper_available = _FASTER_WHISPER_AVAILABLE
 
 
 class DummyWhisperModel:
@@ -109,7 +111,7 @@ class TranscriptionEngine:
         requested_device = self.cfg.device
         requested_compute_type = self.cfg.compute_type or "int8"
         try:
-            if not _faster_whisper_available or WhisperModel is None:
+            if not _FASTER_WHISPER_AVAILABLE or WhisperModel is None:
                 raise ImportError("faster-whisper not available; using dummy model")
 
             # Use centralized cache for Whisper model downloads

@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import types
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -577,37 +579,48 @@ class TestMissingDependencies:
     mocking at runtime.
     """
 
-    @pytest.mark.skip(reason="Complex to mock import-time dependencies; verified manually")
-    def test_enrich_transcript_missing_dependencies_documented(self):
-        """
-        Document expected behavior when enrichment dependencies are missing.
+    def test_enrich_transcript_missing_dependencies_documented(
+        self, valid_transcript, tmp_path, monkeypatch
+    ):
+        """enrich_transcript should surface a clear EnrichmentError when deps are missing."""
+        audio_path = tmp_path / "test.wav"
+        audio_path.write_bytes(b"\x00\x00")  # File must exist to reach import path
 
-        Expected: EnrichmentError with message containing:
-        - "Missing required dependencies for audio enrichment"
-        - Installation instructions (uv sync --extra full or pip install -e '.[full]')
+        # Simulate missing audio_enrichment dependency (cannot import enrich_transcript_audio)
+        monkeypatch.setitem(
+            sys.modules,
+            "transcription.audio_enrichment",
+            types.ModuleType("transcription.audio_enrichment"),
+        )
 
-        To verify manually:
-        1. Uninstall enrichment dependencies
-        2. Call enrich_transcript() with enable_prosody=True
-        3. Verify proper EnrichmentError is raised
-        """
-        pytest.skip("Manual verification required")
+        with pytest.raises(EnrichmentError) as exc_info:
+            enrich_transcript(valid_transcript, audio_path, EnrichmentConfig(enable_prosody=True))
 
-    @pytest.mark.skip(reason="Complex to mock import-time dependencies; verified manually")
-    def test_enrich_directory_missing_dependencies_documented(self):
-        """
-        Document expected behavior when enrichment dependencies are missing.
+        msg = str(exc_info.value)
+        assert "Missing required dependencies for audio enrichment" in msg
+        assert "Install with" in msg
 
-        Expected: EnrichmentError with message containing:
-        - "Missing required dependencies for audio enrichment"
-        - Installation instructions (pip install -e '.[full]' or uv sync --extra full)
+    def test_enrich_directory_missing_dependencies_documented(
+        self, temp_project_root, valid_transcript, monkeypatch
+    ):
+        """enrich_directory should fail fast with helpful guidance when deps are absent."""
+        json_path = temp_project_root / "whisper_json" / "test.json"
+        save_transcript(valid_transcript, json_path)
+        wav_path = temp_project_root / "input_audio" / "test.wav"
+        wav_path.write_bytes(b"\x00\x00")
 
-        To verify manually:
-        1. Uninstall enrichment dependencies (librosa, parselmouth, etc.)
-        2. Call enrich_directory() with enable_prosody=True
-        3. Verify proper EnrichmentError is raised
-        """
-        pytest.skip("Manual verification required")
+        monkeypatch.setitem(
+            sys.modules,
+            "transcription.audio_enrichment",
+            types.ModuleType("transcription.audio_enrichment"),
+        )
+
+        with pytest.raises(EnrichmentError) as exc_info:
+            enrich_directory(temp_project_root, EnrichmentConfig(enable_prosody=True))
+
+        msg = str(exc_info.value)
+        assert "Missing required dependencies for audio enrichment" in msg
+        assert "pip install -e" in msg or "uv sync" in msg
 
 
 # ============================================================================
@@ -618,7 +631,6 @@ class TestMissingDependencies:
 class TestCorruptedAudioFiles:
     """Test error handling for corrupted or invalid audio files."""
 
-    @pytest.mark.skip(reason="Requires enrichment dependencies; tested in integration")
     def test_enrich_transcript_invalid_wav_file(self, valid_transcript, tmp_path):
         """Test enrich_transcript handles corrupted WAV file gracefully."""
         # Create a fake WAV file (not actually valid WAV format)
@@ -627,11 +639,20 @@ class TestCorruptedAudioFiles:
 
         config = EnrichmentConfig(enable_prosody=True)
 
-        # The function should raise EnrichmentError with informative message
-        with pytest.raises(EnrichmentError) as exc_info:
-            enrich_transcript(valid_transcript, fake_wav, config)
+        # Force enrichment backend to raise to exercise fallback path
+        module = types.SimpleNamespace(
+            enrich_transcript_audio=lambda **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("decode failure")
+            )
+        )
+        with patch.dict("sys.modules", {"transcription.audio_enrichment": module}):
+            enriched = enrich_transcript(valid_transcript, fake_wav, config)
 
-        assert "Failed to enrich transcript" in str(exc_info.value)
+        # Should not raise; segments should receive a neutral audio_state fallback
+        assert enriched.segments[0].audio_state is not None
+        rendering = enriched.segments[0].audio_state.get("rendering")
+        assert rendering is not None
+        assert "neutral" in str(rendering).lower()
 
     def test_transcribe_file_normalization_failure(self, temp_project_root, tmp_path):
         """Test transcribe_file raises TranscriptionError when audio normalization fails."""
@@ -872,7 +893,6 @@ class TestAPIExceptionRaising:
         # Verify the original exception is preserved
         assert exc_info.value.__cause__ is not None
 
-    @pytest.mark.skip(reason="Requires enrichment dependencies; tested in integration")
     def test_enrich_directory_partial_failures_reported(self, temp_project_root, valid_transcript):
         """Test enrich_directory reports partial failures when some files fail."""
         # Create two JSON files
@@ -1018,12 +1038,16 @@ class TestErrorMessageQuality:
         # Should suggest verification
         assert "ensure" in error_msg.lower() or "verify" in error_msg.lower()
 
-    @pytest.mark.skip(reason="Requires enrichment dependencies; tested in integration")
     def test_enrichment_error_suggests_installation(self, valid_transcript, test_audio_file):
         """Test EnrichmentError suggests installing dependencies."""
-        # This test is documented but skipped as it requires complex mocking
-        # Expected behavior: EnrichmentError with installation instructions
-        pytest.skip("Complex dependency mocking; verified in integration tests")
+        missing_module = types.ModuleType("transcription.audio_enrichment")
+        with patch.dict("sys.modules", {"transcription.audio_enrichment": missing_module}):
+            with pytest.raises(EnrichmentError) as exc_info:
+                enrich_transcript(valid_transcript, test_audio_file, EnrichmentConfig())
+
+        msg = str(exc_info.value)
+        assert "Missing required dependencies for audio enrichment" in msg
+        assert "Install with" in msg
 
     def test_config_error_mentions_valid_values(self, tmp_path):
         """Test configuration errors mention what values are valid."""

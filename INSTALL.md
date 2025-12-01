@@ -57,6 +57,9 @@ uv run slower-whisper transcribe --help
 - Minimal transcription only: `uv sync`
 - Prosody/emotion/diarization: `uv sync --extra full`
 - Diarization requires a HuggingFace token: export `HF_TOKEN=...`
+- Optional diarization modes for tests/CI:
+  - `export SLOWER_WHISPER_PYANNOTE_MODE=stub` (fake backend, still needs HF_TOKEN)
+  - `export SLOWER_WHISPER_PYANNOTE_MODE=missing` (simulate missing dependency)
 - API server: `uv sync --extra api`
 
 ## Quick Test

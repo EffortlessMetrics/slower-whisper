@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 import wave
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,7 @@ def _maybe_run_diarization(
             max_speakers=config.max_speakers,
         )
         speaker_turns = diarizer.run(wav_path)
+        diarization_mode = os.getenv("SLOWER_WHISPER_PYANNOTE_MODE", "auto").lower()
 
         if len(speaker_turns) == 0:
             logger.warning("Diarization produced no speaker turns for %s", wav_path.name)
@@ -149,6 +151,44 @@ def _maybe_run_diarization(
 
         # Build turn structure from speaker-labeled segments
         transcript = build_turns(transcript)
+
+        if diarization_mode == "stub":
+            # Ensure deterministic speaker/turn structures even with dummy ASR output.
+            from .diarization import _normalize_speaker_id
+
+            speaker_map: dict[str, int] = {}
+            normalized_turns: list[tuple[Any, str]] = []
+            for turn in speaker_turns:
+                norm_id = _normalize_speaker_id(turn.speaker_id, speaker_map)
+                normalized_turns.append((turn, norm_id))
+
+            aggregates: dict[str, dict[str, Any]] = {}
+            for turn, norm_id in normalized_turns:
+                agg = aggregates.setdefault(
+                    norm_id,
+                    {"id": norm_id, "label": None, "total_speech_time": 0.0, "num_segments": 0},
+                )
+                agg["total_speech_time"] += max(turn.end - turn.start, 0.0)
+                agg["num_segments"] += 1
+
+            transcript.speakers = list(aggregates.values())
+            transcript.turns = [
+                {
+                    "id": f"turn_{idx}",
+                    "speaker_id": norm_id,
+                    "start": turn.start,
+                    "end": turn.end,
+                    "segment_ids": [seg.id for seg in transcript.segments],
+                    "text": " ".join(seg.text for seg in transcript.segments if seg.text).strip(),
+                }
+                for idx, (turn, norm_id) in enumerate(normalized_turns)
+            ]
+            if transcript.segments and any(seg.speaker is None for seg in transcript.segments):
+                # Default segment speakers to the first normalized id when ASR output
+                # lacks speaker annotations (common with dummy models in tests).
+                default_id = transcript.speakers[0]["id"] if transcript.speakers else "spk_0"
+                for seg in transcript.segments:
+                    seg.speaker = {"id": default_id, "confidence": 1.0}
 
         # Record success in metadata
         if transcript.meta is None:

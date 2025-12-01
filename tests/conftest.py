@@ -7,6 +7,7 @@ This module provides:
 - Test configuration
 """
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -21,6 +22,9 @@ if str(PROJECT_ROOT) not in sys.path:
 # ============================================================================
 # Mock unavailable dependencies to allow tests to run
 # ============================================================================
+
+# Default to auto mode; individual tests can opt into stub/missing.
+os.environ.setdefault("SLOWER_WHISPER_PYANNOTE_MODE", "auto")
 
 
 def mock_module(module_name, attrs=None):
@@ -164,10 +168,12 @@ except ImportError:
 
 # Skip heavy diarization tests when pyannote.audio isn't available
 PYANNOTE_AVAILABLE = True
-try:
-    import pyannote.audio  # noqa: F401
-except Exception:
-    PYANNOTE_AVAILABLE = False
+if PYANNOTE_AVAILABLE:
+    try:
+        import pyannote.audio  # noqa: F401
+    except Exception:
+        sys.modules["pyannote"] = mock_module("pyannote")
+        sys.modules["pyannote.audio"] = mock_module("pyannote.audio", {"Pipeline": MagicMock})
 
 
 def pytest_runtest_setup(item):

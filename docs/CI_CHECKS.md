@@ -156,9 +156,11 @@ uv sync --extra dev
 
 ---
 
-## HF_TOKEN & HuggingFace Cache
+## HF_TOKEN, pyannote mode, & HuggingFace Cache
 
-Some checks (verify, dogfood) require diarization models from HuggingFace.
+Some checks (verify, dogfood) require diarization models from HuggingFace. Even the
+lightweight stub backend expects an `HF_TOKEN`, so set a dummy token if you are not
+running the real model.
 
 ### Local Setup
 
@@ -170,6 +172,8 @@ Some checks (verify, dogfood) require diarization models from HuggingFace.
 
 ```bash
 export HF_TOKEN=hf_...
+# Optional: force stub/missing diarization in local runs
+export SLOWER_WHISPER_PYANNOTE_MODE=stub  # or "missing" to simulate absence
 ```
 
 Then run CI:

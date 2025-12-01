@@ -152,18 +152,20 @@ def project_with_multiple_files(test_state, datatable):
 def set_hf_token(monkeypatch):
     """Simulate presence of HF token for diarization backend."""
     monkeypatch.setenv("HF_TOKEN", "dummy-token")
+    monkeypatch.setenv("SLOWER_WHISPER_PYANNOTE_MODE", "stub")
 
 
 @given("the HF_TOKEN environment variable is not set")
 def unset_hf_token(monkeypatch):
     """Ensure HF token is absent."""
     monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("SLOWER_WHISPER_PYANNOTE_MODE", "auto")
 
 
 @given("pyannote.audio is not installed")
-def skip_without_pyannote():
-    """Skip diarization scenarios when backend is unavailable."""
-    pytest.skip("pyannote.audio not available in this environment")
+def simulate_missing_pyannote(monkeypatch):
+    """Force pyannote to be treated as missing so failure path is exercised."""
+    monkeypatch.setenv("SLOWER_WHISPER_PYANNOTE_MODE", "missing")
 
 
 @given("a project with the synthetic 2-speaker fixture")
@@ -246,6 +248,22 @@ def transcribe_with_diarization(test_state):
         device="cpu",
         enable_diarization=True,
         diarization_device="cpu",
+    )
+    test_state["config"] = config
+    test_state["transcripts"] = transcribe_directory(project_root, config)
+
+
+@when("I transcribe the project with diarization enabled (min=2, max=2)")
+def transcribe_with_fixed_speakers(test_state):
+    """Transcribe with diarization enabled and fixed speaker count hints."""
+    project_root = test_state["project_root"]
+    config = TranscriptionConfig(
+        model="base",
+        device="cpu",
+        enable_diarization=True,
+        diarization_device="cpu",
+        min_speakers=2,
+        max_speakers=2,
     )
     test_state["config"] = config
     test_state["transcripts"] = transcribe_directory(project_root, config)
@@ -454,6 +472,13 @@ def diarization_requested_true(test_state):
         assert transcript.meta and transcript.meta.get("diarization", {}).get("requested") is True
 
 
+@then(parsers.parse('meta.diarization.backend is "{backend}"'))
+def diarization_backend(test_state, backend):
+    for transcript in test_state["transcripts"]:
+        assert transcript.meta
+        assert transcript.meta.get("diarization", {}).get("backend") == backend
+
+
 @then(parsers.parse('meta.diarization.error_type is "{error_type}"'))
 def diarization_error_type(test_state, error_type):
     for transcript in test_state["transcripts"]:
@@ -467,6 +492,54 @@ def diarization_error_type(test_state, error_type):
 def speakers_field_null(test_state):
     for transcript in test_state["transcripts"]:
         assert transcript.speakers is None
+
+
+@then('the "speakers" array is populated with detected speakers')
+def speakers_array_populated(test_state):
+    for transcript in test_state["transcripts"]:
+        assert transcript.speakers is not None
+        assert len(transcript.speakers) > 0
+
+
+@then(parsers.parse("meta.diarization.num_speakers equals {expected:d}"))
+def diarization_num_speakers(test_state, expected: int):
+    for transcript in test_state["transcripts"]:
+        assert transcript.meta
+        assert transcript.meta.get("diarization", {}).get("num_speakers") == expected
+
+
+@then(parsers.parse('the "speakers" array has exactly {count:d} speakers'))
+def speakers_array_count(test_state, count: int):
+    for transcript in test_state["transcripts"]:
+        assert transcript.speakers is not None
+        assert len(transcript.speakers) == count
+
+
+@then('the "turns" array contains turn structure')
+def turns_array_structure(test_state):
+    for transcript in test_state["transcripts"]:
+        assert transcript.turns is not None
+        assert len(transcript.turns) > 0
+        for turn in transcript.turns:
+            assert "speaker_id" in turn
+            assert "start" in turn and "end" in turn
+            assert "segment_ids" in turn
+
+
+@then('the "turns" array has at least 2 turns')
+def turns_array_has_turns(test_state):
+    for transcript in test_state["transcripts"]:
+        assert transcript.turns is not None
+        assert len(transcript.turns) >= 2
+
+
+@then("speaker turns alternate between the two detected speakers")
+def speaker_turns_alternate(test_state):
+    for transcript in test_state["transcripts"]:
+        turns = transcript.turns or []
+        assert len({t.get("speaker_id") for t in turns}) >= 2
+        for idx in range(len(turns) - 1):
+            assert turns[idx].get("speaker_id") != turns[idx + 1].get("speaker_id")
 
 
 @then('the "turns" field is null')

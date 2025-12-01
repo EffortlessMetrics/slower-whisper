@@ -161,9 +161,9 @@ def extract_archive(
             if members:
                 # Filter members by name
                 to_extract = [m for m in tf.getmembers() if m.name in members]
-                tf.extractall(extract_to, members=to_extract)
+                tf.extractall(extract_to, members=to_extract, filter="data")
             else:
-                tf.extractall(extract_to)
+                tf.extractall(extract_to, filter="data")
     else:
         raise ValueError(f"Unsupported archive format: {archive_format}")
 

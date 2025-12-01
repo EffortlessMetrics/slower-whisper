@@ -9,6 +9,11 @@
 - HuggingFace token with access to pyannote models: `export HF_TOKEN=...`
 - ffmpeg (system dependency, required for all slower-whisper operations)
 
+**Backend modes (env: `SLOWER_WHISPER_PYANNOTE_MODE`, default `auto`):**
+- `auto`: real pyannote if installed (requires HF_TOKEN)
+- `stub`: lightweight fake diarization for tests (still requires HF_TOKEN)
+- `missing`: simulate missing dependency/import error for graceful-failure paths
+
 ---
 
 ## Overview

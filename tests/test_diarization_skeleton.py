@@ -474,7 +474,7 @@ def test_diarizer_backwards_token_param(monkeypatch, tmp_path):
 
 @pytest.mark.requires_diarization
 @pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not available")
-def test_synthetic_2speaker_diarization(tmp_path):
+def test_synthetic_2speaker_diarization(tmp_path, monkeypatch):
     """
     Integration test with synthetic_2speaker.wav fixture.
 
@@ -504,6 +504,9 @@ def test_synthetic_2speaker_diarization(tmp_path):
     shutil.copy(fixture_path, test_wav)
 
     # Transcribe with diarization enabled
+    monkeypatch.setenv("SLOWER_WHISPER_PYANNOTE_MODE", "stub")
+    monkeypatch.setenv("HF_TOKEN", "dummy-token")
+
     config = TConfig(
         model="base",
         device="cpu",

@@ -314,6 +314,10 @@ uv sync --extra emotion
 
 # Speaker diarization (v1.1 experimental)
 uv sync --extra diarization
+# Required for any diarization mode (including stub tests)
+export HF_TOKEN=hf_...  # https://huggingface.co/settings/tokens
+# Optional: force stub/missing diarization backends for testing
+export SLOWER_WHISPER_PYANNOTE_MODE=stub  # or "missing" to simulate absence
 
 # Basic enrichment only
 uv sync --extra enrich-basic
@@ -537,6 +541,11 @@ uv sync --extra diarization
 
 # Set HuggingFace token (after accepting pyannote model license)
 export HF_TOKEN=hf_...  # Get from https://huggingface.co/settings/tokens
+# Optional: pick backend behavior for tests and CI (default = "auto")
+#   auto    → real pyannote if available
+#   stub    → lightweight fake diarization (still requires HF_TOKEN)
+#   missing → simulate missing dependency/import failure
+export SLOWER_WHISPER_PYANNOTE_MODE=auto
 
 # Run transcription with diarization enabled
 # Note: Diarization auto-selects GPU if available, otherwise CPU
@@ -569,7 +578,7 @@ transcripts = transcribe_directory("/path/to/project", config)
 **Requirements:**
 
 - HuggingFace account (free) with accepted pyannote.audio model license
-- `HF_TOKEN` environment variable or `~/.cache/huggingface/token`
+- `HF_TOKEN` environment variable (required for real and stub runs)
 - GPU recommended (pyannote.audio is resource-intensive)
 
 **Known Limitations (v1.1 experimental):**

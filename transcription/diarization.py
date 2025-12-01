@@ -38,6 +38,58 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _make_stub_pyannote_pipeline():
+    """
+    Lightweight pyannote-like pipeline used for tests when the real dependency
+    is unavailable. Generates an alternating 2-speaker pattern.
+    """
+
+    def _infer_duration_seconds(audio_path: str | os.PathLike[str]) -> float:
+        try:
+            import soundfile as sf  # type: ignore[reportMissingTypeStubs]
+
+            with sf.SoundFile(audio_path, "r") as f:
+                if f.samplerate:
+                    return max(len(f) / f.samplerate, 0.5)
+        except Exception:
+            pass
+        return 4.0
+
+    class _StubSegment:
+        def __init__(self, start: float, end: float):
+            self.start = start
+            self.end = end
+
+    class _StubAnnotation:
+        def __init__(self, segments: list[tuple[_StubSegment, str]]):
+            # Mirror newer pyannote outputs with speaker_diarization attribute
+            self.speaker_diarization = self
+            self._segments = segments
+
+        def itertracks(self, yield_label: bool = True):
+            for seg, label in self._segments:
+                yield seg, None, label
+
+    class _StubPipeline:
+        @classmethod
+        def from_pretrained(cls, *_args, **_kwargs):
+            return cls()
+
+        def to(self, _device):
+            return self
+
+        def __call__(self, audio_path, **_kwargs):
+            duration = _infer_duration_seconds(audio_path)
+            midpoint = max(duration / 2.0, 0.5)
+            segments = [
+                (_StubSegment(0.0, midpoint), "SPEAKER_00"),
+                (_StubSegment(midpoint, max(duration, midpoint + 0.1)), "SPEAKER_01"),
+            ]
+            return _StubAnnotation(segments)
+
+    return _StubPipeline()
+
+
 @dataclass
 class SpeakerTurn:
     """
@@ -129,6 +181,20 @@ class Diarizer:
             RuntimeError: If HuggingFace token not configured or model load fails.
         """
         if self._pipeline is not None:
+            return self._pipeline
+
+        mode = os.getenv("SLOWER_WHISPER_PYANNOTE_MODE", "auto").lower()
+        if mode == "missing":
+            raise ImportError(
+                "pyannote.audio is unavailable (forced via SLOWER_WHISPER_PYANNOTE_MODE=missing)"
+            )
+        token = os.getenv("HF_TOKEN")
+        if token is None:
+            raise RuntimeError(
+                "HF_TOKEN environment variable is required for pyannote.audio diarization"
+            )
+        if mode == "stub":
+            self._pipeline = _make_stub_pyannote_pipeline()
             return self._pipeline
 
         try:

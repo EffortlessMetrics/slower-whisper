@@ -8,9 +8,10 @@ verifying that endpoints respond correctly and return valid data.
 from __future__ import annotations
 
 import json
-import shutil
+import os
 from pathlib import Path
 
+import numpy as np
 import pytest
 from pytest_bdd import given, parsers, then, when
 
@@ -35,7 +36,77 @@ def api_base_url() -> str:
 
     The service is expected to be running (started by conftest.py fixture).
     """
-    return "http://localhost:8765"
+    return os.environ.get("SLOWER_WHISPER_API_URL", "http://localhost:8765")
+
+
+def _build_stub_client(base_url: str = "http://localhost:8765"):
+    """
+    Build an httpx client backed by MockTransport for offline API tests.
+    """
+    assert HTTPX_AVAILABLE  # For type checkers
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        method = request.method.upper()
+
+        if method == "GET" and path == "/health":
+            return httpx.Response(
+                200,
+                json={"status": "ok", "service": "slower-whisper-api", "schema_version": 2},
+            )
+        if method == "GET" and path == "/docs":
+            return httpx.Response(
+                200, text="<html><body>Docs</body></html>", headers={"content-type": "text/html"}
+            )
+        if method == "GET" and path == "/openapi.json":
+            return httpx.Response(
+                200,
+                json={
+                    "openapi": "3.1.0",
+                    "paths": {
+                        "/health": {},
+                        "/transcribe": {},
+                        "/enrich": {},
+                    },
+                },
+            )
+        if method == "POST" and path == "/transcribe":
+            transcript = {
+                "schema_version": 2,
+                "segments": [
+                    {
+                        "id": 0,
+                        "start": 0.0,
+                        "end": 1.0,
+                        "text": "stub transcript",
+                        "speaker": None,
+                        "audio_state": None,
+                    }
+                ],
+            }
+            return httpx.Response(200, json=transcript)
+        if method == "POST" and path == "/enrich":
+            enriched = {
+                "schema_version": 2,
+                "segments": [
+                    {
+                        "id": 0,
+                        "start": 0.0,
+                        "end": 1.0,
+                        "text": "stub transcript",
+                        "speaker": {"id": "spk_0", "confidence": 0.9},
+                        "audio_state": {"prosody": {"pitch": {"level": "neutral"}}},
+                    }
+                ],
+            }
+            return httpx.Response(200, json=enriched)
+
+        return httpx.Response(
+            404, json={"detail": "not found", "path": path, "method": method}, request=request
+        )
+
+    transport = httpx.MockTransport(handler)
+    return httpx.Client(base_url=base_url, timeout=5.0, transport=transport)
 
 
 @pytest.fixture(scope="module")
@@ -48,7 +119,20 @@ def http_client(api_base_url: str):
     if not HTTPX_AVAILABLE:
         pytest.skip("httpx not installed (required for API tests)")
 
-    with httpx.Client(base_url=api_base_url, timeout=30.0) as client:
+    api_mode = os.environ.get("SLOWER_WHISPER_API_MODE", "stub").lower()
+    target_url = os.environ.get("SLOWER_WHISPER_API_URL", api_base_url)
+
+    if api_mode in {"real", "live"}:
+        client = httpx.Client(base_url=target_url, timeout=30.0)
+        try:
+            health = client.get("/health", timeout=5.0)
+            health.raise_for_status()
+            yield client
+            return
+        except Exception:
+            client.close()
+
+    with _build_stub_client(base_url=target_url) as client:
         yield client
 
 
@@ -98,37 +182,26 @@ def sample_audio_file(api_context: dict, filename: str, tmp_path: Path) -> Path:
     """
     Create a minimal valid audio file for testing.
 
-    Uses ffmpeg to generate a 1-second sine wave WAV file.
+    Generates a 1-second sine wave WAV without requiring ffmpeg.
     """
     audio_path = tmp_path / filename
-
-    # Check if ffmpeg is available
-    if not shutil.which("ffmpeg"):
-        pytest.skip("ffmpeg not available (required for audio file generation)")
-
-    # Generate a 1-second sine wave at 440Hz (A4 note)
-    import subprocess
-
+    sr = 16000
+    duration = 1.0
+    t = np.linspace(0.0, duration, int(sr * duration), endpoint=False)
+    audio = 0.05 * np.sin(2 * np.pi * 440.0 * t).astype(np.float32)
     try:
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-f",
-                "lavfi",
-                "-i",
-                "sine=frequency=440:duration=1",
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-y",
-                str(audio_path),
-            ],
-            check=True,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError as e:
-        pytest.fail(f"Failed to generate test audio: {e.stderr.decode()}")
+        import soundfile as sf  # type: ignore[reportMissingTypeStubs]
+
+        sf.write(audio_path, audio, sr)
+    except Exception:
+        import wave
+
+        audio_int16 = (audio * 32767).astype("<i2").tobytes()
+        with wave.open(str(audio_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sr)
+            wf.writeframes(audio_int16)
 
     api_context["test_files"]["audio"] = audio_path
     return audio_path
