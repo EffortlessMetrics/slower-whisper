@@ -22,7 +22,7 @@ from transcription import (
 
 ## Transcription
 
-### Directory (Batch)
+### Transcribe Directory (Batch)
 
 ```python
 config = TranscriptionConfig(
@@ -48,7 +48,7 @@ transcript = transcribe_file(
 
 ## Enrichment
 
-### Directory (Batch)
+### Enrich Directory (Batch)
 
 ```python
 config = EnrichmentConfig(
@@ -88,7 +88,7 @@ save_transcript(transcript, "output.json")
 
 Settings are loaded in order of priority:
 
-```
+```text
 1. CLI flags (highest priority)
    ↓
 2. Config file (--config or --enrich-config)
@@ -218,6 +218,7 @@ config = EnrichmentConfig(enable_prosody=True, device="cuda")
 ### Configuration File Examples
 
 **Transcription JSON:**
+
 ```json
 {
   "model": "large-v3",
@@ -232,6 +233,7 @@ config = EnrichmentConfig(enable_prosody=True, device="cuda")
 ```
 
 **Transcription JSON (with diarization):**
+
 ```json
 {
   "model": "large-v3",
@@ -244,6 +246,7 @@ config = EnrichmentConfig(enable_prosody=True, device="cuda")
 ```
 
 **Enrichment JSON:**
+
 ```json
 {
   "skip_existing": true,
@@ -403,7 +406,7 @@ except Exception as e:
 
 ## Directory Layout
 
-```
+```text
 project_root/
 ├── raw_audio/           # Input: Original audio files
 ├── input_audio/         # Generated: Normalized 16kHz WAVs
