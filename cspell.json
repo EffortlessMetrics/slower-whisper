@@ -37,6 +37,18 @@
     "soundfile",
     "testpypi",
     "venv",
-    "xdist"
+    "xdist",
+    "Backchanneling",
+    "Dockerfiles",
+    "LOCKDOWN",
+    "Pyannote",
+    "backchanneling",
+    "configmap",
+    "dataclasses",
+    "huggingface",
+    "httpx",
+    "pyannote",
+    "redownloading",
+    "uvicorn"
   ]
 }

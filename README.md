@@ -1,6 +1,6 @@
 # slower-whisper
 
-**Local-first conversation signal engine for LLMs**
+## Local-first conversation signal engine for LLMs
 
 ![Version](https://img.shields.io/badge/version-1.1.0--dev-blue)
 ![Tests](https://img.shields.io/badge/tests-267%20passing-brightgreen)
@@ -64,6 +64,7 @@ bash scripts/setup-env.sh
 ```
 
 The script will:
+
 - ✅ Detect if Nix is installed (recommended)
 - ✅ Guide you through the best setup for your system
 - ⚠️ Warn if using fallback (traditional) setup
@@ -101,20 +102,24 @@ See detailed instructions below for setup, configuration, and advanced features.
 slower-whisper uses a **layered enrichment pipeline** where each layer adds progressively richer conversational context:
 
 ### Layer 0 – Ingestion
+
 - Audio normalization (ffmpeg: 16 kHz mono WAV)
 - Format detection and chunking
 - Audio hashing for caching
 
 ### Layer 1 – ASR (Whisper)
+
 - Fast, deterministic transcription via faster-whisper
 - Timestamped segments with confidence scores
 - Word-level alignment (optional, via WhisperX integration planned)
 - **Fully local, GPU-accelerated**
 
 ### Layer 2 – Acoustic & Structural Enrichment (local, modular)
+
 Optional enrichment passes that never re-run ASR:
 
 **Speaker Diarization** (v1.1 - Experimental)
+
 - Who spoke when, per segment + global speakers table
 - Normalized canonical speaker IDs (`spk_0`, `spk_1`, ...)
 - Turn structure grouping contiguous segments by speaker
@@ -122,22 +127,26 @@ Optional enrichment passes that never re-run ASR:
 - **Status:** Functional but experimental; requires HuggingFace token and pyannote.audio dependency
 
 **Prosody Extraction** (current)
+
 - Pitch (mean, range, contour)
 - Energy (loudness)
 - Speaking rate (syllables/sec)
 - Pause statistics
 
 **Emotion Recognition** (current)
+
 - Dimensional: valence (positive/negative), arousal (calm/excited)
 - Categorical: happy, sad, angry, frustrated, etc.
 
 **Turn & Interaction Structure** (v1.2 planned)
+
 - Speaker statistics (talk time, turn counts)
 - Overlap/interruption detection
 - Question/answer linking
 - Backchanneling and turn-taking analysis
 
 ### Layer 3 – Semantic Enrichment (optional, SLM/MM)
+
 Small local multimodal models for higher-level insights:
 
 - Chunk-level summaries
@@ -148,6 +157,7 @@ Small local multimodal models for higher-level insights:
 **Design principle**: L3 is **opt-in**, chunked (60-120s), and never blocks the core pipeline.
 
 ### Layer 4 – Task-Specific Outputs
+
 Use the enriched JSON for downstream tasks:
 
 - Meeting notes and action item extraction
@@ -156,6 +166,7 @@ Use the enriched JSON for downstream tasks:
 - RAG/vector search with acoustic context
 
 **Key guarantees:**
+
 - 🔒 **Cacheable & resumable** at every layer
 - 🔒 **Versioned JSON schema** with stability contracts
 - 🔒 **BDD scenarios** enforce behavioral invariants
@@ -198,6 +209,7 @@ nix flake check
 ```
 
 **Benefits:**
+
 - ✅ **Same environment everywhere** - WSL, NixOS, macOS, CI runners
 - ✅ **Local CI** - `nix flake check` runs identical tests to GitHub Actions
 - ✅ **No system dependency conflicts** - isolated, reproducible builds
@@ -442,6 +454,7 @@ Choose your installation and feature set based on your needs:
 | **Full conversation signals** | `uv sync --extra full --extra diarization` | ASR + acoustic + speaker diarization | `--enable-diarization --min-speakers N --max-speakers M` | ~8GB |
 
 **Notes:**
+
 - All profiles run **entirely locally** (no cloud dependencies at runtime)
 - GPU recommended for diarization (pyannote.audio is compute-intensive), CPU fallback supported
 - Diarization requires HuggingFace token: `export HF_TOKEN=hf_...`
@@ -470,11 +483,13 @@ ls transcripts/     # Human-readable TXT and SRT
 ```
 
 **What you get:**
+
 - `whisper_json/your_audio.json` - Rich structured data with timestamps, confidence scores
 - `transcripts/your_audio.txt` - Clean text output
 - `transcripts/your_audio.srt` - Subtitle file
 
 **Next steps:**
+
 - Analyze with LLMs: See [LLM Integration](#llm-integration-analyze-conversations) below
 - Add prosody/emotion: `uv sync --extra full && slower-whisper enrich`
 - Add speaker diarization: See [docs/SPEAKER_DIARIZATION.md](docs/SPEAKER_DIARIZATION.md)
@@ -712,11 +727,13 @@ context = render_conversation_for_llm(
 ```
 
 **Resources:**
+
 - **[`docs/LLM_PROMPT_PATTERNS.md`](docs/LLM_PROMPT_PATTERNS.md)** - Comprehensive guide to LLM prompting with slower-whisper data
 - **[`examples/llm_integration/`](examples/llm_integration/)** - Working examples (summarization, coaching, QA scoring)
 - **API functions:** `render_conversation_for_llm()`, `render_conversation_compact()`, `render_segment()`
 
 **Common use cases:**
+
 - Meeting summarization with speaker attribution
 - Call quality analysis and coaching feedback
 - Sentiment tracking per speaker
