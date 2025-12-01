@@ -14,6 +14,7 @@ Tests use pytest fixtures and mocking to avoid requiring actual GPU/models.
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -384,6 +385,128 @@ def test_transcribe_file_basic(
 
 @patch("transcription.asr_engine.TranscriptionEngine")
 @patch("transcription.audio_io.normalize_all")
+def test_transcribe_file_meta_records_actual_runtime(
+    mock_normalize,
+    mock_engine_class,
+    test_audio_file,
+    temp_project_root,
+):
+    """Metadata should reflect the device/compute_type actually used by ASR."""
+    mock_engine = MagicMock()
+    dummy_transcript = Transcript(
+        file_name=test_audio_file.name,
+        language="en",
+        segments=[Segment(id=0, start=0.0, end=0.5, text="dummy")],
+        meta={
+            "asr_backend": "dummy",
+            "asr_device": "cpu",
+            "asr_compute_type": "n/a",
+        },
+    )
+    mock_engine.transcribe_file.return_value = dummy_transcript
+    mock_engine_class.return_value = mock_engine
+
+    def create_normalized_wav(paths):
+        import soundfile as sf
+
+        norm_wav = paths.norm_dir / f"{test_audio_file.stem}.wav"
+        audio = np.random.randn(16000).astype(np.float32) * 0.1
+        sf.write(norm_wav, audio, 16000)
+
+    mock_normalize.side_effect = create_normalized_wav
+
+    config = TranscriptionConfig(model="large-v3", device="cuda", compute_type="float16")
+
+    result = transcribe_file(test_audio_file, temp_project_root, config)
+
+    assert result.meta["device"] == "cpu"
+    assert result.meta["compute_type"] == "n/a"
+    assert result.meta["asr_backend"] == "dummy"
+
+
+@patch("transcription.asr_engine.TranscriptionEngine")
+@patch("transcription.audio_io.normalize_all")
+def test_transcribe_file_meta_includes_duration(
+    mock_normalize,
+    mock_engine_class,
+    test_audio_file,
+    temp_project_root,
+):
+    """Single-file meta should carry the audio duration like the pipeline output."""
+    mock_engine = MagicMock()
+    dummy_transcript = Transcript(
+        file_name=test_audio_file.name,
+        language="en",
+        segments=[Segment(id=0, start=0.0, end=1.0, text="hi")],
+        meta={
+            "asr_backend": "dummy",
+            "asr_device": "cpu",
+            "asr_compute_type": "n/a",
+        },
+    )
+    mock_engine.transcribe_file.return_value = dummy_transcript
+    mock_engine_class.return_value = mock_engine
+
+    def create_one_second_wav(paths):
+        import soundfile as sf
+
+        norm_wav = paths.norm_dir / f"{test_audio_file.stem}.wav"
+        audio = np.zeros(16000, dtype=np.float32)
+        sf.write(norm_wav, audio, 16000)
+
+    mock_normalize.side_effect = create_one_second_wav
+
+    config = TranscriptionConfig(model="large-v3", device="cpu", compute_type="int8")
+
+    result = transcribe_file(test_audio_file, temp_project_root, config)
+
+    assert result.meta["audio_duration_sec"] == pytest.approx(1.0, rel=0.01)
+
+
+@patch("transcription.asr_engine.TranscriptionEngine")
+@patch("transcription.audio_io.normalize_all")
+def test_transcribe_file_meta_ignores_blank_asr_runtime(
+    mock_normalize,
+    mock_engine_class,
+    test_audio_file,
+    temp_project_root,
+):
+    """Empty asr_device/compute_type in meta should fall back to config values."""
+    mock_engine = MagicMock()
+    mock_engine.cfg = SimpleNamespace(device="cuda", compute_type="float16")
+    dummy_transcript = Transcript(
+        file_name=test_audio_file.name,
+        language="en",
+        segments=[Segment(id=0, start=0.0, end=0.5, text="dummy")],
+        meta={
+            "asr_backend": "dummy",
+            "asr_device": "   ",  # whitespace only should be treated as missing
+            "asr_compute_type": "",
+        },
+    )
+    mock_engine.transcribe_file.return_value = dummy_transcript
+    mock_engine_class.return_value = mock_engine
+
+    def create_norm(paths):
+        import soundfile as sf
+
+        norm_wav = paths.norm_dir / f"{test_audio_file.stem}.wav"
+        audio = np.zeros(16000, dtype=np.float32)
+        sf.write(norm_wav, audio, 16000)
+
+    mock_normalize.side_effect = create_norm
+
+    config = TranscriptionConfig(model="large-v3", device="cuda", compute_type="float16")
+
+    result = transcribe_file(test_audio_file, temp_project_root, config)
+
+    assert result.meta["device"] == "cuda"
+    assert result.meta["compute_type"] == "float16"
+    assert result.meta["asr_backend"] == "dummy"
+
+
+@patch("transcription.asr_engine.TranscriptionEngine")
+@patch("transcription.audio_io.normalize_all")
 def test_transcribe_file_missing_audio(mock_normalize, mock_engine_class, temp_project_root):
     """Test transcribe_file raises error for missing audio file."""
     config = TranscriptionConfig()
@@ -407,6 +530,67 @@ def test_transcribe_file_normalization_failure(
 
     with pytest.raises(TranscriptionError, match="Audio normalization failed"):
         transcribe_file(test_audio_file, temp_project_root, config)
+
+
+@patch("transcription.asr_engine.TranscriptionEngine")
+def test_transcribe_file_refreshes_raw_copy(mock_engine_class, temp_project_root, monkeypatch):
+    """Repeated transcribe_file calls with the same filename should use the latest audio."""
+    # Stub normalization to copy raw files into input_audio, overwriting existing outputs.
+    normalization_calls: list[Path] = []
+
+    def fake_normalize(paths):
+        normalization_calls.append(paths.norm_dir)
+        paths.norm_dir.mkdir(parents=True, exist_ok=True)
+        for src in paths.raw_dir.iterdir():
+            if src.is_file():
+                dst = paths.norm_dir / f"{src.stem}.wav"
+                dst.write_text(src.read_text(), encoding="utf-8")
+
+    monkeypatch.setattr("transcription.audio_io.normalize_all", fake_normalize)
+    # Avoid wave parsing errors on the text fixtures.
+    monkeypatch.setattr("transcription.api._get_wav_duration_seconds", lambda _path: 0.0)
+
+    # Fake ASR engine that echoes the normalized file contents.
+    mock_engine = MagicMock()
+
+    def fake_transcribe(path):
+        content = Path(path).read_text(encoding="utf-8")
+        return Transcript(
+            file_name=Path(path).name,
+            language="en",
+            segments=[Segment(id=0, start=0.0, end=1.0, text=content)],
+        )
+
+    mock_engine.transcribe_file.side_effect = fake_transcribe
+    mock_engine.cfg = SimpleNamespace(device="cpu", compute_type="int8")
+    mock_engine_class.return_value = mock_engine
+
+    # Two different audio sources with the same filename.
+    first_src = temp_project_root.parent / "clip.wav"
+    first_src.write_text("first version", encoding="utf-8")
+    updated_dir = temp_project_root.parent / "updated"
+    updated_dir.mkdir()
+    second_src = updated_dir / "clip.wav"
+    second_src.write_text("second version", encoding="utf-8")
+
+    config = TranscriptionConfig(model="tiny", device="cpu", compute_type="int8")
+
+    first = transcribe_file(first_src, temp_project_root, config)
+    raw_copy = temp_project_root / "raw_audio" / "clip.wav"
+    norm_copy = temp_project_root / "input_audio" / "clip.wav"
+
+    assert raw_copy.read_text(encoding="utf-8") == "first version"
+    assert norm_copy.read_text(encoding="utf-8") == "first version"
+    assert first.segments[0].text == "first version"
+
+    second = transcribe_file(second_src, temp_project_root, config)
+
+    assert raw_copy.read_text(encoding="utf-8") == "second version"
+    assert norm_copy.read_text(encoding="utf-8") == "second version"
+    assert second.segments[0].text == "second version"
+
+    assert mock_engine.transcribe_file.call_count == 2
+    assert len(normalization_calls) == 2
 
 
 # ============================================================================
@@ -704,6 +888,45 @@ def test_enrich_directory_skip_existing(temp_project_root):
     # Verify transcript was still returned
     assert len(results) == 1
     assert results[0].segments[0].audio_state is not None
+
+
+def test_enrich_directory_partial_audio_state_not_skipped(temp_project_root):
+    """Partial enrichment should still trigger processing when skip_existing=True."""
+    # Create transcript where only the first segment is enriched
+    transcript = Transcript(
+        file_name="test_partial.wav",
+        language="en",
+        segments=[
+            Segment(
+                id=0,
+                start=0.0,
+                end=1.0,
+                text="Already enriched",
+                audio_state={"prosody": {}},
+            ),
+            Segment(id=1, start=1.0, end=2.0, text="Needs enrichment"),
+        ],
+    )
+    json_path = temp_project_root / "whisper_json" / "test_partial.json"
+    save_transcript(transcript, json_path)
+
+    # Create corresponding audio
+    import soundfile as sf
+
+    audio = np.random.randn(16000).astype(np.float32) * 0.05
+    audio_path = temp_project_root / "input_audio" / "test_partial.wav"
+    sf.write(audio_path, audio, 16000)
+
+    with patch("transcription.audio_enrichment.enrich_transcript_audio") as mock_enrich:
+        mock_enrich.return_value = transcript
+        config = EnrichmentConfig(skip_existing=True)
+        results = enrich_directory(temp_project_root, config)
+
+        # Should re-run enrichment because not all segments have audio_state
+        mock_enrich.assert_called_once()
+
+    assert len(results) == 1
+    assert results[0].file_name == "test_partial.wav"
 
 
 def test_enrich_directory_missing_audio_for_transcript(temp_project_root):

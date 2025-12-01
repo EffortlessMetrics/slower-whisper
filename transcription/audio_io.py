@@ -42,9 +42,20 @@ def normalize_all(paths: Paths) -> None:
         any_src = True
         dst = paths.norm_dir / f"{src.stem}.wav"
 
+        # If a normalized file already exists, skip only when it is up-to-date.
         if dst.exists():
-            print(f"[skip-normalize] {src.name} → {dst.name} (already exists)")
-            continue
+            try:
+                src_mtime = src.stat().st_mtime
+                dst_mtime = dst.stat().st_mtime
+                if dst_mtime >= src_mtime:
+                    print(f"[skip-normalize] {src.name} → {dst.name} (up to date)")
+                    continue
+                else:
+                    print(f"[ffmpeg-refresh] {src.name} → {dst.name} (source is newer)")
+            except OSError as stat_err:
+                print(
+                    f"[warn] Could not compare timestamps for {src.name}: {stat_err}; re-normalizing"
+                )
 
         print(f"[ffmpeg] {src.name} → {dst.name}")
         cmd = [

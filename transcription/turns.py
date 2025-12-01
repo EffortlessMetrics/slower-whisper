@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from transcription.models import Transcript
+    from transcription.models import Segment, Transcript
 
 
 @dataclass
@@ -57,6 +57,18 @@ class Turn:
     segment_ids: list[int]
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def _coerce_speaker_id(speaker: Any) -> str | None:
+    """Normalize speaker objects into an ID string."""
+    if speaker is None:
+        return None
+    if isinstance(speaker, str):
+        return speaker
+    if isinstance(speaker, dict):
+        raw_id = speaker.get("id")
+        return str(raw_id) if raw_id is not None else None
+    return str(speaker)
 
 
 def build_turns(
@@ -104,8 +116,13 @@ def build_turns(
         'Hello world'
     """
 
-    # Filter segments with known speakers
-    speaker_segments = [seg for seg in transcript.segments if seg.speaker is not None]
+    # Filter segments with known speakers and normalize speaker IDs
+    speaker_segments: list[tuple[Segment, str]] = []
+    for seg in transcript.segments:
+        speaker_id = _coerce_speaker_id(seg.speaker)
+        if speaker_id is None:
+            continue
+        speaker_segments.append((seg, speaker_id))
 
     if not speaker_segments:
         # No speakers assigned → no turns
@@ -113,16 +130,15 @@ def build_turns(
         return transcript
 
     turns: list[dict[str, Any]] = []
-    current_turn_segments: list[Any] = []
+    current_turn_segments: list[Segment] = []
     current_speaker_id: str | None = None
 
-    for segment in speaker_segments:
-        speaker_id = segment.speaker["id"]  # type: ignore  # Already filtered for not None
-
+    for segment, speaker_id in speaker_segments:
         if speaker_id != current_speaker_id:
             # Speaker change → finalize current turn and start new
             if current_turn_segments:
-                turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))  # type: ignore
+                assert current_speaker_id is not None
+                turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))
             current_turn_segments = [segment]
             current_speaker_id = speaker_id
         else:
@@ -131,14 +147,14 @@ def build_turns(
             current_turn_segments.append(segment)
 
     # Finalize last turn
-    if current_turn_segments:
-        turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))  # type: ignore
+    if current_turn_segments and current_speaker_id is not None:
+        turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))
 
     transcript.turns = turns
     return transcript
 
 
-def _finalize_turn(turn_id: int, segments: list[Any], speaker_id: str) -> dict[str, Any]:
+def _finalize_turn(turn_id: int, segments: list[Segment], speaker_id: str) -> dict[str, Any]:
     """
     Finalize a turn by building its dict representation.
 

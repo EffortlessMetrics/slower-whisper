@@ -553,6 +553,41 @@ def test_main_transcribe_integration(mock_transcribe_directory, temp_project_roo
     assert "[done] Transcribed 3 files" in captured.out
 
 
+def test_main_transcribe_warns_when_diarization_enabled_cli(
+    mock_transcribe_directory, temp_project_root, capsys
+):
+    """Experimental diarization warning should print when enabled via CLI flag."""
+    main(
+        [
+            "transcribe",
+            "--root",
+            str(temp_project_root),
+            "--enable-diarization",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert "Speaker diarization is EXPERIMENTAL" in captured.err
+
+
+def test_main_transcribe_warns_when_diarization_enabled_env(
+    mock_transcribe_directory, temp_project_root, capsys, monkeypatch
+):
+    """Experimental diarization warning should also print when enabled via env/config."""
+    monkeypatch.setenv("SLOWER_WHISPER_ENABLE_DIARIZATION", "true")
+
+    main(
+        [
+            "transcribe",
+            "--root",
+            str(temp_project_root),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert "Speaker diarization is EXPERIMENTAL" in captured.err
+
+
 def test_main_enrich_integration(mock_enrich_directory, temp_project_root, capsys):
     """Test main() with enrich subcommand calls API correctly."""
     # Call main with enrich arguments

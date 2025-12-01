@@ -26,12 +26,16 @@ the `speakers[]` and `segment.speaker` fields in the transcript schema.
 
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from transcription.models import Transcript
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -112,7 +116,7 @@ class Diarizer:
         self.device = device
         self.min_speakers = min_speakers
         self.max_speakers = max_speakers
-        self._pipeline = None  # Will hold pyannote pipeline
+        self._pipeline: Any | None = None  # Will hold pyannote pipeline
 
     def _ensure_pipeline(self):
         """
@@ -143,16 +147,33 @@ class Diarizer:
             from .cache import CachePaths
 
             paths = CachePaths.from_env().ensure_dirs()
-            self._pipeline = Pipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1",
-                token=True,  # Uses HF_TOKEN env var (renamed from use_auth_token)
-                cache_dir=str(paths.diarization_root),
-            )
+            token_arg = os.getenv("HF_TOKEN") or True
+
+            try:
+                pipeline = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization-3.1",
+                    token=token_arg,  # Newer huggingface_hub API
+                    cache_dir=str(paths.diarization_root),
+                )
+            except TypeError as exc:
+                # Backward compatibility for older pyannote.audio versions that still
+                # expect use_auth_token instead of token.
+                logger.debug(
+                    "Pipeline.from_pretrained() rejected token=..., retrying with use_auth_token",
+                    exc_info=exc,
+                )
+                pipeline = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization-3.1",
+                    use_auth_token=token_arg,
+                    cache_dir=str(paths.diarization_root),
+                )
 
             if device_str:
                 import torch
 
-                self._pipeline = self._pipeline.to(torch.device(device_str))
+                pipeline = pipeline.to(torch.device(device_str))
+
+            self._pipeline = pipeline
 
         except Exception as exc:
             raise RuntimeError(

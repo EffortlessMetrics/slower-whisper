@@ -6,6 +6,8 @@ and properly marks the transcript with meta.diarization.status.
 """
 
 import subprocess
+import sys
+import types
 
 import pytest
 
@@ -106,6 +108,43 @@ def test_maybe_run_diarization_missing_dependency(monkeypatch, tmp_path):
         raise ModuleNotFoundError("No module named 'torch'")
 
     monkeypatch.setattr("transcription.diarization.Diarizer.run", _missing_dep_run, raising=False)
+
+    wav_path = tmp_path / "dummy.wav"
+    wav_path.write_bytes(b"\x00\x00")
+
+    config = TConfig(enable_diarization=True, diarization_device="cpu")
+    result = _maybe_run_diarization(transcript, wav_path, config)
+
+    diar_meta = result.meta["diarization"]
+    assert diar_meta["status"] == "failed"
+    assert diar_meta["error_type"] == "missing_dependency"
+    assert diar_meta["requested"] is True
+    assert result.segments[0].speaker is None
+    assert result.speakers is None
+    assert result.turns is None
+
+
+def test_maybe_run_diarization_wrapped_missing_dependency(monkeypatch, tmp_path):
+    """
+    Wrapped runtime errors (e.g., missing torch inside pyannote loader) should still
+    classify as missing_dependency by inspecting the exception cause/message.
+    """
+    from transcription.api import _maybe_run_diarization
+
+    transcript = Transcript(
+        file_name="test.wav",
+        language="en",
+        segments=[Segment(id=0, start=0.0, end=2.0, text="Hello")],
+    )
+
+    def _wrapped_missing_dep(self, _wav_path):
+        raise RuntimeError(
+            "Failed to load pyannote pipeline: No module named 'torch'"
+        ) from ImportError("No module named 'torch'")
+
+    monkeypatch.setattr(
+        "transcription.diarization.Diarizer.run", _wrapped_missing_dep, raising=False
+    )
 
     wav_path = tmp_path / "dummy.wav"
     wav_path.write_bytes(b"\x00\x00")
@@ -388,6 +427,44 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
     assert updated.turns is not None
     assert updated.meta is not None
     assert updated.meta.get("diarization", {}).get("status") == "success"
+
+
+def test_diarizer_backwards_token_param(monkeypatch, tmp_path):
+    """
+    Older pyannote versions expect use_auth_token instead of token.
+    _ensure_pipeline should retry with the legacy parameter instead of failing.
+    """
+    monkeypatch.setenv("SLOWER_WHISPER_CACHE_ROOT", str(tmp_path / "cache_root"))
+    monkeypatch.setenv("HF_TOKEN", "dummy_token")
+
+    called_kwargs: dict[str, object] = {}
+
+    class FakePipeline:
+        @classmethod
+        def from_pretrained(cls, model_id, **kwargs):
+            if "token" in kwargs:
+                raise TypeError("token argument not supported")
+            called_kwargs.update(kwargs)
+            return cls()
+
+        def to(self, device):
+            called_kwargs["device"] = device
+            return self
+
+    fake_audio_module = types.SimpleNamespace(Pipeline=FakePipeline)
+    monkeypatch.setitem(sys.modules, "pyannote", types.ModuleType("pyannote"))
+    monkeypatch.setitem(sys.modules, "pyannote.audio", fake_audio_module)
+
+    from transcription.diarization import Diarizer
+
+    diarizer = Diarizer(device="auto")
+    pipeline = diarizer._ensure_pipeline()
+
+    assert isinstance(pipeline, FakePipeline)
+    assert diarizer._pipeline is pipeline
+    assert called_kwargs.get("use_auth_token") == "dummy_token"
+    expected_cache = tmp_path / "cache_root" / "diarization"
+    assert called_kwargs.get("cache_dir") == str(expected_cache)
 
 
 # ============================================================================

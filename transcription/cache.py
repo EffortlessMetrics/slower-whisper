@@ -19,7 +19,7 @@ Environment variables respected:
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -110,7 +110,7 @@ class CachePaths:
         return self
 
 
-def configure_global_cache_env(env: Mapping[str, str] | None = None) -> CachePaths:
+def configure_global_cache_env(env: MutableMapping[str, str] | None = None) -> CachePaths:
     """Configure global cache environment variables for all model downloads.
 
     This function:

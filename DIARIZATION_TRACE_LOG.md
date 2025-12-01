@@ -162,7 +162,7 @@ class TranscriptionConfig:
     diarization_device: str = "auto"  # Line 104 ("cuda" | "cpu" | "auto")
     min_speakers: int | None = None  # Line 105
     max_speakers: int | None = None  # Line 106
-    overlap_threshold: float = 0.3  # Line 107 (internal; not exposed in CLI yet)
+    overlap_threshold: float = 0.3  # Line 107 (exposed via --overlap-threshold)
 ```
 
 **Result:** Config object created with diarization fields populated.

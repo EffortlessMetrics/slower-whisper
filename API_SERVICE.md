@@ -73,7 +73,7 @@ Upload an audio file and receive a transcription in JSON format.
   - Examples: `en`, `es`, `fr`, `de`, `zh`
 - `device` (query, optional): Device for inference (default: `cpu`)
   - Options: `cpu`, `cuda`
-- `compute_type` (query, optional): Precision (default: `float32`)
+- `compute_type` (query, optional): Precision override (default: auto — `float16` on CUDA, `int8` on CPU)
   - Options: `float16`, `float32`, `int8`
 - `task` (query, optional): Task type (default: `transcribe`)
   - Options: `transcribe`, `translate` (to English)
@@ -82,6 +82,10 @@ Upload an audio file and receive a transcription in JSON format.
   - Options: `cpu`, `cuda`, `auto`
 - `min_speakers` / `max_speakers` (query, optional): Speaker count hints for diarization
 - `overlap_threshold` (query, optional): Minimum overlap ratio (0.0–1.0) to assign a speaker (default: `0.3`)
+
+**ASR runtime behavior and metadata:**
+- If the requested model/device fails (e.g., CUDA not available), the service retries on CPU with a safer `compute_type` before falling back to a lightweight dummy model.
+- Response metadata includes the actual ASR runtime used (`asr_backend`, `asr_device`, `asr_compute_type`) plus any load warnings or fallback reasons.
 
 **Example:**
 ```bash
@@ -103,7 +107,13 @@ curl -X POST -F "audio=@meeting.wav" \
     "generated_at": "2025-11-15T12:34:56Z",
     "model_name": "large-v3",
     "device": "cpu",
-    "compute_type": "float32"
+    "compute_type": "int8",
+    "asr_backend": "faster-whisper",
+    "asr_device": "cpu",
+    "asr_compute_type": "int8",
+    "asr_model_load_warnings": [
+      "cuda (float16) load failed: CUDA unavailable"
+    ]
   },
   "segments": [
     {

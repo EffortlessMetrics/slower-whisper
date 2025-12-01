@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import wave
 from pathlib import Path
 from typing import Any
 
@@ -33,10 +34,23 @@ from .config import (
     validate_diarization_settings,
 )
 from .exceptions import EnrichmentError, TranscriptionError
+from .meta_utils import build_generation_metadata
 from .models import Transcript
 from .writers import load_transcript_from_json, write_json
 
 logger = logging.getLogger(__name__)
+
+
+def _get_wav_duration_seconds(path: Path) -> float:
+    """Return WAV duration in seconds, tolerating unreadable files."""
+    try:
+        with wave.open(str(path), "rb") as wav:
+            frames = wav.getnframes()
+            rate = wav.getframerate()
+        return frames / float(rate) if rate else 0.0
+    except Exception as exc:  # noqa: BLE001 - want the raw error for debugging
+        logger.warning("Could not read duration for %s: %s", path.name, exc)
+        return 0.0
 
 
 def _neutral_audio_state(error: str | None = None) -> dict[str, Any]:
@@ -190,13 +204,25 @@ def _maybe_run_diarization(
 
         # Categorize error for better debugging
         error_msg = str(exc)
+        cause = exc.__cause__
+        cause_msg = str(cause) if cause else ""
+        full_msg = f"{error_msg} {cause_msg}".lower()
         error_type = "unknown"
 
-        if "HF_TOKEN" in error_msg or "use_auth_token" in error_msg:
+        if "hf_token" in full_msg or "use_auth_token" in full_msg:
             error_type = "auth"
-        elif isinstance(exc, (ImportError, ModuleNotFoundError)) or "pyannote.audio" in error_msg:
+        elif (
+            isinstance(exc, ImportError | ModuleNotFoundError)
+            or isinstance(cause, ImportError | ModuleNotFoundError)
+            or "pyannote.audio" in full_msg
+            or "no module named" in full_msg
+        ):
             error_type = "missing_dependency"
-        elif "not found" in error_msg.lower() or isinstance(exc, FileNotFoundError):
+        elif (
+            "not found" in full_msg
+            or isinstance(exc, FileNotFoundError)
+            or isinstance(cause, FileNotFoundError)
+        ):
             error_type = "file_not_found"
 
         transcript.meta["diarization"] = {
@@ -328,6 +354,11 @@ def transcribe_file(
             f"Audio file not found: {audio_path}. "
             f"Please verify the file path and ensure the file exists."
         )
+    if not audio_path.is_file():
+        raise TranscriptionError(
+            f"Audio path is not a file: {audio_path}. "
+            "Provide a path to an audio file instead of a directory."
+        )
 
     # For single-file mode, we use the ASR engine directly
     # (pipeline.run_pipeline is designed for batch processing)
@@ -349,10 +380,17 @@ def transcribe_file(
 
     # Copy to raw_audio if not already there
     raw_dest = paths.raw_dir / audio_path.name
-    if not raw_dest.exists():
-        import shutil
+    import shutil
 
-        raw_dest.parent.mkdir(parents=True, exist_ok=True)
+    raw_dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        same_file = raw_dest.resolve() == audio_path.resolve()
+    except OSError:
+        same_file = False
+
+    if not same_file:
+        # Always refresh the raw copy so repeated calls with the same filename
+        # pick up updated audio instead of reusing a stale file.
         shutil.copy2(audio_path, raw_dest)
 
     # Normalize to input_audio
@@ -369,6 +407,8 @@ def transcribe_file(
             f"Audio normalization failed: {norm_wav} not found. "
             f"Ensure ffmpeg is installed and the input audio format is supported."
         )
+
+    duration_sec = _get_wav_duration_seconds(norm_wav)
 
     # Transcribe
     engine = TranscriptionEngine(asr_cfg)
@@ -389,26 +429,27 @@ def transcribe_file(
     srt_path = paths.transcripts_dir / f"{stem}.srt"
 
     # Build metadata
-    from datetime import datetime, timezone
-
     from . import __version__
 
-    base_meta = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "audio_file": transcript.file_name,
-        "model_name": config.model,
-        "device": config.device,
-        "compute_type": config.compute_type,
-        "beam_size": config.beam_size,
-        "vad_min_silence_ms": config.vad_min_silence_ms,
-        "language_hint": config.language,
-        "task": config.task,
-        "pipeline_version": __version__,
-        "root": str(root),
-    }
-    combined_meta = (transcript.meta or {}).copy()
-    combined_meta.update(base_meta)
-    transcript.meta = combined_meta
+    engine_cfg = getattr(engine, "cfg", None)
+    engine_device = getattr(engine_cfg, "device", None) if engine_cfg else None
+    engine_compute_type = getattr(engine_cfg, "compute_type", None) if engine_cfg else None
+
+    transcript.meta = build_generation_metadata(
+        transcript,
+        duration_sec=duration_sec,
+        model_name=config.model,
+        config_device=config.device,
+        config_compute_type=config.compute_type,
+        beam_size=config.beam_size,
+        vad_min_silence_ms=config.vad_min_silence_ms,
+        language_hint=config.language,
+        task=config.task,
+        pipeline_version=__version__,
+        root=root,
+        runtime_device_candidates=(engine_device,),
+        runtime_compute_candidates=(engine_compute_type,),
+    )
 
     writers.write_json(transcript, json_path)
     writers.write_txt(transcript, txt_path)
@@ -485,7 +526,10 @@ def enrich_directory(
 
         # Skip if already enriched and skip_existing=True
         if config.skip_existing:
-            if transcript.segments and transcript.segments[0].audio_state is not None:
+            already_enriched = bool(transcript.segments) and all(
+                seg.audio_state is not None for seg in transcript.segments
+            )
+            if already_enriched:
                 enriched_transcripts.append(transcript)
                 continue
 

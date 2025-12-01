@@ -19,6 +19,18 @@ from .cache import CachePaths
 from .samples import get_samples_cache_dir
 
 
+def _get_speaker_id(speaker: Any) -> str | None:
+    """Extract a speaker ID string from segment.speaker."""
+    if speaker is None:
+        return None
+    if isinstance(speaker, str):
+        return speaker
+    if isinstance(speaker, dict):
+        raw_id = speaker.get("id")
+        return str(raw_id) if raw_id is not None else None
+    return str(speaker)
+
+
 def _get_cache_size(path: Path) -> int:
     """Compute total size of files under a directory."""
     if not path.exists():
@@ -28,11 +40,12 @@ def _get_cache_size(path: Path) -> int:
 
 def _format_size(size_bytes: int) -> str:
     """Format bytes as human-readable size."""
+    size = float(size_bytes)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} PB"
+        if size < 1024.0:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
 
 
 def get_model_cache_status() -> dict[str, Any]:
@@ -123,9 +136,9 @@ def compute_diarization_stats(json_path: Path) -> dict[str, Any]:
     labeled_count = 0
 
     for seg in transcript.segments:
-        if seg.speaker:
+        speaker_id = _get_speaker_id(seg.speaker)
+        if speaker_id:
             labeled_count += 1
-            speaker_id = seg.speaker
             duration_seg = seg.end - seg.start
             speaker_times[speaker_id] = speaker_times.get(speaker_id, 0.0) + duration_seg
             speaker_counts[speaker_id] = speaker_counts.get(speaker_id, 0) + 1
@@ -152,15 +165,19 @@ def compute_diarization_stats(json_path: Path) -> dict[str, Any]:
 
     # Turn structure analysis
     turns: list[str] = []
-    current_speaker = None
+    current_speaker: str | None = None
     repeated_speakers = 0
 
     for seg in transcript.segments:
-        if seg.speaker and seg.speaker != current_speaker:
-            turns.append(seg.speaker)
-            if current_speaker is not None and seg.speaker == current_speaker:
-                repeated_speakers += 1
-            current_speaker = seg.speaker
+        speaker_id = _get_speaker_id(seg.speaker)
+        if speaker_id is None:
+            continue
+        if speaker_id == current_speaker:
+            repeated_speakers += 1
+            continue
+
+        turns.append(speaker_id)
+        current_speaker = speaker_id
 
     turn_sequence = turns[:20]  # first 20 turns for preview
     num_turns = len(turns)

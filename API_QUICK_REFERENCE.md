@@ -104,7 +104,7 @@ Settings are loaded in order of priority:
 TranscriptionConfig(
     model="large-v3",          # Whisper model name
     device="cuda",             # "cuda" or "cpu"
-    compute_type="float16",    # Precision
+    compute_type=None,         # Precision (None = auto: float16 on CUDA, int8 on CPU)
     language=None,             # None = auto-detect
     task="transcribe",         # or "translate"
     skip_existing_json=True,   # Skip already transcribed
@@ -119,17 +119,17 @@ TranscriptionConfig(
 |-------|------|---------|-------------|----------|---------|
 | `model` | `str` | `"large-v3"` | Whisper model: tiny, base, small, medium, large, large-v2, large-v3 | `--model` | `SLOWER_WHISPER_MODEL` |
 | `device` | `str` | `"cuda"` | Computation device: "cuda" or "cpu" | `--device` | `SLOWER_WHISPER_DEVICE` |
-| `compute_type` | `str` | `"float16"` | Precision: float16, float32, int8, int8_float16 | `--compute-type` | `SLOWER_WHISPER_COMPUTE_TYPE` |
+| `compute_type` | `str \| None` | `None` (auto) | Precision: auto picks float16 on CUDA, int8 on CPU. Supported: float16, float32, int16, int8, int8_float16, int8_float32 | `--compute-type` | `SLOWER_WHISPER_COMPUTE_TYPE` |
 | `language` | `str \| None` | `None` | Language code (e.g., "en", "es") or None for auto-detect | `--language` | `SLOWER_WHISPER_LANGUAGE` |
 | `task` | `str` | `"transcribe"` | Whisper task: "transcribe" or "translate" | `--task` | `SLOWER_WHISPER_TASK` |
 | `skip_existing_json` | `bool` | `True` | Skip files with existing JSON output | `--skip-existing-json` | `SLOWER_WHISPER_SKIP_EXISTING_JSON` |
 | `vad_min_silence_ms` | `int` | `500` | VAD silence threshold in milliseconds (100-2000) | `--vad-min-silence-ms` | `SLOWER_WHISPER_VAD_MIN_SILENCE_MS` |
 | `beam_size` | `int` | `5` | Beam search size (1-10, higher = more accurate but slower) | `--beam-size` | `SLOWER_WHISPER_BEAM_SIZE` |
 | `enable_diarization` | `bool` | `False` | Enable speaker diarization (pyannote.audio) | `--enable-diarization` | `SLOWER_WHISPER_ENABLE_DIARIZATION` |
-| `diarization_device` | `str` | `"auto"` | Device for diarization: "cuda", "cpu", or "auto" | N/A (env/config) | `SLOWER_WHISPER_DIARIZATION_DEVICE` |
+| `diarization_device` | `str` | `"auto"` | Device for diarization: "cuda", "cpu", or "auto" | `--diarization-device` | `SLOWER_WHISPER_DIARIZATION_DEVICE` |
 | `min_speakers` | `int \| None` | `None` | Minimum expected speakers (hint for diarization model) | `--min-speakers` | `SLOWER_WHISPER_MIN_SPEAKERS` |
 | `max_speakers` | `int \| None` | `None` | Maximum expected speakers (hint for diarization model) | `--max-speakers` | `SLOWER_WHISPER_MAX_SPEAKERS` |
-| `overlap_threshold` | `float` | `0.3` | Minimum overlap ratio to assign a speaker to a segment | N/A (env/config) | `SLOWER_WHISPER_OVERLAP_THRESHOLD` |
+| `overlap_threshold` | `float` | `0.3` | Minimum overlap ratio to assign a speaker to a segment | `--overlap-threshold` | `SLOWER_WHISPER_OVERLAP_THRESHOLD` |
 
 **Model Sizes:**
 
@@ -150,6 +150,8 @@ TranscriptionConfig(
 | `float16` | Half | Fast | Excellent | Yes (recommended) |
 | `int8` | Quantized | Fastest | Good | No |
 | `int8_float16` | Mixed | Very fast | Very good | Yes |
+| `int16` | 16-bit | Medium | Good | No |
+| `int8_float32` | Mixed | Fast | Good | No |
 
 **Loading Methods:**
 
@@ -298,32 +300,61 @@ if segment.audio_state:
 
 ## CLI Quick Reference
 
+Use the unified `slower-whisper` entry point with subcommands.
+
 ### Transcribe
 
 ```bash
 uv run slower-whisper transcribe [OPTIONS]
+```
 
-Options:
-  --root PATH                Project root directory
-  --model NAME               Whisper model (default: large-v3)
-  --language CODE            Force language (e.g., en)
-  --device {cuda,cpu}        Device (default: cuda)
-  --compute-type TYPE        Precision (default: float16)
-  --skip-existing-json       Skip already transcribed files
+| Option | Default | Notes |
+|--------|---------|-------|
+| `--root PATH` | `.` | Project root with `raw_audio/` |
+| `--config FILE` | `None` | Merge order: CLI > file > env > defaults |
+| `--model NAME` | `large-v3` | Whisper model |
+| `--device {cuda,cpu}` | `cuda` | Auto-fallbacks to CPU if GPU load fails |
+| `--compute-type TYPE` | auto (`float16` on CUDA, `int8` on CPU) | Override faster-whisper precision |
+| `--language CODE` | auto | Force language |
+| `--task {transcribe,translate}` | `transcribe` | Translate outputs English |
+| `--vad-min-silence-ms INT` | `500` | VAD split threshold |
+| `--beam-size INT` | `5` | Beam search size |
+| `--skip-existing-json / --no-skip-existing-json` | `True` | Reuse existing JSON |
+| `--enable-diarization` | `False` | Experimental speaker diarization (pyannote) |
+| `--diarization-device {auto,cuda,cpu}` | `auto` | Device for diarization |
+| `--min-speakers INT` | `None` | Lower bound hint |
+| `--max-speakers INT` | `None` | Upper bound hint |
+| `--overlap-threshold FLOAT` | `0.3` | Min overlap to assign a speaker |
+
+Quick starts:
+
+```bash
+uv run slower-whisper transcribe --language en
+uv run slower-whisper transcribe --enable-diarization --min-speakers 2 --max-speakers 4
 ```
 
 ### Enrich
 
 ```bash
 uv run slower-whisper enrich [OPTIONS]
+```
 
-Options:
-  --root PATH                    Project root directory
-  --enable-prosody              Enable prosody extraction
-  --enable-emotion              Enable emotion analysis
-  --enable-categorical-emotion  Enable categorical emotion
-  --device {cpu,cuda}           Device (default: cpu)
-  --skip-existing               Skip already enriched
+| Option | Default | Notes |
+|--------|---------|-------|
+| `--root PATH` | `.` | Project root with `whisper_json/` + `input_audio/` |
+| `--enrich-config FILE` | `None` | Merge order: CLI > file > env > defaults |
+| `--skip-existing / --no-skip-existing` | `True` | Skip segments with `audio_state` |
+| `--enable-prosody / --no-enable-prosody` | `True` | Pitch/energy/rate/pauses |
+| `--enable-emotion / --no-enable-emotion` | `True` | Dimensional emotion |
+| `--enable-categorical-emotion / --no-enable-categorical-emotion` | `False` | Categorical emotion (slower) |
+| `--device {cpu,cuda}` | `cpu` | Device for emotion models |
+
+Quick starts:
+
+```bash
+uv run slower-whisper enrich
+uv run slower-whisper enrich --enable-categorical-emotion --device cuda
+uv run slower-whisper enrich --no-enable-emotion   # prosody only
 ```
 
 ## Common Patterns

@@ -6,11 +6,15 @@ classification for audio segments.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
+from numpy.typing import NDArray
 
 # Optional emotion dependencies - gracefully handle missing/broken packages
+torch: Any
+AutoModelForAudioClassification: Any
+Wav2Vec2FeatureExtractor: Any
 try:
     import torch
     from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
@@ -18,9 +22,9 @@ try:
     EMOTION_AVAILABLE = True
 except Exception:
     EMOTION_AVAILABLE = False
-    torch = None  # type: ignore[misc]
-    AutoModelForAudioClassification = None  # type: ignore[misc]
-    Wav2Vec2FeatureExtractor = None  # type: ignore[misc]
+    torch = cast(Any, None)
+    AutoModelForAudioClassification = cast(Any, None)
+    Wav2Vec2FeatureExtractor = cast(Any, None)
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +129,9 @@ class EmotionRecognizer:
 
         return audio, True
 
-    def _simple_resample(self, audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+    def _simple_resample(
+        self, audio: np.ndarray, orig_sr: int, target_sr: int
+    ) -> NDArray[np.float32]:
         """
         Simple resampling using linear interpolation.
 
@@ -141,7 +147,7 @@ class EmotionRecognizer:
         indices = np.linspace(0, len(audio) - 1, target_length)
         resampled = np.interp(indices, np.arange(len(audio)), audio)
 
-        return resampled.astype(np.float32)
+        return cast(NDArray[np.float32], resampled.astype(np.float32))
 
     def _classify_valence(self, score: float) -> str:
         """Classify valence score into level."""

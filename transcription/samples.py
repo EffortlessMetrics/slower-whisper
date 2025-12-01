@@ -366,12 +366,12 @@ def generate_synthetic_2speaker(output_path: Path) -> None:
 
     SR = 16_000  # 16 kHz mono (Whisper standard)
 
-    def tone(f_hz: float, duration: float) -> "np.ndarray":  # noqa: UP037
+    def tone(f_hz: float, duration: float):  # noqa: UP037
         """Generate a pure sine wave tone."""
         t = np.linspace(0, duration, int(SR * duration), endpoint=False)
         return 0.1 * np.sin(2 * np.pi * f_hz * t).astype(np.float32)
 
-    def silence(duration: float) -> "np.ndarray":  # noqa: UP037
+    def silence(duration: float):  # noqa: UP037
         """Generate silence (zeros)."""
         return np.zeros(int(SR * duration), dtype=np.float32)
 

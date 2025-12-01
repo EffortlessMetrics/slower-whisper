@@ -53,12 +53,14 @@ FLOW: CLI Flag → Config → Pipeline → Diarization → Transcript → JSON O
 ┃  Step 4: Apply CLI overrides (highest precedence)                          ┃
 ┃  │  if args.enable_diarization is not None:                                ┃
 ┃  │      config.enable_diarization = args.enable_diarization  # = True      ┃
+┃  │  if args.diarization_device is not None:                                ┃
+┃  │      config.diarization_device = args.diarization_device  # = "cpu"     ┃
 ┃  │  if args.min_speakers is not None:                                      ┃
 ┃  │      config.min_speakers = args.min_speakers              # = 2         ┃
 ┃  │  if args.max_speakers is not None:                                      ┃
 ┃  │      config.max_speakers = args.max_speakers              # = 4         ┃
-┃  │                                                                         ┃
-┃  └─ diarization_device stays at "auto" (not overridden by CLI)              ┃
+┃  │  if args.overlap_threshold is not None:                                 ┃
+┃  │      config.overlap_threshold = args.overlap_threshold     # = 0.45     ┃
 ┃                                                                            ┃
 ┃  File: transcription/cli.py                                                ┃
 ┃  Lines: 360-410 (_config_from_transcribe_args)                              ┃
@@ -444,7 +446,7 @@ INTEGRATION POINTS VERIFICATION SUMMARY
 ✅ Point 1: CLI Flag → TranscriptionConfig
    Location: cli.py lines 402-407
    Status: CONNECTED
-   Fields: enable_diarization, diarization_device, min_speakers, max_speakers
+   Fields: enable_diarization, diarization_device, min_speakers, max_speakers, overlap_threshold
 
 ✅ Point 2: TranscriptionConfig → API (transcribe_directory)
    Location: api.py line 200

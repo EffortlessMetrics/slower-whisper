@@ -292,6 +292,35 @@ class TestEdgeCases:
         assert result.turns[0]["start"] == 0.0
         assert result.turns[0]["end"] == 100.0
 
+    def test_string_speaker_ids_supported(self):
+        """String-valued speaker fields should not crash and still group turns."""
+        segments = [
+            Segment(id=0, start=0.0, end=1.0, text="Hi", speaker="agent"),
+            Segment(id=1, start=1.1, end=2.0, text="Hello", speaker="user"),
+            Segment(id=2, start=2.1, end=3.0, text="Again", speaker="user"),
+        ]
+        transcript = Transcript(file_name="test.wav", language="en", segments=segments, speakers=[])
+
+        result = build_turns(transcript)
+
+        assert [t["speaker_id"] for t in result.turns] == ["agent", "user"]
+        assert result.turns[0]["segment_ids"] == [0]
+        assert result.turns[1]["segment_ids"] == [1, 2]
+
+    def test_missing_speaker_id_dicts_skipped(self):
+        """Dict speakers without an id should be ignored instead of crashing."""
+        segments = [
+            Segment(id=0, start=0.0, end=1.0, text="Unknown", speaker={"label": "Agent"}),
+            Segment(id=1, start=1.1, end=2.0, text="Known", speaker={"id": "spk_0"}),
+        ]
+        transcript = Transcript(file_name="test.wav", language="en", segments=segments, speakers=[])
+
+        result = build_turns(transcript)
+
+        assert len(result.turns) == 1
+        assert result.turns[0]["speaker_id"] == "spk_0"
+        assert result.turns[0]["segment_ids"] == [1]
+
     def test_whitespace_only_text_segments(self):
         """Segments with only whitespace → treated as empty in concatenation."""
         segments = [

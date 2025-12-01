@@ -19,7 +19,7 @@ from pathlib import Path
 from . import __version__
 from . import api as api_module
 from .config import EnrichmentConfig, TranscriptionConfig, validate_diarization_settings
-from .exceptions import SlowerWhisperError
+from .exceptions import ConfigurationError, SlowerWhisperError
 
 
 # Expose API functions for compatibility with tests/patching while delegating to api module
@@ -601,11 +601,12 @@ def _get_cache_size(path: Path) -> int:
 
 def _format_size(bytes_size: int) -> str:
     """Format bytes as human-readable string."""
+    size = float(bytes_size)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if bytes_size < 1024.0:
-            return f"{bytes_size:.1f} {unit}"
-        bytes_size /= 1024.0
-    return f"{bytes_size:.1f} PB"
+        if size < 1024.0:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
 
 
 def _handle_cache_command(args: argparse.Namespace) -> int:
@@ -774,8 +775,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(argv)
 
         if args.command == "transcribe":
+            try:
+                cfg = _config_from_transcribe_args(args)
+            except (OSError, ValueError) as e:
+                raise ConfigurationError(f"Invalid transcription configuration: {e}") from e
+
             # Check for experimental diarization flag (v1.1 experimental)
-            if getattr(args, "enable_diarization", False):
+            if cfg.enable_diarization:
                 print(
                     "\n[INFO] Speaker diarization is EXPERIMENTAL in v1.1.\n"
                     "Requires: uv sync --extra diarization\n"
@@ -784,12 +790,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     file=sys.stderr,
                 )
 
-            cfg = _config_from_transcribe_args(args)
             transcripts = transcribe_directory(args.root, config=cfg)
             print(f"\n[done] Transcribed {len(transcripts)} files")
 
         elif args.command == "enrich":
-            enrich_cfg = _config_from_enrich_args(args)
+            try:
+                enrich_cfg = _config_from_enrich_args(args)
+            except (OSError, ValueError) as e:
+                raise ConfigurationError(f"Invalid enrichment configuration: {e}") from e
             enriched = enrich_directory(args.root, config=enrich_cfg)
             print(f"\n[done] Enriched {len(enriched)} transcripts")
 

@@ -11,6 +11,30 @@ from typing import Any
 from transcription.models import Segment, Transcript
 
 
+def _coerce_speaker_id(value: Any) -> str | None:
+    """Extract a speaker ID string from a speaker object/dict."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        raw_id = value.get("id")
+        return str(raw_id) if raw_id is not None else None
+    return str(value)
+
+
+def _resolve_speaker_label(
+    speaker: dict[str, Any] | str | None, speaker_labels: dict[str, str] | None
+) -> str | None:
+    """Return a display label for a speaker, falling back to the raw ID."""
+    speaker_id = _coerce_speaker_id(speaker)
+    if speaker_id is None:
+        return None
+    if speaker_labels:
+        return speaker_labels.get(speaker_id, speaker_id)
+    return speaker_id
+
+
 def render_segment(
     segment: Segment,
     include_audio_cues: bool = True,
@@ -33,7 +57,7 @@ def render_segment(
         or
         "[00:01:23] Hello, how can I help you?"
     """
-    parts = []
+    parts: list[str] = []
 
     # Timestamp prefix (if requested)
     if include_timestamps:
@@ -42,14 +66,9 @@ def render_segment(
         parts.append(f"[{hours:02d}:{minutes:02d}:{seconds:02d}]")
 
     # Speaker + audio cues
-    cues = []
-    if segment.speaker:
-        # Use label from speaker_labels if available, otherwise raw speaker ID
-        speaker_label = (
-            speaker_labels.get(segment.speaker, segment.speaker)
-            if speaker_labels
-            else segment.speaker
-        )
+    cues: list[str] = []
+    speaker_label = _resolve_speaker_label(segment.speaker, speaker_labels)
+    if speaker_label:
         cues.append(speaker_label)
 
     if include_audio_cues and segment.audio_state and segment.audio_state.get("rendering"):
@@ -91,7 +110,7 @@ def _render_turn_dict(
     Returns:
         Rendered turn text
     """
-    parts = []
+    parts: list[str] = []
 
     # Timestamp prefix (if requested)
     if include_timestamps:
@@ -101,17 +120,15 @@ def _render_turn_dict(
         parts.append(f"[{hours:02d}:{minutes:02d}:{seconds:02d}]")
 
     # Speaker + aggregated audio cues
-    cues = []
-    speaker_id = turn_dict.get("speaker_id")
-    if speaker_id:
-        # Use label from speaker_labels if available, otherwise raw speaker ID
-        speaker_label = speaker_labels.get(speaker_id, speaker_id) if speaker_labels else speaker_id
+    cues: list[str] = []
+    speaker_label = _resolve_speaker_label(turn_dict.get("speaker_id"), speaker_labels)
+    if speaker_label:
         cues.append(speaker_label)
 
     # Aggregate audio cues from segments in this turn
     if include_audio_cues:
         segment_ids = turn_dict.get("segment_ids", [])
-        audio_descriptors = set()
+        audio_descriptors: set[str] = set()
 
         for seg_id in segment_ids:
             # Find segment by ID
@@ -131,7 +148,8 @@ def _render_turn_dict(
         parts.append(f"[{' | '.join(cues)}]")
 
     # Text content from turn
-    turn_text = turn_dict.get("text", "").strip()
+    turn_text_raw = turn_dict.get("text", "")
+    turn_text = str(turn_text_raw).strip()
     if turn_text:
         parts.append(turn_text)
 
@@ -259,24 +277,21 @@ def render_conversation_compact(
         Agent: I can help with that. What's happening?
         ```
     """
-    lines = []
+    lines: list[str] = []
 
     # Use turns if available, else segments
     if transcript.turns:
         for turn_dict in transcript.turns:
-            speaker_id = turn_dict.get("speaker_id", "unknown")
             speaker_label = (
-                speaker_labels.get(speaker_id, speaker_id) if speaker_labels else speaker_id
+                _resolve_speaker_label(turn_dict.get("speaker_id"), speaker_labels) or "unknown"
             )
-            turn_text = turn_dict.get("text", "").strip()
+            turn_text_raw = turn_dict.get("text", "")
+            turn_text = str(turn_text_raw).strip()
             if turn_text:
                 lines.append(f"{speaker_label}: {turn_text}")
     else:
         for segment in transcript.segments:
-            speaker_id = segment.speaker or "unknown"
-            speaker_label = (
-                speaker_labels.get(speaker_id, speaker_id) if speaker_labels else speaker_id
-            )
+            speaker_label = _resolve_speaker_label(segment.speaker, speaker_labels) or "unknown"
             lines.append(f"{speaker_label}: {segment.text.strip()}")
 
     result = "\n".join(lines)

@@ -160,7 +160,7 @@ class TranscriptionConfig:
     diarization_device: str = "auto"  # "cuda" | "cpu" | "auto"
     min_speakers: int | None = None
     max_speakers: int | None = None
-    overlap_threshold: float = 0.3  # internal; not exposed in CLI yet
+    overlap_threshold: float = 0.3  # exposed via --overlap-threshold
 
     # Internal field to track which config values were explicitly set
     # Used by CLI merge logic to implement correct precedence
@@ -521,7 +521,10 @@ def validate_diarization_settings(
         )
 
     if overlap_threshold is not None:
-        if isinstance(overlap_threshold, bool) or not isinstance(overlap_threshold, (int, float)):
+        if isinstance(overlap_threshold, bool) or not isinstance(
+            overlap_threshold,
+            int | float,
+        ):
             raise ConfigurationError("overlap_threshold must be between 0.0 and 1.0.")
         if not 0.0 <= float(overlap_threshold) <= 1.0:
             raise ConfigurationError("overlap_threshold must be between 0.0 and 1.0.")

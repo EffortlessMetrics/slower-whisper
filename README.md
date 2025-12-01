@@ -966,8 +966,8 @@ uv run python examples/emotion_integration.py analyze whisper_json/meeting1.json
 Or use the CLI command:
 
 ```bash
-# Enrich using the CLI tool
-uv run slower-whisper-enrich whisper_json/meeting1.json input_audio/meeting1.wav
+# Enrich using the unified CLI (processes all transcripts under --root)
+uv run slower-whisper enrich --root .
 ```
 
 Output JSON will have segments like:

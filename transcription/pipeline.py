@@ -1,12 +1,12 @@
 import time
 import wave
-from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__ as PIPELINE_VERSION
 from . import audio_io, writers
 from .asr_engine import TranscriptionEngine
 from .config import AppConfig, TranscriptionConfig
+from .meta_utils import build_generation_metadata
 from .models import Transcript
 
 
@@ -32,20 +32,19 @@ def _build_meta(
     """
     Build a metadata dictionary describing this transcript generation run.
     """
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "audio_file": transcript.file_name,
-        "audio_duration_sec": duration_sec,
-        "model_name": cfg.asr.model_name,
-        "device": cfg.asr.device,
-        "compute_type": cfg.asr.compute_type,
-        "beam_size": cfg.asr.beam_size,
-        "vad_min_silence_ms": cfg.asr.vad_min_silence_ms,
-        "language_hint": cfg.asr.language,
-        "task": cfg.asr.task,
-        "pipeline_version": PIPELINE_VERSION,
-        "root": str(cfg.paths.root),
-    }
+    return build_generation_metadata(
+        transcript,
+        duration_sec=duration_sec,
+        model_name=cfg.asr.model_name,
+        config_device=cfg.asr.device,
+        config_compute_type=cfg.asr.compute_type,
+        beam_size=cfg.asr.beam_size,
+        vad_min_silence_ms=cfg.asr.vad_min_silence_ms,
+        language_hint=cfg.asr.language,
+        task=cfg.asr.task,
+        pipeline_version=PIPELINE_VERSION,
+        root=cfg.paths.root,
+    )
 
 
 def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None = None) -> None:

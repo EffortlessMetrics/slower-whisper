@@ -23,14 +23,14 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from .api import enrich_transcript as _enrich_transcript
 from .api import load_transcript, transcribe_file
-from .config import EnrichmentConfig, TranscriptionConfig, validate_compute_type
+from .config import EnrichmentConfig, TranscriptionConfig, WhisperTask, validate_compute_type
 from .exceptions import ConfigurationError, EnrichmentError, TranscriptionError
 from .models import SCHEMA_VERSION, Transcript
 
@@ -117,12 +117,15 @@ async def transcribe_audio(
         ),
     ] = "cpu",
     compute_type: Annotated[
-        str,
+        str | None,
         Query(
-            description="Compute precision (float16, float32, int8)",
+            description=(
+                "Compute precision override (float16, float32, int8). "
+                "Leave empty to auto-select based on device."
+            ),
             examples=["float16", "float32"],
         ),
-    ] = "float32",
+    ] = None,
     task: Annotated[
         str,
         Query(
@@ -231,6 +234,7 @@ async def transcribe_audio(
             status_code=400,
             detail=str(e),
         ) from e
+    task_value = cast(WhisperTask, task)
 
     # Create temporary directory for processing
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -254,26 +258,23 @@ async def transcribe_audio(
 
         # Create transcription config
         try:
-            config_kwargs = {
-                "model": model,
-                "language": language,
-                "device": device,
-                "compute_type": normalized_compute_type,
-                "task": task,  # type: ignore
-                "skip_existing_json": False,
-            }
-            config_kwargs.update(
-                {
-                    "enable_diarization": enable_diarization,
-                    "diarization_device": diarization_device,
-                    "min_speakers": min_speakers,
-                    "max_speakers": max_speakers,
-                }
-            )
+            extra_kwargs: dict[str, Any] = {}
             if overlap_threshold is not None:
-                config_kwargs["overlap_threshold"] = overlap_threshold
+                extra_kwargs["overlap_threshold"] = overlap_threshold
 
-            config = TranscriptionConfig(**config_kwargs)
+            config = TranscriptionConfig(
+                model=model,
+                language=language,
+                device=device,
+                compute_type=normalized_compute_type,
+                task=task_value,
+                skip_existing_json=False,
+                enable_diarization=enable_diarization,
+                diarization_device=diarization_device,
+                min_speakers=min_speakers,
+                max_speakers=max_speakers,
+                **extra_kwargs,
+            )
         except (ValueError, TypeError) as e:
             raise HTTPException(
                 status_code=400,

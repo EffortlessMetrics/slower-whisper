@@ -124,6 +124,20 @@ class TestMissingInputFiles:
         assert "Audio file not found" in str(exc_info.value)
         assert str(nonexistent) in str(exc_info.value)
 
+    def test_transcribe_file_rejects_directory(self, temp_project_root):
+        """Test transcribe_file raises when given a directory path."""
+        directory = temp_project_root / "not_an_audio_file.wav"
+        directory.mkdir()
+
+        config = TranscriptionConfig(model="base", device="cpu")
+
+        with pytest.raises(TranscriptionError) as exc_info:
+            transcribe_file(directory, temp_project_root, config)
+
+        message = str(exc_info.value)
+        assert "not a file" in message
+        assert str(directory) in message
+
     def test_load_transcript_missing_json(self, tmp_path):
         """Test load_transcript raises TranscriptionError when JSON file is missing."""
         nonexistent = tmp_path / "nonexistent.json"
@@ -723,8 +737,8 @@ class TestCLIErrorExitCodes:
 
         assert exit_code == 1  # SlowerWhisperError exit code
 
-    def test_cli_invalid_config_returns_exit_code_2(self, temp_project_root, tmp_path):
-        """Test CLI returns exit code 2 for invalid configuration (ValueError)."""
+    def test_cli_invalid_config_returns_exit_code_1(self, temp_project_root, tmp_path, capsys):
+        """Test CLI returns exit code 1 for invalid transcription configuration."""
         # Create invalid config file
         bad_config = tmp_path / "bad_config.json"
         bad_config.write_text('{"device": "invalid"}', encoding="utf-8")
@@ -732,8 +746,9 @@ class TestCLIErrorExitCodes:
         argv = ["transcribe", "--root", str(temp_project_root), "--config", str(bad_config)]
 
         exit_code = cli_main(argv)
-        # ValueError from config validation is caught as unexpected error (exit 2)
-        assert exit_code == 2
+        assert exit_code == 1
+        err = capsys.readouterr().err
+        assert "Invalid transcription configuration" in err
 
     def test_cli_runtime_error_returns_exit_code_2(self, temp_project_root):
         """Test CLI returns exit code 2 for runtime errors."""
@@ -769,9 +784,23 @@ class TestCLIErrorExitCodes:
             json_path.parent.mkdir(exist_ok=True)
             json_path.write_text("{}", encoding="utf-8")
 
-            exit_code = cli_main(argv)
+        exit_code = cli_main(argv)
 
         assert exit_code == 0  # Success
+
+    def test_cli_invalid_enrich_config_returns_exit_code_1(
+        self, temp_project_root, tmp_path, capsys
+    ):
+        """Test CLI enrich command returns exit code 1 for invalid configuration."""
+        bad_config = tmp_path / "bad_enrich.json"
+        bad_config.write_text('{"device": "tpu"}', encoding="utf-8")
+
+        argv = ["enrich", "--root", str(temp_project_root), "--enrich-config", str(bad_config)]
+
+        exit_code = cli_main(argv)
+        assert exit_code == 1
+        err = capsys.readouterr().err
+        assert "Invalid enrichment configuration" in err
 
     def test_cli_enrich_missing_json_returns_exit_code_1(self, temp_project_root):
         """Test CLI enrich command returns exit code 1 when JSON directory missing."""
