@@ -1,3 +1,15 @@
+"""Stage 1: ASR transcription pipeline.
+
+This module implements the core transcription pipeline (run_pipeline) that:
+1. Normalizes audio files to 16kHz mono WAV using ffmpeg
+2. Transcribes audio using faster-whisper
+3. Writes output to JSON, TXT, and SRT formats
+
+The pipeline is the entry point for all transcription operations and is called
+by both the CLI and public API. It handles batch processing, progress tracking,
+and error recovery.
+"""
+
 import time
 import wave
 from pathlib import Path

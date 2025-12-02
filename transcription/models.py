@@ -1,3 +1,17 @@
+"""Core data models for transcripts, segments, and enriched features.
+
+This module defines the dataclass models that form the backbone of slower-whisper:
+
+- Transcript: Complete transcript with metadata, segments, turns, and annotations
+- Segment: Single transcribed segment with optional audio_state
+- DiarizationMeta: Speaker diarization metadata
+- SCHEMA_VERSION: Current JSON schema version (v2)
+- AUDIO_STATE_VERSION: Audio enrichment schema version
+
+All models support serialization to/from JSON via to_dict() methods and
+are validated against the JSON schema in schemas/transcript-v2.schema.json.
+"""
+
 from dataclasses import dataclass, field
 from typing import Any, Literal
 

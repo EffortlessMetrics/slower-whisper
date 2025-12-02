@@ -1,3 +1,12 @@
+"""Legacy CLI entry point for transcription (backward compatibility).
+
+This module provides the original CLI interface for slower-whisper transcription.
+It is maintained for backward compatibility but new code should use the unified
+CLI in cli.py with the 'slower-whisper transcribe' command.
+
+Entry point: transcribe_cli()
+"""
+
 import argparse
 import sys
 from pathlib import Path

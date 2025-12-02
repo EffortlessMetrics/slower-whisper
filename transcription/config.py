@@ -1,3 +1,14 @@
+"""Configuration management for transcription and enrichment pipelines.
+
+This module defines the configuration dataclasses used throughout slower-whisper:
+
+- TranscriptionConfig: Public API for Stage 1 (ASR) settings
+- EnrichmentConfig: Public API for Stage 2 (audio enrichment) settings
+- AppConfig, AsrConfig, Paths: Legacy internal configs for backward compatibility
+
+Configuration can be created programmatically or loaded from JSON files.
+"""
+
 from __future__ import annotations
 
 import json

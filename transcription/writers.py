@@ -1,3 +1,16 @@
+"""Output writers for transcripts (JSON, TXT, SRT formats).
+
+This module provides functions to write transcripts to various formats:
+
+- write_json: Structured JSON output (schema v2)
+- write_txt: Plain text output
+- write_srt: SRT subtitle format
+
+All writers handle schema versioning, metadata serialization, and graceful
+degradation for complex objects. JSON output is the canonical format and
+includes full metadata, enrichment features, and speaker information.
+"""
+
 import json
 import logging
 from dataclasses import asdict, is_dataclass

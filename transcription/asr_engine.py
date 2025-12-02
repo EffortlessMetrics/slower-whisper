@@ -1,3 +1,13 @@
+"""ASR engine wrapper for faster-whisper transcription.
+
+This module provides the TranscriptionEngine class which wraps faster-whisper
+for speech-to-text conversion. It handles model loading, device selection
+(CPU/GPU), and batch transcription with progress tracking.
+
+The module uses a Protocol pattern to gracefully handle optional dependencies,
+falling back to no-op implementations when faster-whisper is unavailable.
+"""
+
 # cSpell: ignore samplerate
 import inspect
 import math

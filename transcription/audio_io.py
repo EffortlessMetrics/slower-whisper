@@ -1,3 +1,9 @@
+"""Audio I/O and normalization utilities using ffmpeg.
+
+This module provides functions for audio file normalization and directory
+management. All audio is normalized to 16kHz mono WAV format for ASR processing.
+"""
+
 import shutil
 import subprocess
 
