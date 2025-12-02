@@ -275,6 +275,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["cpu", "cuda"],
         help="Device to run emotion models on (default: cpu).",
     )
+    p_enrich.add_argument(
+        "--pause-threshold",
+        type=float,
+        default=None,
+        help="Minimum pause duration (seconds) to split turns for same speaker. "
+        "If not set, only speaker changes trigger turn splits. "
+        "Example: --pause-threshold 2.0 splits turns on pauses >= 2 seconds.",
+    )
 
     # ============================================================================
     # cache subcommand
@@ -603,6 +611,9 @@ def _merge_enrich_configs(base: EnrichmentConfig, override: EnrichmentConfig) ->
             categorical_model_name=override.categorical_model_name
             if override.categorical_model_name != base.categorical_model_name
             else base.categorical_model_name,
+            pause_threshold=override.pause_threshold
+            if override.pause_threshold != base.pause_threshold
+            else base.pause_threshold,
             semantic_annotator=override.semantic_annotator or base.semantic_annotator,
         )
 
@@ -636,6 +647,9 @@ def _merge_enrich_configs(base: EnrichmentConfig, override: EnrichmentConfig) ->
         categorical_model_name=override.categorical_model_name
         if "categorical_model_name" in source_fields
         else base.categorical_model_name,
+        pause_threshold=override.pause_threshold
+        if "pause_threshold" in source_fields
+        else base.pause_threshold,
         semantic_annotator=override.semantic_annotator or base.semantic_annotator,
     )
 
@@ -774,6 +788,7 @@ def _config_from_enrich_args(args: argparse.Namespace) -> EnrichmentConfig:
         config = _merge_enrich_configs(config, file_config)
 
     # Step 4: Override with explicit CLI flags (only if not None)
+    pause_threshold = getattr(args, "pause_threshold", None)
     config = EnrichmentConfig(
         skip_existing=args.skip_existing
         if args.skip_existing is not None
@@ -797,6 +812,7 @@ def _config_from_enrich_args(args: argparse.Namespace) -> EnrichmentConfig:
         if args.enable_speaker_stats is not None
         else config.enable_speaker_stats,
         device=args.device if args.device is not None else config.device,
+        pause_threshold=pause_threshold if pause_threshold is not None else config.pause_threshold,
         dimensional_model_name=config.dimensional_model_name,
         categorical_model_name=config.categorical_model_name,
         semantic_annotator=config.semantic_annotator,

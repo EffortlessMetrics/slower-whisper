@@ -50,26 +50,31 @@ def build_turns(
     **v1.1 logic** (basic grouping):
     1. Group contiguous segments with same speaker_id
     2. Split on speaker changes
-    3. (v1.2+) Optionally split on long pauses (>= pause_threshold)
+    3. Optionally split on long pauses (>= pause_threshold)
 
-    **v1.2 enhancement** (not yet implemented):
+    **v1.2 enhancement** (planned):
     - Populate metadata.question_count (regex scan for '?')
     - Detect interruptions (rapid speaker changes)
     - Compute pause statistics within turn
     - Aggregate emotion/sentiment per turn
-    - Pause-based turn splitting (currently disabled)
 
     **Mutates transcript in-place** by setting transcript.turns and returns it.
 
     Args:
         transcript: Transcript with speaker-attributed segments.
                    Segments with speaker=None are skipped.
-        pause_threshold: (v1.2+) Minimum pause (seconds) to split turn on same speaker.
-                        Default None (disabled in v1.1). Set to e.g. 2.0 in future.
+        pause_threshold: Minimum pause duration (seconds) to split turns for same speaker.
+                        If None (default), only speaker changes trigger turn splits.
+                        If set (e.g., 2.0), a gap >= pause_threshold between segments
+                        will start a new turn even if the speaker remains the same.
+                        Must be >= 0.0 when provided.
 
     Returns:
         Updated transcript with transcript.turns populated.
         If no segments have speaker labels, turns = [].
+
+    Raises:
+        ValueError: If pause_threshold is negative.
 
     Example:
         >>> from transcription.models import Transcript, Segment
@@ -84,6 +89,9 @@ def build_turns(
         >>> result.turns[0]["text"]
         'Hello world'
     """
+    # Validate pause_threshold
+    if pause_threshold is not None and pause_threshold < 0.0:
+        raise ValueError(f"pause_threshold must be >= 0.0, got {pause_threshold}")
 
     # Filter segments with known speakers and normalize speaker IDs
     speaker_segments: list[tuple[Segment, str]] = []
@@ -111,9 +119,23 @@ def build_turns(
             current_turn_segments = [segment]
             current_speaker_id = speaker_id
         else:
-            # Same speaker → add to current turn
-            # TODO(v1.2): Check pause_threshold here if enabled
-            current_turn_segments.append(segment)
+            # Same speaker → check for pause-based split
+            should_split_on_pause = False
+            if pause_threshold is not None and current_turn_segments:
+                # Calculate gap between previous segment end and current segment start
+                previous_segment = current_turn_segments[-1]
+                gap = segment.start - previous_segment.end
+                if gap >= pause_threshold:
+                    should_split_on_pause = True
+
+            if should_split_on_pause:
+                # Long pause → finalize current turn and start new with same speaker
+                assert current_speaker_id is not None
+                turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))
+                current_turn_segments = [segment]
+            else:
+                # Continue current turn
+                current_turn_segments.append(segment)
 
     # Finalize last turn
     if current_turn_segments and current_speaker_id is not None:

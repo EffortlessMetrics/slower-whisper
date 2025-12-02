@@ -105,7 +105,7 @@ def _run_speaker_analytics(transcript: Transcript, config: EnrichmentConfig) -> 
     if needs_turn_meta and not transcript.turns:
         from .turns import build_turns
 
-        transcript = build_turns(transcript)
+        transcript = build_turns(transcript, pause_threshold=config.pause_threshold)
 
     if needs_turn_meta:
         from .turns_enrich import enrich_turns_metadata

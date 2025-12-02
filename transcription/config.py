@@ -649,8 +649,16 @@ class EnrichmentConfig:
     dimensional_model_name: str | None = None
     categorical_model_name: str | None = None
 
+    # Turn building configuration
+    pause_threshold: float | None = None  # Minimum pause (seconds) to split turns
+
     # Internal field to track which config values were explicitly set
     _source_fields: set[str] = field(default_factory=set, init=False, repr=False)
+
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.pause_threshold is not None and self.pause_threshold < 0.0:
+            raise ConfigurationError(f"pause_threshold must be >= 0.0, got {self.pause_threshold}")
 
     @classmethod
     def from_file(cls, path: str | Path) -> EnrichmentConfig:
@@ -721,6 +729,17 @@ class EnrichmentConfig:
                     f"{field_name} must be a boolean, got {type(data[field_name]).__name__}"
                 )
 
+        # Validate pause_threshold if present
+        if "pause_threshold" in data:
+            pause_val = data["pause_threshold"]
+            if pause_val is not None:
+                if isinstance(pause_val, bool) or not isinstance(pause_val, (int, float)):
+                    raise ValueError(
+                        f"pause_threshold must be a number or null, got {type(pause_val).__name__}"
+                    )
+                if pause_val < 0.0:
+                    raise ValueError(f"pause_threshold must be >= 0.0, got {pause_val}")
+
         # Filter out unknown fields
         valid_fields = {
             "skip_existing",
@@ -733,6 +752,7 @@ class EnrichmentConfig:
             "device",
             "dimensional_model_name",
             "categorical_model_name",
+            "pause_threshold",
         }
         filtered_data = {k: v for k, v in data.items() if k in valid_fields}
 
@@ -817,6 +837,23 @@ class EnrichmentConfig:
             config_dict["categorical_model_name"] = (
                 cat_model if cat_model.lower() != "none" else None
             )
+
+        # Float field (pause_threshold)
+        if pause_thresh := os.getenv(f"{prefix}PAUSE_THRESHOLD"):
+            try:
+                if pause_thresh.lower() in ("none", "null", ""):
+                    config_dict["pause_threshold"] = None
+                else:
+                    pause_value = float(pause_thresh)
+                    if pause_value < 0.0:
+                        raise ValueError(
+                            f"{prefix}PAUSE_THRESHOLD must be >= 0.0, got {pause_value}"
+                        )
+                    config_dict["pause_threshold"] = pause_value
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid {prefix}PAUSE_THRESHOLD: {pause_thresh}. Must be a non-negative float."
+                ) from e
 
         config = cls(**config_dict)
         # Track which fields were explicitly set from environment

@@ -99,6 +99,8 @@ save_transcript(transcript, "output.json")
 
 ## Streaming (post-ASR v0.1)
 
+### Basic Streaming
+
 ```python
 from transcription import StreamingSession, StreamConfig
 
@@ -114,6 +116,96 @@ for event in session.end_of_stream():
 ```
 
 `StreamingSession` stitches ordered ASR chunks into `PartialSegment` and `FinalSegment` events. Current v0.1 API operates on post-ASR text (not raw audio) so you can stream final segments while Whisper runs elsewhere.
+
+### Streaming + Semantic Annotation
+
+Combine streaming with semantic tagging to detect risks and intent in real-time. Build a transcript incrementally and run `KeywordSemanticAnnotator` on finalized segments:
+
+```python
+from transcription import (
+    StreamingSession,
+    StreamConfig,
+    Segment,
+    Transcript,
+    save_transcript,
+)
+from transcription.streaming import StreamEventType
+from transcription.semantic import KeywordSemanticAnnotator
+
+# Initialize streaming and annotation
+session = StreamingSession(StreamConfig(max_gap_sec=1.0))
+annotator = KeywordSemanticAnnotator()
+final_segments: list[Segment] = []
+
+# Process incoming ASR chunks
+for chunk in asr_chunks:
+    for event in session.ingest_chunk(chunk):
+        if event.type != StreamEventType.FINAL_SEGMENT:
+            continue
+
+        # Convert StreamSegment → Segment
+        stream_seg = event.segment
+        segment = Segment(
+            id=len(final_segments),
+            start=stream_seg.start,
+            end=stream_seg.end,
+            text=stream_seg.text,
+            speaker={"id": stream_seg.speaker_id} if stream_seg.speaker_id else None,
+        )
+        final_segments.append(segment)
+
+        # Build growing transcript
+        transcript = Transcript(
+            file_name="live.wav",
+            language="en",
+            segments=list(final_segments)
+        )
+
+        # Run annotation on finalized segments
+        annotated = annotator.annotate(transcript)
+        semantic = (annotated.annotations or {}).get("semantic", {})
+
+        # Check for risk tags
+        risk_tags = semantic.get("risk_tags", [])
+        if "escalation" in risk_tags:
+            print("⚠️  Escalation detected - route to supervisor")
+        if "churn_risk" in risk_tags:
+            print("⚠️  Churn risk - offer retention options")
+
+        # Extract actions and keywords
+        for action in semantic.get("actions", []):
+            print(f"Action: {action['text']} (speaker={action['speaker_id']})")
+
+# Flush remaining partial at end of stream
+for event in session.end_of_stream():
+    if event.type == StreamEventType.FINAL_SEGMENT:
+        # Same conversion and annotation logic
+        stream_seg = event.segment
+        segment = Segment(
+            id=len(final_segments),
+            start=stream_seg.start,
+            end=stream_seg.end,
+            text=stream_seg.text,
+            speaker={"id": stream_seg.speaker_id} if stream_seg.speaker_id else None,
+        )
+        final_segments.append(segment)
+        transcript = Transcript(
+            file_name="live.wav",
+            language="en",
+            segments=list(final_segments)
+        )
+        annotated = annotator.annotate(transcript)
+        # Process semantic annotations...
+
+# Save final transcript
+save_transcript(annotated, "output.json")
+```
+
+**Key points:**
+- Only process `final_segment` events for stable semantic tags (skip `partial_segment`)
+- Rebuild `Transcript` incrementally as segments finalize
+- `risk_tags` include: `escalation`, `churn_risk`, `pricing`, etc.
+- See [Pattern 7: Streaming Semantics](./LLM_PROMPT_PATTERNS.md#pattern-7-streaming-semantics-for-real-time-analysis) in LLM_PROMPT_PATTERNS.md for routing prompts by semantic tags
 
 ### CLI exports & validation
 

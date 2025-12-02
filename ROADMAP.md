@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
-**Current Version:** v1.3.0 (Ecosystem, exports, evaluation)
-**Last Updated:** 2026-01-15
+**Current Version:** v1.5.0 (Schema hardening, thread-safety, developer experience)
+**Last Updated:** 2025-12-02
 <!-- cspell:ignore pyannote disfluency disfluencies langchain llamaindex Praat
 cuda qwen Qwen Smol Neur INTERSPEECH IEMOCAP multimodal mypy -->
 

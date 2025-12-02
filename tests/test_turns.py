@@ -560,3 +560,241 @@ class TestEdgeCases:
         # Timestamps should be preserved exactly (or close with floating point)
         assert result.turns[0]["start"] == pytest.approx(0.123456)
         assert result.turns[0]["end"] == pytest.approx(5.987654)
+
+
+class TestPauseThreshold:
+    """Tests for pause_threshold parameter in build_turns()."""
+
+    def test_pause_threshold_disabled_by_default(self):
+        """When pause_threshold=None (default), only speaker changes split turns."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "First", "spk_0"),
+            make_segment(1, 10.0, 12.0, "Second after long pause", "spk_0"),  # 8s gap
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript)
+
+        # Should be 1 turn despite 8s gap (pause_threshold disabled)
+        assert len(result.turns) == 1
+        assert result.turns[0]["segment_ids"] == [0, 1]
+
+    def test_pause_threshold_splits_same_speaker(self):
+        """Long pause >= pause_threshold splits turns for same speaker."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "First", "spk_0"),
+            make_segment(1, 10.0, 12.0, "Second after long pause", "spk_0"),  # 8s gap
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=5.0)
+
+        # Should be 2 turns (gap of 8s >= 5s threshold)
+        assert len(result.turns) == 2
+        assert result.turns[0]["segment_ids"] == [0]
+        assert result.turns[1]["segment_ids"] == [1]
+        assert result.turns[0]["speaker_id"] == "spk_0"
+        assert result.turns[1]["speaker_id"] == "spk_0"
+
+    def test_pause_threshold_exact_boundary(self):
+        """Gap exactly equal to pause_threshold triggers split."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "First", "spk_0"),
+            make_segment(1, 5.0, 7.0, "Second", "spk_0"),  # Gap = 3.0s
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=3.0)
+
+        # Gap of 3.0s == 3.0s threshold → should split
+        assert len(result.turns) == 2
+
+    def test_pause_threshold_just_below_boundary(self):
+        """Gap slightly below pause_threshold does not split."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "First", "spk_0"),
+            make_segment(1, 4.9, 7.0, "Second", "spk_0"),  # Gap = 2.9s
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=3.0)
+
+        # Gap of 2.9s < 3.0s threshold → no split
+        assert len(result.turns) == 1
+        assert result.turns[0]["segment_ids"] == [0, 1]
+
+    def test_pause_threshold_multiple_splits_same_speaker(self):
+        """Multiple long pauses split into multiple turns."""
+        segments = [
+            make_segment(0, 0.0, 1.0, "First", "spk_0"),
+            make_segment(1, 4.0, 5.0, "Second", "spk_0"),  # Gap = 3.0s
+            make_segment(2, 5.5, 6.5, "Third", "spk_0"),  # Gap = 0.5s
+            make_segment(3, 10.0, 11.0, "Fourth", "spk_0"),  # Gap = 3.5s
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=2.0)
+
+        # Should have 3 turns: [0], [1,2], [3]
+        assert len(result.turns) == 3
+        assert result.turns[0]["segment_ids"] == [0]
+        assert result.turns[1]["segment_ids"] == [1, 2]
+        assert result.turns[2]["segment_ids"] == [3]
+
+    def test_pause_threshold_with_speaker_changes(self):
+        """Pause threshold works together with speaker changes."""
+        segments = [
+            make_segment(0, 0.0, 1.0, "A1", "spk_0"),
+            make_segment(1, 5.0, 6.0, "A2", "spk_0"),  # Gap = 4.0s (long pause)
+            make_segment(2, 6.5, 7.5, "B", "spk_1"),  # Speaker change
+            make_segment(3, 8.0, 9.0, "C", "spk_0"),  # Back to spk_0
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=3.0)
+
+        # Should have 4 turns: pause splits A, speaker change, back to A
+        assert len(result.turns) == 4
+        assert result.turns[0]["speaker_id"] == "spk_0"
+        assert result.turns[1]["speaker_id"] == "spk_0"
+        assert result.turns[2]["speaker_id"] == "spk_1"
+        assert result.turns[3]["speaker_id"] == "spk_0"
+
+    def test_pause_threshold_zero(self):
+        """pause_threshold=0.0 splits on any gap."""
+        segments = [
+            make_segment(0, 0.0, 1.0, "First", "spk_0"),
+            make_segment(1, 1.1, 2.0, "Second", "spk_0"),  # Gap = 0.1s
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=0.0)
+
+        # Even tiny gap splits turns
+        assert len(result.turns) == 2
+
+    def test_pause_threshold_very_small(self):
+        """Very small pause_threshold (0.01s) splits on tiny gaps."""
+        segments = [
+            make_segment(0, 0.0, 1.0, "First", "spk_0"),
+            make_segment(1, 1.02, 2.0, "Second", "spk_0"),  # Gap = 0.02s
+            make_segment(2, 2.005, 3.0, "Third", "spk_0"),  # Gap = 0.005s
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=0.01)
+
+        # Gap 0.02s >= 0.01s → split
+        # Gap 0.005s < 0.01s → no split
+        assert len(result.turns) == 2
+        assert result.turns[0]["segment_ids"] == [0]
+        assert result.turns[1]["segment_ids"] == [1, 2]
+
+    def test_pause_threshold_negative_raises_error(self):
+        """Negative pause_threshold raises ValueError."""
+        segments = [make_segment(0, 0.0, 1.0, "Test", "spk_0")]
+        transcript = make_transcript(segments)
+
+        with pytest.raises(ValueError, match="pause_threshold must be >= 0.0"):
+            build_turns(transcript, pause_threshold=-1.0)
+
+    def test_pause_threshold_no_gaps(self):
+        """Segments with no gaps (overlapping or continuous) don't split."""
+        segments = [
+            make_segment(0, 0.0, 2.0, "First", "spk_0"),
+            make_segment(1, 2.0, 4.0, "Second", "spk_0"),  # Gap = 0.0s
+            make_segment(2, 3.5, 5.0, "Third", "spk_0"),  # Overlap (gap = -0.5s)
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=1.0)
+
+        # No gaps >= 1.0s, so all in one turn
+        assert len(result.turns) == 1
+        assert result.turns[0]["segment_ids"] == [0, 1, 2]
+
+    def test_pause_threshold_preserves_turn_ids(self):
+        """Turn IDs remain sequential when pause splits occur."""
+        segments = [
+            make_segment(0, 0.0, 1.0, "A1", "spk_0"),
+            make_segment(1, 5.0, 6.0, "A2", "spk_0"),  # Gap = 4.0s
+            make_segment(2, 6.5, 7.5, "B", "spk_1"),  # Speaker change
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=3.0)
+
+        # Should have turn_0, turn_1, turn_2
+        assert result.turns[0]["id"] == "turn_0"
+        assert result.turns[1]["id"] == "turn_1"
+        assert result.turns[2]["id"] == "turn_2"
+
+    def test_pause_threshold_with_unknown_speakers(self):
+        """Pause threshold only applies to segments with speakers."""
+        segments = [
+            make_segment(0, 0.0, 1.0, "Known", "spk_0"),
+            make_segment(1, 10.0, 11.0, "Unknown", None),  # Gap = 9s, but no speaker
+            make_segment(2, 20.0, 21.0, "Known again", "spk_0"),  # Gap = 9s
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=5.0)
+
+        # Unknown segment skipped; known segments treated separately
+        assert len(result.turns) == 2
+        assert result.turns[0]["segment_ids"] == [0]
+        assert result.turns[1]["segment_ids"] == [2]
+
+    def test_pause_threshold_text_concatenation(self):
+        """Pause-split turns correctly concatenate text."""
+        segments = [
+            make_segment(0, 0.0, 1.0, "Hello", "spk_0"),
+            make_segment(1, 1.5, 2.5, "world", "spk_0"),  # Gap = 0.5s
+            make_segment(2, 10.0, 11.0, "After pause", "spk_0"),  # Gap = 7.5s
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=5.0)
+
+        assert len(result.turns) == 2
+        assert result.turns[0]["text"] == "Hello world"
+        assert result.turns[1]["text"] == "After pause"
+
+    def test_pause_threshold_large_value(self):
+        """Very large pause_threshold effectively disables splitting."""
+        segments = [
+            make_segment(0, 0.0, 1.0, "First", "spk_0"),
+            make_segment(1, 100.0, 101.0, "Second", "spk_0"),  # Gap = 99s
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=1000.0)
+
+        # Gap of 99s < 1000s → no split
+        assert len(result.turns) == 1
+        assert result.turns[0]["segment_ids"] == [0, 1]
+
+    def test_pause_threshold_realistic_conversation(self):
+        """Realistic multi-speaker conversation with natural pauses."""
+        segments = [
+            make_segment(0, 0.0, 3.0, "Hi, how are you?", "spk_0"),
+            make_segment(1, 3.5, 5.0, "I'm good, thanks!", "spk_1"),
+            make_segment(2, 5.2, 8.0, "And you?", "spk_1"),  # Same speaker, short gap
+            make_segment(3, 15.0, 18.0, "I'm doing well", "spk_0"),  # Long pause (7s)
+            make_segment(4, 18.2, 20.0, "Had a busy day", "spk_0"),  # Short gap
+        ]
+        transcript = make_transcript(segments)
+
+        result = build_turns(transcript, pause_threshold=5.0)
+
+        # Expected turns:
+        # turn_0: [0] (spk_0)
+        # turn_1: [1, 2] (spk_1, short gap)
+        # turn_2: [3, 4] (spk_0, long pause splits, then short gap keeps together)
+        assert len(result.turns) == 3
+        assert result.turns[0]["speaker_id"] == "spk_0"
+        assert result.turns[0]["segment_ids"] == [0]
+        assert result.turns[1]["speaker_id"] == "spk_1"
+        assert result.turns[1]["segment_ids"] == [1, 2]
+        assert result.turns[2]["speaker_id"] == "spk_0"
+        assert result.turns[2]["segment_ids"] == [3, 4]

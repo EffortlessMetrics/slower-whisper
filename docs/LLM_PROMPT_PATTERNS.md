@@ -772,40 +772,505 @@ print(response.content[0].text)
 
 ---
 
-## Streaming + Live Semantics (design sketch)
+## Pattern 7: Streaming Semantics for Real-Time Analysis
 
-`StreamingSession` operates on post-ASR chunks. You can run semantic tagging on finalized segments as they arrive to drive prompt routing:
+**Use case:** Process live conversation transcription in real-time, applying semantic tagging to finalized segments as they arrive, and using those tags to route each turn to the appropriate LLM analysis prompt (e.g., escalation detection, pricing discussion, churn risk).
 
-```python
-from transcription import KeywordSemanticAnnotator, Segment, Transcript, StreamConfig, StreamingSession
+### Architecture Overview
 
-session = StreamingSession(StreamConfig(max_gap_sec=1.0))
-annotator = KeywordSemanticAnnotator()
-final_segments: list[Segment] = []
-
-for chunk in asr_chunks:
-    for event in session.ingest_chunk(chunk):
-        if event.type.value != "final_segment":
-            continue
-        # hydrate the streaming segment into the transcript schema
-        stream_seg = event.segment
-        final_segments.append(
-            Segment(
-                id=len(final_segments),
-                start=stream_seg.start,
-                end=stream_seg.end,
-                text=stream_seg.text,
-                speaker={"id": stream_seg.speaker_id} if stream_seg.speaker_id else None,
-            )
-        )
-        transcript = Transcript(file_name="live.wav", language="en", segments=list(final_segments))
-        annotated = annotator.annotate(transcript)
-        tags = annotated.annotations["semantic"]
-        # Example: tags["risk_tags"] includes {"escalation", "pricing", "churn_risk"}
-        # Use it to pick the right LLM prompt/template per turn
+```
+┌─────────────────┐
+│   ASR Stream    │ (e.g., faster-whisper in chunked mode)
+│  (text chunks)  │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────┐
+│   StreamingSession          │ Aggregates chunks into segments
+│   (state machine)           │ based on speaker continuity
+└────────┬────────────────────┘
+         │
+    ┌────┴────┬─────────────────┐
+    │          │                 │
+    ▼          ▼                 ▼
+PARTIAL     FINAL_SEGMENT    FINAL_SEGMENT
+(UI update)  (emit event)     (emit event)
+             │                 │
+             ▼                 ▼
+        ┌──────────────────────────────┐
+        │ KeywordSemanticAnnotator     │ Attach semantic tags:
+        │ (rule-based tagging)         │ - escalation_tags
+        └─────┬────────────────────────┘ - churn_tags
+              │ (tags: {"risk_level",  │ - pricing_tags
+              │          "keywords",   │ - action_items
+              │          ...})         │
+              ▼                         │
+        ┌──────────────────────────────┐
+        │ Prompt Router                │ Select LLM prompt template
+        │ (tag → prompt mapping)       │ based on detected tags
+        └─────┬────────────────────────┘
+              │
+              ▼
+        ┌──────────────────────────────┐
+        │ LLM Analysis                 │ Real-time feedback:
+        │ (via selected prompt)        │ - Escalation alert
+        │ (streaming or batch)         │ - Action items
+        └──────────────────────────────┘ - Customer sentiment
 ```
 
-Keep partial events for UI hints, but only run the annotator on `final_segment` events so the semantic tags stay stable.
+**Key principle**: Semantic tagging runs only on **finalized segments**, not partial/interim chunks, so tags remain stable and reliable for routing decisions.
+
+### Example Input (Streaming ASR Chunks)
+
+ASR produces chunks with timing and speaker info:
+
+```json
+{
+  "chunks": [
+    {
+      "start": 0.0,
+      "end": 2.1,
+      "text": "Hi, I need to cancel my account.",
+      "speaker_id": "spk_1"
+    },
+    {
+      "start": 2.5,
+      "end": 5.3,
+      "text": "I'm unhappy with the pricing and would like to switch to a competitor.",
+      "speaker_id": "spk_1"
+    },
+    {
+      "start": 5.8,
+      "end": 8.2,
+      "text": "Let me escalate this to my supervisor right away.",
+      "speaker_id": "spk_0"
+    },
+    {
+      "start": 8.5,
+      "end": 12.3,
+      "text": "I can offer you a 30% discount if you stay with us.",
+      "speaker_id": "spk_0"
+    }
+  ]
+}
+```
+
+### Pattern Implementation
+
+Here's a complete, runnable streaming analysis engine:
+
+```python
+"""
+Real-time streaming semantics for conversation intelligence.
+
+This pattern demonstrates:
+1. Ingesting ASR chunks in order
+2. Emitting finalized segments when speaker changes or gap occurs
+3. Running semantic tagging on finalized segments
+4. Routing to context-appropriate LLM prompts based on detected tags
+5. Streaming analysis results back to the caller
+"""
+
+from typing import Callable, Iterator
+from dataclasses import dataclass
+import json
+
+from transcription import (
+    Segment,
+    Transcript,
+    StreamConfig,
+    StreamingSession,
+    StreamChunk,
+    StreamEventType,
+    KeywordSemanticAnnotator,
+)
+import anthropic
+
+
+@dataclass
+class StreamingAnalysisResult:
+    """Result of analyzing a single turn."""
+
+    segment_id: int
+    start: float
+    end: float
+    text: str
+    speaker_id: str | None
+    semantic_tags: dict
+    llm_analysis: str
+
+
+class StreamingSemanticAnalyzer:
+    """
+    Orchestrates streaming transcription → semantic tagging → LLM analysis.
+
+    Example usage:
+        analyzer = StreamingSemanticAnalyzer()
+        for result in analyzer.analyze_stream(asr_chunks):
+            print(f"[{result.start}s] Tags: {result.semantic_tags}")
+            print(f"Analysis: {result.llm_analysis[:100]}...")
+    """
+
+    def __init__(self, enable_llm: bool = True):
+        self.session = StreamingSession(StreamConfig(max_gap_sec=1.0))
+        self.annotator = KeywordSemanticAnnotator()
+        self.final_segments: list[Segment] = []
+        self.enable_llm = enable_llm
+        self.llm_client = anthropic.Anthropic() if enable_llm else None
+
+    def analyze_stream(
+        self, chunks: list[dict], on_partial: Callable | None = None
+    ) -> Iterator[StreamingAnalysisResult]:
+        """
+        Process ASR chunks and yield analysis results for finalized segments.
+
+        Args:
+            chunks: List of ASR chunks with {"start", "end", "text", "speaker_id"}
+            on_partial: Optional callback for partial segment updates (UI hints)
+
+        Yields:
+            StreamingAnalysisResult for each finalized segment
+        """
+        for chunk in chunks:
+            # Feed chunk into streaming state machine
+            stream_chunk: StreamChunk = {
+                "start": chunk["start"],
+                "end": chunk["end"],
+                "text": chunk["text"],
+                "speaker_id": chunk.get("speaker_id"),
+            }
+
+            events = self.session.ingest_chunk(stream_chunk)
+
+            for event in events:
+                if event.type == StreamEventType.PARTIAL_SEGMENT:
+                    # Partial updates (good for live UI)
+                    if on_partial:
+                        on_partial(
+                            segment_id=len(self.final_segments),
+                            text=event.segment.text,
+                            speaker=event.segment.speaker_id,
+                        )
+
+                elif event.type == StreamEventType.FINAL_SEGMENT:
+                    # Finalized segment: run analysis
+                    stream_seg = event.segment
+
+                    # Hydrate into Transcript schema
+                    final_segments_list = list(self.final_segments)
+                    final_segments_list.append(
+                        Segment(
+                            id=len(self.final_segments),
+                            start=stream_seg.start,
+                            end=stream_seg.end,
+                            text=stream_seg.text,
+                            speaker={"id": stream_seg.speaker_id}
+                            if stream_seg.speaker_id
+                            else None,
+                        )
+                    )
+
+                    # Run semantic annotation
+                    transcript = Transcript(
+                        file_name="live.wav",
+                        language="en",
+                        segments=final_segments_list,
+                    )
+                    annotated = self.annotator.annotate(transcript)
+
+                    # Extract semantic tags for this turn
+                    semantic_tags = annotated.annotations.get("semantic", {})
+
+                    # Route to appropriate LLM prompt
+                    llm_analysis = ""
+                    if self.enable_llm:
+                        llm_analysis = self._get_llm_analysis(
+                            text=stream_seg.text,
+                            speaker_id=stream_seg.speaker_id,
+                            semantic_tags=semantic_tags,
+                        )
+
+                    result = StreamingAnalysisResult(
+                        segment_id=len(self.final_segments),
+                        start=stream_seg.start,
+                        end=stream_seg.end,
+                        text=stream_seg.text,
+                        speaker_id=stream_seg.speaker_id,
+                        semantic_tags=semantic_tags,
+                        llm_analysis=llm_analysis,
+                    )
+
+                    self.final_segments.append(
+                        Segment(
+                            id=result.segment_id,
+                            start=stream_seg.start,
+                            end=stream_seg.end,
+                            text=stream_seg.text,
+                            speaker={"id": stream_seg.speaker_id}
+                            if stream_seg.speaker_id
+                            else None,
+                        )
+                    )
+
+                    yield result
+
+        # Finalize any remaining partial segment
+        final_events = self.session.end_of_stream()
+        for event in final_events:
+            if event.type == StreamEventType.FINAL_SEGMENT:
+                stream_seg = event.segment
+
+                final_segments_list = list(self.final_segments)
+                final_segments_list.append(
+                    Segment(
+                        id=len(self.final_segments),
+                        start=stream_seg.start,
+                        end=stream_seg.end,
+                        text=stream_seg.text,
+                        speaker={"id": stream_seg.speaker_id}
+                        if stream_seg.speaker_id
+                        else None,
+                    )
+                )
+
+                transcript = Transcript(
+                    file_name="live.wav",
+                    language="en",
+                    segments=final_segments_list,
+                )
+                annotated = self.annotator.annotate(transcript)
+                semantic_tags = annotated.annotations.get("semantic", {})
+
+                llm_analysis = ""
+                if self.enable_llm:
+                    llm_analysis = self._get_llm_analysis(
+                        text=stream_seg.text,
+                        speaker_id=stream_seg.speaker_id,
+                        semantic_tags=semantic_tags,
+                    )
+
+                result = StreamingAnalysisResult(
+                    segment_id=len(self.final_segments),
+                    start=stream_seg.start,
+                    end=stream_seg.end,
+                    text=stream_seg.text,
+                    speaker_id=stream_seg.speaker_id,
+                    semantic_tags=semantic_tags,
+                    llm_analysis=llm_analysis,
+                )
+
+                self.final_segments.append(
+                    Segment(
+                        id=result.segment_id,
+                        start=stream_seg.start,
+                        end=stream_seg.end,
+                        text=stream_seg.text,
+                        speaker={"id": stream_seg.speaker_id}
+                        if stream_seg.speaker_id
+                        else None,
+                    )
+                )
+
+                yield result
+
+    def _get_llm_analysis(
+        self, text: str, speaker_id: str | None, semantic_tags: dict
+    ) -> str:
+        """
+        Route to context-appropriate LLM prompt based on semantic tags.
+
+        Example routes:
+        - escalation_tags detected → escalation response template
+        - churn_tags detected → retention template
+        - pricing_tags detected → pricing negotiation template
+        """
+        if not self.enable_llm or not self.llm_client:
+            return ""
+
+        # Example: detect risk level and select prompt
+        risk_tags = semantic_tags.get("escalation_tags", set())
+        churn_tags = semantic_tags.get("churn_tags", set())
+        pricing_tags = semantic_tags.get("pricing_tags", set())
+
+        # Route based on detected tags
+        if risk_tags and "escalation" in risk_tags:
+            prompt = self._escalation_response_prompt(text, speaker_id)
+        elif churn_tags:
+            prompt = self._retention_prompt(text, speaker_id)
+        elif pricing_tags:
+            prompt = self._pricing_response_prompt(text, speaker_id)
+        else:
+            prompt = self._general_response_prompt(text, speaker_id)
+
+        # Call LLM synchronously (streaming can use server-sent events in production)
+        response = self.llm_client.messages.create(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=256,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        return response.content[0].text
+
+    def _escalation_response_prompt(self, text: str, speaker_id: str | None) -> str:
+        return f"""
+Customer message (escalation detected): "{text}"
+
+Provide a brief (1-2 sentences) de-escalation response that:
+1. Acknowledges the concern
+2. Shows immediate action
+
+Keep response concise for real-time delivery.
+"""
+
+    def _retention_prompt(self, text: str, speaker_id: str | None) -> str:
+        return f"""
+Customer message (churn risk detected): "{text}"
+
+Provide a brief (1-2 sentences) retention counter-offer that:
+1. Acknowledges their intent to leave
+2. Offers a specific value retention tactic
+
+Keep response concise for real-time delivery.
+"""
+
+    def _pricing_response_prompt(self, text: str, speaker_id: str | None) -> str:
+        return f"""
+Customer message (pricing discussion): "{text}"
+
+Provide a brief (1-2 sentences) pricing response that:
+1. Validates their budget concern
+2. Offers a negotiation path
+
+Keep response concise for real-time delivery.
+"""
+
+    def _general_response_prompt(self, text: str, speaker_id: str | None) -> str:
+        return f"""
+Customer message: "{text}"
+
+Provide a brief (1-2 sentences) acknowledgment response.
+Keep response concise for real-time delivery.
+"""
+```
+
+### Example Output
+
+Running the streaming analyzer on the input chunks above produces real-time results:
+
+```
+Analyzing live conversation stream...
+
+[0.0-2.1s] spk_1:
+  Text: "Hi, I need to cancel my account."
+  Tags: {'churn_tags': {'cancel'}}
+  Routing: → Retention prompt
+  Analysis: We'd love to keep you on board! Can I explore what's driving
+    this decision? I may have some flexibility on pricing or features.
+
+[2.5-5.3s] spk_1:
+  Text: "I'm unhappy with the pricing and would like to switch to a competitor."
+  Tags: {'churn_tags': {'switch', 'competitor'}, 'pricing_tags': {'pricing'}}
+  Routing: → Retention + Pricing prompt (combined)
+  Analysis: I completely understand—pricing is crucial. Before you go, let me
+    check if our enterprise plan (20% savings) might work better for your use case.
+
+[5.8-8.2s] spk_0:
+  Text: "Let me escalate this to my supervisor right away."
+  Tags: {'escalation_tags': {'escalation', 'supervisor'}}
+  Routing: → Escalation response prompt
+  Analysis: Excellent—escalating shows commitment. Here's our direct line
+    for priority support: [contact info]. You'll hear from us within 30 min.
+
+[8.5-12.3s] spk_0:
+  Text: "I can offer you a 30% discount if you stay with us."
+  Tags: {'pricing_tags': {'discount'}, 'action_items': {'offer'}}
+  Routing: → Pricing response prompt
+  Analysis: Strong retention move! Confirm the discount tier and lock in
+    a 12-month agreement for maximum impact.
+
+Stream complete. Summary:
+- 4 turns analyzed
+- Churn risk: HIGH (2 churn_tags segments)
+- Escalation: 1 escalation event (handled)
+- Recommended follow-up: Confirm pricing agreement and send written confirmation
+```
+
+### Best Practices for Streaming Semantics
+
+1. **Segment finalization only**: Only run semantic tagging and LLM analysis on `FINAL_SEGMENT` events, not partials. This ensures tags are stable and production-ready.
+
+2. **Speaker-aware chunking**: Configure `StreamConfig.max_gap_sec` based on your use case:
+   - Call centers (high interruption): `0.5s` (finalize quickly)
+   - Meetings (natural pauses): `1.5s` (group long pauses as same speaker)
+   - One-on-one interviews: `2.0s` (allow for natural thinking time)
+
+3. **Tag-driven routing**: Map semantic tags → prompt templates at initialization time to avoid LLM latency:
+   ```python
+   # Pre-load prompt templates (fast lookup)
+   self.prompt_routes = {
+       'escalation': self.escalation_template,
+       'churn': self.retention_template,
+       'pricing': self.pricing_template,
+   }
+
+   # Route in O(1) time
+   for tag in semantic_tags:
+       if tag in self.prompt_routes:
+           prompt = self.prompt_routes[tag]
+   ```
+
+4. **Batch vs. streaming LLM calls**: For production:
+   - **Streaming**: Use server-sent events (SSE) or WebSocket for real-time feedback to agents
+   - **Batching**: Group 3-5 turns before LLM call to reduce API overhead and latency
+   - Example with batching:
+     ```python
+     batch_size = 3
+     batch_results = []
+     for result in analyzer.analyze_stream(chunks):
+         batch_results.append(result)
+         if len(batch_results) >= batch_size:
+             llm_analysis = self._batch_analyze(batch_results)
+             for r in batch_results:
+                 yield r._replace(llm_analysis=llm_analysis)
+             batch_results = []
+     ```
+
+5. **Partial events for UI**: Use `on_partial` callback to update agent dashboards in real-time without waiting for finalization:
+   ```python
+   def update_ui(segment_id, text, speaker):
+       # Push live transcription to frontend
+       emit('transcription_update', {'segment_id': segment_id, 'text': text})
+
+   for result in analyzer.analyze_stream(chunks, on_partial=update_ui):
+       emit('analysis_ready', result.semantic_tags)
+   ```
+
+6. **Error handling**: Wrap LLM calls in try/except to maintain streaming even if analysis fails:
+   ```python
+   try:
+       llm_analysis = self._get_llm_analysis(...)
+   except anthropic.APIError as e:
+       logger.error(f"LLM analysis failed: {e}")
+       llm_analysis = "[Analysis unavailable]"
+       yield result._replace(llm_analysis=llm_analysis)
+   ```
+
+### When to Use This Pattern
+
+**Use Pattern 7 (Streaming Semantics) when:**
+
+- Processing live conversation with real-time agent feedback needed
+- Routing decisions must happen mid-call (escalation detection, topic routing)
+- Latency-sensitive: Agent needs LLM suggestions within 2-5 seconds
+- Volume-high: Need to batch LLM calls to manage API costs
+- Multi-prompt: Different conversation types need different analysis templates
+
+**Use Pattern 1-6 instead when:**
+
+- Post-call analysis (recording already complete)
+- Batch processing (night job over call archives)
+- Latency not critical (e.g., coaching report generation)
+- Single, unified prompt for all conversations
 
 ---
 

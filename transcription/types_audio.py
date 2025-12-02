@@ -124,10 +124,14 @@ class ExtractionStatus(TypedDict, total=False):
     Attributes:
         prosody: Status of prosody extraction
         emotion_dimensional: Status of dimensional emotion extraction
+        emotion_categorical: Status of categorical emotion extraction
+        errors: List of error messages from failed extractions
     """
 
     prosody: str
     emotion_dimensional: str
+    emotion_categorical: str
+    errors: list[str]
 
 
 class AudioState(TypedDict, total=False):

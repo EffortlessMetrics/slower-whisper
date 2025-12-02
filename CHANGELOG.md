@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CHANGELOG formatting**: Fixed markdown lint warnings (blank lines around headings/lists).
 - **Import cleanup**: Removed unused import in exporters.py.
 
-## [1.4.0] - 2026-01-XX
+## [1.4.0] - 2025-11-28
 
 ### Hardening & Performance
 
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Real diarization eval path**: `verify_all.py --eval-diarization` now runs pyannote.audio backend when `SLOWER_WHISPER_PYANNOTE_MODE=auto` and `HF_TOKEN` is available. Outputs to `DIARIZATION_REPORT_REAL.md/.json`.
 - **Synthetic fixture limitation documented**: Synthetic tone fixtures work for code flow testing but yield DER=1.0 on real backend (pyannote expects human speech).
 
-## [1.3.1] - 2026-01-XX
+## [1.3.1] - 2025-11-20
 
 ### Maintenance
 
