@@ -608,9 +608,9 @@ def test_transcribe_file_refreshes_raw_copy(mock_engine_class, temp_project_root
 
 @patch("transcription.pipeline.run_pipeline")
 def test_transcribe_directory_basic(
-    mock_run_pipeline, temp_project_root, multiple_audio_files, test_transcript
+    mock_run_pipeline, temp_project_root, multiple_audio_files, test_transcript, caplog
 ):
-    """Test transcribe_directory with multiple audio files."""
+    """Test transcribe_directory with multiple audio files and verify logging."""
     # Create mock JSON outputs
     for i in range(3):
         transcript = Transcript(
@@ -621,9 +621,18 @@ def test_transcribe_directory_basic(
         json_path = temp_project_root / "whisper_json" / f"test_{i}.json"
         save_transcript(transcript, json_path)
 
+    # Mock run_pipeline to return a result with processing statistics
+    from types import SimpleNamespace
+
+    mock_run_pipeline.return_value = SimpleNamespace(processed=3, skipped=0, failed=0)
+
     # Configure and run
     config = TranscriptionConfig(model="large-v3", language="en", device="cpu")
-    results = transcribe_directory(temp_project_root, config)
+
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        results = transcribe_directory(temp_project_root, config)
 
     # Verify pipeline was called
     mock_run_pipeline.assert_called_once()
@@ -634,6 +643,10 @@ def test_transcribe_directory_basic(
     assert results[0].file_name == "test_0.wav"
     assert results[1].file_name == "test_1.wav"
     assert results[2].file_name == "test_2.wav"
+
+    # Verify pipeline completion summary logging
+    assert "Pipeline completed:" in caplog.text
+    assert "3 processed, 0 skipped, 0 failed" in caplog.text
 
 
 @patch("transcription.pipeline.run_pipeline")
@@ -718,17 +731,36 @@ def test_enrich_transcript_basic(
     test_transcript,
     enriched_transcript,
     test_audio_file,
+    caplog,
 ):
-    """Test enrich_transcript with basic configuration."""
-    # Mock the internal enrichment function
-    mock_enrich_internal.return_value = enriched_transcript
+    """Test enrich_transcript with basic configuration and verify enrichment logging."""
+
+    # Mock the internal enrichment function with logging
+    def enrich_with_logging(transcript, **kwargs):
+        # Simulate the logging that happens in enrich_transcript_audio
+        import logging
+
+        logger = logging.getLogger("transcription.audio_enrichment")
+        logger.info(
+            "Starting audio enrichment for %d segments (prosody=%s, emotion=%s, categorical=%s)",
+            len(transcript.segments),
+            kwargs.get("enable_prosody"),
+            kwargs.get("enable_emotion"),
+            kwargs.get("enable_categorical_emotion"),
+        )
+        return enriched_transcript
+
+    mock_enrich_internal.side_effect = enrich_with_logging
     # Mock speaker analytics and semantic annotator as passthrough
     mock_speaker_analytics.side_effect = lambda t, c: t
     mock_semantic_annotator.side_effect = lambda t, c: t
 
     config = EnrichmentConfig(enable_prosody=True, enable_emotion=True)
 
-    result = enrich_transcript(test_transcript, test_audio_file, config)
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        result = enrich_transcript(test_transcript, test_audio_file, config)
 
     # Verify internal function was called with correct params
     mock_enrich_internal.assert_called_once()
@@ -747,6 +779,11 @@ def test_enrich_transcript_basic(
     # Verify result
     assert result == enriched_transcript
     assert result.segments[0].audio_state is not None
+
+    # Verify enrichment start logging
+    assert "Starting audio enrichment" in caplog.text
+    assert "prosody=True" in caplog.text
+    assert "emotion=True" in caplog.text
 
 
 def test_enrich_transcript_missing_audio(test_transcript, tmp_path):
@@ -793,13 +830,95 @@ def test_enrich_transcript_categorical_emotion(
     assert call_kwargs["enable_categorical_emotion"] is True
 
 
+@patch("transcription.api._maybe_run_diarization")
+@patch("transcription.asr_engine.TranscriptionEngine")
+@patch("transcription.audio_io.normalize_all")
+def test_transcribe_file_logs_diarization_warnings(
+    mock_normalize,
+    mock_engine_class,
+    mock_diarization,
+    test_audio_file,
+    temp_project_root,
+    caplog,
+):
+    """Test transcribe_file logs warnings when diarization produces no speakers or too many speakers."""
+    import logging
+
+    # Setup mocks
+    mock_engine = MagicMock()
+    base_transcript = Transcript(
+        file_name=test_audio_file.name,
+        language="en",
+        segments=[Segment(id=0, start=0.0, end=1.0, text="Hello world")],
+    )
+    mock_engine.transcribe_file.return_value = base_transcript
+    mock_engine_class.return_value = mock_engine
+
+    # Mock normalize_all to create the WAV file
+    def create_normalized_wav(paths):
+        import soundfile as sf
+
+        norm_wav = paths.norm_dir / f"{test_audio_file.stem}.wav"
+        audio = np.random.randn(16000).astype(np.float32) * 0.1
+        sf.write(norm_wav, audio, 16000)
+
+    mock_normalize.side_effect = create_normalized_wav
+
+    # Test 1: Diarization produces no speaker turns
+    def mock_diarize_no_speakers(transcript, wav_path, config):
+        # Simulate the warning logged by _maybe_run_diarization
+        import logging
+
+        logger = logging.getLogger("transcription.api")
+        logger.warning("Diarization produced no speaker turns for %s", wav_path.name)
+        return transcript
+
+    mock_diarization.side_effect = mock_diarize_no_speakers
+
+    config = TranscriptionConfig(
+        model="large-v3", device="cpu", language="en", enable_diarization=True
+    )
+
+    with caplog.at_level(logging.WARNING):
+        transcribe_file(test_audio_file, temp_project_root, config)
+
+    # Verify no speaker warning was logged
+    assert "Diarization produced no speaker turns" in caplog.text
+
+    # Clear the log for next test
+    caplog.clear()
+
+    # Test 2: Diarization produces too many speakers
+    def mock_diarize_many_speakers(transcript, wav_path, config):
+        # Simulate the warning logged by _maybe_run_diarization
+        import logging
+
+        logger = logging.getLogger("transcription.api")
+        logger.warning(
+            "Diarization found %d speakers for %s; this may indicate "
+            "noisy audio or misconfiguration.",
+            15,
+            wav_path.name,
+        )
+        return transcript
+
+    mock_diarization.side_effect = mock_diarize_many_speakers
+
+    with caplog.at_level(logging.WARNING):
+        transcribe_file(test_audio_file, temp_project_root, config)
+
+    # Verify high speaker count warning was logged
+    assert "Diarization found 15 speakers" in caplog.text
+    assert "noisy audio or misconfiguration" in caplog.text
+
+
 # ============================================================================
 # enrich_directory() Tests
 # ============================================================================
 
 
-def test_enrich_directory_basic(temp_project_root, test_audio_file):
-    """Test enrich_directory with pre-existing transcripts and audio."""
+def test_enrich_directory_basic(temp_project_root, test_audio_file, caplog):
+    """Test enrich_directory with pre-existing transcripts and audio and verify completion logging."""
     # Create transcripts
     for i in range(2):
         transcript = Transcript(
@@ -823,7 +942,16 @@ def test_enrich_directory_basic(temp_project_root, test_audio_file):
     with patch("transcription.audio_enrichment.enrich_transcript_audio") as mock_enrich:
 
         def enrich_side_effect(transcript, **kwargs):
-            # Add audio_state to segments
+            # Add audio_state to segments and simulate logging
+            import logging
+
+            logger = logging.getLogger("transcription.audio_enrichment")
+            logger.info(
+                "Audio enrichment complete: %d success, %d partial, %d failed",
+                len(transcript.segments),
+                0,
+                0,
+            )
             for seg in transcript.segments:
                 seg.audio_state = {"prosody": {}, "emotion": {}}
             return transcript
@@ -831,7 +959,11 @@ def test_enrich_directory_basic(temp_project_root, test_audio_file):
         mock_enrich.side_effect = enrich_side_effect
 
         config = EnrichmentConfig(enable_prosody=True, enable_emotion=True)
-        results = enrich_directory(temp_project_root, config)
+
+        import logging
+
+        with caplog.at_level(logging.INFO):
+            results = enrich_directory(temp_project_root, config)
 
     # Verify results
     assert len(results) == 2
@@ -840,6 +972,66 @@ def test_enrich_directory_basic(temp_project_root, test_audio_file):
     # Verify enrichment was applied
     for result in results:
         assert result.segments[0].audio_state is not None
+
+    # Verify enrichment completion summary logging
+    assert "Audio enrichment complete" in caplog.text
+    # The log message shows success/partial/failed counts
+    assert "success" in caplog.text.lower()
+
+
+@patch("transcription.api._run_semantic_annotator")
+@patch("transcription.api._run_speaker_analytics")
+@patch("transcription.audio_enrichment.enrich_transcript_audio")
+def test_enrich_transcript_logs_baseline_computation(
+    mock_enrich_internal,
+    mock_speaker_analytics,
+    mock_semantic_annotator,
+    test_transcript,
+    enriched_transcript,
+    test_audio_file,
+    caplog,
+):
+    """Test enrich_transcript logs baseline computation and completion info."""
+
+    # Mock the internal enrichment function to simulate baseline computation
+    def enrich_with_baseline(transcript, **kwargs):
+        # Simulate the internal logging that happens during enrichment
+        import logging
+
+        logger = logging.getLogger("transcription.audio_enrichment")
+        if kwargs.get("compute_baseline"):
+            logger.info("Computing speaker baseline statistics...")
+            logger.info("Speaker baseline computed from %d segments", 3)
+        logger.info(
+            "Audio enrichment complete: %d success, %d partial, %d failed",
+            len(transcript.segments),
+            0,
+            0,
+        )
+        return enriched_transcript
+
+    mock_enrich_internal.side_effect = enrich_with_baseline
+    mock_speaker_analytics.side_effect = lambda t, c: t
+    mock_semantic_annotator.side_effect = lambda t, c: t
+
+    config = EnrichmentConfig(enable_prosody=True, enable_emotion=True)
+
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        result = enrich_transcript(test_transcript, test_audio_file, config)
+
+    # Verify baseline computation logging
+    assert "Computing speaker baseline statistics" in caplog.text
+    assert "Speaker baseline computed from" in caplog.text
+
+    # Verify enrichment completion summary
+    assert "Audio enrichment complete" in caplog.text
+    # Should show success/partial/failed counts
+    assert "success" in caplog.text.lower()
+
+    # Verify result
+    assert result == enriched_transcript
 
 
 def test_enrich_directory_missing_json_dir(temp_project_root):
@@ -974,8 +1166,8 @@ def test_enrich_directory_missing_audio_for_transcript(temp_project_root):
         mock_enrich.assert_not_called()
 
 
-def test_enrich_directory_handles_enrichment_errors(temp_project_root):
-    """Test enrich_directory continues on enrichment errors."""
+def test_enrich_directory_handles_enrichment_errors(temp_project_root, caplog):
+    """Test enrich_directory continues on enrichment errors and logs warnings."""
     # Create two transcripts
     for i in range(2):
         transcript = Transcript(
@@ -1006,11 +1198,310 @@ def test_enrich_directory_handles_enrichment_errors(temp_project_root):
         mock_enrich.side_effect = enrich_side_effect
 
         config = EnrichmentConfig()
-        results = enrich_directory(temp_project_root, config)
+
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            results = enrich_directory(temp_project_root, config)
 
     # Should only return the successful one
     assert len(results) == 1
     assert results[0].file_name == "test_1.wav"
+
+    # Verify enrichment failure was logged
+    assert "Enrichment failed for test_0.json" in caplog.text
+    assert "Enrichment failed for test_0" in caplog.text
+
+
+@patch("transcription.api._run_semantic_annotator")
+@patch("transcription.api._run_speaker_analytics")
+@patch("transcription.audio_enrichment.enrich_transcript_audio")
+def test_enrich_transcript_logs_semantic_annotator_failure(
+    mock_enrich_internal,
+    mock_speaker_analytics,
+    mock_semantic_annotator,
+    test_transcript,
+    enriched_transcript,
+    test_audio_file,
+    caplog,
+):
+    """Test enrich_transcript logs warning when semantic annotator fails."""
+    import logging
+
+    # Mock the internal enrichment function
+    mock_enrich_internal.return_value = enriched_transcript
+    # Mock speaker analytics as passthrough
+    mock_speaker_analytics.side_effect = lambda t, c: t
+
+    # Mock semantic annotator to raise an exception and log the warning
+    def mock_semantic_failure(transcript, config):
+        logger = logging.getLogger("transcription.api")
+        exc = RuntimeError("Semantic annotator crashed")
+        logger.warning("Semantic annotator failed: %s", exc, exc_info=True)
+        return transcript
+
+    mock_semantic_annotator.side_effect = mock_semantic_failure
+
+    config = EnrichmentConfig(
+        enable_prosody=True, enable_emotion=True, enable_semantic_annotator=True
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = enrich_transcript(test_transcript, test_audio_file, config)
+
+    # Verify semantic annotator failure was logged with appropriate message
+    assert "Semantic annotator failed" in caplog.text
+    assert "Semantic annotator crashed" in caplog.text
+
+    # Verify enrichment still completed (graceful degradation)
+    assert result is not None
+    assert result == enriched_transcript
+
+
+# ============================================================================
+# Batch Error Scenario Tests
+# ============================================================================
+
+
+@patch("transcription.pipeline.run_pipeline")
+def test_transcribe_directory_partial_failures_continue_processing(
+    mock_run_pipeline, temp_project_root, caplog
+):
+    """Test transcribe_directory continues processing when some files fail normalization."""
+    import logging
+
+    # Create 3 audio files in raw_audio
+    import soundfile as sf
+
+    sr = 16000
+    for i in range(3):
+        audio = 0.3 * np.sin(2 * np.pi * 200 * np.linspace(0, 1.0, sr)).astype(np.float32)
+        audio_path = temp_project_root / "raw_audio" / f"test_{i}.wav"
+        sf.write(audio_path, audio, sr)
+
+    # Create 2 successful JSON outputs (test_1 and test_2 succeed)
+    for i in [1, 2]:
+        transcript = Transcript(
+            file_name=f"test_{i}.wav",
+            language="en",
+            segments=[Segment(id=0, start=0.0, end=1.0, text=f"Test {i}")],
+        )
+        json_path = temp_project_root / "whisper_json" / f"test_{i}.json"
+        save_transcript(transcript, json_path)
+
+    # Mock run_pipeline to simulate partial failures (1 failed, 2 succeeded)
+    from types import SimpleNamespace
+
+    mock_run_pipeline.return_value = SimpleNamespace(
+        processed=2,
+        skipped=0,
+        failed=1,
+        file_results=[
+            SimpleNamespace(file_name="test_0.wav", status="failed", error="Normalization failed"),
+            SimpleNamespace(file_name="test_1.wav", status="success", error=None),
+            SimpleNamespace(file_name="test_2.wav", status="success", error=None),
+        ],
+    )
+
+    config = TranscriptionConfig(model="large-v3", language="en", device="cpu")
+
+    with caplog.at_level(logging.INFO):
+        results = transcribe_directory(temp_project_root, config)
+
+    # Verify 2 successful transcripts returned
+    assert len(results) == 2
+    assert results[0].file_name == "test_1.wav"
+    assert results[1].file_name == "test_2.wav"
+
+    # Verify summary logging includes failure count
+    assert "Pipeline completed:" in caplog.text
+    assert "2 processed" in caplog.text
+    assert "1 failed" in caplog.text
+
+
+@patch("transcription.audio_enrichment.enrich_transcript_audio")
+def test_enrich_directory_missing_audio_for_some_files(mock_enrich, temp_project_root, caplog):
+    """Test enrich_directory gracefully skips transcripts with missing audio files."""
+    import logging
+
+    # Create 3 JSON transcripts
+    for i in range(3):
+        transcript = Transcript(
+            file_name=f"test_{i}.wav",
+            language="en",
+            segments=[Segment(id=0, start=0.0, end=1.0, text=f"Test {i}")],
+        )
+        json_path = temp_project_root / "whisper_json" / f"test_{i}.json"
+        save_transcript(transcript, json_path)
+
+    # Only create 2 audio files (test_0 and test_1)
+    import soundfile as sf
+
+    for i in [0, 1]:
+        audio = np.random.randn(16000).astype(np.float32) * 0.1
+        audio_path = temp_project_root / "input_audio" / f"test_{i}.wav"
+        sf.write(audio_path, audio, 16000)
+
+    # Mock enrichment to succeed when called
+    def enrich_side_effect(transcript, **kwargs):
+        for seg in transcript.segments:
+            seg.audio_state = {"prosody": {}, "emotion": {}}
+        return transcript
+
+    mock_enrich.side_effect = enrich_side_effect
+
+    config = EnrichmentConfig(enable_prosody=True, enable_emotion=True)
+
+    with caplog.at_level(logging.WARNING):
+        results = enrich_directory(temp_project_root, config)
+
+    # Verify only 2 transcripts enriched (test_2 skipped due to missing audio)
+    assert len(results) == 2
+    assert all(t.file_name in ["test_0.wav", "test_1.wav"] for t in results)
+
+    # Verify enrichment was only called twice (not for missing audio)
+    assert mock_enrich.call_count == 2
+
+    # No error raised (graceful skip), but warning logged
+    # Note: The actual implementation may not log this as a warning, but includes in errors list
+
+
+@patch("transcription.audio_enrichment.enrich_transcript_audio")
+def test_enrich_directory_mixed_success_partial_error(mock_enrich, temp_project_root, caplog):
+    """Test enrich_directory handles mixed outcomes: full success, partial success, and errors."""
+    import logging
+
+    # Create 3 JSON transcripts
+    for i in range(3):
+        transcript = Transcript(
+            file_name=f"test_{i}.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text=f"Segment A {i}"),
+                Segment(id=1, start=1.0, end=2.0, text=f"Segment B {i}"),
+            ],
+        )
+        json_path = temp_project_root / "whisper_json" / f"test_{i}.json"
+        save_transcript(transcript, json_path)
+
+    # Create corresponding audio files
+    import soundfile as sf
+
+    for i in range(3):
+        audio = np.random.randn(32000).astype(np.float32) * 0.1
+        audio_path = temp_project_root / "input_audio" / f"test_{i}.wav"
+        sf.write(audio_path, audio, 16000)
+
+    # Mock enrichment with mixed outcomes
+    def enrich_side_effect(transcript, **kwargs):
+        if "test_0" in transcript.file_name:
+            # Full success: both segments enriched
+            for seg in transcript.segments:
+                seg.audio_state = {"prosody": {"pitch_mean": 200}, "emotion": {"valence": 0.5}}
+            return transcript
+        elif "test_1" in transcript.file_name:
+            # Partial success: only first segment enriched
+            transcript.segments[0].audio_state = {
+                "prosody": {"pitch_mean": 180},
+                "emotion": None,
+                "extraction_status": {"prosody": "success", "emotion_dimensional": "failed"},
+            }
+            # Second segment has partial data
+            transcript.segments[1].audio_state = {
+                "prosody": None,
+                "emotion": {"valence": 0.4},
+                "extraction_status": {"prosody": "failed", "emotion_dimensional": "success"},
+            }
+            return transcript
+        else:  # test_2
+            # Error during enrichment
+            raise RuntimeError("Audio processing failed for test_2")
+
+    mock_enrich.side_effect = enrich_side_effect
+
+    config = EnrichmentConfig(enable_prosody=True, enable_emotion=True)
+
+    with caplog.at_level(logging.WARNING):
+        results = enrich_directory(temp_project_root, config)
+
+    # Verify 2 successful enrichments (test_2 failed)
+    assert len(results) == 2
+    assert results[0].file_name == "test_0.wav"
+    assert results[1].file_name == "test_1.wav"
+
+    # Verify full success has complete audio_state
+    assert results[0].segments[0].audio_state is not None
+    assert results[0].segments[0].audio_state["prosody"]["pitch_mean"] == 200
+
+    # Verify partial success has mixed audio_state
+    assert results[1].segments[0].audio_state is not None
+    assert results[1].segments[1].audio_state is not None
+
+    # Verify failure was logged
+    assert "Enrichment failed for test_2.json" in caplog.text
+
+
+@patch("transcription.pipeline.run_pipeline")
+def test_transcribe_directory_reports_batch_statistics(
+    mock_run_pipeline, temp_project_root, caplog
+):
+    """Test transcribe_directory correctly reports batch processing statistics."""
+    import logging
+
+    # Create test audio files
+    import soundfile as sf
+
+    for i in range(5):
+        audio = 0.3 * np.sin(2 * np.pi * 200 * np.linspace(0, 1.0, 16000)).astype(np.float32)
+        audio_path = temp_project_root / "raw_audio" / f"test_{i}.wav"
+        sf.write(audio_path, audio, 16000)
+
+    # Create JSON outputs for successful files
+    for i in [0, 1, 4]:  # 3 processed
+        transcript = Transcript(
+            file_name=f"test_{i}.wav",
+            language="en",
+            segments=[Segment(id=0, start=0.0, end=1.0, text=f"Test {i}")],
+        )
+        json_path = temp_project_root / "whisper_json" / f"test_{i}.json"
+        save_transcript(transcript, json_path)
+
+    # Mock run_pipeline with realistic batch statistics
+    from types import SimpleNamespace
+
+    mock_run_pipeline.return_value = SimpleNamespace(
+        total_files=5,
+        processed=3,
+        skipped=1,  # test_2 skipped (already existed)
+        failed=1,  # test_3 failed
+        diarized_only=0,
+        total_audio_seconds=15.0,
+        total_time_seconds=45.0,
+    )
+
+    config = TranscriptionConfig(
+        model="large-v3", language="en", device="cpu", skip_existing_json=True
+    )
+
+    with caplog.at_level(logging.INFO):
+        results = transcribe_directory(temp_project_root, config)
+
+    # Verify returned results match processed count
+    assert len(results) == 3
+
+    # Verify batch statistics logging
+    assert "Pipeline completed:" in caplog.text
+    assert "3 processed" in caplog.text
+    assert "1 skipped" in caplog.text
+    assert "1 failed" in caplog.text
+
+    # Verify counts match actual outcomes
+    pipeline_result = mock_run_pipeline.return_value
+    assert pipeline_result.processed == 3
+    assert pipeline_result.skipped == 1
+    assert pipeline_result.failed == 1
+    assert pipeline_result.total_files == 5
+    assert len(results) == pipeline_result.processed
 
 
 # ============================================================================

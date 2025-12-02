@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from .exceptions import ConfigurationError
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "transcript-v2.schema.json"
 

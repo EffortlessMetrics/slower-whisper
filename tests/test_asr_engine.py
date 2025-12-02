@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,7 +16,7 @@ from transcription.config import AsrConfig
 from transcription.models import Transcript
 
 
-def test_model_init_retries_on_cpu_when_cuda_load_fails(monkeypatch, capsys):
+def test_model_init_retries_on_cpu_when_cuda_load_fails(monkeypatch, caplog):
     """If GPU init fails, the engine should retry on CPU before going dummy."""
     attempts: list[tuple[str, str]] = []
 
@@ -33,7 +34,8 @@ def test_model_init_retries_on_cpu_when_cuda_load_fails(monkeypatch, capsys):
 
     cfg = AsrConfig(model_name="tiny", device="cuda", compute_type="float16")
 
-    engine = asr_engine.TranscriptionEngine(cfg)
+    with caplog.at_level(logging.WARNING):
+        engine = asr_engine.TranscriptionEngine(cfg)
 
     # GPU attempt then CPU fallback
     assert attempts[0][0] == "cuda"
@@ -43,11 +45,10 @@ def test_model_init_retries_on_cpu_when_cuda_load_fails(monkeypatch, capsys):
     assert cfg.device == "cpu"
     assert cfg.compute_type == "int8"
     # Warn user about the retry
-    err = capsys.readouterr().err
-    assert "Retrying on CPU" in err
+    assert "Retrying on CPU" in caplog.text
 
 
-def test_model_init_retries_safer_compute_type_on_cpu(monkeypatch, capsys):
+def test_model_init_retries_safer_compute_type_on_cpu(monkeypatch, caplog):
     """CPU loads with aggressive compute_type should retry with int8 before dummy."""
     attempts: list[tuple[str, str]] = []
 
@@ -65,14 +66,14 @@ def test_model_init_retries_safer_compute_type_on_cpu(monkeypatch, capsys):
 
     cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="float16")
 
-    engine = asr_engine.TranscriptionEngine(cfg)
+    with caplog.at_level(logging.WARNING):
+        engine = asr_engine.TranscriptionEngine(cfg)
 
     assert attempts == [("cpu", "float16"), ("cpu", "int8")]
     assert isinstance(engine.model, CpuSensitiveModel)
     assert cfg.compute_type == "int8"  # Updated to reflect the successful fallback
     assert engine.model_load_error is None
-    err = capsys.readouterr().err
-    assert "compute_type=int8" in err
+    assert "compute_type=int8" in caplog.text
 
 
 def test_model_init_surfaces_load_warnings(monkeypatch, tmp_path):
@@ -137,7 +138,7 @@ def test_model_init_reports_cpu_fallback_failure(monkeypatch, tmp_path):
     assert "cpu (int8) load failed" in transcript.meta["asr_fallback_reason"]
 
 
-def test_transcribe_falls_back_to_dummy_on_inference_error(tmp_path, monkeypatch, capsys):
+def test_transcribe_falls_back_to_dummy_on_inference_error(tmp_path, monkeypatch, caplog):
     """Runtime inference errors should return dummy output with a warning."""
 
     class BrokenModel:
@@ -153,14 +154,14 @@ def test_transcribe_falls_back_to_dummy_on_inference_error(tmp_path, monkeypatch
     audio = np.zeros(16000, dtype=np.float32)
     sf.write(wav_path, audio, 16000)
 
-    transcript = engine.transcribe_file(wav_path)
+    with caplog.at_level(logging.WARNING):
+        transcript = engine.transcribe_file(wav_path)
 
     assert transcript.segments[0].text == "dummy segment"
     assert engine.using_dummy is True
     assert transcript.meta["asr_backend"] == "dummy"
     assert "decoder exploded" in transcript.meta["asr_fallback_reason"]
-    err = capsys.readouterr().err
-    assert "Falling back to dummy output" in err
+    assert "Falling back to dummy output" in caplog.text
 
 
 def test_transcribe_meta_records_actual_backend_for_dummy(tmp_path, monkeypatch):
@@ -241,7 +242,7 @@ def test_using_dummy_resets_after_successful_retry(tmp_path, monkeypatch):
     assert engine.using_dummy is False
 
 
-def test_transcribe_handles_generator_failure(tmp_path, monkeypatch, capsys):
+def test_transcribe_handles_generator_failure(tmp_path, monkeypatch, caplog):
     """Errors raised while iterating segments should trigger dummy fallback."""
 
     class StreamingModel:
@@ -261,14 +262,14 @@ def test_transcribe_handles_generator_failure(tmp_path, monkeypatch, capsys):
     audio = np.zeros(16000, dtype=np.float32)
     sf.write(wav_path, audio, 16000)
 
-    transcript = engine.transcribe_file(wav_path)
+    with caplog.at_level(logging.WARNING):
+        transcript = engine.transcribe_file(wav_path)
 
     assert transcript.meta["asr_backend"] == "dummy"
     assert "midstream failure" in transcript.meta["asr_fallback_reason"]
     assert transcript.language == "es"
     assert engine.using_dummy is True
-    err = capsys.readouterr().err
-    assert "Whisper inference failed" in err
+    assert "Whisper inference failed" in caplog.text
 
 
 def test_transcribe_retries_without_vad_kwargs(tmp_path, monkeypatch):

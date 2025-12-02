@@ -6,7 +6,7 @@ with audio features including prosody and emotion analysis.
 """
 
 import argparse
-import sys
+import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,9 +18,17 @@ from .exceptions import SlowerWhisperError
 from .models import AUDIO_STATE_VERSION, Transcript
 from .writers import load_transcript_from_json, write_json
 
+logger = logging.getLogger(__name__)
 
-class EnrichmentConfig:
-    """Configuration for audio enrichment process."""
+
+class LegacyEnrichmentConfig:
+    """Configuration for audio enrichment process.
+
+    .. deprecated:: 1.6.0
+        This class is deprecated. Use the modern EnrichmentConfig from
+        transcription.config module instead. This legacy implementation will
+        be removed in v2.0.0.
+    """
 
     def __init__(
         self,
@@ -44,7 +52,7 @@ class EnrichmentConfig:
 def enrich_transcript_audio(
     transcript: Transcript,
     audio_path: Path,
-    config: EnrichmentConfig,
+    config: LegacyEnrichmentConfig,
 ) -> Transcript:
     """
     Enrich all segments in a transcript with audio features.
@@ -74,12 +82,15 @@ def enrich_transcript_audio(
     enriched_count = sum(1 for seg in enriched_transcript.segments if seg.audio_state is not None)
     skipped_count = len(enriched_transcript.segments) - enriched_count
 
-    print(f"    [stats] enriched={enriched_count}, skipped={skipped_count}")
+    logger.info(
+        "Enrichment stats",
+        extra={"enriched": enriched_count, "skipped": skipped_count},
+    )
 
     return enriched_transcript
 
 
-def _build_enrichment_meta(config: EnrichmentConfig) -> dict:
+def _build_enrichment_meta(config: LegacyEnrichmentConfig) -> dict:
     """Build metadata for the enrichment process."""
     models_used = []
     if config.enable_prosody:
@@ -98,7 +109,7 @@ def _build_enrichment_meta(config: EnrichmentConfig) -> dict:
     }
 
 
-def run_enrichment_pipeline(config: EnrichmentConfig) -> None:
+def run_enrichment_pipeline(config: LegacyEnrichmentConfig) -> None:
     """
     Orchestrate the audio enrichment pipeline.
 
@@ -115,22 +126,26 @@ def run_enrichment_pipeline(config: EnrichmentConfig) -> None:
     # Handle single file mode
     if config.single_file:
         json_files = [Path(config.single_file)]
-        print(f"\n=== Enriching single file: {config.single_file} ===")
+        logger.info("Enriching single file", extra={"file": config.single_file})
     else:
         json_files = sorted(paths.json_dir.glob("*.json"))
-        print("\n=== Audio Enrichment Pipeline ===")
-        print(f"Root: {paths.root}")
-        print(f"JSON directory: {paths.json_dir}")
-        print(f"Audio directory: {paths.norm_dir}")
-        print(f"Found {len(json_files)} JSON files")
+        logger.info(
+            "Starting audio enrichment pipeline",
+            extra={
+                "root": str(paths.root),
+                "json_dir": str(paths.json_dir),
+                "audio_dir": str(paths.norm_dir),
+                "file_count": len(json_files),
+            },
+        )
 
     if not json_files:
-        print("No JSON files found. Nothing to enrich.")
+        logger.warning("No JSON files found. Nothing to enrich.")
         return
 
     # Validation
     if not paths.norm_dir.exists():
-        print(f"[error] Audio directory does not exist: {paths.norm_dir}")
+        logger.error("Audio directory does not exist", extra={"audio_dir": str(paths.norm_dir)})
         return
 
     total = len(json_files)
@@ -140,14 +155,20 @@ def run_enrichment_pipeline(config: EnrichmentConfig) -> None:
     total_time = 0.0
 
     for idx, json_path in enumerate(json_files, start=1):
-        print(f"\n[{idx}/{total}] {json_path.name}")
+        logger.info(
+            "Processing file",
+            extra={"index": idx, "total": total, "file": json_path.name},
+        )
 
         # Find matching audio file
         stem = json_path.stem
         wav_path = paths.norm_dir / f"{stem}.wav"
 
         if not wav_path.exists():
-            print(f"  [skip] Audio file not found: {wav_path.name}")
+            logger.warning(
+                "Audio file not found, skipping",
+                extra={"expected_file": wav_path.name, "json_file": json_path.name},
+            )
             skipped += 1
             continue
 
@@ -161,14 +182,21 @@ def run_enrichment_pipeline(config: EnrichmentConfig) -> None:
             if config.skip_existing:
                 has_audio_state = any(seg.audio_state is not None for seg in transcript.segments)
                 if has_audio_state:
-                    print(
-                        "  [skip] Transcript already has audio_state (use --no-skip-existing to re-enrich)"
+                    logger.info(
+                        "Transcript already enriched, skipping (use --no-skip-existing to re-enrich)",
+                        extra={"file": json_path.name},
                     )
                     skipped += 1
                     continue
 
             # Enrich transcript
-            print(f"  [enriching] {len(transcript.segments)} segments from {wav_path.name}")
+            logger.info(
+                "Enriching transcript",
+                extra={
+                    "segment_count": len(transcript.segments),
+                    "audio_file": wav_path.name,
+                },
+            )
             transcript = enrich_transcript_audio(transcript, wav_path, config)
 
             # Update metadata
@@ -185,13 +213,23 @@ def run_enrichment_pipeline(config: EnrichmentConfig) -> None:
             elapsed = time.time() - start
             total_time += elapsed
 
-            print(f"  [done] Enriched in {elapsed:.1f}s")
-            print(f"  → {json_path}")
+            logger.info(
+                "Enrichment completed",
+                extra={
+                    "file": json_path.name,
+                    "elapsed_seconds": round(elapsed, 1),
+                    "output_path": str(json_path),
+                },
+            )
 
             processed += 1
 
         except Exception as e:
-            print(f"  [error] Failed to enrich {json_path.name}: {e}")
+            logger.error(
+                "Failed to enrich file",
+                extra={"file": json_path.name, "error": str(e)},
+                exc_info=True,
+            )
             failed += 1
             continue
 
@@ -275,7 +313,14 @@ def main() -> int:
         parser = build_parser()
         args = parser.parse_args()
 
-        config = EnrichmentConfig(
+        # Deprecation warning
+        logger.warning(
+            "audio_enrich_cli is deprecated as of v1.6.0. "
+            "Use 'slower-whisper enrich' from the modern CLI instead. "
+            "This legacy interface will be removed in v2.0.0."
+        )
+
+        config = LegacyEnrichmentConfig(
             root=args.root,
             skip_existing=args.skip_existing,
             enable_prosody=args.enable_prosody,
@@ -289,11 +334,11 @@ def main() -> int:
         return 0
 
     except SlowerWhisperError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error("SlowerWhisper error occurred", extra={"error": str(e)})
         return 1
 
     except Exception as e:
-        print(f"Unexpected error: {e}", file=sys.stderr)
+        logger.error("Unexpected error occurred", extra={"error": str(e)}, exc_info=True)
         return 2
 
 

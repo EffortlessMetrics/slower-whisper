@@ -10,8 +10,10 @@ by both the CLI and public API. It handles batch processing, progress tracking,
 and error recovery.
 """
 
+import logging
 import time
 import wave
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,50 @@ from .asr_engine import TranscriptionEngine
 from .config import AppConfig, TranscriptionConfig
 from .meta_utils import build_generation_metadata
 from .models import Transcript
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PipelineFileResult:
+    """Result of processing a single audio file in the pipeline.
+
+    Tracks the outcome of normalizing, transcribing, and optionally
+    diarizing a single audio file through the run_pipeline() function.
+    """
+
+    file_name: str
+    status: str  # "success", "skipped", "diarized_only", "error"
+    error_message: str | None = None
+
+
+@dataclass
+class PipelineBatchResult:
+    """Result of batch pipeline processing in run_pipeline().
+
+    Tracks success/failure statistics, timing metrics, and per-file results
+    for structured error reporting and performance monitoring.
+
+    This is distinct from BatchProcessingResult (used by the public API layer)
+    as it includes pipeline-specific metrics like diarized_only count and
+    real-time factor calculations.
+    """
+
+    total_files: int
+    processed: int
+    skipped: int
+    diarized_only: int
+    failed: int
+    total_audio_seconds: float
+    total_time_seconds: float
+    file_results: list[PipelineFileResult] = field(default_factory=list)
+
+    @property
+    def overall_rtf(self) -> float:
+        """Real-time factor (processing time / audio duration)."""
+        if self.total_audio_seconds > 0:
+            return self.total_time_seconds / self.total_audio_seconds
+        return 0.0
 
 
 def _get_duration_seconds(path: Path) -> float:
@@ -35,7 +81,7 @@ def _get_duration_seconds(path: Path) -> float:
             rate = w.getframerate()
         return frames / float(rate) if rate else 0.0
     except Exception as e:
-        print(f"[warn] Could not read duration for {path.name}: {e}")
+        logger.warning("Could not read duration for %s: %s", path.name, e, exc_info=True)
         return 0.0
 
 
@@ -60,7 +106,9 @@ def _build_meta(
     )
 
 
-def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None = None) -> None:
+def run_pipeline(
+    cfg: AppConfig, diarization_config: TranscriptionConfig | None = None
+) -> PipelineBatchResult:
     """
     Orchestrate the full pipeline:
     1) Ensure directories.
@@ -77,6 +125,9 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
         diarization_config: Optional TranscriptionConfig with diarization settings.
                            If provided and enable_diarization=True, diarization
                            will run on each transcript before writing outputs.
+
+    Returns:
+        PipelineBatchResult with success/failure statistics and per-file results.
     """
     paths = cfg.paths
 
@@ -85,20 +136,29 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
 
     norm_files = sorted(paths.norm_dir.glob("*.wav"))
     if not norm_files:
-        print("No .wav files found in input_audio/. Nothing to transcribe.")
-        return
+        logger.warning("No .wav files found in input_audio/. Nothing to transcribe.")
+        return PipelineBatchResult(
+            total_files=0,
+            processed=0,
+            skipped=0,
+            diarized_only=0,
+            failed=0,
+            total_audio_seconds=0.0,
+            total_time_seconds=0.0,
+        )
 
     engine = TranscriptionEngine(cfg.asr)
 
-    print("\n=== Step 3: Transcribing normalized audio ===")
+    logger.info("=== Step 3: Transcribing normalized audio ===")
     total = len(norm_files)
     processed = skipped = failed = 0
     diarized_only = 0
     total_audio = 0.0
     total_time = 0.0
+    file_results: list[PipelineFileResult] = []
 
     for idx, wav in enumerate(norm_files, start=1):
-        print(f"[{idx}/{total}] {wav.name}")
+        logger.info("[%d/%d] %s", idx, total, wav.name)
         stem = Path(wav.name).stem
         json_path = paths.json_dir / f"{stem}.json"
         txt_path = paths.transcripts_dir / f"{stem}.txt"
@@ -112,28 +172,42 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
 
                     transcript = _maybe_build_chunks(transcript, diarization_config)
                     writers.write_json(transcript, json_path)
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[error-chunking] Failed to update chunks for {json_path.name}: {exc}")
+                except Exception as exc:
+                    logger.error(
+                        "Failed to update chunks for %s: %s",
+                        json_path.name,
+                        exc,
+                        exc_info=True,
+                    )
 
             if diarization_config and diarization_config.enable_diarization:
                 # Upgrade existing transcript with diarization without re-transcribing
                 try:
                     transcript = writers.load_transcript_from_json(json_path)
                 except Exception as exc:
-                    print(f"[error-diarization] Failed to load {json_path.name}: {exc}")
+                    logger.error("Failed to load %s: %s", json_path.name, exc, exc_info=True)
                     failed += 1
+                    file_results.append(
+                        PipelineFileResult(
+                            file_name=wav.name,
+                            status="error",
+                            error_message=f"Load failed: {exc}",
+                        )
+                    )
                     continue
 
                 diar_meta = (transcript.meta or {}).get("diarization", {})
                 if diar_meta.get("status") in {"success", "ok"}:
-                    print(
-                        f"[skip-transcribe] {wav.name} because {json_path.name} already exists "
-                        "(diarization present)"
+                    logger.debug(
+                        "[skip-transcribe] %s because %s already exists (diarization present)",
+                        wav.name,
+                        json_path.name,
                     )
                     skipped += 1
+                    file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
                     continue
 
-                print(f"[diarize-existing] {wav.name} (reusing existing transcript)")
+                logger.info("[diarize-existing] %s (reusing existing transcript)", wav.name)
                 try:
                     from .api import _maybe_run_diarization
 
@@ -143,8 +217,20 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
                         config=diarization_config,
                     )
                 except Exception as exc:
-                    print(f"[error-diarization] Failed to run diarization for {wav.name}: {exc}")
+                    logger.error(
+                        "Failed to run diarization for %s: %s",
+                        wav.name,
+                        exc,
+                        exc_info=True,
+                    )
                     failed += 1
+                    file_results.append(
+                        PipelineFileResult(
+                            file_name=wav.name,
+                            status="error",
+                            error_message=f"Diarization failed: {exc}",
+                        )
+                    )
                     continue
 
                 writers.write_json(transcript, json_path)
@@ -152,12 +238,18 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
                 writers.write_srt(transcript, srt_path)
 
                 diarized_only += 1
-                print(f"  → [diarization-only] {json_path}")
-                print(f"  → [diarization-only] {txt_path}")
-                print(f"  → [diarization-only] {srt_path}")
+                logger.info("  → [diarization-only] %s", json_path)
+                logger.info("  → [diarization-only] %s", txt_path)
+                logger.info("  → [diarization-only] %s", srt_path)
+                file_results.append(PipelineFileResult(file_name=wav.name, status="diarized_only"))
             else:
-                print(f"[skip-transcribe] {wav.name} because {json_path.name} already exists")
+                logger.debug(
+                    "[skip-transcribe] %s because %s already exists",
+                    wav.name,
+                    json_path.name,
+                )
                 skipped += 1
+                file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
             continue
 
         duration = _get_duration_seconds(wav)
@@ -167,14 +259,26 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
         try:
             transcript = engine.transcribe_file(wav)
         except Exception as e:
-            print(f"[error-transcribe] Failed to transcribe {wav.name}: {e}")
+            logger.error("Failed to transcribe %s: %s", wav.name, e, exc_info=True)
             failed += 1
+            file_results.append(
+                PipelineFileResult(
+                    file_name=wav.name,
+                    status="error",
+                    error_message=f"Transcription failed: {e}",
+                )
+            )
             continue
         elapsed = time.time() - start
         total_time += elapsed
 
         rtf = elapsed / duration if duration > 0 else 0.0
-        print(f"  [stats] audio={duration / 60:.1f} min, wall={elapsed:.1f}s, RTF={rtf:.2f}x")
+        logger.info(
+            "  [stats] audio=%.1f min, wall=%.1fs, RTF=%.2fx",
+            duration / 60,
+            elapsed,
+            rtf,
+        )
 
         # Attach metadata to transcript before writing JSON.
         transcript.meta = _build_meta(cfg, transcript, wav, duration)
@@ -197,20 +301,39 @@ def run_pipeline(cfg: AppConfig, diarization_config: TranscriptionConfig | None 
         writers.write_txt(transcript, txt_path)
         writers.write_srt(transcript, srt_path)
 
-        print(f"  → JSON: {json_path}")
-        print(f"  → TXT:  {txt_path}")
-        print(f"  → SRT:  {srt_path}")
+        logger.info("  → JSON: %s", json_path)
+        logger.info("  → TXT:  %s", txt_path)
+        logger.info("  → SRT:  %s", srt_path)
 
         processed += 1
+        file_results.append(PipelineFileResult(file_name=wav.name, status="success"))
 
-    print("\n=== Summary ===")
-    print(
-        f"  transcribed={processed}, diarized_only={diarized_only}, skipped={skipped}, "
-        f"failed={failed}, total={total}"
+    logger.info("=== Summary ===")
+    logger.info(
+        "  transcribed=%d, diarized_only=%d, skipped=%d, failed=%d, total=%d",
+        processed,
+        diarized_only,
+        skipped,
+        failed,
+        total,
     )
     if total_audio > 0 and total_time > 0:
         overall_rtf = total_time / total_audio
-        print(
-            f"  audio={total_audio / 60:.1f} min, wall={total_time / 60:.1f} min, RTF={overall_rtf:.2f}x"
+        logger.info(
+            "  audio=%.1f min, wall=%.1f min, RTF=%.2fx",
+            total_audio / 60,
+            total_time / 60,
+            overall_rtf,
         )
-    print("All done.")
+    logger.info("All done.")
+
+    return PipelineBatchResult(
+        total_files=total,
+        processed=processed,
+        skipped=skipped,
+        diarized_only=diarized_only,
+        failed=failed,
+        total_audio_seconds=total_audio,
+        total_time_seconds=total_time,
+        file_results=file_results,
+    )

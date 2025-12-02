@@ -10,8 +10,8 @@ falling back to no-op implementations when faster-whisper is unavailable.
 
 # cSpell: ignore samplerate
 import inspect
+import logging
 import math
-import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +20,8 @@ from typing import Any, Protocol, cast
 from .cache import CachePaths
 from .config import AsrConfig
 from .models import Segment, Transcript
+
+logger = logging.getLogger(__name__)
 
 TranscriptionResult = tuple[Iterable[Any], Any]
 VADParameters = Mapping[str, Any] | None
@@ -89,9 +91,12 @@ class TranscriptionEngine:
         self.cfg = cfg
         self.model_load_error: str | None = None
         self.model_load_warnings: list[str] = []
-        print(
-            f"=== Step 2: Loading Whisper model "
-            f"{cfg.model_name} on {cfg.device} ({cfg.compute_type}) ==="
+        logger.info(
+            "=== Step 2: Loading Whisper model %s on %s (%s) ===",
+            cfg.model_name,
+            cfg.device,
+            cfg.compute_type,
+            extra={"device": cfg.device, "compute_type": cfg.compute_type},
         )
         self.model: WhisperModelProtocol = self._init_model()
         self._supports_vad_filter = True
@@ -165,22 +170,32 @@ class TranscriptionEngine:
                             next_device.upper() if next_device.lower() == "cpu" else next_device
                         )
                         if device != next_device:
-                            print(
-                                f"[warn] Whisper model load failed on {device}: {load_err}",
-                                file=sys.stderr,
+                            logger.warning(
+                                "Whisper model load failed on %s: %s",
+                                device,
+                                load_err,
+                                extra={"device": device},
+                                exc_info=True,
                             )
-                            print(
-                                f"[warn] Retrying on {next_device_label} with compute_type={next_compute_type}",
-                                file=sys.stderr,
+                            logger.warning(
+                                "Retrying on %s with compute_type=%s",
+                                next_device_label,
+                                next_compute_type,
+                                extra={"device": next_device, "compute_type": next_compute_type},
                             )
                         else:
-                            print(
-                                f"[warn] Whisper model load failed with compute_type={compute_type}: {load_err}",
-                                file=sys.stderr,
+                            logger.warning(
+                                "Whisper model load failed with compute_type=%s: %s",
+                                compute_type,
+                                load_err,
+                                extra={"compute_type": compute_type},
+                                exc_info=True,
                             )
-                            print(
-                                f"[warn] Retrying on {next_device_label} with compute_type={next_compute_type}",
-                                file=sys.stderr,
+                            logger.warning(
+                                "Retrying on %s with compute_type=%s",
+                                next_device_label,
+                                next_compute_type,
+                                extra={"device": next_device, "compute_type": next_compute_type},
                             )
                     continue
 
@@ -197,7 +212,7 @@ class TranscriptionEngine:
             raise RuntimeError(aggregated)
         except Exception as e:
             # Fall back to a lightweight dummy model so tests can run without heavy deps
-            print(f"[warn] Using dummy Whisper model fallback: {e}", file=sys.stderr)
+            logger.warning("Using dummy Whisper model fallback: %s", e, exc_info=True)
             self.model_load_error = str(e)
             return DummyWhisperModel(self.cfg)
 
@@ -241,10 +256,7 @@ class TranscriptionEngine:
             detail = "vad_parameters; running with vad_filter only."
         else:
             detail = "vad_filter; running without VAD filtering."
-        print(
-            f"[warn] faster-whisper transcribe() does not support {detail}",
-            file=sys.stderr,
-        )
+        logger.warning("faster-whisper transcribe() does not support %s", detail)
         self._warned_vad_unsupported = True
 
     def _parse_vad_kwargs_error(self, exc: TypeError) -> tuple[bool, bool]:
@@ -377,7 +389,7 @@ class TranscriptionEngine:
         if not audio_path.is_file():
             raise IsADirectoryError(f"Audio path is not a file: {audio_path}")
 
-        print(f"\n[transcribe] {audio_path.name}")
+        logger.info("Transcribing file: %s", audio_path.name, extra={"file": audio_path.name})
         used_dummy = isinstance(self.model, DummyWhisperModel)
         info: Any | None = None
         fallback_reason: str | None = None
@@ -393,10 +405,12 @@ class TranscriptionEngine:
                 segments = self._materialize_segments(raw_segments)
             except Exception as exc:
                 # Graceful degradation if the real model fails to run (including lazy generator failures)
-                print(
-                    f"[warn] Whisper inference failed for {audio_path.name}: {exc}. "
-                    "Falling back to dummy output.",
-                    file=sys.stderr,
+                logger.warning(
+                    "Whisper inference failed for %s: %s. Falling back to dummy output.",
+                    audio_path.name,
+                    exc,
+                    extra={"file": audio_path.name},
+                    exc_info=True,
                 )
                 segments, fallback_info = DummyWhisperModel(self.cfg).transcribe(str(audio_path))
                 info = info or fallback_info
@@ -411,10 +425,12 @@ class TranscriptionEngine:
             if used_dummy:
                 # Building segments for dummy output should never fail; bubble up
                 raise
-            print(
-                f"[warn] Whisper produced invalid segments for {audio_path.name}: {exc}. "
-                "Falling back to dummy output.",
-                file=sys.stderr,
+            logger.warning(
+                "Whisper produced invalid segments for %s: %s. Falling back to dummy output.",
+                audio_path.name,
+                exc,
+                extra={"file": audio_path.name},
+                exc_info=True,
             )
             segments, fallback_info = DummyWhisperModel(self.cfg).transcribe(str(audio_path))
             info = info or fallback_info
@@ -424,10 +440,10 @@ class TranscriptionEngine:
 
         if not seg_objs:
             # Handle edge cases like silent audio where faster-whisper returns no segments.
-            print(
-                f"[warn] Whisper produced no segments for {audio_path.name}; "
-                "falling back to dummy output.",
-                file=sys.stderr,
+            logger.warning(
+                "Whisper produced no segments for %s; falling back to dummy output.",
+                audio_path.name,
+                extra={"file": audio_path.name},
             )
             segments, fallback_info = DummyWhisperModel(self.cfg).transcribe(str(audio_path))
             info = info or fallback_info

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .models import Transcript
+
+logger = logging.getLogger(__name__)
 
 
 def coalesce_runtime_value(*values: Any, default: str | None = None) -> str | None:

@@ -12,12 +12,15 @@ Configuration can be created programmatically or loaded from JSON files.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 from .exceptions import ConfigurationError
+
+logger = logging.getLogger(__name__)
 
 WhisperTask = Literal["transcribe", "translate"]
 ALLOWED_COMPUTE_TYPES: set[str] = {
@@ -28,6 +31,36 @@ ALLOWED_COMPUTE_TYPES: set[str] = {
     "int8_float16",
     "int8_float32",
 }
+ALLOWED_WHISPER_MODELS: set[str] = {
+    "tiny",
+    "base",
+    "small",
+    "medium",
+    "large-v1",
+    "large-v2",
+    "large-v3",
+    "large-v3-turbo",
+}
+
+
+def validate_model_name(model_name: str) -> str:
+    """
+    Validate that model_name is a supported Whisper model.
+
+    Args:
+        model_name: Requested Whisper model name.
+
+    Returns:
+        The validated model name (unchanged).
+
+    Raises:
+        ConfigurationError: If model_name is not one of the allowed values.
+    """
+    if model_name not in ALLOWED_WHISPER_MODELS:
+        allowed = ", ".join(sorted(ALLOWED_WHISPER_MODELS))
+        raise ConfigurationError(f"Invalid model name '{model_name}'. Must be one of: {allowed}")
+
+    return model_name
 
 
 def validate_compute_type(compute_type: str | None) -> str | None:
@@ -54,6 +87,32 @@ def validate_compute_type(compute_type: str | None) -> str | None:
         )
 
     return normalized
+
+
+def auto_derive_compute_type(device: str, compute_type: str | None) -> str:
+    """
+    Auto-derive compute_type based on device if not explicitly provided.
+
+    If compute_type is None, selects sensible defaults:
+    - "int8" for CPU (optimal for CPU inference)
+    - "float16" for CUDA (uses Tensor Cores on modern GPUs)
+
+    Args:
+        device: Target device ("cpu" or "cuda").
+        compute_type: Requested compute type or None for auto-selection.
+
+    Returns:
+        Normalized compute type (lowercase, validated).
+
+    Raises:
+        ConfigurationError: If compute_type is not supported by faster-whisper.
+    """
+    if compute_type is None:
+        # Use sensible defaults: int8 for CPU, float16 for CUDA
+        compute_type = "int8" if device == "cpu" else "float16"
+
+    # Validate and normalize
+    return validate_compute_type(compute_type) or compute_type
 
 
 @dataclass
@@ -101,12 +160,9 @@ class AsrConfig:
     task: str = "transcribe"  # or "translate"
 
     def __post_init__(self):
-        """Auto-detect compute_type based on device if using default."""
-        if self.compute_type is None:
-            # Use sensible defaults: int8 for CPU, float16 for CUDA
-            self.compute_type = "int8" if self.device == "cpu" else "float16"
-
-        self.compute_type = validate_compute_type(self.compute_type) or self.compute_type
+        """Validate model name and auto-detect compute_type based on device if using default."""
+        validate_model_name(self.model_name)
+        self.compute_type = auto_derive_compute_type(self.device, self.compute_type)
 
 
 @dataclass
@@ -164,14 +220,13 @@ class TranscriptionConfig:
     chunk_pause_split_threshold_s: float = 1.5
 
     def __post_init__(self):
-        """Auto-detect compute_type based on device if using default."""
-        compute_type = self.compute_type
-        if compute_type is None:
-            # Use sensible defaults: int8 for CPU, float16 for CUDA
-            compute_type = "int8" if self.device == "cpu" else "float16"
+        """Validate model name and auto-detect compute_type based on device if using default."""
+        # Validate model name
+        validate_model_name(self.model)
 
-        validated = validate_compute_type(compute_type) or compute_type
-        object.__setattr__(self, "compute_type", validated)
+        # Auto-detect and validate compute_type
+        validated_compute_type = auto_derive_compute_type(self.device, self.compute_type)
+        object.__setattr__(self, "compute_type", validated_compute_type)
 
         if self.chunk_target_duration_s <= 0 or self.chunk_max_duration_s <= 0:
             raise ConfigurationError("Chunk durations must be positive")
@@ -245,6 +300,13 @@ class TranscriptionConfig:
             raise ValueError(
                 f"Configuration file must contain a JSON object, got {type(data).__name__}"
             )
+
+        # Validate model if present
+        if "model" in data:
+            try:
+                validate_model_name(data["model"])
+            except ConfigurationError as e:
+                raise ValueError(str(e)) from e
 
         # Validate task if present
         if "task" in data and data["task"] not in ("transcribe", "translate"):
@@ -384,6 +446,10 @@ class TranscriptionConfig:
 
         # String fields
         if model := os.getenv(f"{prefix}MODEL"):
+            try:
+                validate_model_name(model)
+            except ConfigurationError as e:
+                raise ValueError(str(e)) from e
             config_dict["model"] = model
 
         if device := os.getenv(f"{prefix}DEVICE"):

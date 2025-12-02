@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2025-12-02
+
+### Added
+
+- **Batch result types**: New `BatchProcessingResult` and `EnrichmentBatchResult` dataclasses for structured transcription and enrichment batch operation results with granular success/failure tracking.
+- **Structured logging improvements**: Enhanced logging system with module-level loggers throughout pipeline, improving observability and debugging capabilities.
+- **CLI --progress flag**: Added `--progress` option to both `transcribe` and `enrich` subcommands for visual progress indicators during long-running batch operations.
+- **Comprehensive health checks**: New health check utilities for system dependencies (ffmpeg, CUDA, model availability) accessible via service health endpoints.
+- **Request validation in service**: Enhanced validation layer in service module with detailed error reporting for malformed requests.
+
+### Changed
+
+- **Print statements converted to logging**: Replaced all `print()` calls with structured logging calls (`logger.info()`, `logger.debug()`, `logger.warning()`) throughout transcription, enrichment, and CLI modules for improved observability.
+- **CLI exit codes for partial failures**: Enhanced CLI to return appropriate exit codes distinguishing between complete success (0), partial failures (1), and fatal errors (2) for better automation/scripting support.
+
+### Fixed
+
+- **Error logging now includes stack traces**: Updated error logging throughout pipeline to include full exception context (`exc_info=True`) for better debugging and troubleshooting.
+
 ## [1.5.0] - 2025-12-02
 
 ### Schema & Validation

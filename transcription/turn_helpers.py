@@ -4,8 +4,11 @@ This module provides shared conversion helpers used across
 turns_enrich.py and speaker_stats.py.
 """
 
+import logging
 from dataclasses import asdict, is_dataclass
 from typing import Any, cast
+
+logger = logging.getLogger(__name__)
 
 
 def turn_to_dict(t: Any, *, copy: bool = False) -> dict[str, Any]:

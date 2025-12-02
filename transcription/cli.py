@@ -12,17 +12,20 @@ with a more coherent interface.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
 from . import api as api_module
-from .config import EnrichmentConfig, TranscriptionConfig, validate_diarization_settings
+from .config import EnrichmentConfig, Paths, TranscriptionConfig, validate_diarization_settings
 from .exceptions import ConfigurationError, SlowerWhisperError
 from .exporters import SUPPORTED_EXPORT_FORMATS, export_transcript
 from .models import Transcript
 from .validation import DEFAULT_SCHEMA_PATH, validate_many
+
+logger = logging.getLogger(__name__)
 
 
 # Expose API functions for compatibility with tests/patching while delegating to api module
@@ -32,6 +35,27 @@ def transcribe_directory(*args, **kwargs) -> list[Transcript]:
 
 def enrich_directory(*args, **kwargs) -> list[Transcript]:
     return api_module.enrich_directory(*args, **kwargs)
+
+
+def _setup_progress_logging(show_progress: bool) -> None:
+    """
+    Configure logging to show/hide progress messages based on --progress flag.
+
+    When show_progress=True, sets root logger to INFO to show file counters.
+    When show_progress=False, sets to WARNING to hide progress messages.
+
+    Args:
+        show_progress: Whether to show progress indicators (file counters).
+    """
+    import logging
+
+    level = logging.INFO if show_progress else logging.WARNING
+
+    # Configure basic format first (only works on first call)
+    logging.basicConfig(format="%(message)s")
+
+    # Always set level directly (works on subsequent calls)
+    logging.getLogger().setLevel(level)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1018,6 +1042,174 @@ def _handle_export_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_transcribe_command(args: argparse.Namespace) -> int:
+    """Handle transcribe command and return exit code (0=success, 1=partial failure)."""
+    try:
+        cfg = _config_from_transcribe_args(args)
+    except (OSError, ValueError) as e:
+        raise ConfigurationError(f"Invalid transcription configuration: {e}") from e
+
+    # Configure progress logging based on --progress flag
+    _setup_progress_logging(args.progress)
+
+    # Check for experimental diarization flag (v1.1 experimental)
+    if cfg.enable_diarization:
+        print(
+            "\n[INFO] Speaker diarization is EXPERIMENTAL in v1.1.\n"
+            "Requires: uv sync --extra diarization\n"
+            "Requires: HF_TOKEN environment variable (huggingface.co/settings/tokens)\n"
+            "See docs/SPEAKER_DIARIZATION.md for details.\n",
+            file=sys.stderr,
+        )
+
+    # Call internal pipeline to get result with failure count
+    from .config import AppConfig, AsrConfig
+    from .pipeline import run_pipeline
+
+    root = Path(args.root)
+    paths = Paths(root=root)
+    asr_cfg = AsrConfig(
+        model_name=cfg.model,
+        device=cfg.device,
+        compute_type=cfg.compute_type,
+        vad_min_silence_ms=cfg.vad_min_silence_ms,
+        beam_size=cfg.beam_size,
+        language=cfg.language,
+        task=cfg.task,
+    )
+    app_cfg = AppConfig(
+        paths=paths,
+        asr=asr_cfg,
+        skip_existing_json=cfg.skip_existing_json,
+    )
+
+    result = run_pipeline(app_cfg, diarization_config=cfg)
+
+    # Display structured results
+    print("\n=== Transcription Summary ===")
+    print(f"Total files:      {result.total_files}")
+    print(f"Processed:        {result.processed}")
+    print(f"Skipped:          {result.skipped}")
+    if result.diarized_only > 0:
+        print(f"Diarized only:    {result.diarized_only}")
+    print(f"Failed:           {result.failed}")
+
+    # Show RTF if available
+    if result.total_audio_seconds > 0 and result.total_time_seconds > 0:
+        rtf = result.overall_rtf
+        print("\nPerformance:")
+        print(f"  Audio duration: {result.total_audio_seconds / 60:.1f} min")
+        print(f"  Wall time:      {result.total_time_seconds / 60:.1f} min")
+        print(f"  RTF:            {rtf:.2f}x")
+
+    # Show first 5 failures with error messages
+    failures = [r for r in result.file_results if r.status == "error"]
+    if failures:
+        print(f"\nFailures ({len(failures)}):")
+        for fail in failures[:5]:
+            error_msg = fail.error_message or "Unknown error"
+            print(f"  - {fail.file_name}: {error_msg}")
+        if len(failures) > 5:
+            print(f"  ... and {len(failures) - 5} more")
+
+    if result.failed > 0:
+        return 1
+    return 0
+
+
+def _handle_enrich_command(args: argparse.Namespace) -> int:
+    """Handle enrich command and return exit code (0=success, 1=partial failure)."""
+    try:
+        enrich_cfg = _config_from_enrich_args(args)
+    except (OSError, ValueError) as e:
+        raise ConfigurationError(f"Invalid enrichment configuration: {e}") from e
+
+    # Configure progress logging based on --progress flag
+    _setup_progress_logging(args.progress)
+
+    # Track success/failure counts by calling enrich_directory and checking for errors
+    root = Path(args.root)
+    paths = Paths(root=root)
+    json_dir = paths.json_dir
+    audio_dir = paths.norm_dir
+
+    if not json_dir.exists():
+        raise api_module.EnrichmentError(
+            f"JSON directory does not exist: {json_dir}. "
+            f"Run transcription first using transcribe command."
+        )
+
+    json_files = sorted(json_dir.glob("*.json"))
+    if not json_files:
+        raise api_module.EnrichmentError(
+            f"No JSON transcript files found in {json_dir}. "
+            f"Run transcription first to generate transcript files."
+        )
+
+    total_files = len(json_files)
+    enriched_count = 0
+    skipped_count = 0
+    failed_count = 0
+    failures = []  # Track failures with details
+
+    for idx, json_path in enumerate(json_files, start=1):
+        logger.info("[%d/%d] %s", idx, total_files, json_path.name)
+        try:
+            stem = json_path.stem
+            wav_path = audio_dir / f"{stem}.wav"
+
+            if not wav_path.exists():
+                error_msg = f"Audio file not found: {wav_path}"
+                logger.warning(f"Audio file not found for {json_path.name}: {wav_path}")
+                failed_count += 1
+                failures.append((json_path.name, error_msg))
+                continue
+
+            # Use the single-file enrichment API
+            from .writers import load_transcript_from_json, write_json
+
+            transcript = load_transcript_from_json(json_path)
+
+            # Check if already enriched when skip_existing is enabled
+            if enrich_cfg.skip_existing:
+                audio_ready = bool(transcript.segments) and all(
+                    seg.audio_state is not None for seg in transcript.segments
+                )
+                if audio_ready:
+                    skipped_count += 1
+                    continue
+
+            enriched = api_module.enrich_transcript(transcript, wav_path, enrich_cfg)
+            write_json(enriched, json_path)
+            enriched_count += 1
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.warning(f"Enrichment failed for {json_path.name}: {e}", exc_info=True)
+            failed_count += 1
+            failures.append((json_path.name, error_msg))
+
+    # Display structured results
+    print("\n=== Enrichment Summary ===")
+    print(f"Total files:      {total_files}")
+    print(f"Enriched:         {enriched_count}")
+    if skipped_count > 0:
+        print(f"Skipped:          {skipped_count} (already enriched)")
+    print(f"Failed:           {failed_count}")
+
+    # Show first 5 failures with error messages
+    if failures:
+        print(f"\nFailures ({len(failures)}):")
+        for file_name, error_msg in failures[:5]:
+            print(f"  - {file_name}: {error_msg}")
+        if len(failures) > 5:
+            print(f"  ... and {len(failures) - 5} more")
+
+    if failed_count > 0:
+        return 1
+    return 0
+
+
 def _handle_validate_command(args: argparse.Namespace) -> int:
     schema_path = args.schema or DEFAULT_SCHEMA_PATH
     failures = validate_many(args.transcripts, schema_path=schema_path)
@@ -1036,38 +1228,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     Main CLI entry point.
 
     Returns:
-        0 on success, 1 on SlowerWhisperError, 2 on unexpected error.
+        0 on success, 1 on SlowerWhisperError or partial failures, 2 on unexpected error.
     """
     try:
         parser = build_parser()
         args = parser.parse_args(argv)
 
         if args.command == "transcribe":
-            try:
-                cfg = _config_from_transcribe_args(args)
-            except (OSError, ValueError) as e:
-                raise ConfigurationError(f"Invalid transcription configuration: {e}") from e
-
-            # Check for experimental diarization flag (v1.1 experimental)
-            if cfg.enable_diarization:
-                print(
-                    "\n[INFO] Speaker diarization is EXPERIMENTAL in v1.1.\n"
-                    "Requires: uv sync --extra diarization\n"
-                    "Requires: HF_TOKEN environment variable (huggingface.co/settings/tokens)\n"
-                    "See docs/SPEAKER_DIARIZATION.md for details.\n",
-                    file=sys.stderr,
-                )
-
-            transcripts = transcribe_directory(args.root, config=cfg)
-            print(f"\n[done] Transcribed {len(transcripts)} files")
+            return _handle_transcribe_command(args)
 
         elif args.command == "enrich":
-            try:
-                enrich_cfg = _config_from_enrich_args(args)
-            except (OSError, ValueError) as e:
-                raise ConfigurationError(f"Invalid enrichment configuration: {e}") from e
-            enriched = enrich_directory(args.root, config=enrich_cfg)
-            print(f"\n[done] Enriched {len(enriched)} transcripts")
+            return _handle_enrich_command(args)
 
         elif args.command == "cache":
             return _handle_cache_command(args)
@@ -1083,8 +1254,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         else:
             parser.error(f"Unknown command: {args.command}")
-
-        return 0
 
     except SlowerWhisperError as e:
         print(f"Error: {e}", file=sys.stderr)

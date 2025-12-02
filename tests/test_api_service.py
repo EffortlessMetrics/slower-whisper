@@ -178,7 +178,7 @@ class TestTranscribeEndpoint:
         diar_meta = data["meta"].get("diarization", {})
         assert diar_meta.get("requested") is True
         status = diar_meta.get("status")
-        assert status in {"success", "failed", "skipped"}
+        assert status in {"ok", "error", "skipped"}
         if status == "skipped":
             # Missing HF_TOKEN or pyannote dependency
             assert diar_meta.get("error_type") in {"auth", "missing_dependency"}

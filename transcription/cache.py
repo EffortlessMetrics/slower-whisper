@@ -18,10 +18,13 @@ Environment variables respected:
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ROOT = Path.home() / ".cache" / "slower-whisper"
 

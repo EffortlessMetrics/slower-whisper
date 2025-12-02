@@ -4,10 +4,13 @@ This module provides functions for audio file normalization and directory
 management. All audio is normalized to 16kHz mono WAV format for ASR processing.
 """
 
+import logging
 import shutil
 import subprocess
 
 from .config import Paths
+
+logger = logging.getLogger(__name__)
 
 
 def ensure_dirs(paths: Paths) -> None:
@@ -32,7 +35,7 @@ def normalize_all(paths: Paths) -> None:
     Existing normalized WAVs are skipped so the operation is idempotent.
     Failures for individual files are logged and do not abort the entire run.
     """
-    print("\n=== Step 1: Normalizing audio with ffmpeg ===")
+    logger.info("Starting audio normalization with ffmpeg")
 
     if not ffmpeg_available():
         raise RuntimeError(
@@ -54,16 +57,25 @@ def normalize_all(paths: Paths) -> None:
                 src_mtime = src.stat().st_mtime
                 dst_mtime = dst.stat().st_mtime
                 if dst_mtime >= src_mtime:
-                    print(f"[skip-normalize] {src.name} → {dst.name} (up to date)")
+                    logger.info(
+                        "Skipping already normalized file (up to date)",
+                        extra={"file": src.name, "output": dst.name},
+                    )
                     continue
                 else:
-                    print(f"[ffmpeg-refresh] {src.name} → {dst.name} (source is newer)")
+                    logger.info(
+                        "Re-normalizing file (source is newer)",
+                        extra={"file": src.name, "output": dst.name},
+                    )
             except OSError as stat_err:
-                print(
-                    f"[warn] Could not compare timestamps for {src.name}: {stat_err}; re-normalizing"
+                logger.warning(
+                    "Could not compare timestamps for %s: %s; re-normalizing",
+                    src.name,
+                    stat_err,
+                    extra={"file": src.name},
                 )
 
-        print(f"[ffmpeg] {src.name} → {dst.name}")
+        logger.info("Normalizing audio file", extra={"file": src.name, "output": dst.name})
         cmd = [
             "ffmpeg",
             "-y",  # overwrite
@@ -77,10 +89,15 @@ def normalize_all(paths: Paths) -> None:
         ]
         try:
             subprocess.run(cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"[error-normalize] Failed to normalize {src.name}: {e}")
+        except subprocess.CalledProcessError:
+            logger.error(
+                "Failed to normalize %s",
+                src.name,
+                exc_info=True,
+                extra={"file": src.name},
+            )
 
     if not any_src:
-        print("No files in raw_audio/. Put your original audio there and re-run.")
+        logger.info("No files found in raw_audio/ directory")
     else:
-        print("Normalization step complete.\n")
+        logger.info("Audio normalization complete")

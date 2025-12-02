@@ -5,12 +5,15 @@ from __future__ import annotations
 import csv
 import hashlib
 import html
+import logging
 from pathlib import Path
 from typing import Any
 
 from .models import Transcript
 from .speaker_id import get_speaker_label_or_id
 from .turn_helpers import turn_to_dict
+
+logger = logging.getLogger(__name__)
 
 ExportFormat = str
 SUPPORTED_EXPORT_FORMATS: set[ExportFormat] = {"csv", "html", "vtt", "textgrid"}

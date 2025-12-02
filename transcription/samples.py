@@ -14,6 +14,7 @@ Environment variables respected:
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import shutil
 import tarfile
@@ -24,6 +25,8 @@ from pathlib import Path
 from typing import Literal
 
 from transcription.cache import CachePaths
+
+logger = logging.getLogger(__name__)
 
 SampleDatasetName = Literal[
     "mini_diarization",  # 2-speaker student/professor conversations (Kaggle)
@@ -124,12 +127,12 @@ def download_file(url: str, dest: Path, show_progress: bool = True) -> None:
         percent = min(100, downloaded * 100 / total_size)
         mb_downloaded = downloaded / (1024 * 1024)
         mb_total = total_size / (1024 * 1024)
-        print(
-            f"\rDownloading: {percent:5.1f}% ({mb_downloaded:6.1f}/{mb_total:6.1f} MB)",
-            end="",
+        logger.info(
+            f"Downloading: {percent:5.1f}% ({mb_downloaded:6.1f}/{mb_total:6.1f} MB)",
+            extra={"percent": percent, "mb_downloaded": mb_downloaded, "mb_total": mb_total},
         )
         if downloaded >= total_size:
-            print()  # Newline after completion
+            logger.info("Download completed")
 
     urllib.request.urlretrieve(url, dest, reporthook=reporthook)
 
@@ -201,7 +204,10 @@ def download_sample_dataset(
             # Verify test files exist
             all_exist = all((dataset_dir / f).exists() for f in dataset.test_files)
             if all_exist:
-                print(f"✓ Dataset '{dataset.name}' already cached at {dataset_dir}")
+                logger.info(
+                    f"Dataset '{dataset.name}' already cached",
+                    extra={"dataset": dataset.name, "path": str(dataset_dir)},
+                )
                 return dataset_dir
 
     # Special handling for datasets requiring auth
@@ -222,12 +228,18 @@ def download_sample_dataset(
             f"See {dataset.source_url} for manual download instructions."
         )
 
-    print(f"Downloading '{dataset.name}' from {dataset.url}")
+    logger.info(
+        f"Starting download of '{dataset.name}'",
+        extra={"dataset": dataset.name, "url": dataset.url},
+    )
     download_file(dataset.url, archive_path)
 
     # Verify integrity
     if dataset.sha256:
-        print("Verifying download integrity...")
+        logger.info(
+            "Verifying download integrity",
+            extra={"dataset": dataset.name},
+        )
         if not verify_sha256(archive_path, dataset.sha256):
             raise RuntimeError(
                 f"Download integrity check failed for {dataset.name}. "
@@ -235,13 +247,19 @@ def download_sample_dataset(
             )
 
     # Extract
-    print(f"Extracting to {dataset_dir}...")
+    logger.info(
+        "Extracting archive",
+        extra={"dataset": dataset.name, "path": str(dataset_dir)},
+    )
     extract_archive(archive_path, dataset_dir, dataset.archive_format, dataset.test_files)
 
     # Clean up archive to save space
     archive_path.unlink()
 
-    print(f"✓ Dataset '{dataset.name}' ready at {dataset_dir}")
+    logger.info(
+        f"Dataset '{dataset.name}' ready",
+        extra={"dataset": dataset.name, "path": str(dataset_dir)},
+    )
     return dataset_dir
 
 
@@ -328,7 +346,10 @@ def copy_sample_to_project(
 
         shutil.copy(src, dest)
         copied_files.append(dest)
-        print(f"Copied {src.name} → {dest}")
+        logger.info(
+            "Copied sample file",
+            extra={"dataset": dataset_name, "source": src.name, "destination": str(dest)},
+        )
 
     return copied_files
 
@@ -391,7 +412,17 @@ def generate_synthetic_2speaker(output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(output_path, audio, SR)
 
-    print(f"Generated {output_path} ({len(audio) / SR:.2f}s)")
-    print("Expected speaker turns:")
-    print("  A: 0.0-3.0s, 6.2-9.2s")
-    print("  B: 3.2-6.2s, 9.4-12.4s")
+    duration_sec = len(audio) / SR
+    logger.info(
+        "Generated synthetic 2-speaker audio",
+        extra={
+            "path": str(output_path),
+            "duration_sec": duration_sec,
+            "sample_rate": SR,
+            "size_mb": output_path.stat().st_size / (1024 * 1024),
+        },
+    )
+    logger.info(
+        "Expected speaker turns: A: 0.0-3.0s, 6.2-9.2s | B: 3.2-6.2s, 9.4-12.4s",
+        extra={"speaker_a_turns": "0.0-3.0s, 6.2-9.2s", "speaker_b_turns": "3.2-6.2s, 9.4-12.4s"},
+    )

@@ -111,6 +111,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | Document | Description | Use When |
 |----------|-------------|----------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, architecture, and internals | Understanding the codebase |
+| [LOGGING.md](LOGGING.md) | Logging system documentation | Configuring logs, debugging, monitoring |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems and solutions | Encountering errors |
 
 ### Testing & Quality Assurance

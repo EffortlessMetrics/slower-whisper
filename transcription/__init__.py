@@ -87,7 +87,19 @@ from .llm_utils import (
     to_speaker_summary,
     to_turn_view,
 )
-from .models import Chunk, DiarizationMeta, Segment, SpeakerStats, Transcript, Turn, TurnMeta
+from .models import (
+    BatchFileResult,
+    BatchProcessingResult,
+    Chunk,
+    DiarizationMeta,
+    EnrichmentBatchResult,
+    EnrichmentFileResult,
+    Segment,
+    SpeakerStats,
+    Transcript,
+    Turn,
+    TurnMeta,
+)
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
 from .speaker_id import get_speaker_id, get_speaker_label_or_id
 from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamingSession
@@ -137,6 +149,10 @@ __all__ = [
     "TurnMeta",
     "SpeakerStats",
     "DiarizationMeta",
+    "BatchFileResult",
+    "BatchProcessingResult",
+    "EnrichmentFileResult",
+    "EnrichmentBatchResult",
     "AudioState",
     "ProsodyState",
     "EmotionState",

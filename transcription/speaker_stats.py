@@ -6,6 +6,7 @@ Transcript object as `transcript.speaker_stats`.
 
 from __future__ import annotations
 
+import logging
 from collections import Counter, defaultdict
 from statistics import median
 from typing import Any
@@ -18,6 +19,8 @@ from .models import (
 )
 from .speaker_id import get_speaker_id
 from .turn_helpers import turn_to_dict
+
+logger = logging.getLogger(__name__)
 
 
 def _collect_segment_durations_by_speaker(transcript: Transcript) -> dict[str, list[float]]:

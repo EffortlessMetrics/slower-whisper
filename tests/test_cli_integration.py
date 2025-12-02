@@ -38,11 +38,28 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def mock_transcribe_directory():
-    """Mock the transcribe_directory API function."""
-    with patch("transcription.cli.transcribe_directory") as mock:
-        # Return a list of mock transcripts
-        mock.return_value = [MagicMock(), MagicMock(), MagicMock()]
-        yield mock
+    """Mock the transcribe_directory API function and run_pipeline."""
+    from transcription.pipeline import PipelineBatchResult
+
+    # Create a mock PipelineBatchResult for run_pipeline
+    mock_batch_result = PipelineBatchResult(
+        total_files=3,
+        processed=3,
+        skipped=0,
+        diarized_only=0,
+        failed=0,
+        total_audio_seconds=10.0,
+        total_time_seconds=5.0,
+    )
+
+    # Patch both run_pipeline (at source) and transcribe_directory for compatibility
+    with (
+        patch("transcription.pipeline.run_pipeline") as mock_pipeline,
+        patch("transcription.cli.transcribe_directory") as mock_transcribe,
+    ):
+        mock_pipeline.return_value = mock_batch_result
+        mock_transcribe.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        yield mock_transcribe
 
 
 @pytest.fixture

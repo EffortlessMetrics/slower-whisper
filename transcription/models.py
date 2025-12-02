@@ -5,6 +5,10 @@ This module defines the dataclass models that form the backbone of slower-whispe
 - Transcript: Complete transcript with metadata, segments, turns, and annotations
 - Segment: Single transcribed segment with optional audio_state
 - DiarizationMeta: Speaker diarization metadata
+- BatchFileResult: Result of processing a single file in batch mode
+- BatchProcessingResult: Summary of batch transcription operation
+- EnrichmentFileResult: Result of enriching a single transcript file
+- EnrichmentBatchResult: Summary of batch enrichment operation
 - SCHEMA_VERSION: Current JSON schema version (v2)
 - AUDIO_STATE_VERSION: Audio enrichment schema version
 
@@ -257,6 +261,183 @@ class SpeakerStats:
                 negative=float(sentiment.get("negative", 0.0)),
             ),
         )
+
+
+@dataclass
+class BatchFileResult:
+    """Result of processing a single file in batch transcription mode.
+
+    Represents the outcome of transcribing a single audio file, capturing
+    success/failure status, the resulting transcript (if successful), and
+    any error information.
+
+    Attributes:
+        file_path: Absolute path to the input audio file.
+        status: Processing outcome - "success" or "error".
+        transcript: The resulting Transcript object if successful, None otherwise.
+        error_type: Short error category (e.g., "FileNotFoundError", "ASRError") if failed.
+        error_message: Human-readable error description if failed.
+    """
+
+    file_path: str
+    status: Literal["success", "error"]
+    transcript: "Transcript | None" = None
+    error_type: str | None = None
+    error_message: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize batch file result to a JSON-serializable dict.
+
+        Returns:
+            Dict with file_path, status, error fields. Transcript is excluded
+            (too large for batch summaries).
+        """
+        return {
+            "file_path": self.file_path,
+            "status": self.status,
+            "error_type": self.error_type,
+            "error_message": self.error_message,
+        }
+
+
+@dataclass
+class BatchProcessingResult:
+    """Summary of batch transcription operation across multiple files.
+
+    Aggregates results from processing multiple audio files in a batch,
+    providing both individual file results and summary statistics.
+
+    Attributes:
+        total_files: Total number of files attempted.
+        successful: Number of files successfully transcribed.
+        failed: Number of files that failed transcription.
+        results: List of individual BatchFileResult objects for each file.
+    """
+
+    total_files: int
+    successful: int
+    failed: int
+    results: list[BatchFileResult] = field(default_factory=list)
+
+    def get_failures(self) -> list[BatchFileResult]:
+        """Return only the failed file results.
+
+        Returns:
+            List of BatchFileResult objects where status == "error".
+        """
+        return [r for r in self.results if r.status == "error"]
+
+    def get_transcripts(self) -> list["Transcript"]:
+        """Return all successfully generated transcripts.
+
+        Returns:
+            List of Transcript objects from successful results.
+        """
+        return [r.transcript for r in self.results if r.transcript is not None]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize batch processing summary to a JSON-serializable dict.
+
+        Returns:
+            Dict with counts and list of individual file result summaries.
+        """
+        return {
+            "total_files": self.total_files,
+            "successful": self.successful,
+            "failed": self.failed,
+            "results": [r.to_dict() for r in self.results],
+        }
+
+
+@dataclass
+class EnrichmentFileResult:
+    """Result of enriching a single transcript file with audio features.
+
+    Represents the outcome of audio enrichment for a single transcript,
+    capturing success/failure status and any error information.
+
+    Attributes:
+        transcript_path: Absolute path to the input transcript JSON file.
+        status: Enrichment outcome - "success", "partial", or "error".
+        enriched_transcript: The enriched Transcript object if successful, None otherwise.
+        error_type: Short error category (e.g., "AudioNotFoundError") if failed.
+        error_message: Human-readable error description if failed.
+        warnings: List of non-fatal warnings (e.g., missing optional features).
+    """
+
+    transcript_path: str
+    status: Literal["success", "partial", "error"]
+    enriched_transcript: "Transcript | None" = None
+    error_type: str | None = None
+    error_message: str | None = None
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize enrichment file result to a JSON-serializable dict.
+
+        Returns:
+            Dict with transcript_path, status, error fields, and warnings.
+            Enriched transcript is excluded (too large for batch summaries).
+        """
+        return {
+            "transcript_path": self.transcript_path,
+            "status": self.status,
+            "error_type": self.error_type,
+            "error_message": self.error_message,
+            "warnings": self.warnings,
+        }
+
+
+@dataclass
+class EnrichmentBatchResult:
+    """Result of batch enrichment operation across multiple transcript files.
+
+    Aggregates results from enriching multiple transcripts, providing both
+    individual file results and summary statistics.
+
+    Attributes:
+        total_files: Total number of transcript files attempted.
+        successful: Number of files fully enriched without errors.
+        partial: Number of files partially enriched (some features missing).
+        failed: Number of files that failed enrichment completely.
+        results: List of individual EnrichmentFileResult objects for each file.
+    """
+
+    total_files: int
+    successful: int
+    partial: int
+    failed: int
+    results: list[EnrichmentFileResult] = field(default_factory=list)
+
+    def get_failures(self) -> list[EnrichmentFileResult]:
+        """Return only the failed enrichment results.
+
+        Returns:
+            List of EnrichmentFileResult objects where status == "error".
+        """
+        return [r for r in self.results if r.status == "error"]
+
+    def get_transcripts(self) -> list["Transcript"]:
+        """Return all successfully enriched transcripts (including partial).
+
+        Returns:
+            List of enriched Transcript objects from successful and partial results.
+        """
+        return [r.enriched_transcript for r in self.results if r.enriched_transcript is not None]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize batch enrichment summary to a JSON-serializable dict.
+
+        Returns:
+            Dict with counts and list of individual enrichment result summaries.
+        """
+        return {
+            "total_files": self.total_files,
+            "successful": self.successful,
+            "partial": self.partial,
+            "failed": self.failed,
+            "results": [r.to_dict() for r in self.results],
+        }
 
 
 @dataclass

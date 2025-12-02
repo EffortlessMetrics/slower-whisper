@@ -95,8 +95,9 @@ def main() -> int:
         )
         cfg = AppConfig(paths=paths, asr=asr_cfg, skip_existing_json=args.skip_existing_json)
 
-        run_pipeline(cfg)
-        return 0
+        result = run_pipeline(cfg)
+        # Return non-zero exit code if any files failed
+        return 1 if result.failed > 0 else 0
 
     except SlowerWhisperError as e:
         print(f"Error: {e}", file=sys.stderr)

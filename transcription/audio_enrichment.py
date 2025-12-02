@@ -67,13 +67,16 @@ def _enrich_segment_with_extractor(
         )
 
         logger.debug(
-            f"Extracted segment [{segment.start:.2f}s - {segment.end:.2f}s]: "
-            f"{len(audio_data)} samples at {sample_rate} Hz"
+            "Extracted segment [%.2fs - %.2fs]: %d samples at %d Hz",
+            segment.start,
+            segment.end,
+            len(audio_data),
+            sample_rate,
         )
 
     except Exception as e:
         error_msg = f"Failed to extract audio segment: {e}"
-        logger.error(error_msg)
+        logger.error(error_msg, exc_info=True)
         audio_state["extraction_status"]["errors"].append(error_msg)
         return audio_state
 
@@ -90,11 +93,11 @@ def _enrich_segment_with_extractor(
             )
             audio_state["prosody"] = prosody_result
             audio_state["extraction_status"]["prosody"] = "success"
-            logger.debug(f"Prosody extraction succeeded for segment {segment.id}")
+            logger.debug("Prosody extraction succeeded for segment %s", segment.id)
 
         except Exception as e:
             error_msg = f"Prosody extraction failed: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             audio_state["extraction_status"]["prosody"] = "failed"
             audio_state["extraction_status"]["errors"].append(error_msg)
 
@@ -106,11 +109,11 @@ def _enrich_segment_with_extractor(
             dimensional_result = extract_emotion_dimensional(audio_data, sample_rate)
             emotion_data.update(dimensional_result)
             audio_state["extraction_status"]["emotion_dimensional"] = "success"
-            logger.debug(f"Dimensional emotion extraction succeeded for segment {segment.id}")
+            logger.debug("Dimensional emotion extraction succeeded for segment %s", segment.id)
 
         except Exception as e:
             error_msg = f"Dimensional emotion extraction failed: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             audio_state["extraction_status"]["emotion_dimensional"] = "failed"
             audio_state["extraction_status"]["errors"].append(error_msg)
 
@@ -119,11 +122,11 @@ def _enrich_segment_with_extractor(
             categorical_result = extract_emotion_categorical(audio_data, sample_rate)
             emotion_data.update(categorical_result)
             audio_state["extraction_status"]["emotion_categorical"] = "success"
-            logger.debug(f"Categorical emotion extraction succeeded for segment {segment.id}")
+            logger.debug("Categorical emotion extraction succeeded for segment %s", segment.id)
 
         except Exception as e:
             error_msg = f"Categorical emotion extraction failed: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             audio_state["extraction_status"]["emotion_categorical"] = "failed"
             audio_state["extraction_status"]["errors"].append(error_msg)
 
@@ -267,13 +270,16 @@ def enrich_transcript_audio(
         return transcript
 
     logger.info(
-        f"Starting audio enrichment for {len(transcript.segments)} segments "
-        f"(prosody={enable_prosody}, emotion={enable_emotion}, "
-        f"categorical={enable_categorical_emotion})"
+        "Starting audio enrichment for %d segments (prosody=%s, emotion=%s, categorical=%s)",
+        len(transcript.segments),
+        enable_prosody,
+        enable_emotion,
+        enable_categorical_emotion,
     )
 
     # Compute speaker baseline if requested
     speaker_baseline: dict[str, Any] | None = None
+    baseline_error: str | None = None
     if compute_baseline and enable_prosody:
         try:
             logger.info("Computing speaker baseline statistics...")
@@ -292,18 +298,25 @@ def enrich_transcript_audio(
                     audio, sr = extractor.extract_segment(seg.start, seg.end, clamp=True)
                     segments_data.append({"audio": audio, "sr": sr, "text": seg.text})
                 except Exception as e:
-                    logger.warning(f"Failed to extract segment {idx} for baseline: {e}")
+                    logger.warning(
+                        "Failed to extract segment %d for baseline computation: %s",
+                        idx,
+                        e,
+                        exc_info=True,
+                    )
                     continue
 
             if segments_data:
                 speaker_baseline = compute_speaker_baseline(segments_data)
-                logger.info(f"Speaker baseline computed from {len(segments_data)} segments")
-                logger.debug(f"Baseline stats: {speaker_baseline}")
+                logger.info("Speaker baseline computed from %d segments", len(segments_data))
+                logger.debug("Baseline stats: %s", speaker_baseline)
             else:
-                logger.warning("Could not compute speaker baseline (no valid segments)")
+                baseline_error = "Could not compute speaker baseline (no valid segments extracted)"
+                logger.warning(baseline_error)
 
         except Exception as e:
-            logger.error(f"Failed to compute speaker baseline: {e}")
+            baseline_error = f"Failed to compute speaker baseline: {e}"
+            logger.error(baseline_error, exc_info=True)
 
     # Enrich each segment - reuse a single AudioSegmentExtractor for efficiency
     success_count = 0
@@ -314,11 +327,11 @@ def enrich_transcript_audio(
     try:
         shared_extractor = AudioSegmentExtractor(wav_path)
     except Exception as e:
-        logger.error(f"Failed to create audio extractor: {e}")
+        logger.error("Failed to create audio extractor for %s: %s", wav_path, e, exc_info=True)
         shared_extractor = None
 
     for idx, segment in enumerate(transcript.segments):
-        logger.debug(f"Enriching segment {idx + 1}/{len(transcript.segments)}: {segment.id}")
+        logger.debug("Enriching segment %d/%d: %s", idx + 1, len(transcript.segments), segment.id)
 
         try:
             audio_state = _enrich_segment_with_extractor(
@@ -346,7 +359,7 @@ def enrich_transcript_audio(
                 failed_count += 1
 
         except Exception as e:
-            logger.error(f"Failed to enrich segment {segment.id}: {e}")
+            logger.error("Failed to enrich segment %s: %s", segment.id, e, exc_info=True)
             segment.audio_state = {
                 "prosody": None,
                 "emotion": None,
@@ -364,7 +377,7 @@ def enrich_transcript_audio(
     if transcript.meta is None:
         transcript.meta = {}
 
-    transcript.meta["audio_enrichment"] = {
+    enrichment_meta: dict[str, Any] = {
         "enriched_at": datetime.now(timezone.utc).isoformat(),
         "total_segments": len(transcript.segments),
         "success_count": success_count,
@@ -379,9 +392,17 @@ def enrich_transcript_audio(
         "speaker_baseline": speaker_baseline,
     }
 
+    # Include baseline error if baseline computation failed
+    if baseline_error is not None:
+        enrichment_meta["baseline_error"] = baseline_error
+
+    transcript.meta["audio_enrichment"] = enrichment_meta
+
     logger.info(
-        f"Audio enrichment complete: {success_count} success, "
-        f"{partial_count} partial, {failed_count} failed"
+        "Audio enrichment complete: %d success, %d partial, %d failed",
+        success_count,
+        partial_count,
+        failed_count,
     )
 
     return transcript

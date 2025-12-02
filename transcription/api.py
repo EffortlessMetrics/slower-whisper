@@ -135,7 +135,7 @@ def _run_semantic_annotator(transcript: Transcript, config: EnrichmentConfig) ->
         updated = annotator.annotate(transcript)
         return updated or transcript
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Semantic annotator failed: %s", exc)
+        logger.warning("Semantic annotator failed: %s", exc, exc_info=True)
         return transcript
 
 
@@ -326,6 +326,7 @@ def _maybe_run_diarization(
             "Diarization failed for %s: %s. Proceeding without speakers/turns.",
             wav_path.name,
             exc,
+            exc_info=True,
         )
         if transcript.meta is None:
             transcript.meta = {}
@@ -423,7 +424,13 @@ def transcribe_directory(
 
     # Run the pipeline (modifies files on disk)
     # Pass the config for diarization if enabled
-    run_pipeline(app_cfg, diarization_config=config)
+    result = run_pipeline(app_cfg, diarization_config=config)
+    logger.info(
+        "Pipeline completed: %d processed, %d skipped, %d failed",
+        result.processed,
+        result.skipped,
+        result.failed,
+    )
 
     # Load and return all transcripts
     json_dir = paths.json_dir
@@ -643,8 +650,10 @@ def enrich_directory(
 
     enriched_transcripts = []
     errors = []
+    total = len(json_files)
 
-    for json_path in json_files:
+    for idx, json_path in enumerate(json_files, start=1):
+        logger.info("[%d/%d] %s", idx, total, json_path.name)
         stem = json_path.stem
         wav_path = audio_dir / f"{stem}.wav"
 
@@ -716,7 +725,7 @@ def enrich_directory(
             ) from e
         except Exception as e:
             errors.append(f"{json_path.name}: Enrichment failed - {e}")
-            logger.warning(f"Enrichment failed for {json_path.name}: {e}")
+            logger.warning(f"Enrichment failed for {json_path.name}: {e}", exc_info=True)
             # Skip this transcript but continue processing others
 
     if errors and not enriched_transcripts:
@@ -809,7 +818,8 @@ def enrich_transcript(
         return enriched
     except Exception as e:
         logger.warning(
-            f"Enrichment failed for {audio_path.name}: {e}; returning neutral audio_state"
+            f"Enrichment failed for {audio_path.name}: {e}; returning neutral audio_state",
+            exc_info=True,
         )
         for segment in transcript.segments:
             segment.audio_state = _neutral_audio_state(str(e))

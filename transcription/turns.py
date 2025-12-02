@@ -22,10 +22,13 @@ bounded by speaker changes or long pauses.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from .models import Turn
 from .speaker_id import get_speaker_id
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from transcription.models import Segment, Transcript

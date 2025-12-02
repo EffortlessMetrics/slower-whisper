@@ -30,6 +30,11 @@ from transcription import (
     Transcript,
     Segment,
     Chunk,
+    # Batch Processing Results
+    BatchProcessingResult,
+    BatchFileResult,
+    EnrichmentBatchResult,
+    EnrichmentFileResult,
     # Chunking
     build_chunks,
 )
@@ -85,6 +90,331 @@ enriched = enrich_transcript(
     audio_path="audio.wav",
     config=config
 )
+```
+
+## Batch Processing Results
+
+When using batch functions (`transcribe_directory()` and `enrich_directory()`), results are returned as structured batch result objects that provide detailed information about successes and failures.
+
+### BatchProcessingResult (Transcription)
+
+Returned by `transcribe_directory()`. Aggregates transcription results from multiple audio files.
+
+**Signature:**
+
+```python
+@dataclass
+class BatchProcessingResult:
+    total_files: int              # Total audio files attempted
+    successful: int               # Files successfully transcribed
+    failed: int                   # Files that failed
+    results: list[BatchFileResult] # Individual file results
+```
+
+**Key Methods:**
+
+```python
+# Get only failed results
+failures = result.get_failures()  # -> list[BatchFileResult]
+
+# Get only successful transcripts
+transcripts = result.get_transcripts()  # -> list[Transcript]
+
+# Serialize for storage/logging
+result_dict = result.to_dict()  # -> dict[str, Any]
+```
+
+**Example:**
+
+```python
+from transcription import transcribe_directory, TranscriptionConfig
+
+config = TranscriptionConfig(model="large-v3", device="cuda")
+batch_result = transcribe_directory("/path/to/project", config)
+
+print(f"Total: {batch_result.total_files} files")
+print(f"Successful: {batch_result.successful}")
+print(f"Failed: {batch_result.failed}")
+
+# Process failures
+for failure in batch_result.get_failures():
+    print(f"✗ {failure.file_path}")
+    print(f"  Error: {failure.error_type} - {failure.error_message}")
+
+# Get all transcripts
+transcripts = batch_result.get_transcripts()
+print(f"Generated {len(transcripts)} transcripts")
+
+# Export summary
+import json
+with open("batch_results.json", "w") as f:
+    json.dump(batch_result.to_dict(), f, indent=2)
+```
+
+### BatchFileResult (Transcription)
+
+Individual file result within a `BatchProcessingResult`. Represents the outcome of transcribing a single audio file.
+
+**Fields:**
+
+```python
+@dataclass
+class BatchFileResult:
+    file_path: str                    # Absolute path to audio file
+    status: Literal["success", "error"]
+    transcript: Transcript | None     # Transcript if successful, None if failed
+    error_type: str | None            # Error category if failed (e.g., "FileNotFoundError")
+    error_message: str | None         # Human-readable error description
+```
+
+**Methods:**
+
+```python
+# Serialize to dict (excludes large transcript object)
+result_dict = file_result.to_dict()
+```
+
+**Example:**
+
+```python
+batch_result = transcribe_directory("/data/project", config)
+
+for file_result in batch_result.results:
+    if file_result.status == "success":
+        print(f"✓ {file_result.file_path}")
+        print(f"  Language: {file_result.transcript.language}")
+        print(f"  Segments: {len(file_result.transcript.segments)}")
+    else:
+        print(f"✗ {file_result.file_path}")
+        print(f"  Error: {file_result.error_type}")
+        print(f"  Details: {file_result.error_message}")
+```
+
+### EnrichmentBatchResult (Audio Enrichment)
+
+Returned by `enrich_directory()`. Aggregates enrichment results from multiple transcript files. Similar to `BatchProcessingResult`, but tracks partial success and warnings.
+
+**Signature:**
+
+```python
+@dataclass
+class EnrichmentBatchResult:
+    total_files: int               # Total transcripts attempted
+    successful: int                # Fully enriched without errors
+    partial: int                   # Partially enriched (some features missing)
+    failed: int                    # Completely failed enrichment
+    results: list[EnrichmentFileResult] # Individual file results
+```
+
+**Key Methods:**
+
+```python
+# Get only failed results
+failures = result.get_failures()  # -> list[EnrichmentFileResult]
+
+# Get all successfully enriched transcripts (includes partial)
+transcripts = result.get_transcripts()  # -> list[Transcript]
+
+# Serialize for storage/logging
+result_dict = result.to_dict()  # -> dict[str, Any]
+```
+
+**Example:**
+
+```python
+from transcription import enrich_directory, EnrichmentConfig
+
+config = EnrichmentConfig(
+    enable_prosody=True,
+    enable_emotion=True,
+    device="cuda"
+)
+batch_result = enrich_directory("/path/to/project", config)
+
+print(f"Enrichment Summary:")
+print(f"  Fully enriched: {batch_result.successful}")
+print(f"  Partial: {batch_result.partial}")
+print(f"  Failed: {batch_result.failed}")
+
+# Analyze failures
+for failure in batch_result.get_failures():
+    print(f"\nFailed: {failure.transcript_path}")
+    print(f"  Error: {failure.error_type}")
+    print(f"  Message: {failure.error_message}")
+
+# Analyze partial successes
+for result in batch_result.results:
+    if result.status == "partial":
+        print(f"\nPartial: {result.transcript_path}")
+        for warning in result.warnings:
+            print(f"  Warning: {warning}")
+
+# Get enriched transcripts for further processing
+enriched_transcripts = batch_result.get_transcripts()
+print(f"\nProcessing {len(enriched_transcripts)} enriched transcripts...")
+```
+
+### EnrichmentFileResult (Audio Enrichment)
+
+Individual file result within an `EnrichmentBatchResult`. Represents the outcome of enriching a single transcript file with audio features.
+
+**Fields:**
+
+```python
+@dataclass
+class EnrichmentFileResult:
+    transcript_path: str                    # Absolute path to transcript JSON
+    status: Literal["success", "partial", "error"]
+    enriched_transcript: Transcript | None  # Transcript if successful, None if failed
+    error_type: str | None                  # Error category if failed
+    error_message: str | None               # Human-readable error description
+    warnings: list[str]                     # Non-fatal warnings for partial results
+```
+
+**Methods:**
+
+```python
+# Serialize to dict (excludes large transcript object)
+result_dict = file_result.to_dict()
+```
+
+**Example:**
+
+```python
+batch_result = enrich_directory("/data/project", config)
+
+for file_result in batch_result.results:
+    if file_result.status == "success":
+        print(f"✓ Fully enriched: {file_result.transcript_path}")
+        if file_result.enriched_transcript:
+            seg_count = len(file_result.enriched_transcript.segments)
+            enriched = sum(
+                1 for s in file_result.enriched_transcript.segments
+                if s.audio_state
+            )
+            print(f"  {enriched}/{seg_count} segments with audio_state")
+    elif file_result.status == "partial":
+        print(f"⚠ Partially enriched: {file_result.transcript_path}")
+        for warning in file_result.warnings:
+            print(f"  {warning}")
+    else:
+        print(f"✗ Failed: {file_result.transcript_path}")
+        print(f"  {file_result.error_type}: {file_result.error_message}")
+```
+
+### Error Handling with Batch Results
+
+**Pattern 1: Retry Failed Files**
+
+```python
+from transcription import (
+    transcribe_directory, transcribe_file,
+    TranscriptionConfig
+)
+
+# Initial batch attempt
+config = TranscriptionConfig(model="large-v3")
+result = transcribe_directory("/data/project", config)
+
+# Retry failures with fallback settings
+if result.failed > 0:
+    print(f"Retrying {result.failed} failed files...")
+    fallback_config = TranscriptionConfig(model="base", device="cpu")
+
+    for failure in result.get_failures():
+        try:
+            transcript = transcribe_file(
+                audio_path=failure.file_path,
+                config=fallback_config
+            )
+            print(f"✓ Recovered: {failure.file_path}")
+        except Exception as e:
+            print(f"✗ Still failing: {failure.file_path}: {e}")
+```
+
+**Pattern 2: Separate Successful from Failed**
+
+```python
+import json
+from pathlib import Path
+
+batch_result = transcribe_directory("/data/project", config)
+
+# Save transcripts to success directory
+success_dir = Path("/output/successful")
+success_dir.mkdir(parents=True, exist_ok=True)
+
+for transcript in batch_result.get_transcripts():
+    output_path = success_dir / f"{transcript.file_name}.json"
+    save_transcript(transcript, str(output_path))
+
+# Log failures for review
+failure_log = Path("/output/failures.json")
+with open(failure_log, "w") as f:
+    json.dump(batch_result.to_dict(), f, indent=2)
+
+print(f"Saved {batch_result.successful} transcripts")
+print(f"Logged {batch_result.failed} failures to {failure_log}")
+```
+
+**Pattern 3: Conditional Enrichment Based on Transcription**
+
+```python
+from transcription import (
+    transcribe_directory, enrich_directory,
+    TranscriptionConfig, EnrichmentConfig
+)
+
+# Stage 1: Transcribe
+trans_result = transcribe_directory("/data/project", TranscriptionConfig())
+
+if trans_result.successful == 0:
+    print("No transcripts generated; skipping enrichment")
+else:
+    # Stage 2: Only enrich if transcription had successes
+    print(f"Enriching {trans_result.successful} transcripts...")
+    enrich_result = enrich_directory("/data/project", EnrichmentConfig())
+
+    # Check enrichment quality
+    print(f"Enrichment: {enrich_result.successful} full, {enrich_result.partial} partial, {enrich_result.failed} failed")
+
+    # Report enrichment failures
+    for failure in enrich_result.get_failures():
+        print(f"Enrichment failed: {failure.transcript_path}")
+        print(f"  {failure.error_message}")
+```
+
+**Pattern 4: Monitoring and Alerts**
+
+```python
+from transcription import transcribe_directory, TranscriptionConfig
+
+def transcribe_with_alerts(project_path: str, config: TranscriptionConfig):
+    """Transcribe with alerts for failure rates."""
+    result = transcribe_directory(project_path, config)
+
+    # Calculate metrics
+    success_rate = result.successful / result.total_files if result.total_files > 0 else 0
+
+    # Alert if failure rate is high
+    if result.failed > 0:
+        failure_rate = result.failed / result.total_files
+        if failure_rate > 0.1:  # More than 10% failed
+            print(f"WARNING: High failure rate ({failure_rate:.1%})")
+
+        # List common error types
+        error_types = {}
+        for failure in result.get_failures():
+            error_types[failure.error_type] = error_types.get(failure.error_type, 0) + 1
+
+        print(f"Error summary:")
+        for error_type, count in sorted(error_types.items(), key=lambda x: -x[1]):
+            print(f"  {error_type}: {count}")
+
+    return result
+
+# Usage
+result = transcribe_with_alerts("/data/project", TranscriptionConfig())
 ```
 
 ## I/O

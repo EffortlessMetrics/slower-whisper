@@ -6,12 +6,15 @@ respecting conversational turns when available.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
 from .models import Chunk, Transcript
 from .turn_helpers import turn_to_dict
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

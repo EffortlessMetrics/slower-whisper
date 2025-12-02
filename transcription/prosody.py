@@ -202,8 +202,8 @@ def extract_pitch_features(audio: np.ndarray, sr: int) -> dict[str, Any]:
             "max_hz": max_pitch,
         }
 
-    except Exception as e:
-        logger.error(f"Error extracting pitch features: {e}")
+    except Exception:
+        logger.error("Error extracting pitch features", exc_info=True)
         return {
             "mean_hz": None,
             "std_hz": None,
@@ -231,8 +231,8 @@ def extract_energy_features(audio: np.ndarray, sr: int) -> dict[str, Any]:
             rms = np.sqrt(np.mean(audio**2))
             db_rms = 20 * np.log10(rms + 1e-10) if rms > 0 else -100
             return {"rms_mean": float(rms), "rms_std": 0.0, "db_rms": float(db_rms)}
-        except Exception as e:
-            logger.error(f"Error in fallback energy extraction: {e}")
+        except Exception:
+            logger.error("Error in fallback energy extraction", exc_info=True)
             return {"rms_mean": None, "rms_std": None, "db_rms": None}
 
     try:
@@ -250,8 +250,8 @@ def extract_energy_features(audio: np.ndarray, sr: int) -> dict[str, Any]:
 
         return {"rms_mean": rms_mean, "rms_std": rms_std, "db_rms": float(db_rms)}
 
-    except Exception as e:
-        logger.error(f"Error extracting energy features: {e}")
+    except Exception:
+        logger.error("Error extracting energy features", exc_info=True)
         return {"rms_mean": None, "rms_std": None, "db_rms": None}
 
 
@@ -370,8 +370,8 @@ def detect_pauses(
 
         return pauses
 
-    except Exception as e:
-        logger.error(f"Error detecting pauses: {e}")
+    except Exception:
+        logger.error("Error detecting pauses", exc_info=True)
         return []
 
 
@@ -405,8 +405,8 @@ def extract_speech_rate(audio: np.ndarray, sr: int, text: str, duration: float) 
             "words_per_sec": float(words_per_sec),
         }
 
-    except Exception as e:
-        logger.error(f"Error extracting speech rate: {e}")
+    except Exception:
+        logger.error("Error extracting speech rate", exc_info=True)
         return {"syllables_per_sec": None, "words_per_sec": None}
 
 
@@ -600,8 +600,8 @@ def extract_prosody(
                 pause_features["density_per_sec"], PAUSE_DENSITY_THRESHOLDS
             )
 
-    except Exception as e:
-        logger.error(f"Error in prosody extraction: {e}")
+    except Exception:
+        logger.error("Error in prosody extraction", exc_info=True)
 
     return result
 

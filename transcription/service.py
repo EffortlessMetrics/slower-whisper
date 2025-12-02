@@ -21,11 +21,16 @@ Example usage:
 
 from __future__ import annotations
 
+import json
+import logging
 import tempfile
+import time
+import uuid
 from pathlib import Path
 from typing import Annotated, Any, cast
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from . import __version__
@@ -34,6 +39,238 @@ from .api import load_transcript, transcribe_file
 from .config import EnrichmentConfig, TranscriptionConfig, WhisperTask, validate_compute_type
 from .exceptions import ConfigurationError, EnrichmentError, TranscriptionError
 from .models import SCHEMA_VERSION, Transcript
+
+# =============================================================================
+# Logging Setup
+# =============================================================================
+
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Configuration Constants
+# =============================================================================
+
+# Maximum allowed file size in megabytes (configurable)
+MAX_AUDIO_SIZE_MB = 500
+MAX_TRANSCRIPT_SIZE_MB = 10  # JSON transcripts are typically small
+
+
+# =============================================================================
+# Error Handling Helpers
+# =============================================================================
+
+
+def create_error_response(
+    status_code: int,
+    error_type: str,
+    message: str,
+    request_id: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> JSONResponse:
+    """
+    Create a standardized error response.
+
+    Args:
+        status_code: HTTP status code
+        error_type: Error type identifier (e.g., "validation_error", "transcription_error")
+        message: Human-readable error message
+        request_id: Optional request ID for tracing
+        details: Optional additional error details
+
+    Returns:
+        JSONResponse with structured error format
+    """
+    error_data: dict[str, Any] = {
+        "error": {
+            "type": error_type,
+            "message": message,
+            "status_code": status_code,
+        },
+        # Backward compatibility: include "detail" field for legacy clients
+        "detail": message,
+    }
+
+    if request_id:
+        error_data["error"]["request_id"] = request_id
+
+    if details:
+        error_data["error"]["details"] = details
+
+    return JSONResponse(
+        status_code=status_code,
+        content=error_data,
+    )
+
+
+def validate_file_size(
+    file_content: bytes,
+    max_size_mb: int,
+    file_type: str = "file",
+) -> None:
+    """
+    Validate that uploaded file size does not exceed the maximum allowed size.
+
+    Args:
+        file_content: Raw file content bytes
+        max_size_mb: Maximum allowed size in megabytes
+        file_type: Type of file for error messages (e.g., "audio", "transcript")
+
+    Raises:
+        HTTPException: 413 if file exceeds maximum size
+    """
+    file_size_bytes = len(file_content)
+    file_size_mb = file_size_bytes / (1024 * 1024)
+
+    if file_size_mb > max_size_mb:
+        logger.warning(
+            "File too large: %.2f MB (max: %d MB) for %s",
+            file_size_mb,
+            max_size_mb,
+            file_type,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"{file_type.capitalize()} file too large: {file_size_mb:.2f} MB. "
+                f"Maximum allowed size is {max_size_mb} MB."
+            ),
+        )
+
+
+def validate_audio_format(audio_path: Path) -> None:
+    """
+    Validate that the uploaded file is a valid audio file.
+
+    This performs a lightweight check by attempting to probe the file with ffmpeg.
+    If ffmpeg cannot identify it as audio, we reject it early.
+
+    Args:
+        audio_path: Path to the audio file to validate
+
+    Raises:
+        HTTPException: 400 if file is not a valid audio format
+    """
+    import subprocess
+
+    try:
+        # Use ffprobe to check if file is valid audio
+        # -v error: only show errors
+        # -show_entries format=format_name: show format info
+        # -of default=noprint_wrappers=1: simple output format
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=format_name,duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(audio_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode != 0 or not result.stdout.strip():
+            logger.warning("Invalid audio file: ffprobe failed to identify format")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Invalid audio file format. Please upload a valid audio file "
+                    "(e.g., mp3, wav, m4a, flac, ogg)."
+                ),
+            )
+
+        # Check that duration is present and reasonable
+        lines = result.stdout.strip().split("\n")
+        if len(lines) < 2:
+            logger.warning("Invalid audio file: missing duration information")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid audio file: unable to determine audio duration.",
+            )
+
+        try:
+            duration = float(lines[1])
+            if duration <= 0:
+                logger.warning("Invalid audio file: zero or negative duration")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid audio file: audio has zero or negative duration.",
+                )
+        except (ValueError, IndexError) as e:
+            logger.warning("Invalid audio file: cannot parse duration: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid audio file: unable to parse audio duration.",
+            ) from e
+
+    except subprocess.TimeoutExpired as e:
+        logger.error("Audio validation timeout")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Audio validation timeout: file may be corrupted or invalid.",
+        ) from e
+    except FileNotFoundError:
+        logger.error("ffprobe not found - audio validation unavailable")
+        # If ffprobe is not available, we can't validate, so we skip this check
+        # and let the transcription pipeline handle errors
+        logger.warning("Skipping audio format validation: ffprobe not available")
+        return
+
+
+def validate_transcript_json(transcript_content: bytes) -> None:
+    """
+    Validate that the uploaded transcript is valid JSON with expected structure.
+
+    Args:
+        transcript_content: Raw transcript file content bytes
+
+    Raises:
+        HTTPException: 400 if transcript is not valid JSON or missing required fields
+    """
+    try:
+        data = json.loads(transcript_content)
+    except json.JSONDecodeError as e:
+        logger.warning("Invalid transcript JSON: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid transcript JSON: {str(e)}",
+        ) from e
+
+    # Validate required top-level fields
+    required_fields = ["file_name", "segments"]
+    missing_fields = [field for field in required_fields if field not in data]
+
+    if missing_fields:
+        logger.warning("Transcript missing required fields: %s", missing_fields)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Invalid transcript structure: missing required fields {missing_fields}. "
+                "Expected a transcript JSON from /transcribe endpoint."
+            ),
+        )
+
+    # Validate segments is a list
+    if not isinstance(data.get("segments"), list):
+        logger.warning("Transcript 'segments' field is not a list")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid transcript structure: 'segments' must be a list.",
+        )
+
+    # Validate segments is not empty
+    if len(data["segments"]) == 0:
+        logger.warning("Transcript has no segments")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid transcript: no segments found. Transcript must contain at least one segment.",
+        )
+
 
 # =============================================================================
 # FastAPI Application Setup
@@ -54,19 +291,308 @@ app = FastAPI(
 
 
 # =============================================================================
-# Health Check Endpoint
+# Middleware
 # =============================================================================
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """
+    Log all requests with timing and request ID.
+
+    This middleware:
+    - Generates a unique request_id for tracing
+    - Logs request method, path, and query params
+    - Measures request duration
+    - Logs response status and timing
+    - Attaches request_id to request.state for use in exception handlers
+    """
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+
+    # Log incoming request
+    logger.info(
+        "Request started: %s %s [request_id=%s]",
+        request.method,
+        request.url.path,
+        request_id,
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "query_params": dict(request.query_params),
+        },
+    )
+
+    start_time = time.time()
+    response = await call_next(request)
+    duration_ms = (time.time() - start_time) * 1000
+
+    # Log response
+    logger.info(
+        "Request completed: %s %s -> %d (%.2f ms) [request_id=%s]",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+        request_id,
+        extra={
+            "request_id": request_id,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+        },
+    )
+
+    # Add request_id to response headers
+    response.headers["X-Request-ID"] = request_id
+
+    return response
+
+
+# =============================================================================
+# Exception Handlers
+# =============================================================================
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """
+    Handle request validation errors (422).
+
+    FastAPI raises RequestValidationError when request data fails Pydantic validation
+    (e.g., invalid query parameters, missing required fields, type mismatches).
+    """
+    request_id = getattr(request.state, "request_id", None)
+
+    # Extract validation error details
+    errors = exc.errors()
+    logger.warning(
+        "Validation error: %s %s [request_id=%s] - %d validation errors",
+        request.method,
+        request.url.path,
+        request_id,
+        len(errors),
+        extra={
+            "request_id": request_id,
+            "validation_errors": errors,
+        },
+    )
+
+    # Format validation errors for response
+    formatted_errors = [
+        {
+            "loc": list(err.get("loc", [])),
+            "msg": err.get("msg", "Validation error"),
+            "type": err.get("type", "unknown"),
+        }
+        for err in errors
+    ]
+
+    return create_error_response(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        error_type="validation_error",
+        message="Request validation failed",
+        request_id=request_id,
+        details={"validation_errors": formatted_errors},
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    """
+    Handle HTTPException (4xx/5xx errors raised by endpoint logic).
+
+    This handler provides structured error responses for all HTTPException instances,
+    including those raised explicitly in endpoints (400 Bad Request, 500 Internal Server Error).
+    """
+    request_id = getattr(request.state, "request_id", None)
+
+    logger.warning(
+        "HTTP exception: %s %s -> %d [request_id=%s] - %s",
+        request.method,
+        request.url.path,
+        exc.status_code,
+        request_id,
+        exc.detail,
+        extra={
+            "request_id": request_id,
+            "status_code": exc.status_code,
+            "detail": exc.detail,
+        },
+    )
+
+    # Determine error type from status code
+    error_type_map = {
+        400: "bad_request",
+        401: "unauthorized",
+        403: "forbidden",
+        404: "not_found",
+        413: "file_too_large",
+        500: "internal_error",
+        503: "service_unavailable",
+    }
+    error_type = error_type_map.get(exc.status_code, "http_error")
+
+    return create_error_response(
+        status_code=exc.status_code,
+        error_type=error_type,
+        message=str(exc.detail),
+        request_id=request_id,
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """
+    Handle all unhandled exceptions (500 Internal Server Error).
+
+    This is the global catch-all handler for any exception not caught by
+    endpoint logic or other handlers. Logs full traceback and returns
+    generic error to avoid leaking internal details.
+    """
+    request_id = getattr(request.state, "request_id", None)
+
+    logger.exception(
+        "Unhandled exception: %s %s [request_id=%s]",
+        request.method,
+        request.url.path,
+        request_id,
+        extra={
+            "request_id": request_id,
+            "exception_type": type(exc).__name__,
+        },
+        exc_info=exc,
+    )
+
+    return create_error_response(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        error_type="internal_error",
+        message="An unexpected internal error occurred",
+        request_id=request_id,
+        details={
+            "exception_type": type(exc).__name__,
+            "hint": "Check server logs for details",
+        },
+    )
+
+
+# =============================================================================
+# Health Check Endpoints
+# =============================================================================
+
+
+def _check_ffmpeg() -> dict[str, Any]:
+    """Check if ffmpeg is available on PATH.
+
+    Returns:
+        Dict with status and optional error message
+    """
+    import shutil
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return {"status": "ok", "path": ffmpeg_path}
+    return {"status": "error", "message": "ffmpeg not found on PATH"}
+
+
+def _check_faster_whisper() -> dict[str, Any]:
+    """Check if faster-whisper can be imported.
+
+    Returns:
+        Dict with status and optional error message
+    """
+    try:
+        from . import asr_engine
+
+        available = asr_engine._FASTER_WHISPER_AVAILABLE
+        if available:
+            return {"status": "ok"}
+        return {"status": "error", "message": "faster-whisper import failed"}
+    except Exception as e:
+        return {"status": "error", "message": f"faster-whisper check failed: {str(e)}"}
+
+
+def _check_cuda(device: str) -> dict[str, Any]:
+    """Check CUDA availability if device=cuda is expected.
+
+    Args:
+        device: Expected device from config (cuda/cpu)
+
+    Returns:
+        Dict with status and optional error/warning message
+    """
+    if device != "cuda":
+        return {"status": "ok", "message": "CUDA not required (device=cpu)"}
+
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            device_count = torch.cuda.device_count()
+            device_name = torch.cuda.get_device_name(0) if device_count > 0 else "unknown"
+            return {
+                "status": "ok",
+                "device_count": device_count,
+                "device_name": device_name,
+            }
+        return {"status": "warning", "message": "CUDA requested but not available"}
+    except ImportError:
+        return {"status": "warning", "message": "torch not installed, cannot check CUDA"}
+    except Exception as e:
+        return {"status": "error", "message": f"CUDA check failed: {str(e)}"}
+
+
+def _check_disk_space() -> dict[str, Any]:
+    """Check disk space in cache directories.
+
+    Returns:
+        Dict with status and space information
+    """
+    import shutil
+
+    try:
+        from .cache import CachePaths
+
+        paths = CachePaths.from_env()
+        root_usage = shutil.disk_usage(paths.root.parent)
+
+        # Convert to GB
+        free_gb = root_usage.free / (1024**3)
+        total_gb = root_usage.total / (1024**3)
+        used_gb = root_usage.used / (1024**3)
+        percent_used = (used_gb / total_gb * 100) if total_gb > 0 else 0
+
+        # Warn if less than 5GB free
+        status = "ok"
+        if free_gb < 5.0:
+            status = "warning"
+
+        return {
+            "status": status,
+            "cache_root": str(paths.root),
+            "free_gb": round(free_gb, 2),
+            "total_gb": round(total_gb, 2),
+            "used_gb": round(used_gb, 2),
+            "percent_used": round(percent_used, 1),
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Disk space check failed: {str(e)}"}
 
 
 @app.get(
     "/health",
-    summary="Health check",
-    description="Check if the service is running and responsive",
+    summary="Health check (legacy)",
+    description="Simple health check (deprecated, use /health/live for liveness checks)",
     tags=["System"],
+    deprecated=True,
 )
 async def health_check() -> dict[str, str]:
     """
-    Health check endpoint for service monitoring and load balancers.
+    Legacy health check endpoint for service monitoring.
+
+    DEPRECATED: Use /health/live for liveness checks or /health/ready for readiness checks.
 
     Returns:
         Dictionary with status and version information.
@@ -77,6 +603,114 @@ async def health_check() -> dict[str, str]:
         "version": __version__,
         "schema_version": str(SCHEMA_VERSION),
     }
+
+
+@app.get(
+    "/health/live",
+    summary="Liveness probe",
+    description="Check if the service is alive and responsive (Kubernetes liveness probe)",
+    tags=["System"],
+    status_code=200,
+)
+async def health_liveness() -> JSONResponse:
+    """
+    Liveness probe for Kubernetes/orchestration systems.
+
+    This endpoint performs minimal checks to verify the service process is alive
+    and responsive. It should NOT check external dependencies or heavy initialization.
+
+    Returns 200 if the service is running, even if not fully ready.
+
+    Returns:
+        JSONResponse with status "alive" and basic service info
+    """
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "alive",
+            "service": "slower-whisper-api",
+            "version": __version__,
+            "schema_version": str(SCHEMA_VERSION),
+        },
+    )
+
+
+@app.get(
+    "/health/ready",
+    summary="Readiness probe",
+    description=(
+        "Check if the service is ready to handle requests "
+        "(Kubernetes readiness probe, load balancer health check)"
+    ),
+    tags=["System"],
+    responses={
+        200: {"description": "Service is ready"},
+        503: {"description": "Service is degraded or not ready"},
+    },
+)
+async def health_readiness() -> JSONResponse:
+    """
+    Readiness probe for Kubernetes/orchestration systems and load balancers.
+
+    This endpoint checks all critical dependencies and configuration:
+    - ffmpeg availability (required for audio normalization)
+    - faster-whisper import (required for transcription)
+    - CUDA availability (if device=cuda expected)
+    - Disk space in cache directories
+
+    Returns:
+        - 200 if all checks pass (service ready)
+        - 503 if any critical check fails (service not ready)
+
+    Response includes detailed status for each dependency.
+    """
+    checks: dict[str, Any] = {}
+    overall_status = "ready"
+    overall_healthy = True
+
+    # Check ffmpeg (critical)
+    checks["ffmpeg"] = _check_ffmpeg()
+    if checks["ffmpeg"]["status"] == "error":
+        overall_status = "degraded"
+        overall_healthy = False
+
+    # Check faster-whisper (critical)
+    checks["faster_whisper"] = _check_faster_whisper()
+    if checks["faster_whisper"]["status"] == "error":
+        overall_status = "degraded"
+        overall_healthy = False
+
+    # Check CUDA (warning only, not critical)
+    # In production, device should be read from config/env
+    # For now, default to cpu to avoid false negatives
+    device = "cpu"  # Could be read from env: os.environ.get("SLOWER_WHISPER_DEVICE", "cpu")
+    checks["cuda"] = _check_cuda(device)
+    if checks["cuda"]["status"] == "error":
+        overall_status = "degraded"
+        # Not marking as unhealthy - CUDA errors are warnings, CPU fallback works
+
+    # Check disk space (warning if low)
+    checks["disk_space"] = _check_disk_space()
+    if checks["disk_space"]["status"] == "error":
+        overall_status = "degraded"
+        # Disk check errors are warnings, not critical failures
+
+    # Determine HTTP status code
+    status_code = 200 if overall_healthy else 503
+
+    response_body = {
+        "status": overall_status,
+        "healthy": overall_healthy,
+        "service": "slower-whisper-api",
+        "version": __version__,
+        "schema_version": str(SCHEMA_VERSION),
+        "checks": checks,
+    }
+
+    return JSONResponse(
+        status_code=status_code,
+        content=response_body,
+    )
 
 
 # =============================================================================
@@ -206,6 +840,7 @@ async def transcribe_audio(
     """
     # Validate task
     if task not in ("transcribe", "translate"):
+        logger.warning("Invalid task parameter: %s", task)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid task '{task}'. Must be 'transcribe' or 'translate'.",
@@ -213,6 +848,7 @@ async def transcribe_audio(
 
     # Validate device
     if device not in ("cuda", "cpu"):
+        logger.warning("Invalid device parameter: %s", device)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid device '{device}'. Must be 'cuda' or 'cpu'.",
@@ -220,6 +856,7 @@ async def transcribe_audio(
 
     # Validate diarization device early for clearer error messages
     if diarization_device not in ("cuda", "cpu", "auto"):
+        logger.warning("Invalid diarization_device parameter: %s", diarization_device)
         raise HTTPException(
             status_code=400,
             detail=(
@@ -231,6 +868,7 @@ async def transcribe_audio(
     try:
         normalized_compute_type = validate_compute_type(compute_type)
     except ConfigurationError as e:
+        logger.warning("Invalid compute_type: %s", compute_type, exc_info=e)
         raise HTTPException(
             status_code=400,
             detail=str(e),
@@ -241,6 +879,19 @@ async def transcribe_audio(
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
 
+        # Read and validate uploaded audio file
+        try:
+            content = await audio.read()
+        except Exception as e:
+            logger.error("Failed to read uploaded audio file", exc_info=e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to read uploaded audio file: {str(e)}",
+            ) from e
+
+        # Validate file size before processing
+        validate_file_size(content, MAX_AUDIO_SIZE_MB, file_type="audio")
+
         # Save uploaded file
         audio_path = tmpdir_path / "uploaded_audio"
         if audio.filename:
@@ -249,13 +900,16 @@ async def transcribe_audio(
             audio_path = tmpdir_path / f"uploaded_audio{suffix}"
 
         try:
-            content = await audio.read()
             audio_path.write_bytes(content)
         except Exception as e:
+            logger.error("Failed to save uploaded audio file", exc_info=e)
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to save uploaded audio file: {str(e)}",
             ) from e
+
+        # Validate audio format
+        validate_audio_format(audio_path)
 
         # Create transcription config
         try:
@@ -277,6 +931,7 @@ async def transcribe_audio(
                 **extra_kwargs,
             )
         except (ValueError, TypeError) as e:
+            logger.warning("Invalid transcription configuration", exc_info=e)
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid configuration: {str(e)}",
@@ -284,22 +939,35 @@ async def transcribe_audio(
 
         # Transcribe
         try:
+            logger.info(
+                "Starting transcription: model=%s, language=%s, device=%s, diarization=%s",
+                model,
+                language,
+                device,
+                enable_diarization,
+            )
             transcript = transcribe_file(
                 audio_path=audio_path,
                 root=tmpdir_path,
                 config=config,
             )
+            logger.info(
+                "Transcription completed successfully: %d segments", len(transcript.segments)
+            )
         except ConfigurationError as e:
+            logger.error("Configuration error during transcription", exc_info=e)
             raise HTTPException(
                 status_code=400,
                 detail=f"Configuration error: {str(e)}",
             ) from e
         except TranscriptionError as e:
+            logger.error("Transcription failed", exc_info=e)
             raise HTTPException(
                 status_code=500,
                 detail=f"Transcription failed: {str(e)}",
             ) from e
         except Exception as e:
+            logger.exception("Unexpected error during transcription")
             raise HTTPException(
                 status_code=500,
                 detail=f"Unexpected error during transcription: {str(e)}",
@@ -381,6 +1049,7 @@ async def enrich_audio(
     """
     # Validate device
     if device not in ("cuda", "cpu"):
+        logger.warning("Invalid device parameter for enrichment: %s", device)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid device '{device}'. Must be 'cuda' or 'cpu'.",
@@ -390,32 +1059,65 @@ async def enrich_audio(
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
 
+        # Read and validate uploaded transcript
+        try:
+            transcript_content = await transcript.read()
+        except Exception as e:
+            logger.error("Failed to read transcript file", exc_info=e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to read transcript file: {str(e)}",
+            ) from e
+
+        # Validate transcript file size
+        validate_file_size(transcript_content, MAX_TRANSCRIPT_SIZE_MB, file_type="transcript")
+
+        # Validate transcript JSON structure
+        validate_transcript_json(transcript_content)
+
         # Save uploaded transcript
         transcript_path = tmpdir_path / "transcript.json"
         try:
-            transcript_content = await transcript.read()
             transcript_path.write_bytes(transcript_content)
         except Exception as e:
+            logger.error("Failed to save transcript file", exc_info=e)
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to save transcript file: {str(e)}",
             ) from e
 
+        # Read and validate uploaded audio
+        try:
+            audio_content = await audio.read()
+        except Exception as e:
+            logger.error("Failed to read audio file", exc_info=e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to read audio file: {str(e)}",
+            ) from e
+
+        # Validate audio file size
+        validate_file_size(audio_content, MAX_AUDIO_SIZE_MB, file_type="audio")
+
         # Save uploaded audio
         audio_path = tmpdir_path / "audio.wav"
         try:
-            audio_content = await audio.read()
             audio_path.write_bytes(audio_content)
         except Exception as e:
+            logger.error("Failed to save audio file", exc_info=e)
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to save audio file: {str(e)}",
             ) from e
 
+        # Validate audio format
+        validate_audio_format(audio_path)
+
         # Load transcript
         try:
             transcript_obj = load_transcript(transcript_path)
         except Exception as e:
+            logger.warning("Invalid transcript JSON", exc_info=e)
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid transcript JSON: {str(e)}",
@@ -431,6 +1133,7 @@ async def enrich_audio(
                 device=device,
             )
         except (ValueError, TypeError) as e:
+            logger.warning("Invalid enrichment configuration", exc_info=e)
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid enrichment configuration: {str(e)}",
@@ -438,22 +1141,35 @@ async def enrich_audio(
 
         # Enrich
         try:
+            logger.info(
+                "Starting enrichment: prosody=%s, emotion=%s, categorical_emotion=%s, device=%s",
+                enable_prosody,
+                enable_emotion,
+                enable_categorical_emotion,
+                device,
+            )
             enriched = _enrich_transcript(
                 transcript=transcript_obj,
                 audio_path=audio_path,
                 config=config,
             )
+            logger.info(
+                "Enrichment completed successfully: %d segments processed", len(enriched.segments)
+            )
         except ConfigurationError as e:
+            logger.error("Configuration error during enrichment", exc_info=e)
             raise HTTPException(
                 status_code=400,
                 detail=f"Configuration error: {str(e)}",
             ) from e
         except EnrichmentError as e:
+            logger.error("Enrichment failed", exc_info=e)
             raise HTTPException(
                 status_code=500,
                 detail=f"Enrichment failed: {str(e)}",
             ) from e
         except Exception as e:
+            logger.exception("Unexpected error during enrichment")
             raise HTTPException(
                 status_code=500,
                 detail=f"Unexpected error during enrichment: {str(e)}",

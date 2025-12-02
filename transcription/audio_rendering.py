@@ -6,7 +6,10 @@ human/LLM-friendly text annotations. The annotations capture prosodic,
 emotional, and voice quality features in a compact, natural language format.
 """
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def render_audio_state(audio_state: dict[str, Any]) -> str:

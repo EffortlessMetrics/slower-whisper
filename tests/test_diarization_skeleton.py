@@ -415,9 +415,10 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
     )
     diar_cfg = TConfig(enable_diarization=True, diarization_device="cpu")
 
-    run_pipeline(app_cfg, diarization_config=diar_cfg)
+    result = run_pipeline(app_cfg, diarization_config=diar_cfg)
 
     assert diarization_calls.get("called") is True
+    assert result.failed == 0
     updated = writers.load_transcript_from_json(paths.json_dir / "existing.json")
     assert updated.speakers is not None
     assert updated.turns is not None
