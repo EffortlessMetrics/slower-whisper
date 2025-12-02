@@ -607,3 +607,104 @@ def baseline_computed_from_samples(enrich_state):
     # The actual baseline computation is internal to the enrichment module
     enriched = enrich_state["enriched_transcripts"]
     assert len(enriched) > 0, "No enriched transcripts"
+
+
+@then("the transcript JSON validates against schema v2")
+def transcript_validates_against_schema(enrich_state):
+    """Validate transcript JSON against formal JSON schema."""
+    from transcription.validation import validate_transcript_json
+
+    project_root = enrich_state["project_root"]
+    json_dir = project_root / "whisper_json"
+    json_files = list(json_dir.glob("*.json"))
+    assert json_files, "No JSON files found to validate"
+
+    for json_path in json_files:
+        is_valid, errors = validate_transcript_json(json_path)
+        assert is_valid, f"Schema validation failed for {json_path.name}: {errors}"
+
+
+# Valid level enums for prosody features
+VALID_PROSODY_LEVELS = {"very_low", "low", "neutral", "high", "very_high", "unknown"}
+VALID_STATUS_VALUES = {"success", "failed", "skipped"}
+
+
+@then("each audio_state prosody has valid level enums")
+def prosody_has_valid_levels(enrich_state):
+    """Verify prosody features use valid level enum values."""
+    enriched = enrich_state["enriched_transcripts"]
+
+    for transcript in enriched:
+        for segment in transcript.segments:
+            if not segment.audio_state:
+                continue
+            prosody = segment.audio_state.get("prosody") or {}
+            if not prosody:
+                continue
+
+            # Check pitch level
+            pitch = prosody.get("pitch") or {}
+            if "level" in pitch:
+                assert pitch["level"] in VALID_PROSODY_LEVELS, (
+                    f"Invalid pitch level: {pitch['level']}"
+                )
+
+            # Check energy level
+            energy = prosody.get("energy") or {}
+            if "level" in energy:
+                assert energy["level"] in VALID_PROSODY_LEVELS, (
+                    f"Invalid energy level: {energy['level']}"
+                )
+
+            # Check rate level
+            rate = prosody.get("rate") or {}
+            if "level" in rate:
+                assert rate["level"] in VALID_PROSODY_LEVELS, f"Invalid rate level: {rate['level']}"
+
+
+@then("each audio_state emotion has valid score ranges")
+def emotion_has_valid_scores(enrich_state):
+    """Verify emotion scores are in valid 0-1 range."""
+    enriched = enrich_state["enriched_transcripts"]
+
+    for transcript in enriched:
+        for segment in transcript.segments:
+            if not segment.audio_state:
+                continue
+            emotion = segment.audio_state.get("emotion") or {}
+            if not emotion:
+                continue
+
+            # Check valence score range
+            valence = emotion.get("valence") or {}
+            if "score" in valence and valence["score"] is not None:
+                assert 0.0 <= valence["score"] <= 1.0, (
+                    f"Valence score out of range: {valence['score']}"
+                )
+
+            # Check arousal score range
+            arousal = emotion.get("arousal") or {}
+            if "score" in arousal and arousal["score"] is not None:
+                assert 0.0 <= arousal["score"] <= 1.0, (
+                    f"Arousal score out of range: {arousal['score']}"
+                )
+
+
+@then("each extraction_status has valid status values")
+def extraction_status_has_valid_values(enrich_state):
+    """Verify extraction_status uses valid enum values."""
+    enriched = enrich_state["enriched_transcripts"]
+
+    for transcript in enriched:
+        for segment in transcript.segments:
+            if not segment.audio_state:
+                continue
+            status = segment.audio_state.get("extraction_status") or {}
+            if not status:
+                continue
+
+            for key in ["prosody", "emotion_dimensional", "emotion_categorical"]:
+                if key in status:
+                    assert status[key] in VALID_STATUS_VALUES, (
+                        f"Invalid {key} status: {status[key]}"
+                    )

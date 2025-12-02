@@ -32,14 +32,14 @@ class ChunkingConfig:
 
 
 def _speaker_id(value: Any) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        raw = value.get("id")
-        return str(raw) if raw is not None else None
-    return str(value)
+    """Extract speaker ID from various speaker formats.
+
+    Note: This is a thin wrapper around get_speaker_id() for backward
+    compatibility. New code should use get_speaker_id() directly.
+    """
+    from .speaker_id import get_speaker_id
+
+    return get_speaker_id(value)
 
 
 def _estimate_tokens(text: str) -> int:

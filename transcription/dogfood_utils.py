@@ -17,18 +17,16 @@ from typing import Any
 from . import load_transcript
 from .cache import CachePaths
 from .samples import get_samples_cache_dir
+from .speaker_id import get_speaker_id
 
 
 def _get_speaker_id(speaker: Any) -> str | None:
-    """Extract a speaker ID string from segment.speaker."""
-    if speaker is None:
-        return None
-    if isinstance(speaker, str):
-        return speaker
-    if isinstance(speaker, dict):
-        raw_id = speaker.get("id")
-        return str(raw_id) if raw_id is not None else None
-    return str(speaker)
+    """Extract a speaker ID string from segment.speaker.
+
+    Note: This is a thin wrapper around get_speaker_id() for backward
+    compatibility. New code should use get_speaker_id() directly.
+    """
+    return get_speaker_id(speaker)
 
 
 def _get_cache_size(path: Path) -> int:

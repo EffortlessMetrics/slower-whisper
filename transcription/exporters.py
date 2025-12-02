@@ -5,11 +5,11 @@ from __future__ import annotations
 import csv
 import hashlib
 import html
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from .models import Transcript
+from .speaker_id import get_speaker_label_or_id
 from .turn_helpers import turn_to_dict
 
 ExportFormat = str
@@ -17,25 +17,12 @@ SUPPORTED_EXPORT_FORMATS: set[ExportFormat] = {"csv", "html", "vtt", "textgrid"}
 
 
 def _coerce_speaker_id(value: Any) -> str:
-    """Return a speaker identifier or placeholder."""
-    if value is None:
-        return "unknown"
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        label = value.get("label")
-        if label:
-            return str(label)
-        raw = value.get("id")
-        if raw is not None:
-            return str(raw)
-        # Dict exists but has no id/label - return unknown instead of stringified dict
-        return "unknown"
-    # Handle dataclass instances (not types)
-    if hasattr(value, "__dataclass_fields__"):
-        data = asdict(value)
-        return str(data.get("id") or data.get("speaker_id") or "unknown")
-    return str(value)
+    """Return a speaker identifier or placeholder.
+
+    Note: This is a thin wrapper around get_speaker_label_or_id() for backward
+    compatibility. New code should use get_speaker_label_or_id() directly.
+    """
+    return get_speaker_label_or_id(value, fallback="unknown")
 
 
 def _collect_segments(transcript: Transcript, unit: str = "segments") -> list[dict[str, Any]]:

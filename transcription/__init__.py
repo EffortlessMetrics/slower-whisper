@@ -38,6 +38,8 @@ Models:
 
 Utilities:
     - turn_to_dict: Convert Turn objects to dictionaries
+    - get_speaker_id: Extract speaker ID from various formats
+    - get_speaker_label_or_id: Extract speaker label/ID with fallback
 
 Exceptions:
     - SlowerWhisperError: Base exception for this library
@@ -87,6 +89,7 @@ from .llm_utils import (
 )
 from .models import Chunk, DiarizationMeta, Segment, SpeakerStats, Transcript, Turn, TurnMeta
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
+from .speaker_id import get_speaker_id, get_speaker_label_or_id
 from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamingSession
 from .turn_helpers import turn_to_dict
 from .types_audio import AudioState, EmotionState, ExtractionStatus, ProsodyState
@@ -145,6 +148,8 @@ __all__ = [
     "StreamingSession",
     # Utilities
     "turn_to_dict",
+    "get_speaker_id",
+    "get_speaker_label_or_id",
     # Exceptions
     "SlowerWhisperError",
     "TranscriptionError",

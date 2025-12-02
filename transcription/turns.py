@@ -25,21 +25,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from .models import Turn
+from .speaker_id import get_speaker_id
 
 if TYPE_CHECKING:
     from transcription.models import Segment, Transcript
 
 
 def _coerce_speaker_id(speaker: Any) -> str | None:
-    """Normalize speaker objects into an ID string."""
-    if speaker is None:
-        return None
-    if isinstance(speaker, str):
-        return speaker
-    if isinstance(speaker, dict):
-        raw_id = speaker.get("id")
-        return str(raw_id) if raw_id is not None else None
-    return str(speaker)
+    """Normalize speaker objects into an ID string.
+
+    Note: This is a thin wrapper around get_speaker_id() for backward
+    compatibility. New code should use get_speaker_id() directly.
+    """
+    return get_speaker_id(speaker)
 
 
 def build_turns(

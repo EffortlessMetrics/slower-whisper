@@ -70,3 +70,15 @@ Feature: Enriching transcripts with audio features
     When I enrich the transcript with prosody enabled
     Then the prosody features use speaker-relative baselines
     And the baseline is computed from sampled segments
+
+  Scenario: Enriched transcript validates against JSON schema
+    Given a transcribed file "validate.wav" exists
+    When I enrich the transcript with prosody and emotion enabled
+    Then the transcript JSON validates against schema v2
+
+  Scenario: Audio state has correct structure and types
+    Given a transcribed file "typed.wav" exists
+    When I enrich the transcript with prosody and emotion enabled
+    Then each audio_state prosody has valid level enums
+    And each audio_state emotion has valid score ranges
+    And each extraction_status has valid status values

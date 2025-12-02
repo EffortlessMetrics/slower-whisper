@@ -81,6 +81,15 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 
+def _clamp01(value: float) -> float:
+    """Clamp a score to [0.0, 1.0] for JSON schema compliance."""
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
+
+
 class EmotionRecognizer:
     """
     Lazy-loading emotion recognition with model caching.
@@ -300,10 +309,10 @@ class EmotionRecognizer:
             predictions = outputs.logits.cpu().numpy()[0]
 
         # MSP-Dim model outputs: [arousal, dominance, valence]
-        # Scores are typically in range [0, 1]
-        arousal_score = float(predictions[0])
-        dominance_score = float(predictions[1])
-        valence_score = float(predictions[2])
+        # Raw scores may slightly exceed [0, 1] range; clamp for schema compliance
+        arousal_score = _clamp01(float(predictions[0]))
+        dominance_score = _clamp01(float(predictions[1]))
+        valence_score = _clamp01(float(predictions[2]))
 
         result = {
             "valence": {

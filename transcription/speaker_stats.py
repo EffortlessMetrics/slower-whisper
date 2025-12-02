@@ -16,18 +16,14 @@ from .models import (
     SpeakerStats,
     Transcript,
 )
+from .speaker_id import get_speaker_id
 from .turn_helpers import turn_to_dict
 
 
 def _collect_segment_durations_by_speaker(transcript: Transcript) -> dict[str, list[float]]:
     durations: dict[str, list[float]] = defaultdict(list)
     for seg in transcript.segments:
-        speaker_id = None
-        if seg.speaker:
-            speaker_id = (
-                seg.speaker.get("id") if isinstance(seg.speaker, dict) else str(seg.speaker)
-            )
-        speaker_id = speaker_id or "spk_0"
+        speaker_id = get_speaker_id(seg.speaker) or "spk_0"
         durations[speaker_id].append(max(seg.end - seg.start, 0.0))
     return durations
 
@@ -35,12 +31,7 @@ def _collect_segment_durations_by_speaker(transcript: Transcript) -> dict[str, l
 def _collect_prosody_by_speaker(transcript: Transcript) -> dict[str, dict[str, list[float]]]:
     by_speaker: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for seg in transcript.segments:
-        speaker_id = None
-        if seg.speaker:
-            speaker_id = (
-                seg.speaker.get("id") if isinstance(seg.speaker, dict) else str(seg.speaker)
-            )
-        speaker_id = speaker_id or "spk_0"
+        speaker_id = get_speaker_id(seg.speaker) or "spk_0"
         audio_state: dict[str, Any] = seg.audio_state or {}
         prosody = audio_state.get("prosody") or {}
         if not isinstance(prosody, dict):
@@ -62,12 +53,7 @@ def _collect_prosody_by_speaker(transcript: Transcript) -> dict[str, dict[str, l
 def _collect_sentiment_by_speaker(transcript: Transcript) -> dict[str, Counter]:
     counts: dict[str, Counter] = defaultdict(Counter)
     for seg in transcript.segments:
-        speaker_id = None
-        if seg.speaker:
-            speaker_id = (
-                seg.speaker.get("id") if isinstance(seg.speaker, dict) else str(seg.speaker)
-            )
-        speaker_id = speaker_id or "spk_0"
+        speaker_id = get_speaker_id(seg.speaker) or "spk_0"
         audio_state: dict[str, Any] = seg.audio_state or {}
         emotion = audio_state.get("emotion") or {}
         if not isinstance(emotion, dict):

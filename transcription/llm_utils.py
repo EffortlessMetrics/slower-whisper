@@ -10,18 +10,16 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, cast
 
 from transcription.models import Segment, Transcript
+from transcription.speaker_id import get_speaker_id
 
 
 def _coerce_speaker_id(value: Any) -> str | None:
-    """Extract a speaker ID string from a speaker object/dict."""
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        raw_id = value.get("id")
-        return str(raw_id) if raw_id is not None else None
-    return str(value)
+    """Extract a speaker ID string from a speaker object/dict.
+
+    Note: This is a thin wrapper around get_speaker_id() for backward
+    compatibility. New code should use get_speaker_id() directly.
+    """
+    return get_speaker_id(value)
 
 
 def _resolve_speaker_label(

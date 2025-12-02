@@ -472,8 +472,8 @@
       "properties": {
         "level": {
           "type": "string",
-          "enum": ["very_quiet", "quiet", "normal", "loud", "very_loud", "unknown"],
-          "description": "Categorical energy level"
+          "enum": ["very_low", "low", "neutral", "high", "very_high", "unknown"],
+          "description": "Categorical energy level (speaker-relative)"
         },
         "db_rms": {
           "type": ["number", "null"],
@@ -493,8 +493,8 @@
       "properties": {
         "level": {
           "type": "string",
-          "enum": ["very_slow", "slow", "normal", "fast", "very_fast", "unknown"],
-          "description": "Categorical speech rate level"
+          "enum": ["very_low", "low", "neutral", "high", "very_high", "unknown"],
+          "description": "Categorical speech rate level (speaker-relative)"
         },
         "syllables_per_sec": {
           "type": ["number", "null"],

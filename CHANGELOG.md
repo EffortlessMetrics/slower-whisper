@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.3.0] - 2026-01-15
 
 ### Added
+
 - **Turn-aware chunking + exports:** Introduced `chunks[]` with turn boundaries, CSV/HTML/VTT/TextGrid exporters, and a `slower-whisper export` CLI command.
 - **Validation pipeline:** `slower-whisper validate` with schema v2 JSON Schema publishing and `validate` CLI/BDD coverage.
 - **LLM ecosystem adapters:** Official LangChain and LlamaIndex loaders plus speaker-aware summarization example (`examples/llm_integration/speaker_aware_summary.py`).
@@ -53,16 +54,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Performance harness:** Throughput probe + `docs/PERFORMANCE.md` to baseline GPU/CPU paths.
 
 ### Evaluation
+
 - **ASR WER harness** with `benchmarks/ASR_REPORT.md`/`.json` (tiny manifest, CPU-friendly profiles).
 - **Diarization DER harness** emitting `benchmarks/DIARIZATION_REPORT.md`/`.json` (synthetic fixtures; pyannote-backed run pending HF token).
 - **Speaker analytics MVP** showing enriched prompts preferred 5/5 on the tiny offline set (`benchmarks/SPEAKER_ANALYTICS_MVP.md`).
 
 ### Examples
+
 - Metrics/KPIs script in `examples/metrics/` and redaction walkthrough in `examples/redaction/`.
 
 ## [1.2.0] - 2025-12-01
 
 ### Added
+
 - **Speaker analytics layer**:
   - Turn metadata (`turns[].metadata`): `question_count`,
     `interruption_started_here`, `avg_pause_ms`, `disfluency_ratio`.
@@ -77,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   updated with speaker-aware Pattern 6.
 
 ### Fixed
+
 - `_estimate_disfluency_ratio` now handles empty/punctuation-only text; tests
   cover disfluency/interruption heuristics plus pipeline/CLI integration.
 
@@ -87,6 +92,7 @@ This release adds **experimental speaker diarization** and **first-class LLM int
 ### Added
 
 #### Speaker Diarization (Experimental)
+
 - **v1.1 speaker diarization** (L2 enrichment layer) using pyannote.audio
   - Optional `diarization` extra: `uv sync --extra diarization`
   - Populates `segment.speaker` with speaker IDs (`"spk_0"`, `"spk_1"`, etc.)

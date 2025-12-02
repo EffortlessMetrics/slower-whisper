@@ -105,11 +105,27 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Beam size for decoding (default: 5).",
     )
-    p_trans.add_argument(
+    # Skip existing transcripts flag - aliased for consistency with enrich command
+    skip_existing_group = p_trans.add_mutually_exclusive_group()
+    skip_existing_group.add_argument(
         "--skip-existing-json",
         action=argparse.BooleanOptionalAction,
         default=None,
+        dest="skip_existing_json",
         help="Skip files with existing JSON in whisper_json/ (default: True).",
+    )
+    skip_existing_group.add_argument(
+        "--skip-existing",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        dest="skip_existing_json",
+        help="Alias for --skip-existing-json (for consistency with enrich command).",
+    )
+    p_trans.add_argument(
+        "--progress",
+        action="store_true",
+        default=False,
+        help="Show progress indicator during transcription (file counter).",
     )
     p_trans.add_argument(
         "--enable-chunking",
@@ -197,6 +213,12 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Skip segments that already have audio_state (default: True).",
+    )
+    p_enrich.add_argument(
+        "--progress",
+        action="store_true",
+        default=False,
+        help="Show progress indicator during enrichment (file counter).",
     )
     p_enrich.add_argument(
         "--enable-prosody",

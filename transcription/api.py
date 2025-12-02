@@ -819,22 +819,29 @@ def enrich_transcript(
 # Convenience I/O wrappers for public API
 
 
-def load_transcript(json_path: str | Path) -> Transcript:
+def load_transcript(json_path: str | Path, *, strict: bool = False) -> Transcript:
     """
     Load a Transcript from a JSON file.
 
     Args:
         json_path: Path to JSON transcript file
+        strict: If True, validate against JSON schema before loading.
+                Raises TranscriptionError if validation fails.
+                Default is False for backward compatibility.
 
     Returns:
         Transcript object
 
     Raises:
-        TranscriptionError: If file not found or JSON is invalid
+        TranscriptionError: If file not found, JSON is invalid, or
+                           validation fails (when strict=True)
 
     Example:
         >>> transcript = load_transcript("output.json")
         >>> print(transcript.file_name, transcript.language)
+
+        >>> # Strict mode validates against schema
+        >>> transcript = load_transcript("output.json", strict=True)
     """
     json_path = Path(json_path)
 
@@ -843,6 +850,19 @@ def load_transcript(json_path: str | Path) -> Transcript:
             f"Transcript file not found: {json_path}. "
             f"Ensure the file path is correct and the file exists."
         )
+
+    # Validate against schema if strict mode is enabled
+    if strict:
+        from .validation import validate_transcript_json
+
+        is_valid, errors = validate_transcript_json(json_path)
+        if not is_valid:
+            error_summary = "; ".join(errors[:3])  # Show first 3 errors
+            if len(errors) > 3:
+                error_summary += f" (and {len(errors) - 3} more)"
+            raise TranscriptionError(
+                f"Schema validation failed for {json_path.name}: {error_summary}"
+            )
 
     try:
         return load_transcript_from_json(json_path)

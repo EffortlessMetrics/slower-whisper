@@ -606,7 +606,11 @@ def extract_prosody(
     return result
 
 
-def compute_speaker_baseline(segments_data: list[dict[str, Any]]) -> dict[str, float]:
+def compute_speaker_baseline(
+    segments_data: list[dict[str, Any]],
+    min_samples_for_good: int = 5,
+    min_samples_for_low: int = 2,
+) -> dict[str, Any]:
     """
     Compute baseline statistics across multiple segments for a speaker.
 
@@ -616,16 +620,20 @@ def compute_speaker_baseline(segments_data: list[dict[str, Any]]) -> dict[str, f
     Args:
         segments_data: List of dicts, each containing:
                       {'audio': np.ndarray, 'sr': int, 'text': str}
+        min_samples_for_good: Minimum samples for "good" quality (default: 5)
+        min_samples_for_low: Minimum samples for "low_samples" quality (default: 2)
 
     Returns:
-        Dict with baseline statistics:
+        Dict with baseline statistics and quality indicator:
         {
             'pitch_median': 180.0,
             'pitch_std': 28.5,
             'energy_median': -15.2,
             'energy_std': 3.1,
             'rate_median': 5.3,
-            'rate_std': 0.8
+            'rate_std': 0.8,
+            'sample_count': 15,
+            'quality': 'good' | 'low_samples' | 'insufficient'
         }
     """
     pitch_values = []
@@ -651,7 +659,23 @@ def compute_speaker_baseline(segments_data: list[dict[str, Any]]) -> dict[str, f
         if rate_features["syllables_per_sec"] is not None:
             rate_values.append(rate_features["syllables_per_sec"])
 
-    baseline = {}
+    # Determine sample count (use the minimum across all feature types)
+    sample_counts = [len(pitch_values), len(energy_values), len(rate_values)]
+    valid_counts = [c for c in sample_counts if c > 0]
+    sample_count = min(valid_counts) if valid_counts else 0
+
+    # Determine quality based on sample count
+    if sample_count >= min_samples_for_good:
+        quality = "good"
+    elif sample_count >= min_samples_for_low:
+        quality = "low_samples"
+    else:
+        quality = "insufficient"
+
+    baseline: dict[str, Any] = {
+        "sample_count": sample_count,
+        "quality": quality,
+    }
 
     if pitch_values:
         baseline["pitch_median"] = float(np.median(pitch_values))
