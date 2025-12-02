@@ -23,7 +23,7 @@ jsonschema>=4.21.0,<5.0         # schema validation
 # ============================================================================
 # Code Quality & Formatting
 # ============================================================================
-black>=23.0,<25.0               # code formatter
+black>=23.0,<26.0               # code formatter
 flake8>=6.0,<8.0                # linter
 isort>=5.0,<8.0                 # import sorter
 mypy>=1.0,<2.0                  # static type checker
