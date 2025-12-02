@@ -1,226 +1,93 @@
-"""Tests for streaming module skeleton (v2.0 prep).
-
-These tests verify the type structure and interfaces are correct,
-even though the implementation raises NotImplementedError.
-"""
+"""Streaming state machine tests for post-ASR chunks."""
 
 from __future__ import annotations
 
 import pytest
 
-from transcription.models import Segment, Transcript
 from transcription.streaming import (
-    PartialSegment,
+    StreamChunk,
     StreamConfig,
-    StreamEvent,
     StreamEventType,
     StreamingSession,
-    StreamMeta,
-    apply_stream_event,
 )
 
 
-class TestStreamEventType:
-    """Test StreamEventType enum."""
-
-    def test_all_event_types_defined(self) -> None:
-        """Verify all expected event types exist."""
-        expected = {
-            "READY",
-            "PARTIAL_SEGMENT",
-            "SEGMENT_FINALIZED",
-            "TURN_UPDATED",
-            "ANALYTICS_SNAPSHOT",
-            "ERROR",
-            "DONE",
-        }
-        actual = {e.name for e in StreamEventType}
-        assert actual == expected
-
-    def test_event_type_values(self) -> None:
-        """Verify event type values match protocol."""
-        assert StreamEventType.READY.value == "ready"
-        assert StreamEventType.PARTIAL_SEGMENT.value == "partial_segment"
-        assert StreamEventType.DONE.value == "done"
+def _chunk(start: float, end: float, text: str, speaker: str | None = None) -> StreamChunk:
+    return {"start": start, "end": end, "text": text, "speaker_id": speaker}
 
 
-class TestStreamConfig:
-    """Test StreamConfig dataclass."""
+def test_straight_line_stream() -> None:
+    session = StreamingSession()
 
-    def test_default_values(self) -> None:
-        """Verify default configuration."""
-        config = StreamConfig()
-        assert config.sample_rate == 16000
-        assert config.language is None
-        assert config.enable_diarization is False
-        assert config.enable_analytics is False
-        assert config.enable_semantics is False
+    first = _chunk(0.0, 0.5, "hello", "spk_0")
+    second = _chunk(0.6, 1.2, "world", "spk_0")
 
-    def test_custom_values(self) -> None:
-        """Verify custom configuration."""
-        config = StreamConfig(
-            sample_rate=48000,
-            language="en",
-            enable_diarization=True,
-            enable_analytics=True,
-            enable_semantics=True,
-        )
-        assert config.sample_rate == 48000
-        assert config.language == "en"
-        assert config.enable_diarization is True
+    events1 = session.ingest_chunk(first)
+    assert [e.type for e in events1] == [StreamEventType.PARTIAL_SEGMENT]
+    assert events1[0].segment.text == "hello"
 
+    events2 = session.ingest_chunk(second)
+    assert [e.type for e in events2] == [StreamEventType.PARTIAL_SEGMENT]
+    assert events2[0].segment.text == "hello world"
+    assert events2[0].segment.end == pytest.approx(1.2)
 
-class TestStreamMeta:
-    """Test StreamMeta dataclass."""
+    # Original snapshot should remain unchanged after extension.
+    assert events1[0].segment.text == "hello"
 
-    def test_required_fields(self) -> None:
-        """Verify required fields."""
-        meta = StreamMeta(session_id="test_123", seq=42)
-        assert meta.session_id == "test_123"
-        assert meta.seq == 42
-        assert meta.stream_version == 1
-        assert meta.features == {}
-
-    def test_features_dict(self) -> None:
-        """Verify features dictionary."""
-        meta = StreamMeta(
-            session_id="test",
-            seq=0,
-            features={"diarization": True, "analytics": False},
-        )
-        assert meta.features["diarization"] is True
-        assert meta.features["analytics"] is False
+    finals = session.end_of_stream()
+    assert len(finals) == 1
+    final_segment = finals[0].segment
+    assert finals[0].type == StreamEventType.FINAL_SEGMENT
+    assert final_segment.start == pytest.approx(0.0)
+    assert final_segment.end == pytest.approx(1.2)
+    assert final_segment.text == "hello world"
+    assert final_segment.speaker_id == "spk_0"
 
 
-class TestPartialSegment:
-    """Test PartialSegment dataclass."""
+def test_gap_triggers_new_segment() -> None:
+    session = StreamingSession(StreamConfig(max_gap_sec=0.5))
 
-    def test_creation(self) -> None:
-        """Verify partial segment creation."""
-        seg = PartialSegment(
-            id=0,
-            start=0.0,
-            end=2.5,
-            text="Hello world",
-            revision=1,
-        )
-        assert seg.partial is True
-        assert seg.revision == 1
-        assert seg.speaker_id is None
+    first = _chunk(0.0, 0.4, "hi", "spk_0")
+    second = _chunk(2.0, 2.5, "there", "spk_0")  # gap of 1.6 > max_gap_sec
 
-    def test_finalize(self) -> None:
-        """Verify conversion to Segment."""
-        partial = PartialSegment(
-            id=0,
-            start=0.0,
-            end=2.5,
-            text="Hello",
-            revision=3,
-            speaker_id="spk_0",
-        )
-        final = partial.finalize()
-        assert isinstance(final, Segment)
-        assert final.id == 0
-        assert final.text == "Hello"
-        assert final.speaker == {"id": "spk_0"}
+    session.ingest_chunk(first)
+    events = session.ingest_chunk(second)
 
-    def test_finalize_no_speaker(self) -> None:
-        """Verify finalize without speaker."""
-        partial = PartialSegment(id=1, start=0.0, end=1.0, text="Hi", revision=1)
-        final = partial.finalize()
-        assert final.speaker is None
+    assert [e.type for e in events] == [
+        StreamEventType.FINAL_SEGMENT,
+        StreamEventType.PARTIAL_SEGMENT,
+    ]
+    assert events[0].segment.text == "hi"
+    assert events[1].segment.text == "there"
+    assert events[1].segment.start == pytest.approx(2.0)
 
 
-class TestStreamEvent:
-    """Test StreamEvent dataclass."""
+def test_speaker_change_finalizes_segment() -> None:
+    session = StreamingSession()
 
-    def test_creation(self) -> None:
-        """Verify event creation."""
-        event = StreamEvent(
-            type=StreamEventType.READY,
-            seq=0,
-            payload={"session_id": "test"},
-        )
-        assert event.type == StreamEventType.READY
-        assert event.seq == 0
-        assert event.payload == {"session_id": "test"}
+    first = _chunk(0.0, 0.7, "hey", "spk_a")
+    second = _chunk(0.8, 1.3, "you", "spk_b")
 
-    def test_event_with_segment(self) -> None:
-        """Verify event with segment payload."""
-        seg = PartialSegment(id=0, start=0.0, end=1.0, text="Hi", revision=1)
-        event = StreamEvent(
-            type=StreamEventType.PARTIAL_SEGMENT,
-            seq=1,
-            payload=seg,
-        )
-        assert isinstance(event.payload, PartialSegment)
+    session.ingest_chunk(first)
+    events = session.ingest_chunk(second)
+
+    assert [e.type for e in events] == [
+        StreamEventType.FINAL_SEGMENT,
+        StreamEventType.PARTIAL_SEGMENT,
+    ]
+    assert events[0].segment.speaker_id == "spk_a"
+    assert events[1].segment.speaker_id == "spk_b"
+    assert events[1].segment.text == "you"
 
 
-class TestStreamingSession:
-    """Test StreamingSession class."""
-
-    def test_creation(self) -> None:
-        """Verify session creation."""
-        session = StreamingSession()
-        assert session.config.sample_rate == 16000
-
-    def test_custom_config(self) -> None:
-        """Verify session with custom config."""
-        config = StreamConfig(language="en", enable_diarization=True)
-        session = StreamingSession(config)
-        assert session.config.language == "en"
-        assert session.config.enable_diarization is True
-
-    def test_start_not_implemented(self) -> None:
-        """Verify start raises NotImplementedError."""
-        session = StreamingSession()
-        with pytest.raises(NotImplementedError, match="v2.0"):
-            session.start()
-
-    def test_process_audio_not_implemented(self) -> None:
-        """Verify process_audio raises NotImplementedError."""
-        session = StreamingSession()
-        with pytest.raises(NotImplementedError, match="v2.0"):
-            session.process_audio(b"audio data", seq=0)
-
-    def test_stop_not_implemented(self) -> None:
-        """Verify stop raises NotImplementedError."""
-        session = StreamingSession()
-        with pytest.raises(NotImplementedError, match="v2.0"):
-            session.stop()
-
-    def test_get_transcript_not_implemented(self) -> None:
-        """Verify get_transcript raises NotImplementedError."""
-        session = StreamingSession()
-        with pytest.raises(NotImplementedError, match="v2.0"):
-            session.get_transcript()
+def test_end_of_stream_without_chunks() -> None:
+    session = StreamingSession()
+    assert session.end_of_stream() == []
 
 
-class TestApplyStreamEvent:
-    """Test apply_stream_event function."""
+def test_non_monotonic_input_is_rejected() -> None:
+    session = StreamingSession()
 
-    def test_not_implemented(self) -> None:
-        """Verify apply raises NotImplementedError."""
-        transcript = Transcript(
-            file_name="test.wav",
-            language="en",
-            segments=[],
-        )
-        event = StreamEvent(type=StreamEventType.DONE, seq=0)
-        with pytest.raises(NotImplementedError, match="v2.0"):
-            apply_stream_event(transcript, event)
-
-
-class TestProtocolCompliance:
-    """Test that StreamingSession satisfies the protocol."""
-
-    def test_session_has_protocol_methods(self) -> None:
-        """Verify session has all protocol methods."""
-        session = StreamingSession()
-        # These should exist (even if they raise)
-        assert hasattr(session, "session_id")
-        assert hasattr(session, "config")
-        assert hasattr(session, "start")
-        assert hasattr(session, "process_audio")
-        assert hasattr(session, "stop")
-        assert hasattr(session, "get_transcript")
+    session.ingest_chunk(_chunk(0.0, 0.5, "start"))
+    with pytest.raises(ValueError, match="non-decreasing time order"):
+        session.ingest_chunk(_chunk(0.4, 0.6, "backtrack"))

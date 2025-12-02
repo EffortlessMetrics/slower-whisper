@@ -42,6 +42,7 @@ classifiers = [
 # Minimum viable dependencies (Stage 1: Transcription only, ~2.5GB)
 dependencies = [
     "faster-whisper>=1.0.0",
+    "typing-extensions>=4.9.0",
 ]
 
 [project.optional-dependencies]
@@ -99,6 +100,7 @@ api = [
 # Development dependencies
 dev = [
     "slower-whisper[full]",
+    "numpy>=1.26",
     # Testing
     "pytest>=7.0",
     "pytest-cov>=4.0",

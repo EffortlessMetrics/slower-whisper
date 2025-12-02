@@ -5313,6 +5313,7 @@ version = "1.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "faster-whisper" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -5436,6 +5437,7 @@ requires-dist = [
     { name = "memory-profiler", marker = "extra == 'profiling'", specifier = ">=0.61" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "myst-parser", marker = "extra == 'dev'", specifier = ">=2.0" },
+    { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.26" },
     { name = "numpy", marker = "extra == 'enrich-basic'", specifier = ">=1.24.0" },
     { name = "pip-audit", marker = "extra == 'security'", specifier = ">=2.0" },
     { name = "praat-parselmouth", marker = "extra == 'enrich-prosody'", specifier = ">=0.4.0" },
@@ -5472,6 +5474,7 @@ requires-dist = [
     { name = "types-jsonschema", marker = "extra == 'dev'" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "types-requests", marker = "extra == 'dev'" },
+    { name = "typing-extensions", specifier = ">=4.9.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.24.0" },
     { name = "wheel", marker = "extra == 'dev'", specifier = ">=0.42" },
 ]

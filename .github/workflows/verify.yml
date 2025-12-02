@@ -97,3 +97,40 @@ jobs:
 
       - name: Run verification (full)
         run: nix develop .# --command uv run slower-whisper-verify
+
+  verify-api:
+    name: Verify (API surface)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            .cache/uv
+          key: verify-uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            verify-uv-${{ runner.os }}-
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-24.11
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Set up Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Sync dependencies (dev + api extras)
+        run: nix develop .# --command uv sync --extra api --extra dev
+
+      - name: Run API verification
+        run: nix develop .# --command uv run slower-whisper-verify --api

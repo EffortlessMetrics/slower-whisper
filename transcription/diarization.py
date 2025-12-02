@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +38,26 @@ if TYPE_CHECKING:
     from transcription.models import Transcript
 
 logger = logging.getLogger(__name__)
+
+
+def _torchcodec_available() -> bool:
+    """Detect whether torchcodec can decode audio for pyannote."""
+    try:
+        from torchcodec.decoders import AudioDecoder  # type: ignore[import-untyped]
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("torchcodec unavailable for pyannote input: %s", exc)
+        return False
+    return AudioDecoder is not None
+
+
+def _load_waveform_input(audio_path: Path) -> dict[str, Any]:
+    """Load audio as in-memory waveform for pyannote when torchcodec is missing."""
+    import soundfile as sf
+    import torch
+
+    data, sample_rate = sf.read(str(audio_path), always_2d=True)
+    waveform = torch.from_numpy(data.T).float()
+    return {"waveform": waveform, "sample_rate": int(sample_rate), "uri": audio_path.stem}
 
 
 def _make_stub_pyannote_pipeline():
@@ -170,12 +191,15 @@ class Diarizer:
         self.min_speakers = min_speakers
         self.max_speakers = max_speakers
         self._pipeline: Any | None = None  # Will hold pyannote pipeline
+        self._pipeline_is_stub: bool = False
+        self._pipeline_lock = threading.Lock()  # Thread-safety for lazy loading
 
     def _ensure_pipeline(self):
         """
         Lazy-load pyannote pipeline on first use.
 
         This avoids expensive model loading unless diarization is actually used.
+        Thread-safe: Uses double-checked locking to avoid race conditions.
 
         Raises:
             ImportError: If pyannote.audio not installed.
@@ -184,81 +208,90 @@ class Diarizer:
         if self._pipeline is not None:
             return self._pipeline
 
-        mode = os.getenv("SLOWER_WHISPER_PYANNOTE_MODE", "auto").lower()
-        if mode == "missing":
-            raise ImportError(
-                "pyannote.audio is unavailable (forced via SLOWER_WHISPER_PYANNOTE_MODE=missing)"
-            )
-        if mode == "stub":
-            self._pipeline = _make_stub_pyannote_pipeline()
-            return self._pipeline
+        with self._pipeline_lock:
+            # Double-check after acquiring lock (thread-safe pattern for concurrency)
+            if self._pipeline is not None:
+                return self._pipeline  # type: ignore[unreachable]
 
-        token = os.getenv("HF_TOKEN")
-        if token is None:
-            raise RuntimeError(
-                "HF_TOKEN environment variable is required for pyannote.audio diarization"
-            )
+            mode = os.getenv("SLOWER_WHISPER_PYANNOTE_MODE", "auto").lower()
+            if mode == "missing":
+                raise ImportError(
+                    "pyannote.audio is unavailable (forced via SLOWER_WHISPER_PYANNOTE_MODE=missing)"
+                )
+            if mode == "stub":
+                self._pipeline = _make_stub_pyannote_pipeline()
+                self._pipeline_is_stub = True
+                return self._pipeline
 
-        # Suppress torchcodec/FFmpeg warnings from pyannote.audio's torchaudio import chain.
-        # These warnings are informational only and clutter the output without providing
-        # actionable information for users of slower-whisper.
-        from transcription._import_guards import suppress_optional_dependency_warnings
+            token = os.getenv("HF_TOKEN")
+            if token is None:
+                raise RuntimeError(
+                    "HF_TOKEN environment variable is required for pyannote.audio diarization"
+                )
 
-        suppress_optional_dependency_warnings()
+            # Suppress torchcodec/FFmpeg warnings from pyannote.audio's torchaudio import chain.
+            from transcription._import_guards import suppress_optional_dependency_warnings
 
-        try:
-            from pyannote.audio import Pipeline
-        except ImportError as exc:
-            raise ImportError(
-                "pyannote.audio is required for speaker diarization. "
-                "Install with: uv sync --extra diarization"
-            ) from exc
-
-        # Load pipeline (this will raise if HF_TOKEN not set)
-        # Device handling: pyannote expects torch device strings ("cuda", "cpu", etc.)
-        device_str = None if self.device == "auto" else self.device
-
-        try:
-            from .cache import CachePaths
-
-            paths = CachePaths.from_env().ensure_dirs()
-            token_arg = os.getenv("HF_TOKEN") or True
-            from_pretrained: Callable[..., Any] = cast(Callable[..., Any], Pipeline.from_pretrained)
+            suppress_optional_dependency_warnings()
 
             try:
-                pipeline = from_pretrained(
-                    "pyannote/speaker-diarization-3.1",
-                    token=token_arg,  # Newer huggingface_hub API
-                    cache_dir=str(paths.diarization_root),
+                from pyannote.audio import Pipeline
+            except ImportError as exc:
+                raise ImportError(
+                    "pyannote.audio is required for speaker diarization. "
+                    "Install with: uv sync --extra diarization"
+                ) from exc
+
+            # Load pipeline - device handling: pyannote expects torch device strings
+            device_str = None if self.device == "auto" else self.device
+
+            try:
+                from .cache import CachePaths
+
+                paths = CachePaths.from_env().ensure_dirs()
+                token_arg = os.getenv("HF_TOKEN") or True
+                from_pretrained: Callable[..., Any] = cast(
+                    Callable[..., Any], Pipeline.from_pretrained
                 )
-            except TypeError as exc:
-                # Backward compatibility for older pyannote.audio versions that still
-                # expect use_auth_token instead of token.
-                logger.debug(
-                    "Pipeline.from_pretrained() rejected token=..., retrying with use_auth_token",
-                    exc_info=exc,
-                )
-                pipeline = from_pretrained(
-                    "pyannote/speaker-diarization-3.1",
-                    use_auth_token=token_arg,
-                    cache_dir=str(paths.diarization_root),
+                model_id = os.getenv(
+                    "SLOWER_WHISPER_PYANNOTE_MODEL", "pyannote/speaker-diarization-3.1"
                 )
 
-            if device_str and pipeline is not None:
-                import torch
+                try:
+                    pipeline = from_pretrained(
+                        model_id,
+                        token=token_arg,
+                        cache_dir=str(paths.diarization_root),
+                    )
+                except TypeError as exc:
+                    # Backward compatibility for older pyannote.audio versions
+                    logger.debug(
+                        "Pipeline.from_pretrained() rejected token=..., retrying with use_auth_token",
+                        exc_info=exc,
+                    )
+                    pipeline = from_pretrained(
+                        model_id,
+                        use_auth_token=token_arg,
+                        cache_dir=str(paths.diarization_root),
+                    )
 
-                pipeline = pipeline.to(torch.device(device_str))
+                if device_str and pipeline is not None:
+                    import torch
 
-            self._pipeline = pipeline
+                    pipeline = pipeline.to(torch.device(device_str))
 
-        except Exception as exc:
-            raise RuntimeError(
-                f"Failed to load pyannote pipeline: {exc}. "
-                "Ensure HF_TOKEN environment variable is set and you have accepted "
-                "the model license at https://huggingface.co/pyannote/speaker-diarization-3.1"
-            ) from exc
+                self._pipeline = pipeline
+                self._pipeline_is_stub = False
 
-        return self._pipeline
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to load pyannote pipeline ({model_id}): {exc}. "
+                    "Ensure HF_TOKEN environment variable is set and you have accepted "
+                    "the model license for the selected model (default: "
+                    "https://huggingface.co/pyannote/speaker-diarization-3.1)"
+                ) from exc
+
+            return self._pipeline
 
     def run(self, audio_path: Path | str) -> list[SpeakerTurn]:
         """
@@ -282,12 +315,22 @@ class Diarizer:
         # Load pipeline (lazy initialization)
         pipeline = self._ensure_pipeline()
 
+        # torchcodec is flaky on some platforms; pre-load waveform to bypass it when missing.
+        use_waveform_input = not self._pipeline_is_stub and not _torchcodec_available()
+        file_input: Any = str(audio_path)
+        if use_waveform_input:
+            try:
+                file_input = _load_waveform_input(audio_path)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Falling back to file path for pyannote input: %s", exc)
+                file_input = str(audio_path)
+
         # Run diarization
         # pyannote returns different output types depending on version:
         # - Older versions: Annotation object with itertracks()
         # - v3.1+: DiarizeOutput wrapper with .speaker_diarization attribute (Annotation)
         diarization_result = pipeline(
-            str(audio_path),
+            file_input,
             min_speakers=self.min_speakers,
             max_speakers=self.max_speakers,
         )
@@ -468,7 +511,7 @@ def assign_speakers(
 def assign_speakers_to_segments(
     segments: list[dict[str, Any]],
     speaker_turns: list[SpeakerTurn],
-    overlap_threshold: float = 0.5,
+    overlap_threshold: float = 0.3,
 ) -> tuple[list[dict[str, Any]], list[SpeakerInfo]]:
     """
     **DEPRECATED**: Use `assign_speakers(transcript, turns)` instead.

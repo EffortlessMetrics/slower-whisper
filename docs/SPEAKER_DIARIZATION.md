@@ -16,27 +16,42 @@
 
 ---
 
-## Current quality (tiny benchmark)
-- DER ≈ 0.67 on 3 synthetic fixtures with the **stub** backend (HF_TOKEN not set). Re-run with pyannote for real numbers.
-- Speaker count correct on 3/3 files.
-- Optimized for 2–4 speakers with light overlap; no resegmentation pass yet.
-- See `benchmarks/DIARIZATION_REPORT.md` for run config and per-file DER.
+## Quality (synthetic fixtures)
+- Dataset: `benchmarks/data/diarization` (manifest sha256 `34f8caa31589541c795dcc217df1688440bf25ee45d92669073eafdde0fe0120`).
+- Stub backend: `SLOWER_WHISPER_PYANNOTE_MODE=stub`, device `cpu` → avg DER **0.451**, speaker-count accuracy **1.0** (3/3), total runtime **1.24s**. See `benchmarks/DIARIZATION_REPORT.{md,json}` (also used by the CI stub regression check).
+- Real backend: `SLOWER_WHISPER_PYANNOTE_MODE=auto` with `HF_TOKEN` + pyannote model (default `pyannote/speaker-diarization-3.1`, override via `SLOWER_WHISPER_PYANNOTE_MODEL`). Generates `benchmarks/DIARIZATION_REPORT_REAL.{md,json}` when run; not executed in this workspace because HF_TOKEN/model access was unavailable.
+- Optimized for 2–4 speakers with light overlap; stub DER is only for regression tracking (real pyannote numbers will differ).
+- Per-file details live in `benchmarks/DIARIZATION_REPORT.md` (regenerated from `benchmarks/eval_diarization.py`).
 
 | file                    | DER   | ref_speakers | pred_speakers | speaker_count_ok |
 | ----------------------- | ----- | ------------ | ------------- | ---------------- |
-| synthetic_2speaker      | 0.783 | 2            | 2             | yes              |
-| overlap_tones           | 0.420 | 2            | 2             | yes              |
-| call_mixed              | 0.818 | 2            | 2             | yes              |
+| synthetic_2speaker      | 0.550 | 2            | 2             | yes              |
+| overlap_tones           | 0.377 | 2            | 2             | yes              |
+| call_mixed              | 0.427 | 2            | 2             | yes              |
+
+To regenerate the stub run shown above:
+
+```bash
+SLOWER_WHISPER_PYANNOTE_MODE=stub \
+  uv run python benchmarks/eval_diarization.py \
+    --dataset benchmarks/data/diarization \
+    --output-md benchmarks/DIARIZATION_REPORT.md \
+    --output-json benchmarks/DIARIZATION_REPORT.json \
+    --overwrite
+```
 
 To run with the real pyannote backend:
 
 ```bash
 uv sync --extra diarization
 export HF_TOKEN=hf_...
-PYTHONPATH=. python benchmarks/eval_diarization.py \
+export SLOWER_WHISPER_PYANNOTE_MODE=auto
+# Optional override if you need a different pipeline:
+# export SLOWER_WHISPER_PYANNOTE_MODEL=pyannote/speaker-diarization-3.1
+uv run python benchmarks/eval_diarization.py \
   --dataset benchmarks/data/diarization \
-  --output-md benchmarks/DIARIZATION_REPORT.md \
-  --output-json benchmarks/DIARIZATION_REPORT.json \
+  --output-md benchmarks/DIARIZATION_REPORT_REAL.md \
+  --output-json benchmarks/DIARIZATION_REPORT_REAL.json \
   --overwrite
 ```
 

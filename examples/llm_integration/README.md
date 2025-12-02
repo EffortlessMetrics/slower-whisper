@@ -16,6 +16,31 @@ These examples show how to:
 
 ## Examples
 
+### `semantic_summary.py`
+
+**What it does:**
+- Loads a transcript JSON file
+- Runs the rule-based semantic annotator (keywords, risk tags, actions)
+- Renders conversation text for LLMs alongside semantic signals
+
+**Usage:**
+```bash
+uv run python examples/llm_integration/semantic_summary.py whisper_json/support_call_001.json
+```
+
+**Output:**
+```
+Semantic signals
+  keywords : ['manager', 'switch']
+  risk_tags: ['churn_risk', 'escalation']
+  actions  : [{'text': "I'll send the invoice after this call.", 'speaker_id': 'spk_0', 'segment_ids': [3]}]
+
+Conversation (for LLM input):
+[00:00:00.0-00:00:04.2 | Agent] Welcome to support, how can I help?
+[00:00:04.2-00:00:07.8 | Customer] This is unacceptable, I want a manager.
+...
+```
+
 ### `summarize_with_diarization.py`
 
 **What it does:**

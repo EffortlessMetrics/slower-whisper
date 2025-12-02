@@ -36,6 +36,30 @@ Enriched Transcripts
     └─ JSON with segments containing audio_state
 ```
 
+## Semantic Enrichment (text-based)
+
+Semantic enrichment is an opt-in text pass that runs alongside audio features when `enable_semantic_annotator=True` (CLI flag: `--enable-semantics`). It tags transcripts with lightweight, schema-stable signals under `annotations.semantic`:
+
+- `keywords`: matched escalation/churn lexicon tokens
+- `risk_tags`: canonical buckets (`escalation`, `churn_risk`)
+- `actions`: action items with `text`, `speaker_id`, and `segment_ids`
+
+Even when no signals are detected, the semantic block is emitted with empty lists to keep consumers predictable.
+
+Example output:
+
+```jsonc
+"annotations": {
+  "semantic": {
+    "keywords": ["manager", "switch"],
+    "risk_tags": ["escalation", "churn_risk"],
+    "actions": [
+      {"text": "I'll send the quote tomorrow.", "speaker_id": "spk_1", "segment_ids": [4]}
+    ]
+  }
+}
+```
+
 ## Extracted Features
 
 ### Prosody Features

@@ -61,8 +61,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV UV_VERSION=0.5.11
 RUN pip install --no-cache-dir uv==${UV_VERSION}
 
-# Copy dependency files
-COPY pyproject.toml uv.lock* ./
+# Copy dependency files and application code
+# Using layer caching optimization: copy dependency files first
+COPY pyproject.toml uv.lock README.md ./
+COPY transcription/ ./transcription/
+COPY scripts/ ./scripts/
+COPY integrations/ ./integrations/
 
 # Install Python dependencies using uv
 # ARG INSTALL_MODE controls which dependencies to install
@@ -79,11 +83,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'api-min' or 'api-full')" && exit 1; \
     fi
 
-# Install the package itself
-COPY transcription/ ./transcription/
-COPY pyproject.toml ./
-RUN uv pip install --system --no-deps -e .
-
 # -----------------------------------------------------------------------------
 # Stage 3: Runtime image
 # -----------------------------------------------------------------------------
@@ -95,6 +94,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY --chown=appuser:appuser transcription/ /app/transcription/
+COPY --chown=appuser:appuser scripts/ /app/scripts/
+COPY --chown=appuser:appuser integrations/ /app/integrations/
 COPY --chown=appuser:appuser pyproject.toml /app/
 
 # Create cache directory for model downloads

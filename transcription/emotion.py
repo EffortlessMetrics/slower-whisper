@@ -6,6 +6,7 @@ classification for audio segments.
 """
 
 import logging
+import threading
 from typing import Any, Protocol, cast
 
 import numpy as np
@@ -111,39 +112,48 @@ class EmotionRecognizer:
         self._categorical_model = None
         self._categorical_feature_extractor = None
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Thread-safety locks for lazy model loading
+        self._dimensional_lock = threading.Lock()
+        self._categorical_lock = threading.Lock()
         logger.info(f"EmotionRecognizer initialized on device: {self._device}")
 
     def _load_dimensional_model(self) -> None:
         """Lazy load dimensional emotion model (valence/arousal/dominance)."""
         if self._dimensional_model is None:
-            from .cache import CachePaths
+            with self._dimensional_lock:
+                # Double-check after acquiring lock
+                if self._dimensional_model is None:
+                    from .cache import CachePaths
 
-            paths = CachePaths.from_env().ensure_dirs()
-            logger.info(f"Loading dimensional model: {self.DIMENSIONAL_MODEL}")
-            self._dimensional_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
-                self.DIMENSIONAL_MODEL, cache_dir=str(paths.emotion_root)
-            )
-            self._dimensional_model = AutoModelForAudioClassification.from_pretrained(
-                self.DIMENSIONAL_MODEL, cache_dir=str(paths.emotion_root)
-            ).to(self._device)
-            self._dimensional_model.eval()
-            logger.info("Dimensional model loaded successfully")
+                    paths = CachePaths.from_env().ensure_dirs()
+                    logger.info(f"Loading dimensional model: {self.DIMENSIONAL_MODEL}")
+                    self._dimensional_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
+                        self.DIMENSIONAL_MODEL, cache_dir=str(paths.emotion_root)
+                    )
+                    self._dimensional_model = AutoModelForAudioClassification.from_pretrained(
+                        self.DIMENSIONAL_MODEL, cache_dir=str(paths.emotion_root)
+                    ).to(self._device)
+                    self._dimensional_model.eval()
+                    logger.info("Dimensional model loaded successfully")
 
     def _load_categorical_model(self) -> None:
         """Lazy load categorical emotion model."""
         if self._categorical_model is None:
-            from .cache import CachePaths
+            with self._categorical_lock:
+                # Double-check after acquiring lock
+                if self._categorical_model is None:
+                    from .cache import CachePaths
 
-            paths = CachePaths.from_env().ensure_dirs()
-            logger.info(f"Loading categorical model: {self.CATEGORICAL_MODEL}")
-            self._categorical_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
-                self.CATEGORICAL_MODEL, cache_dir=str(paths.emotion_root)
-            )
-            self._categorical_model = AutoModelForAudioClassification.from_pretrained(
-                self.CATEGORICAL_MODEL, cache_dir=str(paths.emotion_root)
-            ).to(self._device)
-            self._categorical_model.eval()
-            logger.info("Categorical model loaded successfully")
+                    paths = CachePaths.from_env().ensure_dirs()
+                    logger.info(f"Loading categorical model: {self.CATEGORICAL_MODEL}")
+                    self._categorical_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
+                        self.CATEGORICAL_MODEL, cache_dir=str(paths.emotion_root)
+                    )
+                    self._categorical_model = AutoModelForAudioClassification.from_pretrained(
+                        self.CATEGORICAL_MODEL, cache_dir=str(paths.emotion_root)
+                    ).to(self._device)
+                    self._categorical_model.eval()
+                    logger.info("Categorical model loaded successfully")
 
     def _validate_audio(self, audio: np.ndarray, sr: int) -> tuple[np.ndarray, bool]:
         """
@@ -184,21 +194,36 @@ class EmotionRecognizer:
         self, audio: np.ndarray, orig_sr: int, target_sr: int
     ) -> NDArray[np.float32]:
         """
-        Simple resampling using linear interpolation.
+        Resample audio using librosa with proper anti-aliasing.
 
-        For production use, consider using librosa.resample or torchaudio.transforms.Resample
+        Uses sinc interpolation for high-quality resampling that preserves
+        audio characteristics important for emotion recognition.
         """
         if orig_sr == target_sr:
-            return audio
+            return cast(NDArray[np.float32], audio.astype(np.float32))
 
-        duration = len(audio) / orig_sr
-        target_length = int(duration * target_sr)
+        try:
+            import librosa
 
-        # Linear interpolation
-        indices = np.linspace(0, len(audio) - 1, target_length)
-        resampled = np.interp(indices, np.arange(len(audio)), audio)
-
-        return cast(NDArray[np.float32], resampled.astype(np.float32))
+            # librosa.resample uses Kaiser window anti-aliasing by default
+            resampled = librosa.resample(
+                audio.astype(np.float32),
+                orig_sr=orig_sr,
+                target_sr=target_sr,
+                res_type="soxr_hq",  # High-quality resampling
+            )
+            return cast(NDArray[np.float32], resampled.astype(np.float32))
+        except ImportError:
+            # Fallback to linear interpolation if librosa not available
+            logger.warning(
+                "librosa not available for resampling; using linear interpolation. "
+                "Install with: uv sync --extra enrich-basic"
+            )
+            duration = len(audio) / orig_sr
+            target_length = int(duration * target_sr)
+            indices = np.linspace(0, len(audio) - 1, target_length)
+            resampled = np.interp(indices, np.arange(len(audio)), audio)
+            return cast(NDArray[np.float32], resampled.astype(np.float32))
 
     def _classify_valence(self, score: float) -> str:
         """Classify valence score into level."""
@@ -401,8 +426,9 @@ class DummyEmotionRecognizer:
         }
 
 
-# Singleton instance for easy access
+# Singleton instance for easy access with thread-safe initialization
 _recognizer_instance: EmotionRecognizerLike | None = None
+_recognizer_lock = threading.Lock()
 
 
 def get_emotion_recognizer() -> EmotionRecognizerLike:
@@ -411,15 +437,47 @@ def get_emotion_recognizer() -> EmotionRecognizerLike:
 
     Returns an object implementing EmotionRecognizerLike - either the real
     EmotionRecognizer (if dependencies are available) or DummyEmotionRecognizer.
+
+    Thread-safe: Uses double-checked locking to avoid race conditions.
     """
     global _recognizer_instance
     if _recognizer_instance is None:
-        if EMOTION_AVAILABLE:
-            _recognizer_instance = EmotionRecognizer()
-        else:
-            logger.warning("Emotion dependencies unavailable; using dummy recognizer")
-            _recognizer_instance = DummyEmotionRecognizer()
+        with _recognizer_lock:
+            # Double-check after acquiring lock
+            if _recognizer_instance is None:
+                if EMOTION_AVAILABLE:
+                    _recognizer_instance = EmotionRecognizer()
+                else:
+                    logger.warning("Emotion dependencies unavailable; using dummy recognizer")
+                    _recognizer_instance = DummyEmotionRecognizer()
     return _recognizer_instance
+
+
+def cleanup_emotion_models() -> None:
+    """
+    Explicitly unload emotion recognition models from GPU/memory.
+
+    Call this after batch processing to free GPU memory. The next call to
+    get_emotion_recognizer() will re-initialize the singleton.
+
+    Example:
+        >>> from transcription.emotion import cleanup_emotion_models
+        >>> # After batch processing...
+        >>> cleanup_emotion_models()  # Free GPU memory
+    """
+    global _recognizer_instance
+    with _recognizer_lock:
+        if _recognizer_instance is not None:
+            # Clear GPU cache if available
+            try:
+                if EMOTION_AVAILABLE and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    logger.info("Cleared GPU cache")
+            except Exception as e:
+                logger.debug(f"Failed to clear GPU cache: {e}")
+
+            _recognizer_instance = None
+            logger.info("Emotion recognizer singleton released")
 
 
 def extract_emotion_dimensional(audio: np.ndarray, sr: int) -> dict[str, dict[str, Any]]:
@@ -481,6 +539,7 @@ __all__ = [
     "DummyEmotionRecognizer",
     "EmotionRecognizer",
     "EmotionRecognizerLike",
+    "cleanup_emotion_models",
     "extract_emotion_categorical",
     "extract_emotion_dimensional",
     "get_emotion_recognizer",

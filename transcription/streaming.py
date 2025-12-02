@@ -1,175 +1,131 @@
 """
-Streaming session management for slower-whisper (v2.0 prep).
+Streaming session management for post-ASR text chunks (v0.1).
 
-This module provides typed interfaces for real-time streaming transcription.
-Currently a skeleton with NotImplementedError bodies — implementation in v2.0.
-
-See docs/STREAMING_ARCHITECTURE.md for the full RFC.
+This module implements a small, predictable state machine that turns
+ordered text chunks into partial/final segment events. See
+docs/STREAMING_ARCHITECTURE.md for the contract.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol
-
-from .models import Segment, Transcript
+from typing import TypedDict
 
 
-class StreamEventType(Enum):
-    """WebSocket event types for streaming protocol."""
+class StreamChunk(TypedDict):
+    """Input chunk produced by upstream ASR."""
 
-    READY = "ready"
-    PARTIAL_SEGMENT = "partial_segment"
-    SEGMENT_FINALIZED = "segment_finalized"
-    TURN_UPDATED = "turn_updated"
-    ANALYTICS_SNAPSHOT = "analytics_snapshot"
-    ERROR = "error"
-    DONE = "done"
-
-
-@dataclass(slots=True)
-class StreamConfig:
-    """Configuration for a streaming session."""
-
-    sample_rate: int = 16000
-    language: str | None = None
-    enable_diarization: bool = False
-    enable_analytics: bool = False
-    enable_semantics: bool = False
-
-
-@dataclass(slots=True)
-class StreamMeta:
-    """Metadata block for streaming transcripts (meta.stream)."""
-
-    session_id: str
-    seq: int
-    stream_version: int = 1
-    features: dict[str, bool] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class PartialSegment:
-    """A segment that may still change (partial=True)."""
-
-    id: int
     start: float
     end: float
     text: str
-    revision: int
-    partial: bool = True
+    speaker_id: str | None
+
+
+@dataclass(slots=True)
+class StreamSegment:
+    """Aggregated segment state."""
+
+    start: float
+    end: float
+    text: str
     speaker_id: str | None = None
 
-    def finalize(self) -> Segment:
-        """Convert to a finalized Segment (partial=False)."""
-        return Segment(
-            id=self.id,
-            start=self.start,
-            end=self.end,
-            text=self.text,
-            speaker={"id": self.speaker_id} if self.speaker_id else None,
-        )
+
+class StreamEventType(Enum):
+    """Event types emitted by StreamingSession."""
+
+    PARTIAL_SEGMENT = "partial_segment"
+    FINAL_SEGMENT = "final_segment"
 
 
 @dataclass(slots=True)
 class StreamEvent:
-    """A streaming event sent from server to client."""
+    """A streaming event containing the current segment view."""
 
     type: StreamEventType
-    seq: int
-    payload: dict | PartialSegment | Segment | None = None
+    segment: StreamSegment
 
 
-class StreamingSessionProtocol(Protocol):
-    """Protocol for streaming session implementations."""
+@dataclass(slots=True)
+class StreamConfig:
+    """Configuration for streaming state transitions."""
 
-    @property
-    def session_id(self) -> str:
-        """Unique session identifier."""
-        ...
-
-    @property
-    def config(self) -> StreamConfig:
-        """Session configuration."""
-        ...
-
-    def start(self) -> StreamEvent:
-        """Initialize the session and return READY event."""
-        ...
-
-    def process_audio(self, audio_bytes: bytes, seq: int) -> list[StreamEvent]:
-        """Process an audio chunk and return any events."""
-        ...
-
-    def stop(self) -> StreamEvent:
-        """End the session and return DONE event."""
-        ...
-
-    def get_transcript(self) -> Transcript:
-        """Get the current transcript state."""
-        ...
+    max_gap_sec: float = 1.0
 
 
 class StreamingSession:
     """
-    Streaming transcription session (v2.0 implementation placeholder).
+    Minimal streaming state machine for post-ASR chunks.
 
-    This class will manage:
-    - Audio buffering and VAD
-    - Incremental ASR with partial/final segments
-    - Live diarization updates
-    - Analytics snapshots
-
-    Currently raises NotImplementedError — full implementation in v2.0.
+    Maintains a single in-flight partial segment and emits events as
+    chunks arrive or when the stream closes.
     """
 
     def __init__(self, config: StreamConfig | None = None) -> None:
-        self._config = config or StreamConfig()
-        self._session_id: str = ""
-        self._seq: int = 0
-        self._segments: list[PartialSegment] = []
+        self.config = config or StreamConfig()
+        self._current: StreamSegment | None = None
 
-    @property
-    def session_id(self) -> str:
-        return self._session_id
+    def ingest_chunk(self, chunk: StreamChunk) -> list[StreamEvent]:
+        """Consume a chunk and return any events it produces."""
+        self._validate_monotonic(chunk)
+        events: list[StreamEvent] = []
+        speaker_id = chunk.get("speaker_id")
 
-    @property
-    def config(self) -> StreamConfig:
-        return self._config
+        if self._current and not self._should_extend(chunk, speaker_id):
+            events.append(StreamEvent(StreamEventType.FINAL_SEGMENT, self._snapshot(self._current)))
+            self._current = self._segment_from_chunk(chunk)
+        elif self._current:
+            self._extend_current(chunk)
+        else:
+            self._current = self._segment_from_chunk(chunk)
 
-    def start(self) -> StreamEvent:
-        """Initialize the session."""
-        raise NotImplementedError("Streaming implementation planned for v2.0")
+        events.append(StreamEvent(StreamEventType.PARTIAL_SEGMENT, self._snapshot(self._current)))
+        return events
 
-    def process_audio(self, audio_bytes: bytes, seq: int) -> list[StreamEvent]:
-        """Process audio chunk and emit events."""
-        raise NotImplementedError("Streaming implementation planned for v2.0")
+    def end_of_stream(self) -> list[StreamEvent]:
+        """Finalize the stream, emitting any remaining partial as final."""
+        if not self._current:
+            return []
 
-    def stop(self) -> StreamEvent:
-        """Finalize session and return DONE event."""
-        raise NotImplementedError("Streaming implementation planned for v2.0")
+        final_event = StreamEvent(StreamEventType.FINAL_SEGMENT, self._snapshot(self._current))
+        self._current = None
+        return [final_event]
 
-    def get_transcript(self) -> Transcript:
-        """Get current transcript snapshot."""
-        raise NotImplementedError("Streaming implementation planned for v2.0")
+    def _validate_monotonic(self, chunk: StreamChunk) -> None:
+        if chunk["end"] < chunk["start"]:
+            raise ValueError("Chunk end must be >= start")
+        if self._current and chunk["start"] < self._current.end:
+            raise ValueError("Chunks must arrive in non-decreasing time order")
 
+    def _should_extend(self, chunk: StreamChunk, speaker_id: str | None) -> bool:
+        assert self._current is not None
+        same_speaker = self._current.speaker_id == speaker_id
+        gap = chunk["start"] - self._current.end
+        return same_speaker and gap <= self.config.max_gap_sec
 
-def apply_stream_event(transcript: Transcript, event: StreamEvent) -> Transcript:
-    """
-    Apply a streaming event to update a transcript.
+    def _extend_current(self, chunk: StreamChunk) -> None:
+        assert self._current is not None
+        self._current.end = float(chunk["end"])
+        if chunk["text"]:
+            if self._current.text and not self._current.text.endswith(" "):
+                self._current.text += " "
+            self._current.text += chunk["text"]
 
-    This function enables clients to rebuild state by applying events
-    in sequence order.
+    def _segment_from_chunk(self, chunk: StreamChunk) -> StreamSegment:
+        return StreamSegment(
+            start=float(chunk["start"]),
+            end=float(chunk["end"]),
+            text=chunk["text"],
+            speaker_id=chunk.get("speaker_id"),
+        )
 
-    Args:
-        transcript: Current transcript state
-        event: Event to apply
-
-    Returns:
-        Updated transcript
-
-    Raises:
-        NotImplementedError: Implementation in v2.0
-    """
-    raise NotImplementedError("Streaming implementation planned for v2.0")
+    def _snapshot(self, segment: StreamSegment | None) -> StreamSegment:
+        if segment is None:
+            raise ValueError("Cannot snapshot a missing segment")
+        return StreamSegment(
+            start=segment.start,
+            end=segment.end,
+            text=segment.text,
+            speaker_id=segment.speaker_id,
+        )

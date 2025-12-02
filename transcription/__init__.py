@@ -20,6 +20,12 @@ Configuration:
     - TranscriptionConfig: Stage 1 configuration
     - EnrichmentConfig: Stage 2 configuration
 
+Streaming:
+    - StreamConfig: Controls max gap for stitching partial segments
+    - StreamingSession: Builds partial/final segments from post-ASR chunks
+    - StreamChunk: Input chunk type (post-ASR)
+    - StreamEvent: Output event with segment view
+
 Models:
     - Transcript: Complete transcript with segments
     - Segment: Single transcribed segment
@@ -81,6 +87,7 @@ from .llm_utils import (
 )
 from .models import Chunk, DiarizationMeta, Segment, SpeakerStats, Transcript, Turn, TurnMeta
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
+from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamingSession
 from .turn_helpers import turn_to_dict
 from .types_audio import AudioState, EmotionState, ExtractionStatus, ProsodyState
 from .validation import validate_transcript_json
@@ -118,6 +125,7 @@ __all__ = [
     "TranscriptionConfig",
     "EnrichmentConfig",
     "ChunkingConfig",
+    "StreamConfig",
     # Models
     "Chunk",
     "Segment",
@@ -131,6 +139,10 @@ __all__ = [
     "EmotionState",
     "ExtractionStatus",
     "validate_transcript_json",
+    # Streaming
+    "StreamChunk",
+    "StreamEvent",
+    "StreamingSession",
     # Utilities
     "turn_to_dict",
     # Exceptions

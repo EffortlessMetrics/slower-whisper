@@ -26,6 +26,124 @@ from .prosody import compute_speaker_baseline, extract_prosody
 logger = logging.getLogger(__name__)
 
 
+def _enrich_segment_with_extractor(
+    extractor: AudioSegmentExtractor | None,
+    wav_path: Path,
+    segment: Segment,
+    enable_prosody: bool = True,
+    enable_emotion: bool = True,
+    enable_categorical_emotion: bool = False,
+    speaker_baseline: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Internal helper that reuses an existing AudioSegmentExtractor.
+
+    If extractor is None, creates a new one (fallback for robustness).
+    This avoids repeated file opens when processing multiple segments.
+    """
+    # Initialize result structure
+    audio_state: dict[str, Any] = {
+        "prosody": None,
+        "emotion": None,
+        "rendering": "[audio: neutral]",
+        "extraction_status": {
+            "prosody": "skipped",
+            "emotion_dimensional": "skipped",
+            "emotion_categorical": "skipped",
+            "errors": [],
+        },
+    }
+
+    try:
+        # Use provided extractor or create new one as fallback
+        if extractor is None:
+            extractor = AudioSegmentExtractor(wav_path)
+
+        audio_data, sample_rate = extractor.extract_segment(
+            segment.start,
+            segment.end,
+            clamp=True,
+            min_duration=0.0,
+        )
+
+        logger.debug(
+            f"Extracted segment [{segment.start:.2f}s - {segment.end:.2f}s]: "
+            f"{len(audio_data)} samples at {sample_rate} Hz"
+        )
+
+    except Exception as e:
+        error_msg = f"Failed to extract audio segment: {e}"
+        logger.error(error_msg)
+        audio_state["extraction_status"]["errors"].append(error_msg)
+        return audio_state
+
+    # Extract prosodic features
+    if enable_prosody:
+        try:
+            prosody_result = extract_prosody(
+                audio_data,
+                sample_rate,
+                segment.text,
+                speaker_baseline=speaker_baseline,
+                start_time=segment.start,
+                end_time=segment.end,
+            )
+            audio_state["prosody"] = prosody_result
+            audio_state["extraction_status"]["prosody"] = "success"
+            logger.debug(f"Prosody extraction succeeded for segment {segment.id}")
+
+        except Exception as e:
+            error_msg = f"Prosody extraction failed: {e}"
+            logger.error(error_msg)
+            audio_state["extraction_status"]["prosody"] = "failed"
+            audio_state["extraction_status"]["errors"].append(error_msg)
+
+    # Extract emotional features
+    emotion_data = {}
+
+    if enable_emotion:
+        try:
+            dimensional_result = extract_emotion_dimensional(audio_data, sample_rate)
+            emotion_data.update(dimensional_result)
+            audio_state["extraction_status"]["emotion_dimensional"] = "success"
+            logger.debug(f"Dimensional emotion extraction succeeded for segment {segment.id}")
+
+        except Exception as e:
+            error_msg = f"Dimensional emotion extraction failed: {e}"
+            logger.error(error_msg)
+            audio_state["extraction_status"]["emotion_dimensional"] = "failed"
+            audio_state["extraction_status"]["errors"].append(error_msg)
+
+    if enable_categorical_emotion:
+        try:
+            categorical_result = extract_emotion_categorical(audio_data, sample_rate)
+            emotion_data.update(categorical_result)
+            audio_state["extraction_status"]["emotion_categorical"] = "success"
+            logger.debug(f"Categorical emotion extraction succeeded for segment {segment.id}")
+
+        except Exception as e:
+            error_msg = f"Categorical emotion extraction failed: {e}"
+            logger.error(error_msg)
+            audio_state["extraction_status"]["emotion_categorical"] = "failed"
+            audio_state["extraction_status"]["errors"].append(error_msg)
+
+    if emotion_data:
+        audio_state["emotion"] = emotion_data
+
+    # Render audio state as text annotation
+    try:
+        render_input = _build_render_input(audio_state)
+        audio_state["rendering"] = render_audio_state(render_input)
+
+    except Exception as e:
+        error_msg = f"Audio rendering failed: {e}"
+        logger.warning(error_msg)
+        audio_state["extraction_status"]["errors"].append(error_msg)
+        audio_state["rendering"] = "[audio: neutral]"
+
+    return audio_state
+
+
 def enrich_segment_audio(
     wav_path: Path,
     segment: Segment,
@@ -276,16 +394,24 @@ def enrich_transcript_audio(
         except Exception as e:
             logger.error(f"Failed to compute speaker baseline: {e}")
 
-    # Enrich each segment
+    # Enrich each segment - reuse a single AudioSegmentExtractor for efficiency
     success_count = 0
     partial_count = 0
     failed_count = 0
+
+    # Create a single extractor to reuse across all segments (avoids repeated file opens)
+    try:
+        shared_extractor = AudioSegmentExtractor(wav_path)
+    except Exception as e:
+        logger.error(f"Failed to create audio extractor: {e}")
+        shared_extractor = None
 
     for idx, segment in enumerate(transcript.segments):
         logger.debug(f"Enriching segment {idx + 1}/{len(transcript.segments)}: {segment.id}")
 
         try:
-            audio_state = enrich_segment_audio(
+            audio_state = _enrich_segment_with_extractor(
+                shared_extractor,
                 wav_path,
                 segment,
                 enable_prosody=enable_prosody,

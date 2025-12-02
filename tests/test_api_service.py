@@ -177,7 +177,11 @@ class TestTranscribeEndpoint:
 
         diar_meta = data["meta"].get("diarization", {})
         assert diar_meta.get("requested") is True
-        assert diar_meta.get("status") in {"success", "failed"}
+        status = diar_meta.get("status")
+        assert status in {"success", "failed", "skipped"}
+        if status == "skipped":
+            # Missing HF_TOKEN or pyannote dependency
+            assert diar_meta.get("error_type") in {"auth", "missing_dependency"}
 
     def test_transcribe_invalid_diarization_bounds(self, client, sample_audio_wav):
         """min_speakers > max_speakers should return a 400 error."""

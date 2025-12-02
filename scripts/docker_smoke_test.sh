@@ -16,7 +16,7 @@ docker build -t slower-whisper:test-cpu -f Dockerfile . --quiet
 
 echo "✅ CPU image built"
 echo "Testing CLI in CPU image..."
-docker run --rm slower-whisper:test-cpu slower-whisper --help | grep -q "transcribe"
+docker run --rm slower-whisper:test-cpu --help | grep -q "transcribe"
 echo "✅ CLI works in CPU image"
 echo ""
 
@@ -42,4 +42,4 @@ echo "  - slower-whisper:test-gpu"
 echo "  - slower-whisper:test-api"
 echo ""
 echo "Test with:"
-echo "  docker run --rm slower-whisper:test-cpu slower-whisper --version"
+echo "  docker run --rm slower-whisper:test-cpu --version"

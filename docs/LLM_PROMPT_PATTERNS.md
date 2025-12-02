@@ -772,6 +772,43 @@ print(response.content[0].text)
 
 ---
 
+## Streaming + Live Semantics (design sketch)
+
+`StreamingSession` operates on post-ASR chunks. You can run semantic tagging on finalized segments as they arrive to drive prompt routing:
+
+```python
+from transcription import KeywordSemanticAnnotator, Segment, Transcript, StreamConfig, StreamingSession
+
+session = StreamingSession(StreamConfig(max_gap_sec=1.0))
+annotator = KeywordSemanticAnnotator()
+final_segments: list[Segment] = []
+
+for chunk in asr_chunks:
+    for event in session.ingest_chunk(chunk):
+        if event.type.value != "final_segment":
+            continue
+        # hydrate the streaming segment into the transcript schema
+        stream_seg = event.segment
+        final_segments.append(
+            Segment(
+                id=len(final_segments),
+                start=stream_seg.start,
+                end=stream_seg.end,
+                text=stream_seg.text,
+                speaker={"id": stream_seg.speaker_id} if stream_seg.speaker_id else None,
+            )
+        )
+        transcript = Transcript(file_name="live.wav", language="en", segments=list(final_segments))
+        annotated = annotator.annotate(transcript)
+        tags = annotated.annotations["semantic"]
+        # Example: tags["risk_tags"] includes {"escalation", "pricing", "churn_risk"}
+        # Use it to pick the right LLM prompt/template per turn
+```
+
+Keep partial events for UI hints, but only run the annotator on `final_segment` events so the semantic tags stay stable.
+
+---
+
 ## Schema Reference
 
 For full JSON schema details, see:

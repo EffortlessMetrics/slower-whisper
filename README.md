@@ -118,7 +118,7 @@ uv run slower-whisper export whisper_json/sample.json --format csv --output samp
 We run three small, transparent checks on the shipped fixtures so quality isn't hand-wavy:
 
 - ASR WER on a tiny manifest — see `benchmarks/ASR_REPORT.md`.
-- Diarization DER + speaker-count accuracy — see `benchmarks/DIARIZATION_REPORT.md`.
+- Diarization DER + speaker-count accuracy — see `benchmarks/DIARIZATION_REPORT.md`/`.json` (stub backend on synthetic fixtures; avg DER **0.451**, speaker-count accuracy **1.0**, manifest sha256 `34f8caa31589541c795dcc217df1688440bf25ee45d92669073eafdde0fe0120`; real pyannote run available when HF_TOKEN is set).
 - Speaker analytics preference check (enriched vs baseline summaries) — see `benchmarks/SPEAKER_ANALYTICS_MVP.md`.
 
 ## Architecture Overview
@@ -772,6 +772,7 @@ context = render_conversation_for_llm(
 
 - **[`docs/LLM_PROMPT_PATTERNS.md`](docs/LLM_PROMPT_PATTERNS.md)** - Comprehensive guide to LLM prompting with slower-whisper data
 - **[`examples/llm_integration/`](examples/llm_integration/)** - Working examples (summarization, coaching, QA scoring)
+- **`examples/llm_integration/semantic_summary.py`** - Minimal script showing conversation rendering + semantic annotations
 - **API functions:** `render_conversation_for_llm()`, `render_conversation_compact()`, `render_segment()`
 
 **Common use cases:**
@@ -1246,6 +1247,7 @@ make verify
 ```
 
 CI usage:
+
 - PRs run `.github/workflows/verify.yml` in quick mode (`nix develop --command uv run slower-whisper-verify --quick`).
 - Nightly/manual dispatch runs the full suite in the same workflow (includes Docker + K8s; set `HF_TOKEN` for real pyannote backend).
 

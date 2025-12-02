@@ -179,9 +179,11 @@ The BDD tests treat the FastAPI service as a **black box**:
 ### Prerequisites
 
 ```bash
-# Install development dependencies (includes httpx, uvicorn)
-uv sync --extra dev
+# Install API + dev dependencies (FastAPI, uvicorn, httpx, pytest)
+uv sync --extra api --extra dev
 ```
+
+> Nix note: Some nixpkgs revisions ship an older `typing_extensions` (missing `Sentinel`), which makes `import fastapi` fail and the API BDD lane skip. `uv sync --extra api --extra dev` installs `typing-extensions>=4.9` into `.venv`; if the failure still references `/nix/store/.../typing_extensions.py`, upgrade nixpkgs or ensure the project venv is first on `PYTHONPATH`.
 
 ### Run All API Scenarios
 
@@ -190,7 +192,8 @@ uv sync --extra dev
 uv run pytest features/ -v -m api
 
 # Alternative: use verification CLI
-uv run slower-whisper-verify --quick  # Includes API tests
+uv run slower-whisper-verify --api   # API-only lane
+uv run slower-whisper-verify --quick # Quick gate (runs API if deps installed)
 ```
 
 ### Run Specific Scenario Categories
@@ -231,6 +234,11 @@ uv run slower-whisper-verify
 **Quick mode** (skips Docker and K8s but includes API):
 ```bash
 uv run slower-whisper-verify --quick
+```
+
+**API-only lane** (FastAPI unit/integration + BDD, requires `--extra api --extra dev`):
+```bash
+uv run slower-whisper-verify --api
 ```
 
 ---
@@ -377,7 +385,7 @@ assert response.status_code == 200
 lsof -i :8765
 
 # Ensure uvicorn installed
-uv sync --extra dev
+uv sync --extra api --extra dev
 
 # Test service manually
 uv run uvicorn transcription.service:app --port 8765
@@ -391,7 +399,7 @@ uv run uvicorn transcription.service:app --port 8765
 
 **Solution:**
 ```bash
-uv sync --extra dev
+uv sync --extra api --extra dev
 ```
 
 ---
@@ -412,7 +420,7 @@ sudo apt-get install ffmpeg
 brew install ffmpeg
 
 # Install enrichment dependencies
-uv sync --extra full
+uv sync --extra api --extra full --extra dev
 ```
 
 ---

@@ -1,0 +1,70 @@
+{
+  "config": {
+    "dataset": "benchmarks/data/diarization",
+    "manifest": "benchmarks/data/diarization/manifest.jsonl",
+    "device": "cpu",
+    "min_speakers": null,
+    "max_speakers": null,
+    "pyannote_mode": "stub"
+  },
+  "manifest_hash": "34f8caa31589541c795dcc217df1688440bf25ee45d92669073eafdde0fe0120",
+  "aggregate": {
+    "num_samples": 3,
+    "num_with_der": 3,
+    "avg_der": 0.45112834025877496,
+    "min_der": 0.3768115942028985,
+    "max_der": 0.5499999999999999,
+    "speaker_count_accuracy": 1.0,
+    "total_runtime": 1.2383094080141746
+  },
+  "results": [
+    {
+      "id": "synthetic_2speaker",
+      "der": {
+        "value": 0.5499999999999999,
+        "missed": null,
+        "false_alarm": 0.5999999999999996,
+        "confusion": 6.0,
+        "detail": null
+      },
+      "speaker_count": 2,
+      "expected_speaker_count": 2,
+      "speaker_count_delta": 0,
+      "runtime_seconds": 1.2367710839898791,
+      "error": null,
+      "notes": "Deterministic 2-speaker A/B tone pattern with 200ms gaps between turns."
+    },
+    {
+      "id": "overlap_tones",
+      "der": {
+        "value": 0.3768115942028985,
+        "missed": 1.0999999999999996,
+        "false_alarm": 0.20000000000000018,
+        "confusion": 1.2999999999999998,
+        "detail": null
+      },
+      "speaker_count": 2,
+      "expected_speaker_count": 2,
+      "speaker_count_delta": 0,
+      "runtime_seconds": 0.0008114600204862654,
+      "error": null,
+      "notes": "Two-tone synthetic with overlapping exchanges at 2.0-2.5s and 5.0-5.6s."
+    },
+    {
+      "id": "call_mixed",
+      "der": {
+        "value": 0.42657342657342656,
+        "missed": null,
+        "false_alarm": 1.2000000000000002,
+        "confusion": 4.8999999999999995,
+        "detail": null
+      },
+      "speaker_count": 2,
+      "expected_speaker_count": 2,
+      "speaker_count_delta": 0,
+      "runtime_seconds": 0.0007268640038091689,
+      "error": null,
+      "notes": "Longer alternating call-style pattern with short pauses; minimal overlap."
+    }
+  ]
+}

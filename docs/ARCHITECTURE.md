@@ -193,6 +193,28 @@ Notes:
 - Readers should tolerate these fields being absent.
 - Within schema v2.x, field meanings are stable.
 
+### Semantic annotations (v1.3, optional)
+
+Semantic enrichment attaches lightweight semantic signals without changing the core transcript shape:
+
+- Field: `annotations.semantic` (object, optional; emitted when `enable_semantic_annotator=True`)
+- Guarantees: `keywords`, `risk_tags`, and `actions` always exist as lists (possibly empty)
+- Back-compat: `tags` remains as an alias of `risk_tags`; `matches` carries optional debug hits
+
+Example:
+
+```jsonc
+"annotations": {
+  "semantic": {
+    "keywords": ["manager", "switch"],
+    "risk_tags": ["escalation", "churn_risk"],
+    "actions": [
+      {"text": "I'll follow up tomorrow.", "speaker_id": "spk_0", "segment_ids": [12]}
+    ]
+  }
+}
+```
+
 ---
 
 ## Implementation Statistics

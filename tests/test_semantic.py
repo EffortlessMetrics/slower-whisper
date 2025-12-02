@@ -34,135 +34,95 @@ class TestNoOpSemanticAnnotator:
 class TestKeywordSemanticAnnotator:
     """Test KeywordSemanticAnnotator."""
 
-    def test_tags_pricing_keywords(self) -> None:
-        """Verify pricing keywords are detected."""
+    def test_empty_transcript_has_empty_semantic_block(self) -> None:
+        """No-signal transcripts still emit semantic block with empty lists."""
+        transcript = Transcript(file_name="test.wav", language="en", segments=[])
+        annotator = KeywordSemanticAnnotator()
+
+        result = annotator.annotate(transcript)
+        semantic = (result.annotations or {}).get("semantic", {})
+        assert semantic.get("keywords") == []
+        assert semantic.get("risk_tags") == []
+        assert semantic.get("actions") == []
+
+    def test_detects_escalation_and_churn_keywords(self) -> None:
+        """Escalation/churn lexicons map to risk tags and keywords."""
         transcript = Transcript(
             file_name="test.wav",
             language="en",
             segments=[
-                Segment(id=0, start=0.0, end=2.0, text="What is the price for this?"),
-                Segment(id=1, start=2.0, end=4.0, text="Let me check the quote."),
+                Segment(id=0, start=0.0, end=2.0, text="This is unacceptable, I want a manager."),
+                Segment(id=1, start=2.0, end=4.0, text="Otherwise I will switch to a competitor."),
             ],
         )
         annotator = KeywordSemanticAnnotator()
         result = annotator.annotate(transcript)
 
-        assert result.annotations is not None
-        semantic = result.annotations.get("semantic", {})
-        assert "pricing" in semantic.get("tags", [])
+        semantic = (result.annotations or {}).get("semantic", {})
+        keywords = semantic.get("keywords", [])
+        risk_tags = semantic.get("risk_tags", [])
 
-    def test_tags_escalation_keywords(self) -> None:
-        """Verify escalation keywords are detected."""
+        assert "escalate" in keywords or "unacceptable" in keywords
+        assert "switch" in keywords or "competitor" in keywords
+        assert "escalation" in risk_tags
+        assert "churn_risk" in risk_tags
+
+    def test_actions_capture_speaker_ids(self) -> None:
+        """Action detection attaches speaker_id and segment_ids."""
         transcript = Transcript(
-            file_name="test.wav",
+            file_name="call.wav",
             language="en",
             segments=[
-                Segment(id=0, start=0.0, end=2.0, text="I need to speak to a supervisor."),
+                Segment(
+                    id=0,
+                    start=0.0,
+                    end=2.0,
+                    text="I'll send the invoice after this call.",
+                    speaker={"id": "spk_0"},
+                ),
+                Segment(
+                    id=1,
+                    start=2.0,
+                    end=4.0,
+                    text="We will call you back tomorrow.",
+                    speaker={"id": "spk_1"},
+                ),
             ],
         )
         annotator = KeywordSemanticAnnotator()
         result = annotator.annotate(transcript)
 
-        semantic = result.annotations.get("semantic", {})
-        assert "escalation" in semantic.get("tags", [])
+        semantic = (result.annotations or {}).get("semantic", {})
+        actions = semantic.get("actions", [])
+        assert len(actions) == 2
 
-    def test_tags_churn_risk_keywords(self) -> None:
-        """Verify churn risk keywords are detected."""
+        action_by_text = {a["text"]: a for a in actions}
+        assert action_by_text["I'll send the invoice after this call."]["speaker_id"] == "spk_0"
+        assert action_by_text["We will call you back tomorrow."]["speaker_id"] == "spk_1"
+        assert action_by_text["I'll send the invoice after this call."]["segment_ids"] == [0]
+
+    def test_idempotent_annotations(self) -> None:
+        """Re-running annotator does not duplicate tags or actions."""
         transcript = Transcript(
-            file_name="test.wav",
+            file_name="call.wav",
             language="en",
             segments=[
-                Segment(id=0, start=0.0, end=2.0, text="I want to cancel my subscription."),
+                Segment(
+                    id=0,
+                    start=0.0,
+                    end=2.0,
+                    text="I'll follow up after I speak to my manager.",
+                    speaker={"id": "spk_0"},
+                )
             ],
         )
         annotator = KeywordSemanticAnnotator()
-        result = annotator.annotate(transcript)
+        once = annotator.annotate(transcript)
+        twice = annotator.annotate(once)
 
-        semantic = result.annotations.get("semantic", {})
-        assert "churn_risk" in semantic.get("tags", [])
-
-    def test_multiple_tags(self) -> None:
-        """Verify multiple tags can be detected."""
-        transcript = Transcript(
-            file_name="test.wav",
-            language="en",
-            segments=[
-                Segment(id=0, start=0.0, end=2.0, text="The pricing is too high."),
-                Segment(id=1, start=2.0, end=4.0, text="I want to cancel unless I get a discount."),
-            ],
-        )
-        annotator = KeywordSemanticAnnotator()
-        result = annotator.annotate(transcript)
-
-        semantic = result.annotations.get("semantic", {})
-        tags = semantic.get("tags", [])
-        assert "pricing" in tags
-        assert "churn_risk" in tags
-
-    def test_no_tags_when_no_matches(self) -> None:
-        """Verify no tags when no keywords match."""
-        transcript = Transcript(
-            file_name="test.wav",
-            language="en",
-            segments=[
-                Segment(id=0, start=0.0, end=2.0, text="The weather is nice today."),
-            ],
-        )
-        annotator = KeywordSemanticAnnotator()
-        result = annotator.annotate(transcript)
-
-        semantic = result.annotations.get("semantic", {})
-        tags = semantic.get("tags", [])
-        assert tags == []
-
-    def test_matches_recorded(self) -> None:
-        """Verify keyword matches are recorded."""
-        transcript = Transcript(
-            file_name="test.wav",
-            language="en",
-            segments=[
-                Segment(id=0, start=0.0, end=2.0, text="What is the budget?"),
-            ],
-        )
-        annotator = KeywordSemanticAnnotator()
-        result = annotator.annotate(transcript)
-
-        semantic = result.annotations.get("semantic", {})
-        matches = semantic.get("matches", [])
-        assert any(m["keyword"] == "budget" for m in matches)
-
-    def test_custom_keyword_map(self) -> None:
-        """Verify custom keyword map works."""
-        custom_map = {
-            "greeting": ("hello", "hi", "hey"),
-            "farewell": ("goodbye", "bye"),
-        }
-        annotator = KeywordSemanticAnnotator(keyword_map=custom_map)
-
-        transcript = Transcript(
-            file_name="test.wav",
-            language="en",
-            segments=[Segment(id=0, start=0.0, end=1.0, text="Hello there!")],
-        )
-        result = annotator.annotate(transcript)
-
-        semantic = result.annotations.get("semantic", {})
-        assert "greeting" in semantic.get("tags", [])
-
-    def test_case_insensitive(self) -> None:
-        """Verify matching is case-insensitive."""
-        transcript = Transcript(
-            file_name="test.wav",
-            language="en",
-            segments=[
-                Segment(id=0, start=0.0, end=2.0, text="WHAT IS THE PRICE?"),
-            ],
-        )
-        annotator = KeywordSemanticAnnotator()
-        result = annotator.annotate(transcript)
-
-        semantic = result.annotations.get("semantic", {})
-        assert "pricing" in semantic.get("tags", [])
+        semantic = (twice.annotations or {}).get("semantic", {})
+        assert semantic.get("risk_tags", []) == ["escalation"]
+        assert len(semantic.get("actions", [])) == 1
 
 
 class TestSemanticAnnotationRoundtrip:
@@ -223,7 +183,9 @@ class TestSemanticAnnotationRoundtrip:
             # Should have annotations dict with semantic key
             assert loaded.annotations is not None
             semantic = loaded.annotations.get("semantic", {})
-            assert semantic.get("tags", []) == []
+            assert semantic.get("keywords", []) == []
+            assert semantic.get("risk_tags", []) == []
+            assert semantic.get("actions", []) == []
         finally:
             json_path.unlink(missing_ok=True)
 

@@ -49,7 +49,8 @@
 
           # slower-whisper cache
           export SLOWER_WHISPER_CACHE_ROOT="''${HOME}/.cache/slower-whisper"
-          export PYTHONPATH="$PWD:''${PYTHONPATH:-}"
+          # Prefer the project venv on PYTHONPATH so uv-installed deps override nixpkgs shims
+          export PYTHONPATH="$PWD/.venv/lib/python3.12/site-packages:$PWD:''${PYTHONPATH:-}"
           # Make sure Python wheels (numpy/torch) find runtime libs
           export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc pkgs.zlib ]}:''${LD_LIBRARY_PATH:-}"
         '';

@@ -580,13 +580,14 @@ def test_synthetic_2speaker_diarization(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not available")
-def test_transcribe_file_with_diarization_skeleton(tmp_path, sample_audio_path):
+def test_transcribe_file_with_diarization_enabled(tmp_path, sample_audio_path):
     """
-    Test that enable_diarization=True completes without crashing (v1.1 skeleton).
+    Test that enable_diarization=True completes without crashing.
 
-    Expected behavior (skeleton):
+    Expected behavior:
     - Transcription succeeds
-    - speakers/turns may be None when diarization backend unavailable
+    - When diarization runs successfully on silent audio, speakers/turns may be empty lists
+    - When diarization backend is unavailable, speakers/turns may be None
     - meta.diarization.status reflects outcome ("ok", "skipped", or "error")
     - meta.diarization.requested = True
     """
@@ -610,9 +611,12 @@ def test_transcribe_file_with_diarization_skeleton(tmp_path, sample_audio_path):
     assert isinstance(transcript, Transcript)
     assert len(transcript.segments) > 0
 
-    # Verify diarization skeleton behavior
-    assert transcript.speakers is None, "speakers should be None in skeleton"
-    assert transcript.turns is None, "turns should be None in skeleton"
+    # Verify diarization behavior:
+    # - When diarization succeeds on silent audio: speakers=[], turns=[], status="ok"
+    # - When diarization backend unavailable: speakers=None, turns=None, status in {"skipped", "error"}
+    # Both scenarios are valid depending on environment
+    assert transcript.speakers is None or isinstance(transcript.speakers, list)
+    assert transcript.turns is None or isinstance(transcript.turns, list)
 
     # Verify metadata
     assert transcript.meta is not None
@@ -621,6 +625,12 @@ def test_transcribe_file_with_diarization_skeleton(tmp_path, sample_audio_path):
     diar_meta = transcript.meta["diarization"]
     assert diar_meta["status"] in {"ok", "skipped", "error"}
     assert diar_meta["requested"] is True
+
+    # If status is "ok", we should have list results (possibly empty for silent audio)
+    if diar_meta["status"] == "ok":
+        assert isinstance(transcript.speakers, list)
+        assert isinstance(transcript.turns, list)
+        assert "num_speakers" in diar_meta
 
 
 @pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not available")

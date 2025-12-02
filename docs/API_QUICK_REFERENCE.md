@@ -17,6 +17,11 @@ from transcription import (
     render_segment,
     to_turn_view,
     to_speaker_summary,
+    # Streaming (post-ASR)
+    StreamingSession,
+    StreamConfig,
+    StreamChunk,
+    StreamEvent,
     # Config
     TranscriptionConfig,
     EnrichmentConfig,
@@ -91,6 +96,24 @@ transcript = load_transcript("output.json")
 # Save
 save_transcript(transcript, "output.json")
 ```
+
+## Streaming (post-ASR v0.1)
+
+```python
+from transcription import StreamingSession, StreamConfig
+
+session = StreamingSession(StreamConfig(max_gap_sec=1.0))
+for chunk in asr_chunks:  # iterable of post-ASR chunks with start/end/text/speaker_id
+    events = session.ingest_chunk(chunk)
+    for event in events:
+        handle_stream_event(event)
+
+# Flush any remaining partial at EOS
+for event in session.end_of_stream():
+    handle_stream_event(event)
+```
+
+`StreamingSession` stitches ordered ASR chunks into `PartialSegment` and `FinalSegment` events. Current v0.1 API operates on post-ASR text (not raw audio) so you can stream final segments while Whisper runs elsewhere.
 
 ### CLI exports & validation
 
@@ -1002,29 +1025,7 @@ assert result is transcript  # Same object reference
 
 ### KeywordSemanticAnnotator
 
-Lightweight keyword-based tagger that detects conversation themes using pattern matching.
-
-**Constructor:**
-
-```python
-KeywordSemanticAnnotator(
-    keyword_map: dict[str, Iterable[str]] | None = None
-)
-```
-
-**Parameters:**
-
-- `keyword_map`: Dictionary mapping tag names to keyword lists. If not provided, uses defaults.
-
-**Default Keyword Map:**
-
-```python
-{
-    "pricing": ("price", "pricing", "quote", "budget", "discount"),
-    "escalation": ("escalate", "supervisor", "manager", "complaint"),
-    "churn_risk": ("cancel", "cancellation", "terminate", "churn"),
-}
-```
+Lightweight rule-based annotator that tags escalation/churn language and action items.
 
 **Example Usage:**
 
@@ -1032,52 +1033,16 @@ KeywordSemanticAnnotator(
 from transcription import load_transcript, save_transcript
 from transcription.semantic import KeywordSemanticAnnotator
 
-# Load transcript
-transcript = load_transcript("whisper_json/sales_call.json")
-
-# Create annotator with default keywords
-annotator = KeywordSemanticAnnotator()
-
-# Annotate transcript
-annotated = annotator.annotate(transcript)
-
-# Access semantic tags
-semantic = (annotated.annotations or {}).get("semantic", {})
-tags = semantic.get("tags", [])  # e.g., ["pricing", "churn_risk"]
-matches = semantic.get("matches", [])  # Keyword match details
-
-print(f"Detected themes: {tags}")
-for match in matches:
-    print(f"  - {match['tag']}: matched keyword '{match['keyword']}'")
-
-# Save annotated transcript
-save_transcript(annotated, "whisper_json/sales_call_annotated.json")
-```
-
-**Custom Keyword Map:**
-
-```python
-from transcription.semantic import KeywordSemanticAnnotator
-
-# Define custom keywords
-custom_keywords = {
-    "technical_issue": ("bug", "error", "crash", "broken", "not working"),
-    "feature_request": ("feature", "enhancement", "could you add", "wish"),
-    "positive_feedback": ("thank", "thanks", "great", "excellent", "love"),
-    "negative_feedback": ("hate", "terrible", "worst", "disappointed"),
-}
-
-# Create annotator with custom map
-annotator = KeywordSemanticAnnotator(keyword_map=custom_keywords)
-
-# Annotate
 transcript = load_transcript("whisper_json/support_call.json")
+annotator = KeywordSemanticAnnotator()
 annotated = annotator.annotate(transcript)
 
-# Check results
 semantic = (annotated.annotations or {}).get("semantic", {})
-if "technical_issue" in semantic.get("tags", []):
-    print("Support ticket involves technical issues")
+print("Keywords:", semantic.get("keywords", []))
+print("Risk tags:", semantic.get("risk_tags", []))
+print("Actions:", semantic.get("actions", []))
+
+save_transcript(annotated, "whisper_json/support_call_annotated.json")
 ```
 
 **Pipeline Integration:**
@@ -1102,18 +1067,23 @@ annotated = annotator.annotate(transcript)
 
 # Use annotated transcript for downstream tasks
 semantic = (annotated.annotations or {}).get("semantic", {})
-if "escalation" in semantic.get("tags", []):
+if "escalation" in semantic.get("risk_tags", []):
     print("⚠️  Alert: Escalation language detected")
     # Trigger workflow, send notification, etc.
+
+for action in semantic.get("actions", []):
+    print(f"Action: {action['text']} (speaker={action['speaker_id']})")
 ```
 
 **How It Works:**
 
-1. Concatenates all segment text into a single corpus (lowercased)
-2. Scans corpus for keyword matches from `keyword_map`
-3. Assigns tags based on matches found
-4. Stores results in `transcript.annotations["semantic"]` dict
-5. Returns modified transcript with annotations attached
+1. Scans each segment (case-insensitive) for escalation/churn lexicon hits.
+2. Detects action intents with patterns like "I'll …", "we will …", "let me …".
+3. Stores results in `transcript.annotations["semantic"]`:
+   - `keywords`: matched lexicon terms
+   - `risk_tags`: canonical risk buckets (e.g., `escalation`, `churn_risk`)
+   - `actions`: action items with `text`, `speaker_id`, `segment_ids`
+   - `matches`: optional debug entries for matched keywords
 
 **Output Structure:**
 
@@ -1121,10 +1091,14 @@ if "escalation" in semantic.get("tags", []):
 {
   "annotations": {
     "semantic": {
-      "tags": ["pricing", "churn_risk"],
+      "keywords": ["manager", "switch", "unacceptable"],
+      "risk_tags": ["churn_risk", "escalation"],
+      "actions": [
+        {"text": "I'll send the invoice after this call.", "speaker_id": "spk_0", "segment_ids": [0]}
+      ],
       "matches": [
-        {"tag": "pricing", "keyword": "discount"},
-        {"tag": "churn_risk", "keyword": "cancel"}
+        {"risk": "escalation", "keyword": "manager", "segment_id": 0},
+        {"risk": "churn_risk", "keyword": "switch", "segment_id": 1}
       ]
     }
   }
@@ -1133,10 +1107,21 @@ if "escalation" in semantic.get("tags", []):
 
 **Limitations:**
 
-- Simple string matching (case-insensitive)
+- Simple string/pattern matching (case-insensitive)
 - No context awareness (can produce false positives)
 - No negation handling ("not expensive" matches "pricing")
 - Designed for lightweight, fast tagging (not deep NLP analysis)
+
+**Customizing Lexicons:**
+
+```python
+custom = KeywordSemanticAnnotator(
+    escalation_keywords=("escalate", "unhappy", "manager"),
+    churn_keywords=("cancel", "downgrade", "switch"),
+    action_patterns=(r"\bi can escalate\b", r"\bwe will investigate\b"),
+)
+annotated = custom.annotate(transcript)
+```
 
 **When to Use:**
 
@@ -1144,36 +1129,6 @@ if "escalation" in semantic.get("tags", []):
 - Filtering conversations by theme
 - Triggering workflows based on keywords
 - Building training data for semantic models
-
-**Extending:**
-
-Create custom annotators by implementing the `SemanticAnnotator` protocol:
-
-```python
-from dataclasses import dataclass
-from transcription import Transcript
-
-@dataclass
-class CustomSemanticAnnotator:
-    """Custom annotator with advanced logic."""
-
-    def annotate(self, transcript: Transcript) -> Transcript:
-        # Custom logic here
-        # - ML-based intent classification
-        # - NER (named entity recognition)
-        # - Sentiment analysis per turn
-        # - Topic modeling
-
-        # Attach results to transcript.annotations
-        annotations = getattr(transcript, "annotations", None) or {}
-        annotations["semantic"] = {
-            "tags": ["custom_tag"],
-            "intent": "question",
-            # ... custom fields
-        }
-        transcript.annotations = annotations
-        return transcript
-```
 
 ### Common LLM Integration Patterns
 

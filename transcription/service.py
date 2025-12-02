@@ -28,6 +28,7 @@ from typing import Annotated, Any, cast
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
+from . import __version__
 from .api import enrich_transcript as _enrich_transcript
 from .api import load_transcript, transcribe_file
 from .config import EnrichmentConfig, TranscriptionConfig, WhisperTask, validate_compute_type
@@ -45,7 +46,7 @@ app = FastAPI(
         "Transcribe audio files with faster-whisper and optionally extract "
         "prosodic and emotional features from the audio waveform."
     ),
-    version="1.0.0",
+    version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -73,7 +74,7 @@ async def health_check() -> dict[str, str]:
     return {
         "status": "healthy",
         "service": "slower-whisper-api",
-        "version": "1.0.0",
+        "version": __version__,
         "schema_version": str(SCHEMA_VERSION),
     }
 

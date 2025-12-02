@@ -181,27 +181,41 @@ uv run python benchmarks/eval_summaries.py --dataset ami --n 5 \
 
 ### Diarization Evaluation (`eval_diarization.py`)
 
-**Status:** ✅ Implemented (tiny synthetic fixtures; pyannote-backed run pending HF_TOKEN)
+**Status:** ✅ Implemented (tiny synthetic fixtures; real pyannote run requires HF_TOKEN)
 
 **What it measures:**
 - Diarization Error Rate (DER)
 - Speaker count accuracy
 
-**Recent result:** Stub backend on 3 synthetic clips: avg DER ≈ 0.67; speaker counts 3/3 (see `benchmarks/DIARIZATION_REPORT.md`).
+**Recent result (stub):** `SLOWER_WHISPER_PYANNOTE_MODE=stub`, CPU on 3 synthetic clips: avg DER **0.451**, speaker-count accuracy **1.0** (see `benchmarks/DIARIZATION_REPORT.*` from manifest sha256 `34f8caa31589541c795dcc217df1688440bf25ee45d92669073eafdde0fe0120`).
 
 **Workflow:**
 1. Ensure dataset at `benchmarks/data/diarization` (fixtures already included).
-2. Run with pyannote once HF_TOKEN is available:
+2. Run the stub backend for quick regression (no HF_TOKEN required):
    ```bash
-   uv sync --extra diarization
-   HF_TOKEN=... SLOWER_WHISPER_PYANNOTE_MODE=auto PYTHONPATH=. \
-     python benchmarks/eval_diarization.py \
+   SLOWER_WHISPER_PYANNOTE_MODE=stub \
+     uv run python benchmarks/eval_diarization.py \
        --dataset benchmarks/data/diarization \
        --output-md benchmarks/DIARIZATION_REPORT.md \
        --output-json benchmarks/DIARIZATION_REPORT.json \
        --overwrite
    ```
-3. Reports land in Markdown/JSON for DER + speaker-count accuracy.
+3. Run with pyannote once HF_TOKEN is available (default model `pyannote/speaker-diarization-3.1`; override with `SLOWER_WHISPER_PYANNOTE_MODEL` if needed):
+   ```bash
+   uv sync --extra diarization
+   HF_TOKEN=... SLOWER_WHISPER_PYANNOTE_MODE=auto \
+     uv run python benchmarks/eval_diarization.py \
+       --dataset benchmarks/data/diarization \
+       --output-md benchmarks/DIARIZATION_REPORT_REAL.md \
+       --output-json benchmarks/DIARIZATION_REPORT_REAL.json \
+       --overwrite
+   ```
+4. Reports land in Markdown/JSON for DER + speaker-count accuracy.
+5. Optional: `uv run python scripts/verify_all.py --eval-diarization` runs the real backend in best-effort mode (skips if HF_TOKEN/pyannote are missing).
+
+**At a glance:**
+- Stub quick run: `benchmarks/DIARIZATION_REPORT.json` (used for CI regression guard).
+- Real pyannote run: `benchmarks/DIARIZATION_REPORT_REAL.json` (requires HF_TOKEN; not generated in this workspace).
 
 ### Emotion Evaluation (`eval_emotion.py`)
 

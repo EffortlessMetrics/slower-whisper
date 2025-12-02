@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-XX
+
+### Hardening & Performance
+
+- **Thread-safe emotion recognition**: `EmotionRecognizer` singleton now uses thread locks for safe concurrent access in multi-threaded environments.
+- **Thread-safe diarization**: `Diarizer` singleton uses thread locks; pipeline loaded once and reused across calls.
+- **Improved emotion resampling**: Upgraded from scipy to `librosa.resample` for higher-quality 16kHz resampling with logged fallback to scipy if librosa unavailable.
+- **Audio I/O optimization**: `AudioSegmentExtractor` instances are reused across segments within a file, avoiding redundant file handles and improving enrichment throughput.
+- **GPU cleanup API**: Exposed `cleanup_emotion_models()` in public API for explicit model unloading (useful for memory management in long-running services).
+
+### Fixed
+
+- **API version reporting**: `/version` endpoint now uses `transcription.__version__` instead of hardcoded string.
+- **Diarization overlap default**: Deprecated `diarize_overlap` parameter normalized to use `overlap_threshold=0.3` consistently.
+- **Test assertion update**: `test_transcribe_file_with_diarization_enabled` now correctly accepts empty lists (not just None) when diarization runs successfully but finds no speakers.
+
+### Evaluation
+
+- **Real diarization eval path**: `verify_all.py --eval-diarization` now runs pyannote.audio backend when `SLOWER_WHISPER_PYANNOTE_MODE=auto` and `HF_TOKEN` is available. Outputs to `DIARIZATION_REPORT_REAL.md/.json`.
+- **Synthetic fixture limitation documented**: Synthetic tone fixtures work for code flow testing but yield DER=1.0 on real backend (pyannote expects human speech).
+
 ## [1.3.1] - 2026-01-XX
 
 ### Maintenance

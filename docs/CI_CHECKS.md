@@ -89,12 +89,26 @@ The CI script:
 | ------ | ---------------------------------------------------- | -------- | ------------------------------- |
 | `fast` | Lint, format, typecheck, fast tests                  | ~5 min   | During development, pre-commit  |
 | `full` | Fast mode + integration, BDD, verify, dogfood        | ~30 min  | Before PR, before release       |
+| `api`  | FastAPI unit/integration + API BDD (no Docker/K8s)   | ~10 min  | Nightly/manual coverage of API  |
 
 ### Verify workflow split
 
 - PRs run `.github/workflows/verify.yml` in quick mode via `nix develop --command uv run slower-whisper-verify --quick`.
 - Nightly schedule/manual dispatch runs the same workflow in full mode (`uv run slower-whisper-verify`), which includes Docker + K8s checks and benefits from `HF_TOKEN` when running real pyannote.
+- A separate `verify-api` job (schedule/manual) installs `--extra api` and runs `uv run slower-whisper-verify --api` to exercise FastAPI/LLM surfaces without slowing PRs.
+- Both quick/full verify invoke `benchmarks/check_diarization_stub.py` to ensure the stub diarization report (`benchmarks/DIARIZATION_REPORT.json`) stays sane without requiring HF_TOKEN.
 - Both paths share the Nix dev shell, so local runs match CI output.
+
+### API Mode
+
+```bash
+nix develop --command uv sync --extra api --extra dev
+nix develop --command uv run slower-whisper-verify --api
+```
+
+Use this to cover API-only surfaces (FastAPI + BDD) when you don't need Docker/K8s.
+
+> Nix note: If `uv run slower-whisper-verify --api` reports a FastAPI import error mentioning `typing_extensions.Sentinel`, the shell is pulling an older `typing_extensions` from `/nix/store`. The project now pins `typing-extensions>=4.9`, so re-run `uv sync --extra api --extra dev`; if the error persists, upgrade nixpkgs or force the project `.venv` ahead of Nix on `PYTHONPATH`.
 
 ### Fast Mode
 
@@ -196,6 +210,12 @@ The workflow uses the `HF_TOKEN` secret from GitHub repository settings. It also
 - `~/.cache/huggingface` (model downloads)
 - `.venv` (Python packages)
 - `.cache/uv` (uv cache)
+
+---
+
+## Known Warnings
+
+- **torchcodec / FFmpeg compatibility** — Some runs emit a runtime warning from `torchcodec` about FFmpeg bindings. This is expected with the current environment and does not affect core transcription/enrichment paths. Keep it visible for now; once codec-backed flows matter, align the torch/FFmpeg/torchcodec versions instead of filtering it away.
 
 ---
 

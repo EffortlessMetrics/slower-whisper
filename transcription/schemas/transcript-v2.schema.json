@@ -199,10 +199,38 @@
           "type": ["object", "null"],
           "description": "Lightweight semantic tags derived from transcript text",
           "properties": {
+            "keywords": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Normalized keywords detected in transcript text"
+            },
+            "risk_tags": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Risk-oriented semantic tags (e.g., escalation, churn_risk)"
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {"type": "string", "description": "Action item text"},
+                  "speaker_id": {"type": ["string", "null"], "description": "Speaker who committed to the action"},
+                  "segment_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Segments associated with the action"
+                  },
+                  "pattern": {"type": "string", "description": "Pattern that triggered the action"}
+                },
+                "additionalProperties": true
+              },
+              "description": "Action items detected from the conversation"
+            },
             "tags": {
               "type": "array",
               "items": {"type": "string"},
-              "description": "Set of semantic tags applied to the transcript"
+              "description": "Set of semantic tags applied to the transcript (deprecated; use risk_tags)"
             },
             "matches": {
               "type": "array",
@@ -210,7 +238,9 @@
                 "type": "object",
                 "properties": {
                   "tag": {"type": "string"},
-                  "keyword": {"type": "string"}
+                  "keyword": {"type": "string"},
+                  "risk": {"type": "string"},
+                  "segment_id": {"type": "integer"}
                 },
                 "additionalProperties": true
               },
