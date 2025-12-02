@@ -52,7 +52,7 @@ from typing import Any
 
 # Version of the transcription pipeline; included in JSON metadata.
 # Must be defined before other imports to avoid circular imports
-__version__ = "1.3.0"
+__version__ = "1.5.0"
 
 # Configure global cache environment for all model downloads
 # This ensures all HF/torch models are cached under SLOWER_WHISPER_CACHE_ROOT

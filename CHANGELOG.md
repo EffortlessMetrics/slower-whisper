@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-12-02
+
+### Schema & Validation
+
+- **Strict validation mode**: Added `strict` parameter to `load_transcript()` for JSON schema validation with clear error messages via `TranscriptionError`.
+- **Prosody schema alignment**: Fixed energy/rate level enums to match speaker-relative implementation (very_low/low/neutral/high/very_high/unknown).
+- **Emotion score clamping**: Dimensional emotion scores (valence, arousal) now guaranteed in [0.0, 1.0] range for schema compliance.
+- **Baseline quality tracking**: Speaker baseline computation now returns quality indicator (good/low_samples/insufficient) with sample counts.
+
+### Developer Experience
+
+- **Speaker ID consolidation**: New `transcription/speaker_id.py` module with `get_speaker_id()` and `get_speaker_label_or_id()` replaces 6 duplicate implementations across codebase.
+- **Exported speaker utilities**: `get_speaker_id()` and `get_speaker_label_or_id()` now available in public API via `transcription/__init__.py`.
+- **CLI consistency**: Added `--skip-existing` alias to transcribe command, matching enrich command behavior.
+- **Progress indicators**: Added `--progress` flag to both transcribe and enrich commands for long-running jobs.
+
+### BDD Test Coverage
+
+- **Schema validation scenario**: "Enriched transcript validates against JSON schema" now runs actual schema validation in BDD tests.
+- **Audio state contract**: "Audio state has correct structure and types" validates prosody enums, emotion score ranges, and extraction status values.
+
+### Fixed
+
+- **CHANGELOG formatting**: Fixed markdown lint warnings (blank lines around headings/lists).
+- **Import cleanup**: Removed unused import in exporters.py.
+
 ## [1.4.0] - 2026-01-XX
 
 ### Hardening & Performance
