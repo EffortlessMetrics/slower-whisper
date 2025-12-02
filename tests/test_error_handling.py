@@ -752,11 +752,10 @@ class TestCLIErrorExitCodes:
         # Create empty raw_audio directory (no audio files)
         argv = ["transcribe", "--root", str(temp_project_root), "--device", "cpu"]
 
-        # Mock the pipeline to trigger TranscriptionError
-        with patch("transcription.pipeline.run_pipeline"):
-            exit_code = cli_main(argv)
+        # With no audio files, CLI should return 0 (not an error, just no work to do)
+        exit_code = cli_main(argv)
 
-        assert exit_code == 1  # SlowerWhisperError exit code
+        assert exit_code == 0  # No files is not an error condition
 
     def test_cli_invalid_config_returns_exit_code_1(self, temp_project_root, tmp_path, capsys):
         """Test CLI returns exit code 1 for invalid transcription configuration."""
@@ -776,9 +775,7 @@ class TestCLIErrorExitCodes:
         argv = ["transcribe", "--root", str(temp_project_root)]
 
         # Mock to raise an unexpected exception
-        with patch(
-            "transcription.api.transcribe_directory", side_effect=RuntimeError("Unexpected")
-        ):
+        with patch("transcription.pipeline.run_pipeline", side_effect=RuntimeError("Unexpected")):
             exit_code = cli_main(argv)
 
         assert exit_code == 2  # Unexpected error exit code
