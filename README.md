@@ -2,7 +2,7 @@
 
 ## Local-first conversation signal engine for LLMs
 
-![Version](https://img.shields.io/badge/version-1.5.0-blue)
+![Version](https://img.shields.io/badge/version-1.7.0-blue)
 ![Tests](https://img.shields.io/badge/tests-267%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-57%25-yellow)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
@@ -49,6 +49,7 @@ slower-whisper is a **local-first, open-source conversation signal engine** that
 ✅ **Modular architecture** — use only the features you need
 ✅ **Contract-driven** — BDD scenarios guarantee behavioral stability
 ✅ **LLM-native** — designed for RAG, summarization, analysis, and prompt engineering
+✅ **Streaming support** — real-time enrichment and semantic annotation for live conversations
 
 ## Quick Start
 

@@ -1,6 +1,6 @@
 # slower-whisper Roadmap
 
-**Current Version:** v1.5.0 (Schema hardening, thread-safety, developer experience)
+**Current Version:** v1.7.0 (Streaming enrichment, live semantics, unified config)
 **Last Updated:** 2025-12-02
 <!-- cspell:ignore pyannote disfluency disfluencies langchain llamaindex Praat
 cuda qwen Qwen Smol Neur INTERSPEECH IEMOCAP multimodal mypy -->
@@ -180,6 +180,43 @@ v1.x JSON is forward-compatible with v2.x readers.
 - `pyrightconfig.json`: VS Code/Pylance LSP support
 - `transcription/py.typed`: PEP 561 marker
 - `docs/TYPING_POLICY.md`: Typing standards and contribution guidelines
+
+---
+
+## v1.7.0 — Streaming Enrichment & Live Semantics (SHIPPED ✅)
+
+**Released:** 2025-12-02
+**Status:** Current stable version
+
+### What Shipped (v1.7.0)
+
+- **Streaming Audio Enrichment (`StreamingEnrichmentSession`)**: Real-time audio feature extraction for streaming transcription with prosody and emotion analysis as segments are finalized. Provides low-latency enrichment (~60-220ms) for live applications with graceful error handling and session statistics.
+- **Live Semantic Annotation (`LiveSemanticSession`)**: Turn-aware semantic enrichment for streaming conversations with automatic speaker turn detection, keyword extraction, risk flag detection, and action item identification. Maintains rolling context window for conversation coherence.
+- **Unified Configuration API (`Config.from_sources()`)**: New classmethod for `TranscriptionConfig` and `EnrichmentConfig` that loads settings from multiple sources with proper precedence (CLI args > config file > environment > defaults). Simplifies programmatic config creation without argparse.
+- **Configuration Documentation (`docs/CONFIGURATION.md`)**: Comprehensive guide to configuration management, precedence rules, and usage examples for all configuration sources.
+- **Extended Streaming Event Types**: Added `SEMANTIC_UPDATE` event type to `StreamEventType` enum for real-time semantic annotation events.
+- **StreamSegment Schema Enhancement**: Added `audio_state` field to `StreamSegment` dataclass for carrying enrichment data through streaming pipeline.
+
+### Streaming Architecture
+
+- **Low-latency enrichment**: ~60-220ms per segment for prosody + emotion extraction
+- **Turn-aware semantics**: Automatic speaker turn detection with configurable pause thresholds (default: 1.0s)
+- **Event-driven design**: Clean event types (`SEGMENT_FINALIZED`, `SEMANTIC_UPDATE`) for downstream integration
+- **Session statistics**: Built-in counters and metrics for monitoring streaming performance
+
+### Examples & Documentation
+
+- `examples/streaming/enrich_stream_from_transcript.py`: Demo streaming enrichment on pre-transcribed data
+- `examples/streaming/live_semantics_demo.py`: Demo turn-aware semantic annotation with optional LLM integration
+- `docs/CONFIGURATION.md`: Complete configuration management guide
+- Updated `docs/API.md`: Quick reference for new streaming and config APIs
+
+### Future Enhancements (v1.8.0)
+
+- Streaming semantics integration quality improvements
+- Event callback API for easier downstream integration
+- Semantic tuning based on real-world usage
+- Enhanced test coverage for streaming semantics
 
 ---
 
