@@ -1,277 +1,29 @@
 """Comprehensive tests for LiveSemanticSession (streaming + semantic annotation).
 
 This test suite validates the integration of streaming transcription with real-time
-semantic annotation, following the test plan:
+semantic annotation using the production LiveSemanticSession implementation.
 
-1. State machine tests: single speaker, speaker changes, pause splits
-2. Semantic annotation tests: keywords, risk_tags, actions detected
+Test Coverage:
+1. Turn boundary detection: speaker changes, pause splits
+2. Semantic annotation: keywords, risk_tags, actions detected per turn
 3. Multi-speaker scenarios: alternating speakers, rapid switches
-4. Edge cases: empty text, no speaker IDs, annotation failures
-5. Turn metadata: question counting, interruptions
+4. Edge cases: empty text, no speaker IDs, monotonic ordering
+5. Turn metadata: question counting
 6. Context window: eviction by size and time
 
 Design:
+- Tests the REAL LiveSemanticSession from transcription.streaming_semantic
 - Uses helper functions for chunk creation and assertion
 - Clear test names describing scenario and expected behavior
-- Mirrors patterns from test_streaming.py for consistency
+- Validates SEMANTIC_UPDATE event structure and payload
 """
 
 from __future__ import annotations
 
-from collections import deque
-from dataclasses import dataclass, field
-from typing import Any
-
 import pytest
 
-from transcription.models import Segment, Transcript
-from transcription.semantic import KeywordSemanticAnnotator
-from transcription.streaming import StreamChunk, StreamConfig, StreamEventType, StreamingSession
-
-# =============================================================================
-# Helper Classes
-# =============================================================================
-
-
-@dataclass
-class SemanticConfig:
-    """Configuration for semantic annotation in streaming."""
-
-    enable_keywords: bool = True
-    enable_risk_tags: bool = True
-    enable_actions: bool = True
-    annotator: KeywordSemanticAnnotator | None = None
-
-    def __post_init__(self) -> None:
-        if self.annotator is None:
-            object.__setattr__(self, "annotator", KeywordSemanticAnnotator())
-
-
-@dataclass
-class ContextWindow:
-    """Rolling context window for finalized segments with semantic annotations."""
-
-    max_segments: int = 10
-    max_time_sec: float = 120.0
-    segments: deque[dict[str, Any]] = field(default_factory=deque)
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.segments, deque):
-            object.__setattr__(self, "segments", deque(maxlen=self.max_segments))
-
-    def add(self, segment: dict[str, Any]) -> None:
-        """Add segment and prune old segments by time."""
-        self.segments.append(segment)
-
-        # Prune segments older than max_time_sec
-        if len(self.segments) > 1:
-            latest_end = self.segments[-1]["end"]
-            while self.segments and (latest_end - self.segments[0]["end"]) > self.max_time_sec:
-                self.segments.popleft()
-
-    def get_keywords(self) -> list[str]:
-        """Extract unique keywords from context window."""
-        all_keywords = []
-        for seg in self.segments:
-            all_keywords.extend(seg.get("keywords", []))
-        return sorted(set(all_keywords))
-
-    def get_risk_tags(self) -> list[str]:
-        """Extract unique risk tags from context window."""
-        all_tags = []
-        for seg in self.segments:
-            all_tags.extend(seg.get("risk_tags", []))
-        return sorted(set(all_tags))
-
-
-@dataclass
-class TurnMetadata:
-    """Metadata for a turn (speaker turn)."""
-
-    question_count: int = 0
-    interruption_started_here: bool = False
-    avg_pause_ms: float | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "question_count": self.question_count,
-            "interruption_started_here": self.interruption_started_here,
-            "avg_pause_ms": self.avg_pause_ms,
-        }
-
-
-class LiveSemanticSession:
-    """
-    Streaming session with integrated semantic annotation.
-
-    Combines StreamingSession for segment aggregation with KeywordSemanticAnnotator
-    for real-time keyword/risk detection. Maintains a context window of finalized
-    segments and tracks turn-level metadata.
-
-    Usage:
-        session = LiveSemanticSession(
-            stream_config=StreamConfig(max_gap_sec=1.0),
-            semantic_config=SemanticConfig()
-        )
-
-        for chunk in chunks:
-            events = session.ingest_chunk(chunk)
-            for event in events:
-                if event.type == StreamEventType.FINAL_SEGMENT:
-                    # Access semantic annotations
-                    keywords = event.segment.keywords
-                    risk_tags = event.segment.risk_tags
-    """
-
-    def __init__(
-        self,
-        stream_config: StreamConfig | None = None,
-        semantic_config: SemanticConfig | None = None,
-        context_window_config: dict[str, Any] | None = None,
-    ) -> None:
-        self.stream_session = StreamingSession(stream_config or StreamConfig())
-        self.semantic_config = semantic_config or SemanticConfig()
-        self.context_window = ContextWindow(
-            **(context_window_config or {"max_segments": 10, "max_time_sec": 120.0})
-        )
-
-        # Track turn metadata (keyed by speaker_id)
-        self.turn_metadata: dict[str, TurnMetadata] = {}
-        self.previous_speaker: str | None = None
-
-    def ingest_chunk(self, chunk: StreamChunk) -> list[SemanticStreamEvent]:
-        """Ingest chunk and return semantically annotated events."""
-        base_events = self.stream_session.ingest_chunk(chunk)
-        semantic_events = []
-
-        for event in base_events:
-            if event.type == StreamEventType.FINAL_SEGMENT:
-                # Annotate finalized segment
-                annotated_segment = self._annotate_segment(event.segment)
-                self.context_window.add(annotated_segment)
-
-                # Update turn metadata
-                self._update_turn_metadata(annotated_segment)
-
-                semantic_events.append(
-                    SemanticStreamEvent(
-                        type=StreamEventType.FINAL_SEGMENT, segment=annotated_segment
-                    )
-                )
-            else:
-                # Partial segment - no annotation yet
-                partial = self._segment_to_dict(event.segment)
-                semantic_events.append(
-                    SemanticStreamEvent(type=StreamEventType.PARTIAL_SEGMENT, segment=partial)
-                )
-
-        return semantic_events
-
-    def end_of_stream(self) -> list[SemanticStreamEvent]:
-        """Finalize stream and annotate remaining segments."""
-        base_events = self.stream_session.end_of_stream()
-        semantic_events = []
-
-        for event in base_events:
-            annotated_segment = self._annotate_segment(event.segment)
-            self.context_window.add(annotated_segment)
-            self._update_turn_metadata(annotated_segment)
-
-            semantic_events.append(
-                SemanticStreamEvent(type=StreamEventType.FINAL_SEGMENT, segment=annotated_segment)
-            )
-
-        return semantic_events
-
-    def _annotate_segment(self, segment: Any) -> dict[str, Any]:
-        """Annotate a segment with semantic tags."""
-        # Convert StreamSegment to Segment for annotation
-        temp_segment = Segment(
-            id=0,
-            start=segment.start,
-            end=segment.end,
-            text=segment.text,
-            speaker={"id": segment.speaker_id} if segment.speaker_id else None,
-        )
-
-        # Create minimal transcript for annotation
-        temp_transcript = Transcript(
-            file_name="stream", language="en", segments=[temp_segment], meta={}
-        )
-
-        # Run semantic annotation
-        if (
-            self.semantic_config.annotator
-            and self.semantic_config.enable_keywords
-            or self.semantic_config.enable_risk_tags
-            or self.semantic_config.enable_actions
-        ):
-            annotated_transcript = self.semantic_config.annotator.annotate(temp_transcript)
-            semantic_data = (
-                annotated_transcript.annotations.get("semantic", {})
-                if annotated_transcript.annotations
-                else {}
-            )
-        else:
-            semantic_data = {}
-
-        # Build annotated segment dict
-        return {
-            "start": segment.start,
-            "end": segment.end,
-            "text": segment.text,
-            "speaker_id": segment.speaker_id,
-            "keywords": semantic_data.get("keywords", []),
-            "risk_tags": semantic_data.get("risk_tags", []),
-            "actions": semantic_data.get("actions", []),
-        }
-
-    def _segment_to_dict(self, segment: Any) -> dict[str, Any]:
-        """Convert StreamSegment to dict without annotation."""
-        return {
-            "start": segment.start,
-            "end": segment.end,
-            "text": segment.text,
-            "speaker_id": segment.speaker_id,
-            "keywords": [],
-            "risk_tags": [],
-            "actions": [],
-        }
-
-    def _update_turn_metadata(self, segment: dict[str, Any]) -> None:
-        """Update turn metadata based on segment content."""
-        speaker_id = segment.get("speaker_id") or "unknown"
-
-        # Initialize metadata if needed
-        if speaker_id not in self.turn_metadata:
-            self.turn_metadata[speaker_id] = TurnMetadata()
-
-        metadata = self.turn_metadata[speaker_id]
-
-        # Count questions (simple heuristic: ends with '?')
-        text = segment.get("text", "")
-        if text.strip().endswith("?"):
-            metadata.question_count += 1
-
-        # Detect interruptions (speaker change with small gap)
-        if self.previous_speaker and self.previous_speaker != speaker_id:
-            # Check if this is a rapid speaker change (gap < 0.2s)
-            if len(self.context_window.segments) > 0:
-                prev_seg = self.context_window.segments[-1]
-                gap = segment["start"] - prev_seg["end"]
-                if gap < 0.2:
-                    metadata.interruption_started_here = True
-
-        self.previous_speaker = speaker_id
-
-
-@dataclass
-class SemanticStreamEvent:
-    """Streaming event with semantic annotations."""
-
-    type: StreamEventType
-    segment: dict[str, Any]
-
+from transcription.streaming import StreamChunk, StreamEventType
+from transcription.streaming_semantic import LiveSemanticsConfig, LiveSemanticSession
 
 # =============================================================================
 # Helper Functions
@@ -283,52 +35,35 @@ def _chunk(start: float, end: float, text: str, speaker: str | None = None) -> S
     return {"start": start, "end": end, "text": text, "speaker_id": speaker}
 
 
-def assert_keywords(segment: dict[str, Any], expected: list[str]) -> None:
-    """Assert segment contains expected keywords."""
-    assert sorted(segment.get("keywords", [])) == sorted(expected)
-
-
-def assert_risk_tags(segment: dict[str, Any], expected: list[str]) -> None:
-    """Assert segment contains expected risk tags."""
-    assert sorted(segment.get("risk_tags", [])) == sorted(expected)
-
-
-def assert_actions(segment: dict[str, Any], min_count: int = 0) -> None:
-    """Assert segment has at least min_count actions."""
-    assert len(segment.get("actions", [])) >= min_count
-
-
 # =============================================================================
-# 1. State Machine Tests
+# 1. Turn Boundary Detection Tests
 # =============================================================================
 
 
-def test_single_speaker_straight_line() -> None:
-    """Single speaker, continuous speech -> aggregates into one segment."""
+def test_single_speaker_buffers_until_finalized() -> None:
+    """Single speaker, continuous chunks -> buffered into one turn on end_of_stream."""
     session = LiveSemanticSession()
 
     chunk1 = _chunk(0.0, 0.5, "hello there", "spk_0")
     chunk2 = _chunk(0.6, 1.2, "how are you", "spk_0")
 
+    # Chunks with same speaker and small gap should not finalize
     events1 = session.ingest_chunk(chunk1)
-    assert len(events1) == 1
-    assert events1[0].type == StreamEventType.PARTIAL_SEGMENT
-    assert events1[0].segment["text"] == "hello there"
+    assert len(events1) == 0  # No finalization yet
 
     events2 = session.ingest_chunk(chunk2)
-    assert len(events2) == 1
-    assert events2[0].type == StreamEventType.PARTIAL_SEGMENT
-    assert events2[0].segment["text"] == "hello there how are you"
+    assert len(events2) == 0  # Still buffering
 
+    # Finalize on end_of_stream
     finals = session.end_of_stream()
     assert len(finals) == 1
-    assert finals[0].type == StreamEventType.FINAL_SEGMENT
-    assert finals[0].segment["text"] == "hello there how are you"
-    assert finals[0].segment["speaker_id"] == "spk_0"
+    assert finals[0].type == StreamEventType.SEMANTIC_UPDATE
+    assert finals[0].semantic.turn.text == "hello there how are you"
+    assert finals[0].semantic.turn.speaker_id == "spk_0"
 
 
-def test_speaker_change_finalizes_and_annotates() -> None:
-    """Speaker change -> finalizes previous segment with annotations."""
+def test_speaker_change_finalizes_turn() -> None:
+    """Speaker change -> finalizes buffered turn with semantic annotations."""
     session = LiveSemanticSession()
 
     chunk1 = _chunk(0.0, 0.7, "I need to cancel my account", "spk_0")
@@ -337,41 +72,52 @@ def test_speaker_change_finalizes_and_annotates() -> None:
     session.ingest_chunk(chunk1)
     events = session.ingest_chunk(chunk2)
 
-    # Should get: FINAL (spk_0) + PARTIAL (spk_1)
-    assert [e.type for e in events] == [
-        StreamEventType.FINAL_SEGMENT,
-        StreamEventType.PARTIAL_SEGMENT,
-    ]
+    # Should finalize spk_0's turn
+    assert len(events) == 1
+    assert events[0].type == StreamEventType.SEMANTIC_UPDATE
 
-    final_seg = events[0].segment
-    assert final_seg["speaker_id"] == "spk_0"
-    assert final_seg["text"] == "I need to cancel my account"
+    payload = events[0].semantic
+    assert payload.turn.speaker_id == "spk_0"
+    assert payload.turn.text == "I need to cancel my account"
     # Should detect "cancel" keyword and churn_risk tag
-    assert "cancel" in final_seg["keywords"]
-    assert "churn_risk" in final_seg["risk_tags"]
-
-    partial_seg = events[1].segment
-    assert partial_seg["speaker_id"] == "spk_1"
-    assert partial_seg["text"] == "Let me help you with that"
+    assert "cancel" in payload.keywords
+    assert "churn_risk" in payload.risk_tags
 
 
-def test_pause_split_finalizes_segment() -> None:
-    """Large gap (pause) -> finalizes segment even with same speaker."""
-    session = LiveSemanticSession(stream_config=StreamConfig(max_gap_sec=0.5))
+def test_pause_split_finalizes_turn() -> None:
+    """Large gap (pause >= turn_gap_sec) -> finalizes turn even with same speaker."""
+    session = LiveSemanticSession(config=LiveSemanticsConfig(turn_gap_sec=1.0))
 
     chunk1 = _chunk(0.0, 0.4, "hello", "spk_0")
-    chunk2 = _chunk(2.0, 2.5, "there", "spk_0")  # gap of 1.6s > 0.5s
+    chunk2 = _chunk(2.0, 2.5, "there", "spk_0")  # gap of 1.6s >= 1.0s
 
     session.ingest_chunk(chunk1)
     events = session.ingest_chunk(chunk2)
 
-    assert [e.type for e in events] == [
-        StreamEventType.FINAL_SEGMENT,
-        StreamEventType.PARTIAL_SEGMENT,
-    ]
-    assert events[0].segment["text"] == "hello"
-    assert events[1].segment["text"] == "there"
-    assert events[1].segment["start"] == pytest.approx(2.0)
+    # Should finalize first turn due to pause
+    assert len(events) == 1
+    assert events[0].type == StreamEventType.SEMANTIC_UPDATE
+    assert events[0].semantic.turn.text == "hello"
+    assert events[0].semantic.turn.speaker_id == "spk_0"
+
+
+def test_small_gap_same_speaker_buffers() -> None:
+    """Small gap with same speaker -> continues buffering."""
+    session = LiveSemanticSession(config=LiveSemanticsConfig(turn_gap_sec=2.0))
+
+    chunk1 = _chunk(0.0, 1.0, "hello", "spk_0")
+    chunk2 = _chunk(1.5, 2.5, "world", "spk_0")  # gap of 0.5s < 2.0s
+
+    session.ingest_chunk(chunk1)
+    events = session.ingest_chunk(chunk2)
+
+    # Should not finalize (gap too small)
+    assert len(events) == 0
+
+    # Verify buffering by finalizing at end
+    finals = session.end_of_stream()
+    assert len(finals) == 1
+    assert finals[0].semantic.turn.text == "hello world"
 
 
 # =============================================================================
@@ -387,10 +133,10 @@ def test_escalation_keyword_detection() -> None:
     session.ingest_chunk(chunk)
     events = session.end_of_stream()
 
-    final_seg = events[0].segment
-    assert "unacceptable" in final_seg["keywords"]
-    assert "manager" in final_seg["keywords"]
-    assert "escalation" in final_seg["risk_tags"]
+    payload = events[0].semantic
+    assert "unacceptable" in payload.keywords
+    assert "manager" in payload.keywords
+    assert "escalation" in payload.risk_tags
 
 
 def test_churn_keyword_detection() -> None:
@@ -401,11 +147,11 @@ def test_churn_keyword_detection() -> None:
     session.ingest_chunk(chunk)
     events = session.end_of_stream()
 
-    final_seg = events[0].segment
-    assert "cancel" in final_seg["keywords"]
-    assert "switch" in final_seg["keywords"]
-    assert "competitor" in final_seg["keywords"]
-    assert "churn_risk" in final_seg["risk_tags"]
+    payload = events[0].semantic
+    assert "cancel" in payload.keywords
+    assert "switch" in payload.keywords
+    assert "competitor" in payload.keywords
+    assert "churn_risk" in payload.risk_tags
 
 
 def test_pricing_keyword_detection() -> None:
@@ -416,11 +162,11 @@ def test_pricing_keyword_detection() -> None:
     session.ingest_chunk(chunk)
     events = session.end_of_stream()
 
-    final_seg = events[0].segment
-    assert "price" in final_seg["keywords"]
-    assert "expensive" in final_seg["keywords"]
-    assert "budget" in final_seg["keywords"]
-    assert "pricing" in final_seg["risk_tags"]
+    payload = events[0].semantic
+    assert "price" in payload.keywords
+    assert "expensive" in payload.keywords
+    assert "budget" in payload.keywords
+    assert "pricing" in payload.risk_tags
 
 
 def test_action_item_detection() -> None:
@@ -431,15 +177,14 @@ def test_action_item_detection() -> None:
     session.ingest_chunk(chunk)
     events = session.end_of_stream()
 
-    final_seg = events[0].segment
-    assert len(final_seg["actions"]) > 0
-    action = final_seg["actions"][0]
-    assert action["text"] == "I'll send you the details by email tomorrow"
-    assert action["speaker_id"] == "spk_1"
+    payload = events[0].semantic
+    assert len(payload.actions) > 0
+    action = payload.actions[0]
+    assert "send" in action["text"].lower() or "email" in action["text"].lower()
 
 
-def test_multiple_risk_tags_in_one_segment() -> None:
-    """Multiple risk types in single segment -> all detected."""
+def test_multiple_risk_tags_in_one_turn() -> None:
+    """Multiple risk types in single turn -> all detected."""
     session = LiveSemanticSession()
 
     chunk = _chunk(
@@ -448,9 +193,9 @@ def test_multiple_risk_tags_in_one_segment() -> None:
     session.ingest_chunk(chunk)
     events = session.end_of_stream()
 
-    final_seg = events[0].segment
+    payload = events[0].semantic
     # Should detect pricing, churn, and escalation
-    risk_tags = final_seg["risk_tags"]
+    risk_tags = payload.risk_tags
     assert "pricing" in risk_tags
     assert "churn_risk" in risk_tags
     assert "escalation" in risk_tags
@@ -462,7 +207,7 @@ def test_multiple_risk_tags_in_one_segment() -> None:
 
 
 def test_alternating_speakers() -> None:
-    """Alternating speakers -> each speaker change finalizes segment."""
+    """Alternating speakers -> each speaker change finalizes turn."""
     session = LiveSemanticSession()
 
     chunks = [
@@ -472,54 +217,40 @@ def test_alternating_speakers() -> None:
         _chunk(3.1, 4.0, "I understand", "spk_1"),
     ]
 
-    all_finals = []
+    all_updates = []
     for chunk in chunks:
         events = session.ingest_chunk(chunk)
-        all_finals.extend([e for e in events if e.type == StreamEventType.FINAL_SEGMENT])
+        all_updates.extend([e for e in events if e.type == StreamEventType.SEMANTIC_UPDATE])
 
-    # Should have 3 finals (last one is still partial)
-    assert len(all_finals) == 3
+    # Should have 3 updates (last turn not finalized yet)
+    assert len(all_updates) == 3
 
     # Check speakers alternate
-    assert all_finals[0].segment["speaker_id"] == "spk_0"
-    assert all_finals[1].segment["speaker_id"] == "spk_1"
-    assert all_finals[2].segment["speaker_id"] == "spk_0"
+    assert all_updates[0].semantic.turn.speaker_id == "spk_0"
+    assert all_updates[1].semantic.turn.speaker_id == "spk_1"
+    assert all_updates[2].semantic.turn.speaker_id == "spk_0"
 
     # Check semantic annotation on spk_0's second turn
-    assert "cancel" in all_finals[2].segment["keywords"]
+    assert "cancel" in all_updates[2].semantic.keywords
 
 
-def test_rapid_speaker_switches() -> None:
-    """Rapid speaker switches (< 0.2s gap) -> detected as interruptions."""
-    session = LiveSemanticSession()
-
-    chunk1 = _chunk(0.0, 1.0, "Let me explain", "spk_0")
-    chunk2 = _chunk(1.05, 2.0, "No wait", "spk_1")  # gap = 0.05s < 0.2s
-
-    session.ingest_chunk(chunk1)
-    session.ingest_chunk(chunk2)
-
-    # Check turn metadata for interruption
-    assert session.turn_metadata["spk_1"].interruption_started_here is True
-
-
-def test_same_speaker_multiple_segments() -> None:
-    """Same speaker with pauses -> multiple segments for same speaker."""
-    session = LiveSemanticSession(stream_config=StreamConfig(max_gap_sec=0.5))
+def test_same_speaker_multiple_turns_with_pauses() -> None:
+    """Same speaker with long pauses -> multiple turns for same speaker."""
+    session = LiveSemanticSession(config=LiveSemanticsConfig(turn_gap_sec=1.0))
 
     chunks = [
         _chunk(0.0, 0.5, "First thought", "spk_0"),
-        _chunk(2.0, 2.5, "Second thought", "spk_0"),  # gap = 1.5s
-        _chunk(4.0, 4.5, "Third thought", "spk_0"),  # gap = 1.5s
+        _chunk(2.0, 2.5, "Second thought", "spk_0"),  # gap = 1.5s >= 1.0s
+        _chunk(4.5, 5.0, "Third thought", "spk_0"),  # gap = 2.0s >= 1.0s
     ]
 
     all_events = []
     for chunk in chunks:
         all_events.extend(session.ingest_chunk(chunk))
 
-    finals = [e for e in all_events if e.type == StreamEventType.FINAL_SEGMENT]
-    assert len(finals) == 2  # Two gaps created 2 finals (third is still partial)
-    assert all(f.segment["speaker_id"] == "spk_0" for f in finals)
+    updates = [e for e in all_events if e.type == StreamEventType.SEMANTIC_UPDATE]
+    assert len(updates) == 2  # Two pauses created 2 finalized turns (third still buffered)
+    assert all(e.semantic.turn.speaker_id == "spk_0" for e in updates)
 
 
 # =============================================================================
@@ -528,16 +259,21 @@ def test_same_speaker_multiple_segments() -> None:
 
 
 def test_empty_text_chunk() -> None:
-    """Empty text chunk -> handled gracefully, no keywords detected."""
+    """Empty text chunk -> handled gracefully."""
     session = LiveSemanticSession()
 
     chunk = _chunk(0.0, 0.5, "", "spk_0")
     events = session.ingest_chunk(chunk)
 
-    assert len(events) == 1
-    assert events[0].segment["text"] == ""
-    assert events[0].segment["keywords"] == []
-    assert events[0].segment["risk_tags"] == []
+    # Empty chunk should be buffered
+    assert len(events) == 0
+
+    # Finalize and check
+    finals = session.end_of_stream()
+    assert len(finals) == 1
+    assert finals[0].semantic.turn.text == ""
+    assert finals[0].semantic.keywords == []
+    assert finals[0].semantic.risk_tags == []
 
 
 def test_whitespace_only_text() -> None:
@@ -548,13 +284,14 @@ def test_whitespace_only_text() -> None:
     session.ingest_chunk(chunk)
     events = session.end_of_stream()
 
-    final_seg = events[0].segment
-    assert final_seg["keywords"] == []
-    assert final_seg["risk_tags"] == []
+    payload = events[0].semantic
+    # Whitespace is stripped during turn building, so text will be empty
+    assert payload.keywords == []
+    assert payload.risk_tags == []
 
 
 def test_no_speaker_id() -> None:
-    """Chunks without speaker_id -> handled gracefully."""
+    """Chunks without speaker_id -> handled gracefully with 'unknown' speaker."""
     session = LiveSemanticSession()
 
     chunk1 = _chunk(0.0, 0.5, "hello", None)
@@ -563,11 +300,14 @@ def test_no_speaker_id() -> None:
     session.ingest_chunk(chunk1)
     events = session.ingest_chunk(chunk2)
 
-    # Should aggregate since both have None speaker_id
-    assert len(events) == 1
-    assert events[0].type == StreamEventType.PARTIAL_SEGMENT
-    assert events[0].segment["text"] == "hello world"
-    assert events[0].segment["speaker_id"] is None
+    # Should buffer (both have None speaker_id, treated as same speaker)
+    assert len(events) == 0
+
+    # Finalize and check
+    finals = session.end_of_stream()
+    assert len(finals) == 1
+    assert finals[0].semantic.turn.text == "hello world"
+    assert finals[0].semantic.turn.speaker_id == "unknown"  # Default speaker
 
 
 def test_mixed_speaker_and_none() -> None:
@@ -580,32 +320,10 @@ def test_mixed_speaker_and_none() -> None:
     session.ingest_chunk(chunk1)
     events = session.ingest_chunk(chunk2)
 
-    # Speaker change from "spk_0" to None
-    assert [e.type for e in events] == [
-        StreamEventType.FINAL_SEGMENT,
-        StreamEventType.PARTIAL_SEGMENT,
-    ]
-    assert events[0].segment["speaker_id"] == "spk_0"
-    assert events[1].segment["speaker_id"] is None
-
-
-def test_annotation_with_no_config() -> None:
-    """No semantic config -> annotation disabled, no keywords/tags."""
-    session = LiveSemanticSession(
-        semantic_config=SemanticConfig(
-            enable_keywords=False, enable_risk_tags=False, enable_actions=False
-        )
-    )
-
-    chunk = _chunk(0.0, 1.0, "I want to cancel my expensive account", "spk_0")
-    session.ingest_chunk(chunk)
-    events = session.end_of_stream()
-
-    final_seg = events[0].segment
-    # Should still have empty lists (not None)
-    assert final_seg["keywords"] == []
-    assert final_seg["risk_tags"] == []
-    assert final_seg["actions"] == []
+    # Speaker change from "spk_0" to None should finalize
+    assert len(events) == 1
+    assert events[0].type == StreamEventType.SEMANTIC_UPDATE
+    assert events[0].semantic.turn.speaker_id == "spk_0"
 
 
 def test_end_of_stream_with_no_chunks() -> None:
@@ -614,85 +332,83 @@ def test_end_of_stream_with_no_chunks() -> None:
     assert session.end_of_stream() == []
 
 
+def test_monotonic_time_validation() -> None:
+    """Chunks must arrive in non-decreasing time order."""
+    session = LiveSemanticSession()
+
+    chunk1 = _chunk(0.0, 1.0, "first", "spk_0")
+    chunk2 = _chunk(0.5, 1.5, "second", "spk_0")  # Starts before previous ends
+
+    session.ingest_chunk(chunk1)
+
+    with pytest.raises(ValueError, match="Chunk start .* < last chunk end"):
+        session.ingest_chunk(chunk2)
+
+
+def test_chunk_with_end_before_start() -> None:
+    """Chunk with end < start -> raises ValueError."""
+    session = LiveSemanticSession()
+
+    chunk = _chunk(1.0, 0.5, "invalid", "spk_0")  # end < start
+
+    with pytest.raises(ValueError, match="Chunk end .* < start"):
+        session.ingest_chunk(chunk)
+
+
 # =============================================================================
 # 5. Turn Metadata Tests
 # =============================================================================
 
 
 def test_question_counting() -> None:
-    """Questions (ending with '?') -> counted in turn metadata."""
+    """Questions (containing '?') -> counted in turn metadata."""
     session = LiveSemanticSession()
 
-    chunks = [
-        _chunk(0.0, 1.0, "What is your name?", "spk_0"),
-        _chunk(1.5, 2.5, "How can I help?", "spk_0"),
-        _chunk(3.0, 4.0, "Is this correct?", "spk_0"),
-    ]
+    # Multiple questions in one turn
+    chunk = _chunk(0.0, 2.0, "What is your name? How can I help? Is this correct?", "spk_0")
+    session.ingest_chunk(chunk)
+    events = session.end_of_stream()
 
-    for chunk in chunks:
-        session.ingest_chunk(chunk)
-
-    session.end_of_stream()
-
-    # All three questions from spk_0
-    assert session.turn_metadata["spk_0"].question_count == 3
+    payload = events[0].semantic
+    assert payload.question_count == 3
 
 
-def test_question_count_per_speaker() -> None:
-    """Questions counted separately per speaker."""
+def test_question_count_per_turn() -> None:
+    """Questions counted separately per turn."""
     session = LiveSemanticSession()
 
     chunks = [
         _chunk(0.0, 1.0, "What is your name?", "spk_0"),
         _chunk(1.5, 2.5, "Can you help me?", "spk_1"),
-        _chunk(3.0, 4.0, "Is this right?", "spk_0"),
+        _chunk(3.0, 4.0, "Is this right? Are you sure?", "spk_0"),
     ]
 
+    all_updates = []
     for chunk in chunks:
-        session.ingest_chunk(chunk)
+        events = session.ingest_chunk(chunk)
+        all_updates.extend([e for e in events if e.type == StreamEventType.SEMANTIC_UPDATE])
 
-    session.end_of_stream()
+    all_updates.extend(session.end_of_stream())
 
-    assert session.turn_metadata["spk_0"].question_count == 2
-    assert session.turn_metadata["spk_1"].question_count == 1
+    # Find turns by speaker
+    spk_0_turns = [u for u in all_updates if u.semantic.turn.speaker_id == "spk_0"]
+    spk_1_turns = [u for u in all_updates if u.semantic.turn.speaker_id == "spk_1"]
+
+    assert spk_0_turns[0].semantic.question_count == 1  # First turn: 1 question
+    assert spk_1_turns[0].semantic.question_count == 1  # spk_1 turn: 1 question
+    assert spk_0_turns[1].semantic.question_count == 2  # Second turn: 2 questions
 
 
 def test_non_question_text() -> None:
-    """Non-question text -> question_count stays 0."""
+    """Non-question text -> question_count is 0."""
     session = LiveSemanticSession()
 
     chunk = _chunk(0.0, 1.0, "This is a statement.", "spk_0")
     session.ingest_chunk(chunk)
-    session.end_of_stream()
+    events = session.end_of_stream()
 
-    assert session.turn_metadata["spk_0"].question_count == 0
-
-
-def test_interruption_detection() -> None:
-    """Rapid speaker change (< 0.2s) -> interruption flagged."""
-    session = LiveSemanticSession()
-
-    chunk1 = _chunk(0.0, 1.0, "Let me finish", "spk_0")
-    chunk2 = _chunk(1.05, 2.0, "But I disagree", "spk_1")  # 0.05s gap
-
-    session.ingest_chunk(chunk1)
-    session.ingest_chunk(chunk2)
-
-    assert session.turn_metadata["spk_1"].interruption_started_here is True
-    assert session.turn_metadata["spk_0"].interruption_started_here is False
-
-
-def test_no_interruption_with_normal_gap() -> None:
-    """Normal gap (>= 0.2s) -> no interruption flagged."""
-    session = LiveSemanticSession()
-
-    chunk1 = _chunk(0.0, 1.0, "First speaker", "spk_0")
-    chunk2 = _chunk(1.3, 2.0, "Second speaker", "spk_1")  # 0.3s gap
-
-    session.ingest_chunk(chunk1)
-    session.ingest_chunk(chunk2)
-
-    assert session.turn_metadata["spk_1"].interruption_started_here is False
+    payload = events[0].semantic
+    assert payload.question_count == 0
 
 
 # =============================================================================
@@ -701,15 +417,21 @@ def test_no_interruption_with_normal_gap() -> None:
 
 
 def test_context_window_eviction_by_size() -> None:
-    """Context window evicts old segments when max_segments reached."""
-    session = LiveSemanticSession(context_window_config={"max_segments": 3, "max_time_sec": 1000})
+    """Context window evicts old turns when max turns reached."""
+    session = LiveSemanticSession(
+        config=LiveSemanticsConfig(
+            turn_gap_sec=0.5,  # Small gap to force finalization
+            context_window_turns=3,
+            context_window_sec=1000.0,  # Large time window
+        )
+    )
 
     chunks = [
-        _chunk(0.0, 1.0, "one", "spk_0"),
-        _chunk(1.5, 2.0, "two", "spk_1"),
-        _chunk(2.5, 3.0, "three", "spk_0"),
-        _chunk(3.5, 4.0, "four", "spk_1"),
-        _chunk(4.5, 5.0, "five", "spk_0"),
+        _chunk(0.0, 0.4, "one", "spk_0"),
+        _chunk(1.0, 1.4, "two", "spk_1"),
+        _chunk(2.0, 2.4, "three", "spk_0"),
+        _chunk(3.0, 3.4, "four", "spk_1"),
+        _chunk(4.0, 4.4, "five", "spk_0"),
     ]
 
     for chunk in chunks:
@@ -717,21 +439,28 @@ def test_context_window_eviction_by_size() -> None:
 
     session.end_of_stream()
 
-    # Window should only contain last 3 segments
-    assert len(session.context_window.segments) == 3
-    texts = [seg["text"] for seg in session.context_window.segments]
+    # Window should only contain last 3 turns
+    context = session.get_context_window()
+    assert len(context) == 3
+    texts = [turn.text for turn in context]
     assert texts == ["three", "four", "five"]
 
 
 def test_context_window_eviction_by_time() -> None:
-    """Context window evicts segments older than max_time_sec."""
-    session = LiveSemanticSession(context_window_config={"max_segments": 100, "max_time_sec": 5.0})
+    """Context window evicts turns older than max_time_sec."""
+    session = LiveSemanticSession(
+        config=LiveSemanticsConfig(
+            turn_gap_sec=0.5,
+            context_window_turns=100,  # Large turn count
+            context_window_sec=5.0,  # 5 second time window
+        )
+    )
 
     chunks = [
-        _chunk(0.0, 1.0, "old", "spk_0"),
-        _chunk(2.0, 3.0, "also old", "spk_1"),
-        _chunk(10.0, 11.0, "recent", "spk_0"),  # 7s gap from previous
-        _chunk(11.5, 12.0, "current", "spk_1"),
+        _chunk(0.0, 0.4, "old", "spk_0"),
+        _chunk(2.0, 2.4, "also old", "spk_1"),
+        _chunk(10.0, 10.4, "recent", "spk_0"),  # 7.6s gap from previous
+        _chunk(11.0, 11.4, "current", "spk_1"),
     ]
 
     for chunk in chunks:
@@ -739,22 +468,22 @@ def test_context_window_eviction_by_time() -> None:
 
     session.end_of_stream()
 
-    # Only "recent" and "current" should remain (within 5s of latest)
-    texts = [seg["text"] for seg in session.context_window.segments]
+    # Only "recent" and "current" should remain (within 5s of latest turn end)
+    context = session.get_context_window()
+    texts = [turn.text for turn in context]
     assert "old" not in texts
     assert "also old" not in texts
     assert "recent" in texts
     assert "current" in texts
 
 
-def test_context_window_keyword_aggregation() -> None:
-    """Context window aggregates keywords from all segments."""
-    session = LiveSemanticSession(context_window_config={"max_segments": 10, "max_time_sec": 120})
+def test_context_window_render_for_llm() -> None:
+    """Context window can be rendered as LLM-ready text."""
+    session = LiveSemanticSession()
 
     chunks = [
-        _chunk(0.0, 1.0, "I want to cancel", "spk_0"),
-        _chunk(2.0, 3.0, "The price is too high", "spk_1"),
-        _chunk(4.0, 5.0, "I need to escalate", "spk_0"),
+        _chunk(0.0, 1.0, "Hello", "alice"),
+        _chunk(1.5, 2.5, "Hi there", "bob"),
     ]
 
     for chunk in chunks:
@@ -762,52 +491,34 @@ def test_context_window_keyword_aggregation() -> None:
 
     session.end_of_stream()
 
-    # Should aggregate keywords from all segments
-    keywords = session.context_window.get_keywords()
-    assert "cancel" in keywords
-    assert "price" in keywords
-    assert "escalate" in keywords
+    rendered = session.render_context_for_llm()
+
+    assert "Recent conversation context:" in rendered
+    assert "alice: Hello" in rendered
+    assert "bob: Hi there" in rendered
+    assert "0.0s" in rendered  # Timestamp for first turn
 
 
-def test_context_window_risk_tag_aggregation() -> None:
-    """Context window aggregates risk tags from all segments."""
-    session = LiveSemanticSession(context_window_config={"max_segments": 10, "max_time_sec": 120})
-
-    chunks = [
-        _chunk(0.0, 1.0, "I want to cancel", "spk_0"),
-        _chunk(2.0, 3.0, "The price is expensive", "spk_1"),
-        _chunk(4.0, 5.0, "This is unacceptable", "spk_0"),
-    ]
-
-    for chunk in chunks:
-        session.ingest_chunk(chunk)
-
-    session.end_of_stream()
-
-    # Should aggregate risk tags from all segments
-    risk_tags = session.context_window.get_risk_tags()
-    assert "churn_risk" in risk_tags
-    assert "pricing" in risk_tags
-    assert "escalation" in risk_tags
-
-
-def test_context_window_deduplicates_keywords() -> None:
-    """Context window deduplicates repeated keywords."""
-    session = LiveSemanticSession(context_window_config={"max_segments": 10, "max_time_sec": 120})
+def test_context_size_in_payload() -> None:
+    """Semantic payload includes context window size."""
+    session = LiveSemanticSession(
+        config=LiveSemanticsConfig(turn_gap_sec=0.5, context_window_turns=10)
+    )
 
     chunks = [
-        _chunk(0.0, 1.0, "cancel cancel cancel", "spk_0"),
-        _chunk(2.0, 3.0, "I need to cancel again", "spk_1"),
+        _chunk(0.0, 0.4, "one", "spk_0"),
+        _chunk(1.0, 1.4, "two", "spk_1"),
+        _chunk(2.0, 2.4, "three", "spk_0"),
     ]
 
+    all_updates = []
     for chunk in chunks:
-        session.ingest_chunk(chunk)
+        events = session.ingest_chunk(chunk)
+        all_updates.extend([e for e in events if e.type == StreamEventType.SEMANTIC_UPDATE])
 
-    session.end_of_stream()
-
-    # "cancel" should appear only once despite multiple occurrences
-    keywords = session.context_window.get_keywords()
-    assert keywords.count("cancel") == 1
+    # Each update should report context size (number of turns in window at that point)
+    assert all_updates[0].semantic.context_size == 1  # First turn added
+    assert all_updates[1].semantic.context_size == 2  # Second turn added
 
 
 # =============================================================================
@@ -818,9 +529,11 @@ def test_context_window_deduplicates_keywords() -> None:
 def test_full_conversation_flow() -> None:
     """Full conversation with multiple speakers and semantic events."""
     session = LiveSemanticSession(
-        stream_config=StreamConfig(max_gap_sec=1.0),
-        semantic_config=SemanticConfig(),
-        context_window_config={"max_segments": 20, "max_time_sec": 300},
+        config=LiveSemanticsConfig(
+            turn_gap_sec=1.0,
+            context_window_turns=20,
+            context_window_sec=300.0,
+        )
     )
 
     # Simulate a customer service call
@@ -833,74 +546,68 @@ def test_full_conversation_flow() -> None:
         _chunk(12.5, 14.0, "I'll escalate this right away", "agent"),
     ]
 
-    all_finals = []
+    all_updates = []
     for chunk in chunks:
         events = session.ingest_chunk(chunk)
-        all_finals.extend([e for e in events if e.type == StreamEventType.FINAL_SEGMENT])
+        all_updates.extend([e for e in events if e.type == StreamEventType.SEMANTIC_UPDATE])
 
     # Finalize stream
-    all_finals.extend(session.end_of_stream())
+    all_updates.extend(session.end_of_stream())
 
-    # Should have 6 final segments (6 speaker changes)
-    assert len(all_finals) >= 5
+    # Should have 6 turns (speaker changes between each)
+    assert len(all_updates) >= 5
 
-    # Check customer's complaint segment
-    complaint_seg = next(
-        seg for seg in all_finals if "expensive" in seg.segment.get("text", "").lower()
+    # Check customer's complaint turn
+    complaint_update = next(u for u in all_updates if "expensive" in u.semantic.turn.text.lower())
+    payload = complaint_update.semantic
+    assert "price" in payload.keywords
+    assert "expensive" in payload.keywords
+    assert "cancel" in payload.keywords
+    assert "pricing" in payload.risk_tags
+    assert "churn_risk" in payload.risk_tags
+
+    # Check escalation turn
+    escalation_update = next(
+        u for u in all_updates if "unacceptable" in u.semantic.turn.text.lower()
     )
-    assert "price" in complaint_seg.segment["keywords"]
-    assert "expensive" in complaint_seg.segment["keywords"]
-    assert "cancel" in complaint_seg.segment["keywords"]
-    assert "pricing" in complaint_seg.segment["risk_tags"]
-    assert "churn_risk" in complaint_seg.segment["risk_tags"]
-
-    # Check escalation segment
-    escalation_seg = next(
-        seg for seg in all_finals if "unacceptable" in seg.segment.get("text", "").lower()
-    )
-    assert "escalation" in escalation_seg.segment["risk_tags"]
-    assert "unacceptable" in escalation_seg.segment["keywords"]
-    assert "manager" in escalation_seg.segment["keywords"]
+    payload = escalation_update.semantic
+    assert "escalation" in payload.risk_tags
+    assert "unacceptable" in payload.keywords
+    assert "manager" in payload.keywords
 
     # Check agent's action commitment
-    action_seg = next(seg for seg in all_finals if "I'll" in seg.segment.get("text", ""))
-    assert len(action_seg.segment["actions"]) > 0
+    action_update = next(u for u in all_updates if "I'll" in u.semantic.turn.text)
+    assert len(action_update.semantic.actions) > 0
 
-    # Verify context window contains aggregated insights
-    keywords = session.context_window.get_keywords()
-    risk_tags = session.context_window.get_risk_tags()
+    # Verify context window contains turns
+    context = session.get_context_window()
+    assert len(context) >= 5
 
-    assert "cancel" in keywords
-    assert "expensive" in keywords
-    assert "escalate" in keywords
-    assert "churn_risk" in risk_tags
-    assert "escalation" in risk_tags
-    assert "pricing" in risk_tags
-
-    # Check turn metadata
-    assert session.turn_metadata["customer"].question_count == 0  # No questions from customer
-    assert session.turn_metadata["agent"].question_count == 1  # "how can I assist you?"
+    # Check question counting
+    agent_turns = [u for u in all_updates if u.semantic.turn.speaker_id == "agent"]
+    assert any(u.semantic.question_count >= 1 for u in agent_turns)  # "how can I assist you?"
 
 
-def test_streaming_partial_then_final_annotations() -> None:
-    """Partial segments have no annotations, final segments are annotated."""
+def test_semantic_payload_serialization() -> None:
+    """Semantic payload can be serialized to dict."""
     session = LiveSemanticSession()
 
-    chunk1 = _chunk(0.0, 1.0, "I want to cancel", "spk_0")
-    events1 = session.ingest_chunk(chunk1)
+    chunk = _chunk(0.0, 1.0, "I want to cancel", "spk_0")
+    session.ingest_chunk(chunk)
+    events = session.end_of_stream()
 
-    # Partial should have empty annotations
-    partial = events1[0]
-    assert partial.type == StreamEventType.PARTIAL_SEGMENT
-    assert partial.segment["keywords"] == []
-    assert partial.segment["risk_tags"] == []
+    payload = events[0].semantic
+    payload_dict = payload.to_dict()
 
-    # Trigger finalization with speaker change
-    chunk2 = _chunk(1.5, 2.0, "I understand", "spk_1")
-    events2 = session.ingest_chunk(chunk2)
+    # Check structure
+    assert "turn" in payload_dict
+    assert "keywords" in payload_dict
+    assert "risk_tags" in payload_dict
+    assert "actions" in payload_dict
+    assert "question_count" in payload_dict
+    assert "context_size" in payload_dict
 
-    # Final should have annotations
-    final = events2[0]
-    assert final.type == StreamEventType.FINAL_SEGMENT
-    assert "cancel" in final.segment["keywords"]
-    assert "churn_risk" in final.segment["risk_tags"]
+    # Check types
+    assert isinstance(payload_dict["turn"], dict)
+    assert isinstance(payload_dict["keywords"], list)
+    assert isinstance(payload_dict["risk_tags"], list)
