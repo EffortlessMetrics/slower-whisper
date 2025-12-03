@@ -62,6 +62,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 | Document | Description | Topics |
 |----------|-------------|--------|
+| [CONFIGURATION.md](CONFIGURATION.md) | Configuration guide for all layers | Defaults, env vars, files, CLI flags, precedence, patterns |
 | [API_QUICK_REFERENCE.md](API_QUICK_REFERENCE.md) | Quick reference for Python API | Functions, configs, examples |
 | [CLI_REFERENCE.md](CLI_REFERENCE.md) | Command-line interface documentation | Commands, options, workflows |
 
@@ -93,6 +94,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | Document | Description | Use When |
 |----------|-------------|----------|
 | [QUICKSTART.md](QUICKSTART.md) | 5-minute tutorial for first transcription | Starting from scratch |
+| [CONFIGURATION.md](CONFIGURATION.md) | Complete configuration guide | Setting up options, using config files, understanding precedence |
 | [QUICKSTART_AUDIO_ENRICHMENT.md](QUICKSTART_AUDIO_ENRICHMENT.md) | Quick guide to audio enrichment | Adding audio features |
 
 ### Core Features
@@ -191,8 +193,9 @@ These documents are historical artifacts from the development process and transf
 ### "I want to transcribe audio files"
 1. [README](../README.md) - Overview and installation
 2. [Quickstart](QUICKSTART.md) - First transcription
-3. [CLI Reference](CLI_REFERENCE.md) - Command details
-4. [Troubleshooting](TROUBLESHOOTING.md) - If issues arise
+3. [Configuration Guide](CONFIGURATION.md) - Setup and customization
+4. [CLI Reference](CLI_REFERENCE.md) - Command details
+5. [Troubleshooting](TROUBLESHOOTING.md) - If issues arise
 
 ### "I want to extract audio features (prosody, emotion)"
 1. [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Overview
@@ -272,6 +275,7 @@ Found an error or want to improve the docs? See [CONTRIBUTING.md](../CONTRIBUTIN
 
 ### Complete ✅
 - Core documentation (README, CHANGELOG, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT)
+- Configuration guide (defaults, environment variables, config files, CLI flags, precedence)
 - API and CLI references
 - Quickstart guides
 - Architecture documentation

@@ -447,7 +447,256 @@ for event in session.end_of_stream():
 
 `StreamingSession` stitches ordered ASR chunks into `PartialSegment` and `FinalSegment` events. Current v0.1 API operates on post-ASR text (not raw audio) so you can stream final segments while Whisper runs elsewhere.
 
-### Streaming + Semantic Annotation
+### Streaming + Audio Enrichment (v1.7.0)
+
+Combine streaming with real-time audio enrichment to emit prosodic and emotional features as segments finalize:
+
+```python
+from transcription import (
+    StreamingSession,
+    StreamConfig,
+    EnrichmentConfig,
+    Segment,
+    Transcript,
+    save_transcript,
+)
+from transcription.streaming import StreamEventType
+from transcription.audio_enrichment import enrich_segment
+import numpy as np
+
+# Initialize streaming and enrichment
+session = StreamingSession(StreamConfig(max_gap_sec=1.0))
+enrich_config = EnrichmentConfig(enable_prosody=True, enable_emotion=True, device="cpu")
+final_segments: list[Segment] = []
+
+# Load audio file once for enrichment
+from transcription.audio_utils import AudioSegmentExtractor
+extractor = AudioSegmentExtractor("audio.wav", sr=16000)
+
+# Process incoming ASR chunks
+for chunk in asr_chunks:
+    for event in session.ingest_chunk(chunk):
+        if event.type != StreamEventType.FINAL_SEGMENT:
+            continue
+
+        # Convert StreamSegment → Segment with enrichment
+        stream_seg = event.segment
+        segment = Segment(
+            id=len(final_segments),
+            start=stream_seg.start,
+            end=stream_seg.end,
+            text=stream_seg.text,
+            speaker={"id": stream_seg.speaker_id} if stream_seg.speaker_id else None,
+        )
+
+        # Extract audio for this segment
+        try:
+            audio_chunk = extractor.extract(stream_seg.start, stream_seg.end)
+            # Enrich with prosody and emotion
+            enriched = enrich_segment(
+                segment,
+                audio=audio_chunk,
+                sr=16000,
+                config=enrich_config,
+            )
+            final_segments.append(enriched)
+
+            # Emit enriched data immediately (streaming)
+            if enriched.audio_state:
+                print(f"[{stream_seg.start:.1f}s] {enriched.audio_state['rendering']}")
+                print(f"  Text: {enriched.text}")
+        except Exception as e:
+            # Graceful degradation: include segment without enrichment
+            logger.warning(f"Enrichment failed for segment {segment.id}: {e}")
+            final_segments.append(segment)
+
+# Flush remaining partial and close extractor
+for event in session.end_of_stream():
+    if event.type == StreamEventType.FINAL_SEGMENT:
+        stream_seg = event.segment
+        segment = Segment(
+            id=len(final_segments),
+            start=stream_seg.start,
+            end=stream_seg.end,
+            text=stream_seg.text,
+            speaker={"id": stream_seg.speaker_id} if stream_seg.speaker_id else None,
+        )
+        final_segments.append(segment)
+
+extractor.close()
+
+# Build final transcript
+transcript = Transcript(
+    file_name="live.wav",
+    language="en",
+    segments=final_segments
+)
+save_transcript(transcript, "output.json")
+```
+
+**Configuration Options:**
+
+```python
+enrich_config = EnrichmentConfig(
+    enable_prosody=True,                    # Extract pitch, energy, rate
+    enable_emotion=True,                    # Extract valence/arousal
+    enable_categorical_emotion=False,       # Disable slower categorical emotions for real-time
+    enable_turn_metadata=True,              # Track questions, interruptions, pauses
+    enable_speaker_stats=False,             # Disable aggregate stats in streaming (compute post-hoc)
+    device="cpu",                           # Use CPU for lower latency
+    skip_existing=False,                    # Always enrich (no caching in streaming)
+)
+```
+
+**Integration with Base StreamingSession:**
+
+- `StreamingSession` handles temporal stitching (chunking → segments)
+- `AudioSegmentExtractor` loads audio once and caches file handles for efficiency
+- Each segment is enriched independently; enrichment errors are logged but don't block streaming
+- Final `Transcript` can be post-processed for speaker stats and turn metadata if needed
+
+### Streaming + Semantics (v1.7.0)
+
+Process semantic annotations in real-time as segments finalize, enabling live risk detection and intent extraction:
+
+```python
+from transcription import (
+    StreamingSession,
+    StreamConfig,
+    Segment,
+    Transcript,
+    save_transcript,
+)
+from transcription.streaming import StreamEventType
+from transcription.semantic import KeywordSemanticAnnotator
+
+# Initialize session and annotator
+session = StreamingSession(StreamConfig(max_gap_sec=1.0))
+annotator = KeywordSemanticAnnotator()
+final_segments: list[Segment] = []
+
+# Configuration for semantic processing
+SEMANTIC_CONTEXT_WINDOW = 5  # Keep last N segments for context
+context_buffer: list[Segment] = []
+
+# Process incoming ASR chunks
+for chunk in asr_chunks:
+    for event in session.ingest_chunk(chunk):
+        if event.type != StreamEventType.FINAL_SEGMENT:
+            continue
+
+        # Convert to Segment and add to context
+        stream_seg = event.segment
+        segment = Segment(
+            id=len(final_segments),
+            start=stream_seg.start,
+            end=stream_seg.end,
+            text=stream_seg.text,
+            speaker={"id": stream_seg.speaker_id} if stream_seg.speaker_id else None,
+        )
+        final_segments.append(segment)
+        context_buffer.append(segment)
+
+        # Keep sliding context window
+        if len(context_buffer) > SEMANTIC_CONTEXT_WINDOW:
+            context_buffer.pop(0)
+
+        # Build incremental transcript from context
+        transcript = Transcript(
+            file_name="live.wav",
+            language="en",
+            segments=list(context_buffer)
+        )
+
+        # Run semantic annotation on growing transcript
+        annotated = annotator.annotate(transcript)
+        semantic = (annotated.annotations or {}).get("semantic", {})
+
+        # Real-time event detection
+        risk_tags = semantic.get("risk_tags", [])
+        if "escalation" in risk_tags:
+            print(f"ALERT: Escalation detected at {stream_seg.start:.1f}s")
+            # Trigger: notification, route to supervisor, etc.
+
+        if "churn_risk" in risk_tags:
+            print(f"WARNING: Churn risk at {stream_seg.start:.1f}s")
+            # Trigger: offer retention, escalation queue, etc.
+
+        # Extract live action items
+        for action in semantic.get("actions", []):
+            print(f"ACTION ITEM: {action['text']} (speaker={action['speaker_id']} at {stream_seg.start:.1f}s)")
+
+        # Extract keywords for filtering
+        keywords = semantic.get("keywords", [])
+        if keywords:
+            print(f"Keywords detected: {', '.join(keywords)}")
+
+# Flush remaining segments
+for event in session.end_of_stream():
+    if event.type == StreamEventType.FINAL_SEGMENT:
+        stream_seg = event.segment
+        segment = Segment(
+            id=len(final_segments),
+            start=stream_seg.start,
+            end=stream_seg.end,
+            text=stream_seg.text,
+            speaker={"id": stream_seg.speaker_id} if stream_seg.speaker_id else None,
+        )
+        final_segments.append(segment)
+
+# Build and save final transcript with full annotations
+final_transcript = Transcript(
+    file_name="live.wav",
+    language="en",
+    segments=final_segments
+)
+annotated_final = annotator.annotate(final_transcript)
+save_transcript(annotated_final, "output.json")
+```
+
+**Context Window Configuration:**
+
+```python
+# Semantic processing tuning
+class SemanticStreamingConfig:
+    """Configuration for streaming semantic annotation."""
+    context_window_size: int = 5          # Number of recent segments to analyze
+    min_segment_confidence: float = 0.8   # Only process high-confidence segments
+    dedup_keywords: bool = True            # Avoid repeated keyword alerts
+    min_risk_score: float = 0.6            # Threshold for risk tag emission
+```
+
+**Turn Detection and Semantic Events:**
+
+```python
+# Extract turns incrementally for speaker-aware semantic analysis
+turns_buffer: list[dict] = []
+
+def on_semantic_event(semantic_data: dict, segment: Segment) -> None:
+    """Process semantic event with speaker context."""
+    speaker_id = segment.speaker.get("id") if segment.speaker else None
+
+    # Classify event type
+    if semantic_data.get("risk_tags"):
+        event_type = "risk"
+    elif semantic_data.get("actions"):
+        event_type = "action"
+    else:
+        event_type = "semantic"
+
+    # Emit with context
+    emit_streaming_event({
+        "type": event_type,
+        "speaker": speaker_id,
+        "timestamp": segment.start,
+        "data": semantic_data,
+    })
+
+# Call when semantic annotation completes
+# on_semantic_event(semantic, segment)
+```
+
+### Streaming + Semantic Annotation (Existing Pattern)
 
 Combine streaming with semantic tagging to detect risks and intent in real-time. Build a transcript incrementally and run `KeywordSemanticAnnotator` on finalized segments:
 
@@ -550,9 +799,80 @@ More examples: metrics/KPIs (`docs/METRICS_EXAMPLES.md`) and PII masking (`docs/
 
 ## Configuration
 
-### Configuration Precedence
+### Configuration Loading (v1.7.0)
 
-Settings are loaded in order of priority:
+Load configuration from multiple sources with automatic precedence handling:
+
+```python
+from transcription import TranscriptionConfig, EnrichmentConfig
+
+# Load from single source (file or environment)
+config_from_file = TranscriptionConfig.from_file("config.json")
+config_from_env = TranscriptionConfig.from_env()
+
+# Load from multiple sources with precedence (v1.7.0)
+config = TranscriptionConfig.from_sources(
+    cli_args={
+        "model": "large-v3",
+        "device": "cuda",
+    },
+    config_file="config.json",      # Optional file path
+    env_prefix="SLOWER_WHISPER_",   # Optional custom env prefix
+)
+
+# Same for enrichment config
+enrich_config = EnrichmentConfig.from_sources(
+    cli_args={"enable_emotion": True},
+    config_file="enrich_config.json",
+    env_prefix="SLOWER_WHISPER_ENRICH_",
+)
+```
+
+**Configuration Precedence (from highest to lowest):**
+
+```text
+1. CLI arguments (highest priority)
+   ↓
+2. Config file values (--config or --enrich-config)
+   ↓
+3. Environment variables (SLOWER_WHISPER_* or custom prefix)
+   ↓
+4. Built-in defaults (lowest priority)
+```
+
+**Precedence Examples:**
+
+```python
+# Case 1: CLI overrides all
+config = TranscriptionConfig.from_sources(
+    cli_args={"model": "base"},  # Selected (highest priority)
+    config_file="config.json",   # {"model": "large-v3"}
+    env_prefix="SLOWER_WHISPER_" # SLOWER_WHISPER_MODEL=small
+)
+# Result: model="base" (CLI wins)
+
+# Case 2: File overrides env and defaults
+config = TranscriptionConfig.from_sources(
+    cli_args=None,               # Not specified
+    config_file="config.json",   # {"model": "large-v3"} (selected)
+    env_prefix="SLOWER_WHISPER_" # SLOWER_WHISPER_MODEL=small
+)
+# Result: model="large-v3" (file wins over env)
+
+# Case 3: Env overrides defaults
+config = TranscriptionConfig.from_sources(
+    cli_args=None,
+    config_file=None,            # Not specified
+    env_prefix="SLOWER_WHISPER_" # SLOWER_WHISPER_MODEL=small (selected)
+)
+# Result: model="small" (env wins over default)
+```
+
+See [CONFIGURATION.md](CONFIGURATION.md) for complete configuration reference and advanced usage patterns.
+
+### Configuration Precedence (Legacy)
+
+For backward compatibility, settings are still loaded in order of priority:
 
 ```text
 1. CLI flags (highest priority)

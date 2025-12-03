@@ -24,8 +24,14 @@ from pathlib import Path
 
 import pytest
 
-from transcription.cli import _config_from_transcribe_args, _merge_configs, _merge_enrich_configs
-from transcription.config import AsrConfig, EnrichmentConfig, TranscriptionConfig
+from transcription.cli import _config_from_transcribe_args
+from transcription.config import (
+    AsrConfig,
+    EnrichmentConfig,
+    TranscriptionConfig,
+    _merge_configs,
+    _merge_enrich_configs,
+)
 
 
 class TestConfigMergeBugFix:

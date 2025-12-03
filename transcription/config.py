@@ -380,6 +380,11 @@ class TranscriptionConfig:
             "skip_existing_json",
             "vad_min_silence_ms",
             "beam_size",
+            "enable_chunking",
+            "chunk_target_duration_s",
+            "chunk_max_duration_s",
+            "chunk_target_tokens",
+            "chunk_pause_split_threshold_s",
             "enable_diarization",
             "diarization_device",
             "min_speakers",
@@ -646,6 +651,170 @@ class TranscriptionConfig:
         config._source_fields = set(config_dict.keys())
         return config
 
+    @classmethod
+    def from_sources(
+        cls,
+        env_prefix: str = "SLOWER_WHISPER_",
+        config_file: str | Path | None = None,
+        **overrides: Any,
+    ) -> TranscriptionConfig:
+        """
+        Load configuration from multiple sources with proper precedence.
+
+        Precedence order (highest to lowest):
+        1. Explicit keyword arguments (overrides parameter)
+        2. Config file (if config_file provided)
+        3. Environment variables (with env_prefix)
+        4. Defaults
+
+        This method implements the same precedence logic as the CLI, making it
+        available for programmatic use without needing to go through argparse.
+
+        The compute_type field has special handling: if not explicitly set by any source,
+        it defaults based on the final device value ("int8" for CPU, "float16" for CUDA).
+
+        Args:
+            env_prefix: Environment variable prefix (default: "SLOWER_WHISPER_").
+                Used to look up env vars like {prefix}MODEL, {prefix}DEVICE, etc.
+            config_file: Optional path to JSON configuration file.
+            **overrides: Explicit configuration values that override all other sources.
+                Only non-None values are applied. All TranscriptionConfig fields are
+                supported (model, device, compute_type, language, task, etc.).
+
+        Returns:
+            TranscriptionConfig with merged settings from all sources.
+
+        Raises:
+            FileNotFoundError: If config_file is specified but doesn't exist.
+            ValueError: If config file or environment variables contain invalid values.
+            ConfigurationError: If configuration values fail validation.
+
+        Examples:
+            # Use defaults
+            config = TranscriptionConfig.from_sources()
+
+            # Load from environment variables only
+            config = TranscriptionConfig.from_sources()
+
+            # Load from config file and environment
+            config = TranscriptionConfig.from_sources(
+                config_file=Path("config.json")
+            )
+
+            # Override specific values
+            config = TranscriptionConfig.from_sources(
+                config_file=Path("config.json"),
+                device="cpu",
+                model="base"
+            )
+
+            # Custom environment prefix
+            config = TranscriptionConfig.from_sources(
+                env_prefix="MY_APP_",
+                model="medium"
+            )
+
+            # Full precedence example
+            # 1. Defaults: device="cuda", compute_type=None -> "float16"
+            # 2. Env: SLOWER_WHISPER_DEVICE=cpu -> device="cpu", compute_type="int8"
+            # 3. File: {"model": "base"} -> model="base", device="cpu", compute_type="int8"
+            # 4. CLI: device="cuda" -> model="base", device="cuda", compute_type="float16"
+            config = TranscriptionConfig.from_sources(
+                config_file="config.json",
+                device="cuda"  # Overrides env and file
+            )
+        """
+        # Step 1: Start with defaults
+        config = cls()
+
+        # Step 2: Override with environment variables
+        env_config = cls.from_env(prefix=env_prefix)
+        env_compute_type_explicit = "compute_type" in getattr(env_config, "_source_fields", set())
+        config = _merge_configs(config, env_config)
+
+        # Step 3: Override with config file if provided
+        file_compute_type_explicit = False
+        if config_file is not None:
+            file_config = cls.from_file(config_file)
+            file_compute_type_explicit = "compute_type" in getattr(
+                file_config,
+                "_source_fields",
+                set(),
+            )
+            config = _merge_configs(config, file_config)
+
+        # Step 4: Override with explicit keyword arguments (only if not None)
+        # Filter out None values to distinguish between "not set" and "set to None"
+        filtered_overrides = {k: v for k, v in overrides.items() if v is not None}
+
+        if filtered_overrides:
+            override_compute_type_explicit = "compute_type" in filtered_overrides
+
+            # Create a new config with overrides applied
+            override_config = cls(
+                model=filtered_overrides.get("model", config.model),
+                device=filtered_overrides.get("device", config.device),
+                compute_type=filtered_overrides.get("compute_type", config.compute_type),
+                language=filtered_overrides.get("language", config.language),
+                task=filtered_overrides.get("task", config.task),
+                vad_min_silence_ms=filtered_overrides.get(
+                    "vad_min_silence_ms", config.vad_min_silence_ms
+                ),
+                beam_size=filtered_overrides.get("beam_size", config.beam_size),
+                skip_existing_json=filtered_overrides.get(
+                    "skip_existing_json", config.skip_existing_json
+                ),
+                enable_chunking=filtered_overrides.get("enable_chunking", config.enable_chunking),
+                chunk_target_duration_s=filtered_overrides.get(
+                    "chunk_target_duration_s", config.chunk_target_duration_s
+                ),
+                chunk_max_duration_s=filtered_overrides.get(
+                    "chunk_max_duration_s", config.chunk_max_duration_s
+                ),
+                chunk_target_tokens=filtered_overrides.get(
+                    "chunk_target_tokens", config.chunk_target_tokens
+                ),
+                chunk_pause_split_threshold_s=filtered_overrides.get(
+                    "chunk_pause_split_threshold_s", config.chunk_pause_split_threshold_s
+                ),
+                enable_diarization=filtered_overrides.get(
+                    "enable_diarization", config.enable_diarization
+                ),
+                diarization_device=filtered_overrides.get(
+                    "diarization_device", config.diarization_device
+                ),
+                min_speakers=filtered_overrides.get("min_speakers", config.min_speakers),
+                max_speakers=filtered_overrides.get("max_speakers", config.max_speakers),
+                overlap_threshold=filtered_overrides.get(
+                    "overlap_threshold", config.overlap_threshold
+                ),
+            )
+            config = override_config
+        else:
+            override_compute_type_explicit = False
+
+        # If compute_type wasn't explicitly provided by any source,
+        # re-derive the default based on the final device selection.
+        compute_type_explicit = (
+            override_compute_type_explicit
+            or env_compute_type_explicit
+            or file_compute_type_explicit
+        )
+        if not compute_type_explicit:
+            # Use object.__setattr__ because of slots=True
+            object.__setattr__(
+                config, "compute_type", "int8" if config.device == "cpu" else "float16"
+            )
+
+        # Validate final configuration
+        validate_diarization_settings(
+            config.min_speakers,
+            config.max_speakers,
+            config.overlap_threshold,
+        )
+
+        return config
+
 
 def validate_diarization_settings(
     min_speakers: int | None,
@@ -687,6 +856,236 @@ def validate_diarization_settings(
             raise ConfigurationError("overlap_threshold must be between 0.0 and 1.0.")
         if not 0.0 <= float(overlap_threshold) <= 1.0:
             raise ConfigurationError("overlap_threshold must be between 0.0 and 1.0.")
+
+
+def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> TranscriptionConfig:
+    """
+    Merge two TranscriptionConfig instances, with override taking precedence.
+
+    This function implements proper config layering by checking which fields
+    were explicitly set in the override config (via _source_fields attribute).
+    Only explicitly-set fields override the base config, preventing the bug where
+    a file value that equals the default would be ignored.
+
+    The merge strategy:
+    - If field was explicitly set in override (in _source_fields): use override value
+    - Otherwise: keep base value
+
+    This correctly handles the case where:
+    1. Env sets device="cpu"
+    2. File explicitly sets device="cuda" (which happens to equal the default)
+    3. Result is "cuda" (file overrides env) ✓
+
+    And also handles:
+    1. Env sets device="cpu"
+    2. File doesn't mention device (so device="cuda" is just a default)
+    3. Result is "cpu" (env value preserved) ✓
+
+    Args:
+        base: Base configuration (lower precedence).
+        override: Override configuration (higher precedence).
+
+    Returns:
+        New TranscriptionConfig with merged values.
+    """
+    # Check if override has _source_fields (set by from_file/from_env)
+    # If not, or if it's empty, fall back to comparing values (for backward compatibility)
+    source_fields = getattr(override, "_source_fields", None)
+
+    if source_fields is None or not source_fields:
+        # No source tracking - fall back to value comparison
+        # This shouldn't happen in normal CLI usage, but provides safety
+        return TranscriptionConfig(
+            model=override.model if override.model != base.model else base.model,
+            device=override.device if override.device != base.device else base.device,
+            compute_type=override.compute_type
+            if override.compute_type != base.compute_type
+            else base.compute_type,
+            language=override.language if override.language != base.language else base.language,
+            task=override.task if override.task != base.task else base.task,
+            vad_min_silence_ms=override.vad_min_silence_ms
+            if override.vad_min_silence_ms != base.vad_min_silence_ms
+            else base.vad_min_silence_ms,
+            beam_size=override.beam_size
+            if override.beam_size != base.beam_size
+            else base.beam_size,
+            skip_existing_json=override.skip_existing_json
+            if override.skip_existing_json != base.skip_existing_json
+            else base.skip_existing_json,
+            enable_chunking=override.enable_chunking
+            if override.enable_chunking != base.enable_chunking
+            else base.enable_chunking,
+            chunk_target_duration_s=override.chunk_target_duration_s
+            if override.chunk_target_duration_s != base.chunk_target_duration_s
+            else base.chunk_target_duration_s,
+            chunk_max_duration_s=override.chunk_max_duration_s
+            if override.chunk_max_duration_s != base.chunk_max_duration_s
+            else base.chunk_max_duration_s,
+            chunk_target_tokens=override.chunk_target_tokens
+            if override.chunk_target_tokens != base.chunk_target_tokens
+            else base.chunk_target_tokens,
+            chunk_pause_split_threshold_s=override.chunk_pause_split_threshold_s
+            if override.chunk_pause_split_threshold_s != base.chunk_pause_split_threshold_s
+            else base.chunk_pause_split_threshold_s,
+            enable_diarization=override.enable_diarization
+            if override.enable_diarization != base.enable_diarization
+            else base.enable_diarization,
+            diarization_device=override.diarization_device
+            if override.diarization_device != base.diarization_device
+            else base.diarization_device,
+            min_speakers=override.min_speakers
+            if override.min_speakers != base.min_speakers
+            else base.min_speakers,
+            max_speakers=override.max_speakers
+            if override.max_speakers != base.max_speakers
+            else base.max_speakers,
+            overlap_threshold=override.overlap_threshold
+            if override.overlap_threshold != base.overlap_threshold
+            else base.overlap_threshold,
+        )
+
+    # Use source_fields to determine which values to override
+    return TranscriptionConfig(
+        model=override.model if "model" in source_fields else base.model,
+        device=override.device if "device" in source_fields else base.device,
+        compute_type=override.compute_type
+        if "compute_type" in source_fields
+        else base.compute_type,
+        language=override.language if "language" in source_fields else base.language,
+        task=override.task if "task" in source_fields else base.task,
+        vad_min_silence_ms=override.vad_min_silence_ms
+        if "vad_min_silence_ms" in source_fields
+        else base.vad_min_silence_ms,
+        beam_size=override.beam_size if "beam_size" in source_fields else base.beam_size,
+        skip_existing_json=override.skip_existing_json
+        if "skip_existing_json" in source_fields
+        else base.skip_existing_json,
+        enable_chunking=override.enable_chunking
+        if "enable_chunking" in source_fields
+        else base.enable_chunking,
+        chunk_target_duration_s=override.chunk_target_duration_s
+        if "chunk_target_duration_s" in source_fields
+        else base.chunk_target_duration_s,
+        chunk_max_duration_s=override.chunk_max_duration_s
+        if "chunk_max_duration_s" in source_fields
+        else base.chunk_max_duration_s,
+        chunk_target_tokens=override.chunk_target_tokens
+        if "chunk_target_tokens" in source_fields
+        else base.chunk_target_tokens,
+        chunk_pause_split_threshold_s=override.chunk_pause_split_threshold_s
+        if "chunk_pause_split_threshold_s" in source_fields
+        else base.chunk_pause_split_threshold_s,
+        enable_diarization=override.enable_diarization
+        if "enable_diarization" in source_fields
+        else base.enable_diarization,
+        diarization_device=override.diarization_device
+        if "diarization_device" in source_fields
+        else base.diarization_device,
+        min_speakers=override.min_speakers
+        if "min_speakers" in source_fields
+        else base.min_speakers,
+        max_speakers=override.max_speakers
+        if "max_speakers" in source_fields
+        else base.max_speakers,
+        overlap_threshold=override.overlap_threshold
+        if "overlap_threshold" in source_fields
+        else base.overlap_threshold,
+    )
+
+
+def _merge_enrich_configs(base: EnrichmentConfig, override: EnrichmentConfig) -> EnrichmentConfig:
+    """
+    Merge two EnrichmentConfig instances, with override taking precedence.
+
+    This function implements proper config layering by checking which fields
+    were explicitly set in the override config (via _source_fields attribute).
+    Only explicitly-set fields override the base config.
+
+    See _merge_configs() for detailed explanation of the merge strategy.
+
+    Args:
+        base: Base configuration (lower precedence).
+        override: Override configuration (higher precedence).
+
+    Returns:
+        New EnrichmentConfig with merged values.
+    """
+    # Check if override has _source_fields (set by from_file/from_env)
+    # If not, or if it's empty, fall back to comparing values (for backward compatibility)
+    source_fields = getattr(override, "_source_fields", None)
+
+    if source_fields is None or not source_fields:
+        # No source tracking - fall back to value comparison
+        return EnrichmentConfig(
+            skip_existing=override.skip_existing
+            if override.skip_existing != base.skip_existing
+            else base.skip_existing,
+            enable_prosody=override.enable_prosody
+            if override.enable_prosody != base.enable_prosody
+            else base.enable_prosody,
+            enable_emotion=override.enable_emotion
+            if override.enable_emotion != base.enable_emotion
+            else base.enable_emotion,
+            enable_categorical_emotion=override.enable_categorical_emotion
+            if override.enable_categorical_emotion != base.enable_categorical_emotion
+            else base.enable_categorical_emotion,
+            enable_semantic_annotator=override.enable_semantic_annotator
+            if override.enable_semantic_annotator != base.enable_semantic_annotator
+            else base.enable_semantic_annotator,
+            enable_turn_metadata=override.enable_turn_metadata
+            if override.enable_turn_metadata != base.enable_turn_metadata
+            else base.enable_turn_metadata,
+            enable_speaker_stats=override.enable_speaker_stats
+            if override.enable_speaker_stats != base.enable_speaker_stats
+            else base.enable_speaker_stats,
+            device=override.device if override.device != base.device else base.device,
+            dimensional_model_name=override.dimensional_model_name
+            if override.dimensional_model_name != base.dimensional_model_name
+            else base.dimensional_model_name,
+            categorical_model_name=override.categorical_model_name
+            if override.categorical_model_name != base.categorical_model_name
+            else base.categorical_model_name,
+            pause_threshold=override.pause_threshold
+            if override.pause_threshold != base.pause_threshold
+            else base.pause_threshold,
+            semantic_annotator=override.semantic_annotator or base.semantic_annotator,
+        )
+
+    # Use source_fields to determine which values to override
+    return EnrichmentConfig(
+        skip_existing=override.skip_existing
+        if "skip_existing" in source_fields
+        else base.skip_existing,
+        enable_prosody=override.enable_prosody
+        if "enable_prosody" in source_fields
+        else base.enable_prosody,
+        enable_emotion=override.enable_emotion
+        if "enable_emotion" in source_fields
+        else base.enable_emotion,
+        enable_categorical_emotion=override.enable_categorical_emotion
+        if "enable_categorical_emotion" in source_fields
+        else base.enable_categorical_emotion,
+        enable_semantic_annotator=override.enable_semantic_annotator
+        if "enable_semantic_annotator" in source_fields
+        else base.enable_semantic_annotator,
+        enable_turn_metadata=override.enable_turn_metadata
+        if "enable_turn_metadata" in source_fields
+        else base.enable_turn_metadata,
+        enable_speaker_stats=override.enable_speaker_stats
+        if "enable_speaker_stats" in source_fields
+        else base.enable_speaker_stats,
+        device=override.device if "device" in source_fields else base.device,
+        dimensional_model_name=override.dimensional_model_name
+        if "dimensional_model_name" in source_fields
+        else base.dimensional_model_name,
+        categorical_model_name=override.categorical_model_name
+        if "categorical_model_name" in source_fields
+        else base.categorical_model_name,
+        pause_threshold=override.pause_threshold
+        if "pause_threshold" in source_fields
+        else base.pause_threshold,
+        semantic_annotator=override.semantic_annotator or base.semantic_annotator,
+    )
 
 
 @dataclass(slots=True)
@@ -924,4 +1323,124 @@ class EnrichmentConfig:
         config = cls(**config_dict)
         # Track which fields were explicitly set from environment
         config._source_fields = set(config_dict.keys())
+        return config
+
+    @classmethod
+    def from_sources(
+        cls,
+        env_prefix: str = "SLOWER_WHISPER_ENRICH_",
+        config_file: str | Path | None = None,
+        **overrides: Any,
+    ) -> EnrichmentConfig:
+        """
+        Load configuration from multiple sources with proper precedence.
+
+        Precedence order (highest to lowest):
+        1. Explicit keyword arguments (overrides parameter)
+        2. Config file (if config_file provided)
+        3. Environment variables (with env_prefix)
+        4. Defaults
+
+        This method implements the same precedence logic as the CLI, making it
+        available for programmatic use without needing to go through argparse.
+
+        Args:
+            env_prefix: Environment variable prefix (default: "SLOWER_WHISPER_ENRICH_").
+                Used to look up env vars like {prefix}DEVICE, {prefix}ENABLE_PROSODY, etc.
+            config_file: Optional path to JSON configuration file.
+            **overrides: Explicit configuration values that override all other sources.
+                Only non-None values are applied. All EnrichmentConfig fields are
+                supported (device, enable_prosody, enable_emotion, etc.).
+
+        Returns:
+            EnrichmentConfig with merged settings from all sources.
+
+        Raises:
+            FileNotFoundError: If config_file is specified but doesn't exist.
+            ValueError: If config file or environment variables contain invalid values.
+            ConfigurationError: If configuration values fail validation.
+
+        Examples:
+            # Use defaults
+            config = EnrichmentConfig.from_sources()
+
+            # Load from environment variables only
+            config = EnrichmentConfig.from_sources()
+
+            # Load from config file and environment
+            config = EnrichmentConfig.from_sources(
+                config_file=Path("enrich_config.json")
+            )
+
+            # Override specific values
+            config = EnrichmentConfig.from_sources(
+                config_file=Path("enrich_config.json"),
+                device="cuda",
+                enable_prosody=True
+            )
+
+            # Custom environment prefix
+            config = EnrichmentConfig.from_sources(
+                env_prefix="MY_APP_ENRICH_",
+                device="cpu"
+            )
+
+            # Full precedence example
+            # 1. Defaults: device="cpu", enable_prosody=True
+            # 2. Env: SLOWER_WHISPER_ENRICH_DEVICE=cuda -> device="cuda"
+            # 3. File: {"enable_prosody": false} -> device="cuda", enable_prosody=False
+            # 4. CLI: enable_emotion=False -> device="cuda", enable_prosody=False, enable_emotion=False
+            config = EnrichmentConfig.from_sources(
+                config_file="enrich_config.json",
+                enable_emotion=False  # Overrides env and file
+            )
+        """
+        # Step 1: Start with defaults
+        config = cls()
+
+        # Step 2: Override with environment variables
+        env_config = cls.from_env(prefix=env_prefix)
+        config = _merge_enrich_configs(config, env_config)
+
+        # Step 3: Override with config file if provided
+        if config_file is not None:
+            file_config = cls.from_file(config_file)
+            config = _merge_enrich_configs(config, file_config)
+
+        # Step 4: Override with explicit keyword arguments (only if not None)
+        # Filter out None values to distinguish between "not set" and "set to None"
+        filtered_overrides = {k: v for k, v in overrides.items() if v is not None}
+
+        if filtered_overrides:
+            # Create a new config with overrides applied
+            override_config = cls(
+                skip_existing=filtered_overrides.get("skip_existing", config.skip_existing),
+                enable_prosody=filtered_overrides.get("enable_prosody", config.enable_prosody),
+                enable_emotion=filtered_overrides.get("enable_emotion", config.enable_emotion),
+                enable_categorical_emotion=filtered_overrides.get(
+                    "enable_categorical_emotion", config.enable_categorical_emotion
+                ),
+                enable_turn_metadata=filtered_overrides.get(
+                    "enable_turn_metadata", config.enable_turn_metadata
+                ),
+                enable_speaker_stats=filtered_overrides.get(
+                    "enable_speaker_stats", config.enable_speaker_stats
+                ),
+                enable_semantic_annotator=filtered_overrides.get(
+                    "enable_semantic_annotator", config.enable_semantic_annotator
+                ),
+                device=filtered_overrides.get("device", config.device),
+                dimensional_model_name=filtered_overrides.get(
+                    "dimensional_model_name", config.dimensional_model_name
+                ),
+                categorical_model_name=filtered_overrides.get(
+                    "categorical_model_name", config.categorical_model_name
+                ),
+                pause_threshold=filtered_overrides.get("pause_threshold", config.pause_threshold),
+                semantic_annotator=filtered_overrides.get(
+                    "semantic_annotator", config.semantic_annotator
+                ),
+            )
+            config = override_config
+
         return config

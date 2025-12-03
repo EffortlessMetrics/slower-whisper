@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import TypedDict
+from typing import Any, TypedDict
 
 
 class StreamChunk(TypedDict):
@@ -30,6 +30,7 @@ class StreamSegment:
     end: float
     text: str
     speaker_id: str | None = None
+    audio_state: dict[str, Any] | None = None  # Optional audio enrichment data
 
 
 class StreamEventType(Enum):
@@ -37,14 +38,23 @@ class StreamEventType(Enum):
 
     PARTIAL_SEGMENT = "partial_segment"
     FINAL_SEGMENT = "final_segment"
+    SEMANTIC_UPDATE = "semantic_update"
 
 
 @dataclass(slots=True)
 class StreamEvent:
-    """A streaming event containing the current segment view."""
+    """A streaming event containing the current segment view.
+
+    Attributes:
+        type: The type of event (PARTIAL_SEGMENT, FINAL_SEGMENT, SEMANTIC_UPDATE).
+        segment: The segment associated with this event.
+        semantic: Optional semantic update payload (only for SEMANTIC_UPDATE events).
+                 This field is dynamically attached by LiveSemanticSession.
+    """
 
     type: StreamEventType
     segment: StreamSegment
+    semantic: Any = None  # Optional SemanticUpdatePayload for SEMANTIC_UPDATE events
 
 
 @dataclass(slots=True)

@@ -25,6 +25,11 @@ Streaming:
     - StreamingSession: Builds partial/final segments from post-ASR chunks
     - StreamChunk: Input chunk type (post-ASR)
     - StreamEvent: Output event with segment view
+    - StreamingEnrichmentSession: Incremental audio enrichment for streaming (v1.7.0)
+    - StreamingEnrichmentConfig: Configuration for streaming enrichment (v1.7.0)
+    - LiveSemanticSession: Real-time semantic annotation for streaming (v1.7.0)
+    - LiveSemanticsConfig: Configuration for live semantics (v1.7.0)
+    - SemanticUpdatePayload: Structured payload for semantic updates (v1.7.0)
 
 Models:
     - Transcript: Complete transcript with segments
@@ -52,7 +57,7 @@ from typing import Any
 
 # Version of the transcription pipeline; included in JSON metadata.
 # Must be defined before other imports to avoid circular imports
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 
 # Configure global cache environment for all model downloads
 # This ensures all HF/torch models are cached under SLOWER_WHISPER_CACHE_ROOT
@@ -102,7 +107,11 @@ from .models import (
 )
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
 from .speaker_id import get_speaker_id, get_speaker_label_or_id
-from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamingSession
+from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamEventType, StreamingSession
+
+# v1.7.0 streaming features
+from .streaming_enrich import StreamingEnrichmentConfig, StreamingEnrichmentSession
+from .streaming_semantic import LiveSemanticsConfig, LiveSemanticSession, SemanticUpdatePayload
 from .turn_helpers import turn_to_dict
 from .types_audio import AudioState, EmotionState, ExtractionStatus, ProsodyState
 from .validation import validate_transcript_json
@@ -141,6 +150,9 @@ __all__ = [
     "EnrichmentConfig",
     "ChunkingConfig",
     "StreamConfig",
+    # v1.7.0: Streaming enrichment and semantic configs
+    "StreamingEnrichmentConfig",
+    "LiveSemanticsConfig",
     # Models
     "Chunk",
     "Segment",
@@ -162,6 +174,10 @@ __all__ = [
     "StreamChunk",
     "StreamEvent",
     "StreamingSession",
+    # v1.7.0: Streaming sessions and payloads
+    "StreamingEnrichmentSession",
+    "LiveSemanticSession",
+    "SemanticUpdatePayload",
     # Utilities
     "turn_to_dict",
     "get_speaker_id",

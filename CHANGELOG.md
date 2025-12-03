@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2025-12-02
+
+### Added
+
+- **Streaming Audio Enrichment** (`StreamingEnrichmentSession`): Real-time audio feature extraction for streaming transcription with prosody and emotion analysis as segments are finalized. Provides low-latency enrichment (~60-220ms) for live applications with graceful error handling and session statistics.
+- **Live Semantic Annotation** (`LiveSemanticSession`): Turn-aware semantic enrichment for streaming conversations with automatic speaker turn detection, keyword extraction, risk flag detection, and action item identification. Maintains rolling context window for conversation coherence.
+- **Unified Configuration API** (`Config.from_sources()`): New classmethod for `TranscriptionConfig` and `EnrichmentConfig` that loads settings from multiple sources with proper precedence (CLI args > config file > environment > defaults). Simplifies programmatic config creation without argparse.
+- **Configuration Documentation** (`docs/CONFIGURATION.md`): Comprehensive guide to configuration management, precedence rules, and usage examples for all configuration sources.
+
+### Changed
+
+- **Streaming Event Types**: Extended `StreamEventType` enum with `SEMANTIC_UPDATE` for real-time semantic annotation events.
+- **StreamSegment Schema**: Added `audio_state` field to `StreamSegment` dataclass for carrying enrichment data through streaming pipeline.
+
+### Fixed
+
+- **Config File Validation**: Added chunking fields (`enable_chunking`, `chunk_target_duration_s`, `chunk_max_duration_s`, `chunk_target_tokens`, `chunk_pause_split_threshold_s`) to valid fields in `TranscriptionConfig.from_file()` to enable file-based chunking configuration.
+
+### Documentation
+
+- **API Quick Reference**: Updated with new streaming enrichment and configuration APIs.
+- **Index**: Added links to new streaming enrichment and configuration documentation.
+
 ## [1.6.0] - 2025-12-02
 
 ### Added
