@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 def _torchcodec_available() -> bool:
     """Detect whether torchcodec can decode audio for pyannote."""
     try:
-        from torchcodec.decoders import AudioDecoder
+        from torchcodec.decoders import AudioDecoder  # type: ignore
     except Exception as exc:  # noqa: BLE001
         logger.debug("torchcodec unavailable for pyannote input: %s", exc)
         return False

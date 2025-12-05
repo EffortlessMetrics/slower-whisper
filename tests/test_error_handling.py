@@ -752,8 +752,10 @@ class TestCLIErrorExitCodes:
         # Create empty raw_audio directory (no audio files)
         argv = ["transcribe", "--root", str(temp_project_root), "--device", "cpu"]
 
-        # With no audio files, CLI should return 0 (not an error, just no work to do)
-        exit_code = cli_main(argv)
+        # Mock normalization to prevent ffmpeg error
+        with patch("transcription.audio_io.normalize_all"):
+            # With no audio files, CLI should return 0 (not an error, just no work to do)
+            exit_code = cli_main(argv)
 
         assert exit_code == 0  # No files is not an error condition
 
@@ -792,17 +794,31 @@ class TestCLIErrorExitCodes:
             meta={},
         )
 
+        from transcription.pipeline import PipelineBatchResult
+
+        mock_result = PipelineBatchResult(
+            total_files=1,
+            processed=1,
+            skipped=0,
+            diarized_only=0,
+            failed=0,
+            total_audio_seconds=1.0,
+            total_time_seconds=1.0,
+        )
+
         # Mock both the pipeline and directory function
+        # Also mock normalize_all to prevent ffmpeg check error in CI
         with (
-            patch("transcription.pipeline.run_pipeline"),
+            patch("transcription.pipeline.run_pipeline", return_value=mock_result),
             patch("transcription.writers.load_transcript_from_json", return_value=mock_transcript),
+            patch("transcription.audio_io.normalize_all"),
         ):
             # Create a fake JSON file for the mock to find
             json_path = temp_project_root / "whisper_json" / "test.json"
             json_path.parent.mkdir(exist_ok=True)
             json_path.write_text("{}", encoding="utf-8")
 
-        exit_code = cli_main(argv)
+            exit_code = cli_main(argv)
 
         assert exit_code == 0  # Success
 
