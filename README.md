@@ -2,9 +2,6 @@
 
 ## Local-first conversation signal engine for LLMs
 
-![Version](https://img.shields.io/badge/version-1.7.0-blue)
-![Tests](https://img.shields.io/badge/tests-267%20passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-57%25-yellow)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Status](https://img.shields.io/badge/status-production%20ready-success)
@@ -57,7 +54,7 @@ slower-whisper is a **local-first, open-source conversation signal engine** that
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/slower-whisper.git
+git clone https://github.com/EffortlessMetrics/slower-whisper.git
 cd slower-whisper
 
 # Run guided setup (detects Nix, shows appropriate instructions)
@@ -82,7 +79,7 @@ nix develop
 uv sync --extra full --extra diarization --extra dev
 
 # 3. Run transcription
-uv run slower-whisper
+uv run slower-whisper transcribe
 ```
 
 **Fallback path (if Nix unavailable):**
@@ -91,7 +88,7 @@ uv run slower-whisper
 # 1. Install system deps (ffmpeg, libsndfile) via apt/brew/choco
 # 2. Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh
 # 3. Install Python deps: uv sync --extra full
-# 4. Run: uv run slower-whisper
+# 4. Run: uv run slower-whisper transcribe
 ```
 
 Place your audio files in `raw_audio/` and find transcripts in `whisper_json/`, `transcripts/`.
@@ -850,10 +847,10 @@ uv run slower-whisper transcribe
 uv run slower-whisper enrich
 
 # Use a lighter model and quantized weights
-uv run slower-whisper --model medium --compute-type int8_float16
+uv run slower-whisper transcribe --model medium --compute-type int8_float16
 
 # Skip files that already have JSON output
-uv run slower-whisper --skip-existing-json
+uv run slower-whisper transcribe --skip-existing-json
 ```
 
 The pipeline prints per-file progress, basic timing statistics (per-file and
@@ -865,7 +862,7 @@ If you installed with pip, you can run directly:
 
 ```bash
 # If installed as package
-slower-whisper
+slower-whisper transcribe
 
 # Or using python directly
 python transcribe_pipeline.py
@@ -890,30 +887,23 @@ slower-whisper produces a **stable, versioned JSON format** designed for program
 ```json
 {
   "schema_version": 2,
-  "audio": {
-    "id": "sha256:abc123...",
-    "path": "meeting.wav",
+  "file_name": "meeting.wav",
+  "language": "en",
+  "meta": {
+    "pipeline_version": "1.7.1",
+    "asr_model": "faster-whisper-large-v3",
     "duration_sec": 3120.5,
     "sample_rate": 16000,
-    "channels": 1
-  },
-  "meta": {
-    "pipeline_version": "1.0.0",
-    "language": "en",
-    "asr_model": "faster-whisper-large-v3",
+    "channels": 1,
+    "diarization": {
+      "requested": true,
+      "status": "ok"
+    },
     "enrichment": {
       "prosody": { /* config */ },
       "emotion": { /* config */ }
     }
   },
-  "speakers": [
-    {
-      "id": "spk_0",
-      "label": "Speaker A",
-      "role_hint": "agent",
-      "cluster_confidence": 0.93
-    }
-  ],
   "segments": [
     {
       "id": 23,
@@ -948,8 +938,20 @@ slower-whisper produces a **stable, versioned JSON format** designed for program
         }
       },
       "annotations": {
-        "llm": []  // Reserved for v2.0+ semantic layer; empty in v1.x
+        "semantic": {
+          "keywords": ["pricing"],
+          "risk_tags": ["churn_risk"],
+          "actions": []
+        }
       }
+    }
+  ],
+  "speakers": [
+    {
+      "id": "spk_0",
+      "label": "Speaker A",
+      "role_hint": "agent",
+      "cluster_confidence": 0.93
     }
   ],
   "turns": [
@@ -958,7 +960,23 @@ slower-whisper produces a **stable, versioned JSON format** designed for program
       "speaker_id": "spk_1",
       "segment_ids": [23, 24],
       "start": 123.45,
-      "end": 140.10
+      "end": 140.10,
+      "text": "I'm not sure this pricing works for us."
+    }
+  ],
+  "speaker_stats": [
+    {
+      "speaker_id": "spk_0",
+      "total_talk_time": 512.3,
+      "num_turns": 34,
+      "avg_turn_duration": 15.1,
+      "interruptions_initiated": 4,
+      "interruptions_received": 7,
+      "question_turns": 9,
+      "prosody_summary": {
+        "pitch_median_hz": 180.5,
+        "energy_median_db": -12.3
+      }
     }
   ]
 }

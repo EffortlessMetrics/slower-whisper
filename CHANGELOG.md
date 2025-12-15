@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2025-12-15
+
+### Fixed
+
+- **Enrich CLI overrides:** CLI flags (e.g., `--no-skip-existing`, `--enable-semantics`, `--enable-speaker-analytics`) now correctly flow into `EnrichmentConfig.from_sources()` instead of being dropped.
+- **Package metadata:** Updated library version markers and project metadata (pyproject URLs/author, `__version__`) for the 1.7.1 patch release.
+
+### Documentation
+
+- **Quickstart:** Correct repository clone URL and required subcommands in README instructions; removed stale static badges.
+- **Schema alignment:** README schema example now matches the canonical v2 shape (`file_name`, `language`, `meta`, `segments`, `speakers`, `turns`, `speaker_stats`).
+- **Changelog chronology:** Normalized release dates to avoid future-dated entries.
+
 ## [1.7.0] - 2025-12-02
 
 ### Added
@@ -111,7 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated ROADMAP.md to mark type hardening as Done.
 - Added concrete Python type definitions to `docs/STREAMING_ARCHITECTURE.md`.
 
-## [1.3.0] - 2026-01-15
+## [1.3.0] - 2025-11-15
 
 ### Added
 
@@ -639,10 +652,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
 
 ## Links
 
-- [Homepage](https://github.com/steven/slower-whisper)
-- [Documentation](https://github.com/steven/slower-whisper#readme)
-- [Issue Tracker](https://github.com/steven/slower-whisper/issues)
-- [Releases](https://github.com/steven/slower-whisper/releases)
+- [Homepage](https://github.com/EffortlessMetrics/slower-whisper)
+- [Documentation](https://github.com/EffortlessMetrics/slower-whisper#readme)
+- [Issue Tracker](https://github.com/EffortlessMetrics/slower-whisper/issues)
+- [Releases](https://github.com/EffortlessMetrics/slower-whisper/releases)
 
-[1.0.0]: https://github.com/steven/slower-whisper/releases/tag/v1.0.0
-[0.1.0]: https://github.com/steven/slower-whisper/releases/tag/v0.1.0
+[1.0.0]: https://github.com/EffortlessMetrics/slower-whisper/releases/tag/v1.0.0
+[0.1.0]: https://github.com/EffortlessMetrics/slower-whisper/releases/tag/v0.1.0
