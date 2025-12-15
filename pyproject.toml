@@ -7,7 +7,7 @@ name = "slower-whisper"
 version = "1.7.1"
 description = "Local-first conversation signal engine: transform audio into LLM-ready structured data with speaker diarization, prosody, and emotion"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.13"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Effortless Metrics", email = "opensource@effortlessmetrics.com"}
@@ -30,7 +30,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -65,7 +64,7 @@ enrich-prosody = [
 # Adds: torch, transformers, CUDA dependencies
 emotion = [
     "slower-whisper[enrich-basic]",
-    "torch>=2.9.1",
+    "torch>=2.8,<2.9",
     "transformers>=4.57.3",
 ]
 
@@ -75,7 +74,7 @@ emotion = [
 diarization = [
     "slower-whisper[enrich-basic]",
     "pyannote.audio>=4.0.3",
-    "torch>=2.9.1",
+    "torch>=2.8,<2.9",
 ]
 
 # Full audio enrichment (prosody + emotion + diarization, ~4GB additional)
@@ -119,17 +118,17 @@ dev = [
     "types-PyYAML",
     "types-jsonschema",
     # Documentation
-    "sphinx>=9.0.4",
-    "sphinx-rtd-theme>=3.0.2",
-    "sphinx-autodoc-typehints>=3.6.0",
-    "myst-parser>=4.0.1",
+    "sphinx>=7,<9",
+    "sphinx-rtd-theme>=1.3.0",
+    "sphinx-autodoc-typehints>=2.1.0,<3.0.0",
+    "myst-parser>=4.0.1,<4.1.0",
     # Build & Distribution
     "build>=1.3.0",
     "twine>=6.2.0",
     "wheel>=0.45.1",
     # Utilities
     "pre-commit>=4.5.0",
-    "ipython>=9.8.0",
+    "ipython>=8.18,<9",
     "ipdb>=0.13.13",
     "rich>=14.2.0",
 ]
@@ -166,8 +165,8 @@ slower-whisper-enrich = "transcription.audio_enrich_cli:main"
 [project.urls]
 Homepage = "https://github.com/EffortlessMetrics/slower-whisper"
 Documentation = "https://github.com/EffortlessMetrics/slower-whisper#readme"
-Repository = "https://github.com/steven/slower-whisper"
-Issues = "https://github.com/steven/slower-whisper/issues"
+Repository = "https://github.com/EffortlessMetrics/slower-whisper"
+Issues = "https://github.com/EffortlessMetrics/slower-whisper/issues"
 
 [tool.setuptools]
 packages = ["transcription", "scripts", "integrations"]
@@ -204,7 +203,7 @@ use_parentheses = true
 ensure_newline_before_comments = true
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

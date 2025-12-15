@@ -351,7 +351,7 @@ choco install ffmpeg
 - **Lines of Code:** 200 (verify_all.py)
 - **Test Coverage:** 6 test cases
 - **Entry Points:** 3 (console script, direct script, module)
-- **Dependencies:** Python 3.10+, uv/pip (runtime), pytest (testing)
+- **Dependencies:** Python 3.11+, uv/pip (runtime), pytest (testing)
 - **Platforms:** Linux, macOS, Windows
 - **Backward Compatibility:** Shell scripts deprecated but functional
 

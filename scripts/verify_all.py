@@ -469,7 +469,11 @@ def feature_summary() -> None:
 
     trans_cfg = TranscriptionConfig.from_env()
     diar_requested = bool(trans_cfg.enable_diarization)
-    has_pyannote = importlib.util.find_spec("pyannote.audio") is not None
+    try:
+        has_pyannote = importlib.util.find_spec("pyannote.audio") is not None
+    except ValueError:
+        # Some mocked modules may not set __spec__; treat as missing
+        has_pyannote = False
     has_hf_token = bool(os.getenv("HF_TOKEN"))
     if not diar_requested:
         diar_status = "disabled"

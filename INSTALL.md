@@ -7,7 +7,7 @@ environment if you prefer.
 ## Prerequisites
 
 - OS: Linux, macOS, or Windows (WSL supported)
-- Python: 3.10+ (managed by Nix or your system manager)
+- Python: 3.11+ (managed by Nix or your system manager)
 - System deps: `ffmpeg` and `libsndfile`
 - Python package manager: `uv` (recommended)
 - Optional GPU: NVIDIA GPU with recent drivers + CUDA for best performance

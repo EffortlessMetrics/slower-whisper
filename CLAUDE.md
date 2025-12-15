@@ -575,7 +575,7 @@ See `docs/TYPING_POLICY.md` for complete typing standards.
 
 **ruff configuration** (pyproject.toml):
 - Line length: 100 characters
-- Target: Python 3.10+
+- Target: Python 3.11+
 - Enabled rules: pycodestyle, pyflakes, isort, flake8-bugbear, flake8-comprehensions, pyupgrade
 
 **mypy configuration**:

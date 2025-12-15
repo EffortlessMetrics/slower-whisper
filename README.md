@@ -2,7 +2,7 @@
 
 ## Local-first conversation signal engine for LLMs
 
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Status](https://img.shields.io/badge/status-production%20ready-success)
 
@@ -199,7 +199,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete design details.
 ## Requirements
 
 - Windows, Linux, or macOS (any OS with Nix or Python + ffmpeg)
-- Python 3.10+ (managed by Nix or system package manager)
+- Python 3.11+ (managed by Nix or system package manager)
 - NVIDIA GPU recommended for GPU acceleration (CPU fallback supported)
 - **Recommended:** [Nix](https://nixos.org/) for reproducible environments
 - **Fallback:** Manual ffmpeg + [uv](https://docs.astral.sh/uv/) installation
