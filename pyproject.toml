@@ -7,7 +7,7 @@ name = "slower-whisper"
 version = "1.7.1"
 description = "Local-first conversation signal engine: transform audio into LLM-ready structured data with speaker diarization, prosody, and emotion"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.15"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Effortless Metrics", email = "opensource@effortlessmetrics.com"}
