@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enrich CLI overrides:** CLI flags (e.g., `--no-skip-existing`, `--enable-semantics`, `--enable-speaker-analytics`) now correctly flow into `EnrichmentConfig.from_sources()` instead of being dropped.
 - **Package metadata:** Updated library version markers and project metadata (pyproject URLs/author, `__version__`) for the 1.7.1 patch release.
 
+### Changed
+
+- **Python support floor:** Project now targets Python 3.11+; classifiers and tooling configs updated accordingly.
+- **Dependency pins:** Relaxed doc stack to Sphinx<9/autodoc-typehints<3, pinned torch to 2.8.x for pyannote audio compatibility, and aligned dev/runtime locks.
+
 ### Documentation
 
 - **Quickstart:** Correct repository clone URL and required subcommands in README instructions; removed stale static badges.
