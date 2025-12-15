@@ -250,7 +250,7 @@ jobs:
 
       - name: Upload BDD results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: bdd-library-results
           path: .pytest_cache/
@@ -291,7 +291,7 @@ jobs:
 
       - name: Upload API BDD results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: bdd-api-results
           path: .pytest_cache/
