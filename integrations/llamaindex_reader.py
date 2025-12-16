@@ -21,7 +21,7 @@ class SlowerWhisperReader:
             from llama_index.core import Document  # type: ignore
         except Exception as exc:  # noqa: BLE001
             raise ImportError(
-                'llama-index-core is required for SlowerWhisperReader; install with `uv sync --extra integrations` or `pip install -e ".[integrations]"`.'
+                'llama-index-core is required for SlowerWhisperReader; install with `uv sync --extra integrations` or `pip install "slower-whisper[integrations]"`.'
             ) from exc
         return Document
 

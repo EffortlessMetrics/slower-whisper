@@ -39,7 +39,7 @@ classifiers = [
 
 # Minimum viable dependencies (Stage 1: Transcription only, ~2.5GB)
 dependencies = [
-    "faster-whisper>=1.2.1",
+    "faster-whisper>=1.2.1,<2",
     "typing-extensions>=4.15.0",
 ]
 
@@ -65,7 +65,7 @@ emotion = [
     "slower-whisper[enrich-basic]",
     "torch==2.8.0",
     "torchaudio==2.8.0",
-    "transformers>=4.57.3",
+    "transformers>=4.57.3,<5",
 ]
 
 # Stage 2d: Speaker diarization (heavy ML, ~4GB additional)
