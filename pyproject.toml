@@ -98,9 +98,16 @@ api = [
     "python-multipart>=0.0.20",  # Required for file uploads
 ]
 
+# Integrations (LangChain, LlamaIndex)
+integrations = [
+    "langchain-core",
+    "llama-index-core",
+]
+
 # Development dependencies
 dev = [
     "slower-whisper[full]",
+    "slower-whisper[integrations]",
     "numpy>=2.3.5",
     # Testing
     "pytest>=9.0.2",
