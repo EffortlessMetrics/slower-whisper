@@ -1,15 +1,15 @@
 # ============================================================================
 # Stage 1: Transcription (core dependencies, required)
 # ============================================================================
-faster-whisper>=1.0.0
+faster-whisper>=1.2.1,<2.0
 
 # ============================================================================
 # Stage 2: Audio Enrichment (optional dependencies)
 # ============================================================================
 # Audio processing and feature extraction
 soundfile>=0.12.0
-numpy>=1.24.0
-librosa>=0.10.0
+numpy>=2.3.5,<3
+librosa>=0.11.0,<0.12
 
 # Prosody feature extraction
 praat-parselmouth>=0.4.0

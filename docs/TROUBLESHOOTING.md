@@ -89,11 +89,15 @@ python -c "import librosa, transformers, torch; print('OK')"
 
 ### Import errors with numpy 2.x
 
-**Problem:** `AttributeError: module 'numpy' has no attribute 'X'`
+**Problem:** `AttributeError: module 'numpy' has no attribute 'X'` (usually from an old audio dependency pinned to numpy 1.x)
 
-**Solution:** Downgrade to numpy 1.x (required by some dependencies)
+**Solution:** Reinstall with the current audio stack (numpy 2.x compatible)
 ```bash
-pip install "numpy>=1.24.0,<2.0"
+# uv (preferred)
+uv sync --extra enrich-basic
+
+# or pip
+pip install -U "numpy>=2.3.5,<3" "librosa>=0.11.0" "soundfile>=0.13.1"
 ```
 
 ---
