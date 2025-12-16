@@ -524,16 +524,17 @@ Text rendering creates concise annotations suitable for context windows:
 
 ## Dependencies
 
-### Required
-- `faster-whisper>=1.2.1` (Stage 1)
-- `soundfile>=0.12.0`
-- `numpy>=2.3.5`
+### Required (Stage 1)
+- `faster-whisper>=1.2.1`
 
 ### Optional (Stage 2)
+- `numpy>=2.3.5,<3` (shared numerical stack for enrichment)
+- `soundfile>=0.12.0` (audio I/O)
 - `librosa>=0.11.0` (energy, basic pitch)
 - `praat-parselmouth>=0.4.0` (advanced pitch)
 - `transformers>=4.57.3` (emotion models)
-- `torch==2.8.0` (model inference)
+- `torch==2.8.0` and `torchaudio==2.8.0` (model inference + audio I/O)
+- `pyannote.audio>=4.0.3` (speaker diarization)
 
 ---
 

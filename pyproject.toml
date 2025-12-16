@@ -7,7 +7,7 @@ name = "slower-whisper"
 version = "1.7.1"
 description = "Local-first conversation signal engine: transform audio into LLM-ready structured data with speaker diarization, prosody, and emotion"
 readme = "README.md"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.11,<3.13"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Effortless Metrics", email = "opensource@effortlessmetrics.com"}
@@ -32,7 +32,6 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Text Processing :: Linguistic",
@@ -42,7 +41,6 @@ classifiers = [
 dependencies = [
     "faster-whisper>=1.2.1",
     "typing-extensions>=4.15.0",
-    "numpy>=2.3.5,<3",
 ]
 
 [project.optional-dependencies]
@@ -66,6 +64,7 @@ enrich-prosody = [
 emotion = [
     "slower-whisper[enrich-basic]",
     "torch==2.8.0",
+    "torchaudio==2.8.0",
     "transformers>=4.57.3",
 ]
 
@@ -76,6 +75,7 @@ diarization = [
     "slower-whisper[enrich-basic]",
     "pyannote.audio>=4.0.3",
     "torch==2.8.0",
+    "torchaudio==2.8.0",
 ]
 
 # Full audio enrichment (prosody + emotion + diarization, ~4GB additional)
@@ -126,10 +126,10 @@ dev = [
     "types-PyYAML",
     "types-jsonschema",
     # Documentation
-    "sphinx>=9,<10",
-    "sphinx-rtd-theme>=3.1.0rc1",
-    "sphinx-autodoc-typehints>=3.5.2,<3.6",
-    "myst-parser>=4.0.1,<5.0",
+    "sphinx>=8.2.3,<9",
+    "sphinx-rtd-theme>=3.0.2,<4",
+    "sphinx-autodoc-typehints>=3.5.2,<4",
+    "myst-parser>=4.0.1,<5",
     # Build & Distribution
     "build>=1.3.0",
     "twine>=6.2.0",
@@ -184,7 +184,7 @@ transcription = ["py.typed"]
 
 [tool.black]
 line-length = 100
-target-version = ['py311', 'py312', 'py313']
+target-version = ['py311', 'py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(

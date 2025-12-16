@@ -33,11 +33,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --no-dev
 
-      - name: Install ruff
-        run: uv pip install ruff
-
       - name: Run ruff check
-        run: uv run ruff check transcription/ tests/ examples/ benchmarks/
+        run: uvx ruff check transcription/ tests/ examples/ benchmarks/
 
   format:
     name: Format check (ruff format)
@@ -56,11 +53,8 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install ruff
-        run: uv pip install ruff
-
       - name: Check formatting
-        run: uv run ruff format --check transcription/ tests/ examples/ benchmarks/
+        run: uvx ruff format --check transcription/ tests/ examples/ benchmarks/
 
   type-check:
     name: Type check (mypy)

@@ -42,10 +42,10 @@ types-jsonschema>=4.21,<5.0
 # ============================================================================
 # Documentation
 # ============================================================================
-sphinx>=9,<10.0
-sphinx-rtd-theme>=3.1.0rc1
-sphinx-autodoc-typehints>=3.5.2,<3.6
-myst-parser>=4.0.1,<5.0         # markdown support
+sphinx>=8.2.3,<9
+sphinx-rtd-theme>=3.0.2,<4
+sphinx-autodoc-typehints>=3.5.2,<4
+myst-parser>=4.0.1,<5           # markdown support
 
 # ============================================================================
 # Security & Dependency Scanning
