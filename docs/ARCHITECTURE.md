@@ -525,15 +525,15 @@ Text rendering creates concise annotations suitable for context windows:
 ## Dependencies
 
 ### Required
-- `faster-whisper>=1.0.0` (Stage 1)
+- `faster-whisper>=1.2.1` (Stage 1)
 - `soundfile>=0.12.0`
 - `numpy>=2.3.5`
 
 ### Optional (Stage 2)
 - `librosa>=0.11.0` (energy, basic pitch)
 - `praat-parselmouth>=0.4.0` (advanced pitch)
-- `transformers>=4.30.0` (emotion models)
-- `torch>=2.0.0` (model inference)
+- `transformers>=4.57.3` (emotion models)
+- `torch==2.8.0` (model inference)
 
 ---
 
