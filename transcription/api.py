@@ -720,7 +720,7 @@ def enrich_directory(
         except ImportError as e:
             raise EnrichmentError(
                 f"Missing required dependencies for audio enrichment. "
-                f"Install with: uv sync --extra full or pip install -e '.[full]'. "
+                f'Install with: uv sync --extra full or pip install -e ".[full]". '
                 f"Error: {e}"
             ) from e
         except Exception as e:
@@ -800,7 +800,7 @@ def enrich_transcript(
     except ImportError as e:
         raise EnrichmentError(
             f"Missing required dependencies for audio enrichment. "
-            f"Install with: uv sync --extra full or pip install -e '.[full]'. "
+            f'Install with: uv sync --extra full or pip install -e ".[full]". '
             f"Error: {e}"
         ) from e
 

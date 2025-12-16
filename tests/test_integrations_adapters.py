@@ -81,7 +81,7 @@ def test_llamaindex_reader_emits_documents(monkeypatch, tmp_path):
 def test_langchain_loader_uses_sample_transcript_metadata():
     if importlib.util.find_spec("langchain_core") is None:
         pytest.skip(
-            "langchain-core not installed; run `uv sync --extra integrations` or `pip install -e '.[integrations]'`"
+            'langchain-core not installed; run `uv sync --extra integrations` or `pip install -e ".[integrations]"`'
         )
 
     sample_path = Path("benchmarks/data/samples/sample_transcript.json")

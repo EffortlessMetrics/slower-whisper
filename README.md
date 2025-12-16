@@ -76,7 +76,7 @@ sh <(curl -L https://nixos.org/nix/install) --daemon
 
 # 2. Enter dev shell and install dependencies
 nix develop
-uv sync --extra full --extra diarization --extra dev
+make install  # runs `uv sync --extra dev` (includes full + integrations)
 
 # 3. Run transcription
 uv run slower-whisper transcribe
@@ -87,7 +87,8 @@ uv run slower-whisper transcribe
 ```bash
 # 1. Install system deps (ffmpeg, libsndfile) via apt/brew/choco
 # 2. Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh
-# 3. Install Python deps: uv sync --extra full
+# 3. Install Python deps for contributors: make install  # -> uv sync --extra dev
+#    (or runtime-only: uv sync --extra full)
 # 4. Run: uv run slower-whisper transcribe
 ```
 

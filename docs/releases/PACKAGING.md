@@ -6,7 +6,7 @@ for packaging.
 
 ## Prerequisites
 
-- Python 3.10+
+- Python 3.11+
 - `uv` installed (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Optional: `nix develop` for a fully reproducible toolchain
 
