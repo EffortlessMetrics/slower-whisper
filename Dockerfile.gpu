@@ -105,11 +105,11 @@ ARG TORCHAUDIO_VERSION=2.8.0+cu128
 
 RUN printf "torch==%s\ntorchaudio==%s\n" "$TORCH_VERSION" "$TORCHAUDIO_VERSION" > /tmp/constraints-gpu.txt
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    if [ "$INSTALL_MODE" = "base" ]; then \
-        uv pip install --index-url "${PYPI_INDEX}" -e . ; \
+RUN if [ "$INSTALL_MODE" = "base" ]; then \
+        uv pip install --link-mode=hardlink --index-url "${PYPI_INDEX}" -e . ; \
     elif [ "$INSTALL_MODE" = "full" ]; then \
         uv pip install \
+            --link-mode=hardlink \
             --index-strategy unsafe-best-match \
             --index-url "${PYPI_INDEX}" \
             --extra-index-url "${TORCH_CUDA_INDEX}" \
