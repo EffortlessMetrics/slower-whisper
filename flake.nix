@@ -11,6 +11,9 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
+        runtimeBinPath = pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ];
+        runtimeLibPath = pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ];
+
         # System dependencies needed by slower-whisper
         systemDeps = with pkgs; [
           # Python
@@ -42,6 +45,7 @@
 
         # Common shell environment
         commonShellHook = ''
+          export PATH="${runtimeBinPath}:''${PATH:-}"
           # Set uv to use Nix's Python and local venv
           export UV_PYTHON="${pkgs.python312}/bin/python"
           export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
@@ -52,7 +56,7 @@
           # Prefer the project venv on PYTHONPATH so uv-installed deps override nixpkgs shims
           export PYTHONPATH="$PWD/.venv/lib/python3.12/site-packages:$PWD:''${PYTHONPATH:-}"
           # Make sure Python wheels (numpy/torch/ffmpeg) find runtime libs
-          export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc pkgs.zlib pkgs.ffmpeg ]}:''${LD_LIBRARY_PATH:-}"
+          export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
         '';
 
       in {
@@ -135,12 +139,12 @@
             program = toString (pkgs.writeShellScript "slower-whisper-ci" ''
               set -euo pipefail
 
-              PATH="${pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ]}:''${PATH:-}"
+              PATH="${runtimeBinPath}:''${PATH:-}"
               export PATH
               export UV_PYTHON="${pkgs.python312}/bin/python"
               export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
               export UV_CACHE_DIR="$PWD/.cache/uv"
-              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ]}:''${LD_LIBRARY_PATH:-}"
+              export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
 
               # Parse mode argument (default: full)
               MODE="''${1:-full}"
@@ -274,12 +278,12 @@
             type = "app";
             program = toString (pkgs.writeShellScript "dogfood" ''
               set -euo pipefail
-              PATH="${pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ]}:''${PATH:-}"
+              PATH="${runtimeBinPath}:''${PATH:-}"
               export PATH
               export UV_PYTHON="${pkgs.python312}/bin/python"
               export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
               export UV_CACHE_DIR="$PWD/.cache/uv"
-              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ]}:''${LD_LIBRARY_PATH:-}"
+              export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
               exec ${pkgs.uv}/bin/uv run slower-whisper-dogfood "$@"
             '');
@@ -290,12 +294,12 @@
             type = "app";
             program = toString (pkgs.writeShellScript "verify" ''
               set -euo pipefail
-              PATH="${pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ]}:''${PATH:-}"
+              PATH="${runtimeBinPath}:''${PATH:-}"
               export PATH
               export UV_PYTHON="${pkgs.python312}/bin/python"
               export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
               export UV_CACHE_DIR="$PWD/.cache/uv"
-              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ]}:''${LD_LIBRARY_PATH:-}"
+              export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
               exec ${pkgs.uv}/bin/uv run slower-whisper-verify "$@"
             '');
