@@ -92,6 +92,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         uv pip install --system \
             --index-url "${PYPI_INDEX}" \
             --extra-index-url "${TORCH_CPU_INDEX}" \
+            --index-strategy unsafe-best-match \
             -c /tmp/constraints-cpu.txt \
             -e .; \
     elif [ "$INSTALL_MODE" = "full" ]; then \
@@ -103,6 +104,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         uv pip install --system \
             --index-url "${PYPI_INDEX}" \
             --extra-index-url "${TORCH_CPU_INDEX}" \
+            --index-strategy unsafe-best-match \
             -c /tmp/constraints-cpu.txt \
             -e ".[full]"; \
     else \

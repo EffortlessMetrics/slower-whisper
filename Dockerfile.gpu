@@ -10,8 +10,8 @@
 # Stage 1: Base image with CUDA, Python, and system dependencies
 # -----------------------------------------------------------------------------
 # Using pinned CUDA runtime image for reproducibility
-# CUDA 12.1.0 with Ubuntu 22.04 (Jammy) runtime
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS base
+# CUDA 12.8.0 with Ubuntu 22.04 (Jammy) runtime
+FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04 AS base
 
 # Metadata
 LABEL maintainer="slower-whisper contributors"
@@ -98,18 +98,21 @@ COPY integrations/ ./integrations/
 ARG INSTALL_MODE=full
 
 # Install remaining dependencies
-ARG TORCH_CUDA_INDEX=https://download.pytorch.org/whl/cu121
+ARG TORCH_CUDA_INDEX=https://download.pytorch.org/whl/cu128
 ARG PYPI_INDEX=https://pypi.org/simple
+ARG TORCH_VERSION=2.8.0+cu128
+ARG TORCHAUDIO_VERSION=2.8.0+cu128
+
+RUN printf "torch==%s\ntorchaudio==%s\n" "$TORCH_VERSION" "$TORCHAUDIO_VERSION" > /tmp/constraints-gpu.txt
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$INSTALL_MODE" = "base" ]; then \
-        uv pip install \
-            --index-url "${TORCH_CUDA_INDEX}" \
-            --extra-index-url "${PYPI_INDEX}" \
-            -e . ; \
+        uv pip install --index-url "${PYPI_INDEX}" -e . ; \
     elif [ "$INSTALL_MODE" = "full" ]; then \
         uv pip install \
-            --index-url "${TORCH_CUDA_INDEX}" \
-            --extra-index-url "${PYPI_INDEX}" \
+            --index-url "${PYPI_INDEX}" \
+            --extra-index-url "${TORCH_CUDA_INDEX}" \
+            -c /tmp/constraints-gpu.txt \
             -e ".[full]" ; \
     else \
         echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'base' or 'full')" && exit 1; \
@@ -229,8 +232,8 @@ CMD ["--help"]
 #    - RTX 20/30/40 series
 #    - Tesla V100, A100, etc.
 #
-# 3. NVIDIA driver version >= 525.60.13 (for CUDA 12.1)
+# 3. NVIDIA driver version >= 550 (for CUDA 12.8)
 #
 # 4. Verify installation:
-#    docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+#    docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
 #
