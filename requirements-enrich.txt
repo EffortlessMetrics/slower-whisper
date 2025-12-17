@@ -47,8 +47,8 @@ praat-parselmouth>=0.4.0,<1.0   # 36MB: GPL licensed, high accuracy
 # ============================================================================
 
 # Deep learning framework
-torch==2.8.0                    # 1.7GB: PyTorch + CUDA libs
-torchaudio==2.8.0              # Match torch to avoid ABI mismatches
+torch>=2.8,<2.9                # 1.7GB: PyTorch + CUDA libs
+torchaudio>=2.8,<2.9           # Match torch to avoid ABI mismatches
 # torch pulls in:
 # - nvidia-cublas-cu12           (CUDA linear algebra)
 # - nvidia-cuda-cupti-cu12       (CUDA profiling)

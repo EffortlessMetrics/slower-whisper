@@ -3649,6 +3649,7 @@ api = [
 ]
 dev = [
     { name = "build" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "ipdb" },
     { name = "ipython" },
@@ -3669,6 +3670,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "pytest-xdist" },
+    { name = "python-multipart" },
     { name = "rich" },
     { name = "ruff" },
     { name = "soundfile" },
@@ -3682,6 +3684,7 @@ dev = [
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
     { name = "types-requests" },
+    { name = "uvicorn", extra = ["standard"] },
     { name = "wheel" },
 ]
 diarization = [
@@ -3783,6 +3786,7 @@ requires-dist = [
     { name = "rich", marker = "extra == 'dev'", specifier = ">=14.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.9" },
     { name = "safety", marker = "extra == 'security'", specifier = ">=3.7.0" },
+    { name = "slower-whisper", extras = ["api"], marker = "extra == 'dev'" },
     { name = "slower-whisper", extras = ["diarization"], marker = "extra == 'full'" },
     { name = "slower-whisper", extras = ["emotion"], marker = "extra == 'full'" },
     { name = "slower-whisper", extras = ["enrich-basic"], marker = "extra == 'diarization'" },
@@ -3796,10 +3800,10 @@ requires-dist = [
     { name = "sphinx", marker = "extra == 'dev'", specifier = ">=8.2.3,<9" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'dev'", specifier = ">=3.5.2,<4" },
     { name = "sphinx-rtd-theme", marker = "extra == 'dev'", specifier = ">=3.0.2,<4" },
-    { name = "torch", marker = "extra == 'diarization'", specifier = "==2.8.0" },
-    { name = "torch", marker = "extra == 'emotion'", specifier = "==2.8.0" },
-    { name = "torchaudio", marker = "extra == 'diarization'", specifier = "==2.8.0" },
-    { name = "torchaudio", marker = "extra == 'emotion'", specifier = "==2.8.0" },
+    { name = "torch", marker = "extra == 'diarization'", specifier = ">=2.8,<2.9" },
+    { name = "torch", marker = "extra == 'emotion'", specifier = ">=2.8,<2.9" },
+    { name = "torchaudio", marker = "extra == 'diarization'", specifier = ">=2.8,<2.9" },
+    { name = "torchaudio", marker = "extra == 'emotion'", specifier = ">=2.8,<2.9" },
     { name = "transformers", marker = "extra == 'emotion'", specifier = ">=4.57.3,<5" },
     { name = "twine", marker = "extra == 'dev'", specifier = ">=6.2.0" },
     { name = "types-jsonschema", marker = "extra == 'dev'" },

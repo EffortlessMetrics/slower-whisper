@@ -63,8 +63,8 @@ enrich-prosody = [
 # Adds: torch, transformers, CUDA dependencies
 emotion = [
     "slower-whisper[enrich-basic]",
-    "torch==2.8.0",
-    "torchaudio==2.8.0",
+    "torch>=2.8,<2.9",
+    "torchaudio>=2.8,<2.9",
     "transformers>=4.57.3,<5",
 ]
 
@@ -74,8 +74,8 @@ emotion = [
 diarization = [
     "slower-whisper[enrich-basic]",
     "pyannote.audio>=4.0.3",
-    "torch==2.8.0",
-    "torchaudio==2.8.0",
+    "torch>=2.8,<2.9",
+    "torchaudio>=2.8,<2.9",
 ]
 
 # Full audio enrichment (prosody + emotion + diarization, ~4GB additional)

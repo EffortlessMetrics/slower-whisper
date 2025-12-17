@@ -533,7 +533,7 @@ Text rendering creates concise annotations suitable for context windows:
 - `librosa>=0.11.0` (energy, basic pitch)
 - `praat-parselmouth>=0.4.0` (advanced pitch)
 - `transformers>=4.57.3` (emotion models)
-- `torch==2.8.0` and `torchaudio==2.8.0` (model inference + audio I/O)
+- `torch>=2.8,<2.9` and `torchaudio>=2.8,<2.9` (model inference + audio I/O)
 - `pyannote.audio>=4.0.3` (speaker diarization)
 
 ---
