@@ -32,7 +32,6 @@
           curl
 
           # Code quality (for pure checks)
-          ruff
           python312Packages.mypy
 
           # SSL/compression
@@ -95,15 +94,19 @@
           '';
         };
 
-        # Pure offline checks (no network, no uv sync)
+        # Pure checks (locked toolchain via uv; uses cache if available)
         checks = {
-          # Lint check (pure - no network needed)
+          # Lint check (uv-locked ruff version to match CI)
           lint = pkgs.runCommand "slower-whisper-lint" {
             src = ./.;
           } ''
             cd $src
-            ${pkgs.ruff}/bin/ruff check \
-              --no-cache \
+            tmpdir=$(mktemp -d)
+            export UV_PYTHON="${pkgs.python312}/bin/python"
+            export UV_CACHE_DIR="$tmpdir/.cache/uv"
+            export UV_PROJECT_ENVIRONMENT="$tmpdir/.venv"
+
+            ${pkgs.uv}/bin/uv run --frozen --locked ruff check \
               transcription/ tests/ examples/ benchmarks/ || {
               echo "❌ Lint failed. Run: nix run .#ci -- fast"
               exit 1
@@ -111,13 +114,17 @@
             touch $out
           '';
 
-          # Format check (pure - no network needed)
+          # Format check (uv-locked ruff version to match CI)
           format = pkgs.runCommand "slower-whisper-format" {
             src = ./.;
           } ''
             cd $src
-            ${pkgs.ruff}/bin/ruff format \
-              --no-cache \
+            tmpdir=$(mktemp -d)
+            export UV_PYTHON="${pkgs.python312}/bin/python"
+            export UV_CACHE_DIR="$tmpdir/.cache/uv"
+            export UV_PROJECT_ENVIRONMENT="$tmpdir/.venv"
+
+            ${pkgs.uv}/bin/uv run --frozen --locked ruff format \
               --check \
               transcription/ tests/ examples/ benchmarks/ || {
               echo "❌ Format check failed. Run: ruff format ."
@@ -134,6 +141,12 @@
             type = "app";
             program = toString (pkgs.writeShellScript "slower-whisper-ci" ''
               set -euo pipefail
+
+              PATH="${pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ]}:''${PATH:-}"
+              export PATH
+              export UV_PYTHON="${pkgs.python312}/bin/python"
+              export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+              export UV_CACHE_DIR="$PWD/.cache/uv"
 
               # Parse mode argument (default: full)
               MODE="''${1:-full}"
@@ -191,9 +204,14 @@
                 ${pkgs.uv}/bin/uv run ruff format --check \
                   transcription/ tests/ examples/ benchmarks/
 
-              # Check 3: Type-check (allow warnings)
+              # Check 3: Type-check (typed surface)
               run_check "Type-check (mypy)" \
-                ${pkgs.uv}/bin/uv run mypy transcription/ tests/ || true
+                ${pkgs.uv}/bin/uv run mypy \
+                  transcription/ \
+                  tests/test_llm_utils.py \
+                  tests/test_writers.py \
+                  tests/test_turn_helpers.py \
+                  tests/test_audio_state_schema.py
 
               # Check 4: Fast tests
               run_check "Fast tests (pytest -m 'not slow and not heavy')" \
@@ -262,6 +280,11 @@
             type = "app";
             program = toString (pkgs.writeShellScript "dogfood" ''
               set -euo pipefail
+              PATH="${pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ]}:''${PATH:-}"
+              export PATH
+              export UV_PYTHON="${pkgs.python312}/bin/python"
+              export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+              export UV_CACHE_DIR="$PWD/.cache/uv"
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
               exec ${pkgs.uv}/bin/uv run slower-whisper-dogfood "$@"
             '');
@@ -272,6 +295,11 @@
             type = "app";
             program = toString (pkgs.writeShellScript "verify" ''
               set -euo pipefail
+              PATH="${pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ]}:''${PATH:-}"
+              export PATH
+              export UV_PYTHON="${pkgs.python312}/bin/python"
+              export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+              export UV_CACHE_DIR="$PWD/.cache/uv"
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
               exec ${pkgs.uv}/bin/uv run slower-whisper-verify "$@"
             '');

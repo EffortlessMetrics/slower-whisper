@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-dev \
-    python3-pip \
+    python3.12-venv \
     ffmpeg \
     libsndfile1 \
     libgomp1 \
@@ -54,8 +54,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
 
-# Upgrade pip to latest version
-RUN python3.12 -m pip install --upgrade pip
+# Bootstrap an isolated pip for Python 3.12 (distutils is gone)
+RUN python3.12 -m venv /opt/venv \
+    && /opt/venv/bin/python -m pip install --upgrade pip
+
+# Prefer the venv-provided binaries (python/pip/uv)
+ENV PATH="/opt/venv/bin:${PATH}"
 
 # Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash appuser
@@ -78,7 +82,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv - pinned version for reproducibility
 # uv is Astral's fast Python package manager
 ENV UV_VERSION=0.5.11
-RUN pip install --no-cache-dir uv==${UV_VERSION}
+RUN python -m pip install --no-cache-dir uv==${UV_VERSION}
 
 # Copy dependency files and application code
 # Using layer caching optimization: copy dependency files first
@@ -94,7 +98,7 @@ ARG INSTALL_MODE=full
 # Install PyTorch with CUDA 12.1 support first (if needed)
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$INSTALL_MODE" = "full" ]; then \
-        uv pip install --system \
+        uv pip install \
             torch==2.5.1+cu121 \
             --index-url https://download.pytorch.org/whl/cu121; \
     fi
@@ -102,9 +106,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Install remaining dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$INSTALL_MODE" = "base" ]; then \
-        uv pip install --system -e .; \
+        uv pip install -e .; \
     elif [ "$INSTALL_MODE" = "full" ]; then \
-        uv pip install --system -e ".[full]"; \
+        uv pip install -e ".[full]"; \
     else \
         echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'base' or 'full')" && exit 1; \
     fi
@@ -118,6 +122,7 @@ FROM base AS runtime
 # This keeps the final image smaller by excluding build tools
 COPY --from=builder /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /opt/venv /opt/venv
 
 # Copy application code
 COPY --chown=appuser:appuser transcription/ /app/transcription/
