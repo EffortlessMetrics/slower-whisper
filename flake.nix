@@ -4,12 +4,17 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, nixpkgs-unstable }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        unstablePkgs = import nixpkgs-unstable { inherit system; };
+        ruffPkg =
+          let pkg = unstablePkgs.ruff; in
+          assert (pkg.version == "0.14.9"); pkg;
 
         runtimeBinPath = pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ];
         runtimeLibPath = pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ];
@@ -35,7 +40,7 @@
           curl
 
           # Code quality (for pure checks)
-          ruff
+          ruffPkg
           python312Packages.mypy
 
           # SSL/compression
@@ -106,7 +111,7 @@
             src = ./.;
           } ''
             cd $src
-            ${pkgs.ruff}/bin/ruff check \
+            ${ruffPkg}/bin/ruff check \
               --no-cache \
               transcription/ tests/ examples/ benchmarks/ || {
               echo "❌ Lint failed. Run: nix run .#ci -- fast"
@@ -120,7 +125,7 @@
             src = ./.;
           } ''
             cd $src
-            ${pkgs.ruff}/bin/ruff format \
+            ${ruffPkg}/bin/ruff format \
               --no-cache \
               --check \
               transcription/ tests/ examples/ benchmarks/ || {

@@ -88,6 +88,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Using layer caching optimization: copy dependency files first
 COPY pyproject.toml uv.lock README.md ./
 COPY transcription/ ./transcription/
+COPY scripts/ ./scripts/
+COPY integrations/ ./integrations/
 
 # Install Python dependencies using uv
 # ARG INSTALL_MODE controls which dependencies to install
@@ -122,6 +124,8 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Copy application code
 COPY --chown=appuser:appuser transcription/ /app/transcription/
+COPY --chown=appuser:appuser scripts/ /app/scripts/
+COPY --chown=appuser:appuser integrations/ /app/integrations/
 COPY --chown=appuser:appuser pyproject.toml /app/
 
 # Copy legacy entry points for backward compatibility

@@ -75,18 +75,41 @@ COPY integrations/ ./integrations/
 # - base: faster-whisper only (minimal, ~2.5GB)
 # - full: all enrichment features (prosody + emotion, ~4GB additional)
 ARG INSTALL_MODE=full
+ARG TORCH_CPU_INDEX=https://download.pytorch.org/whl/cpu
+ARG PYPI_INDEX=https://pypi.org/simple
+ARG TORCH_VERSION=2.8.0+cpu
+ARG TORCHAUDIO_VERSION=2.8.0+cpu
+
+RUN cat <<EOF > /tmp/constraints-cpu.txt
+--index-url ${PYPI_INDEX}
+--extra-index-url ${TORCH_CPU_INDEX}
+torch==${TORCH_VERSION}
+torchaudio==${TORCHAUDIO_VERSION}
+EOF
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$INSTALL_MODE" = "base" ]; then \
-        uv pip install --system -e .; \
+        uv pip install --system \
+            --index-url "${PYPI_INDEX}" \
+            --extra-index-url "${TORCH_CPU_INDEX}" \
+            -c /tmp/constraints-cpu.txt \
+            -e .; \
     elif [ "$INSTALL_MODE" = "full" ]; then \
         uv pip install --system \
-            --index-url https://download.pytorch.org/whl/cpu \
-            --extra-index-url https://pypi.org/simple \
+            --index-url "${TORCH_CPU_INDEX}" \
+            --extra-index-url "${PYPI_INDEX}" \
+            "torch==${TORCH_VERSION}" \
+            "torchaudio==${TORCHAUDIO_VERSION}"; \
+        uv pip install --system \
+            --index-url "${PYPI_INDEX}" \
+            --extra-index-url "${TORCH_CPU_INDEX}" \
+            -c /tmp/constraints-cpu.txt \
             -e ".[full]"; \
     else \
         echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'base' or 'full')" && exit 1; \
     fi
+
+RUN rm -f /tmp/constraints-cpu.txt
 
 # -----------------------------------------------------------------------------
 # Stage 3: Runtime image
