@@ -107,6 +107,7 @@ integrations = [
 dev = [
     "slower-whisper[full]",
     "slower-whisper[integrations]",
+    "slower-whisper[api]",
     "numpy>=2.3.5,<3",
     # Testing
     "pytest>=9.0.2",
@@ -231,6 +232,7 @@ module = [
     "librosa.*",
     "soundfile.*",
     "torch.*",
+    "torchcodec.*",
     "fastapi.*",
     "uvicorn.*",
     "pyannote.*",

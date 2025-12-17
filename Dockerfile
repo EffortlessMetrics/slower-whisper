@@ -80,7 +80,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$INSTALL_MODE" = "base" ]; then \
         uv pip install --system -e .; \
     elif [ "$INSTALL_MODE" = "full" ]; then \
-        uv pip install --system -e ".[full]"; \
+        uv pip install --system \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -e ".[full]"; \
     else \
         echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'base' or 'full')" && exit 1; \
     fi

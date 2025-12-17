@@ -13,7 +13,7 @@ returns partial results when some features cannot be extracted.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -378,7 +378,7 @@ def enrich_transcript_audio(
         transcript.meta = {}
 
     enrichment_meta: dict[str, Any] = {
-        "enriched_at": datetime.now(timezone.utc).isoformat(),
+        "enriched_at": datetime.now(UTC).isoformat(),
         "total_segments": len(transcript.segments),
         "success_count": success_count,
         "partial_count": partial_count,

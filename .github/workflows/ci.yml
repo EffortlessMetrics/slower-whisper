@@ -74,7 +74,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra api --extra dev
 
       - name: Run mypy
         # Check transcription/ (typed island) plus strategic test modules
