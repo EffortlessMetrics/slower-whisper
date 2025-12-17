@@ -32,6 +32,7 @@
           curl
 
           # Code quality (for pure checks)
+          ruff
           python312Packages.mypy
 
           # SSL/compression
@@ -50,8 +51,8 @@
           export SLOWER_WHISPER_CACHE_ROOT="''${HOME}/.cache/slower-whisper"
           # Prefer the project venv on PYTHONPATH so uv-installed deps override nixpkgs shims
           export PYTHONPATH="$PWD/.venv/lib/python3.12/site-packages:$PWD:''${PYTHONPATH:-}"
-          # Make sure Python wheels (numpy/torch) find runtime libs
-          export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc pkgs.zlib ]}:''${LD_LIBRARY_PATH:-}"
+          # Make sure Python wheels (numpy/torch/ffmpeg) find runtime libs
+          export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc pkgs.zlib pkgs.ffmpeg ]}:''${LD_LIBRARY_PATH:-}"
         '';
 
       in {
@@ -94,19 +95,15 @@
           '';
         };
 
-        # Pure checks (locked toolchain via uv; uses cache if available)
+        # Pure checks (offline-friendly via nixpkgs ruff/mypy)
         checks = {
-          # Lint check (uv-locked ruff version to match CI)
+          # Lint check (ruff pinned via nixpkgs, matches lockfile 0.14.9)
           lint = pkgs.runCommand "slower-whisper-lint" {
             src = ./.;
           } ''
             cd $src
-            tmpdir=$(mktemp -d)
-            export UV_PYTHON="${pkgs.python312}/bin/python"
-            export UV_CACHE_DIR="$tmpdir/.cache/uv"
-            export UV_PROJECT_ENVIRONMENT="$tmpdir/.venv"
-
-            ${pkgs.uv}/bin/uv run --frozen --locked ruff check \
+            ${pkgs.ruff}/bin/ruff check \
+              --no-cache \
               transcription/ tests/ examples/ benchmarks/ || {
               echo "❌ Lint failed. Run: nix run .#ci -- fast"
               exit 1
@@ -114,17 +111,13 @@
             touch $out
           '';
 
-          # Format check (uv-locked ruff version to match CI)
+          # Format check (ruff pinned via nixpkgs, matches lockfile 0.14.9)
           format = pkgs.runCommand "slower-whisper-format" {
             src = ./.;
           } ''
             cd $src
-            tmpdir=$(mktemp -d)
-            export UV_PYTHON="${pkgs.python312}/bin/python"
-            export UV_CACHE_DIR="$tmpdir/.cache/uv"
-            export UV_PROJECT_ENVIRONMENT="$tmpdir/.venv"
-
-            ${pkgs.uv}/bin/uv run --frozen --locked ruff format \
+            ${pkgs.ruff}/bin/ruff format \
+              --no-cache \
               --check \
               transcription/ tests/ examples/ benchmarks/ || {
               echo "❌ Format check failed. Run: ruff format ."
@@ -147,6 +140,7 @@
               export UV_PYTHON="${pkgs.python312}/bin/python"
               export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
               export UV_CACHE_DIR="$PWD/.cache/uv"
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ]}:''${LD_LIBRARY_PATH:-}"
 
               # Parse mode argument (default: full)
               MODE="''${1:-full}"
@@ -285,6 +279,7 @@
               export UV_PYTHON="${pkgs.python312}/bin/python"
               export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
               export UV_CACHE_DIR="$PWD/.cache/uv"
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ]}:''${LD_LIBRARY_PATH:-}"
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
               exec ${pkgs.uv}/bin/uv run slower-whisper-dogfood "$@"
             '');
@@ -300,6 +295,7 @@
               export UV_PYTHON="${pkgs.python312}/bin/python"
               export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
               export UV_CACHE_DIR="$PWD/.cache/uv"
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ]}:''${LD_LIBRARY_PATH:-}"
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
               exec ${pkgs.uv}/bin/uv run slower-whisper-verify "$@"
             '');
