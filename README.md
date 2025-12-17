@@ -2,7 +2,7 @@
 
 ## Local-first conversation signal engine for LLMs
 
-![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Python](https://img.shields.io/badge/python-3.11--3.12-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Status](https://img.shields.io/badge/status-production%20ready-success)
 

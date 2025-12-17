@@ -34,7 +34,7 @@ jobs:
         run: uv sync --no-dev
 
       - name: Run ruff check
-        run: uvx ruff check transcription/ tests/ examples/ benchmarks/
+        run: uvx ruff@0.14.9 check transcription/ tests/ examples/ benchmarks/
 
   format:
     name: Format check (ruff format)
@@ -54,7 +54,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Check formatting
-        run: uvx ruff format --check transcription/ tests/ examples/ benchmarks/
+        run: uvx ruff@0.14.9 format --check transcription/ tests/ examples/ benchmarks/
 
   type-check:
     name: Type check (mypy)
