@@ -18,7 +18,7 @@ slower-whisper uses **gradual typing** — a pragmatic approach that maximizes t
 
 ```toml
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false      # Gradual: allows untyped defs

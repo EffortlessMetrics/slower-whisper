@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -71,7 +71,7 @@ def build_generation_metadata(
     )
 
     base_meta = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "audio_file": transcript.file_name,
         "audio_duration_sec": duration_sec,
         "model_name": model_name,

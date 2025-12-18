@@ -8,7 +8,7 @@ with audio features including prosody and emotion analysis.
 import argparse
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import __version__ as PIPELINE_VERSION
@@ -102,7 +102,7 @@ def _build_enrichment_meta(config: LegacyEnrichmentConfig) -> dict:
 
     return {
         "enrichment_version": AUDIO_STATE_VERSION,
-        "enriched_at": datetime.now(timezone.utc).isoformat(),
+        "enriched_at": datetime.now(UTC).isoformat(),
         "models_used": models_used,
         "device": config.device,
         "pipeline_version": PIPELINE_VERSION,

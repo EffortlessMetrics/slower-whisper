@@ -112,8 +112,8 @@ def test_pitch_state_structure():
     }
 
     assert isinstance(pitch["level"], str)
-    assert isinstance(pitch["mean_hz"], (float, int)) or pitch["mean_hz"] is None
-    assert isinstance(pitch["std_hz"], (float, int)) or pitch["std_hz"] is None
+    assert isinstance(pitch["mean_hz"], float | int) or pitch["mean_hz"] is None
+    assert isinstance(pitch["std_hz"], float | int) or pitch["std_hz"] is None
     assert isinstance(pitch["contour"], str)
 
 
@@ -172,7 +172,7 @@ def test_energy_state_structure():
     }
 
     assert isinstance(energy["level"], str)
-    assert isinstance(energy["db_rms"], (float, int)) or energy["db_rms"] is None
+    assert isinstance(energy["db_rms"], float | int) or energy["db_rms"] is None
 
 
 def test_energy_state_with_nulls():
@@ -251,9 +251,9 @@ def test_pause_state_structure():
         "rate_per_min": 12.5,
     }
 
-    assert isinstance(pauses["longest_ms"], (float, int)) or pauses["longest_ms"] is None
+    assert isinstance(pauses["longest_ms"], float | int) or pauses["longest_ms"] is None
     assert isinstance(pauses["count"], int) or pauses["count"] is None
-    assert isinstance(pauses["total_ms"], (float, int)) or pauses["total_ms"] is None
+    assert isinstance(pauses["total_ms"], float | int) or pauses["total_ms"] is None
     assert isinstance(pauses["rate_per_min"], float) or pauses["rate_per_min"] is None
 
 
@@ -306,15 +306,15 @@ def test_prosody_state_nested_types(complete_prosody_state: ProsodyState):
 
     # Verify pitch sub-structure
     assert isinstance(prosody["pitch"]["level"], str)
-    assert isinstance(prosody["pitch"]["mean_hz"], (float, int))
+    assert isinstance(prosody["pitch"]["mean_hz"], float | int)
 
     # Verify energy sub-structure
     assert isinstance(prosody["energy"]["level"], str)
-    assert isinstance(prosody["energy"]["db_rms"], (float, int))
+    assert isinstance(prosody["energy"]["db_rms"], float | int)
 
     # Verify rate sub-structure
     assert isinstance(prosody["rate"]["level"], str)
-    assert isinstance(prosody["rate"]["syllables_per_sec"], (float, int))
+    assert isinstance(prosody["rate"]["syllables_per_sec"], float | int)
 
     # Verify pauses sub-structure
     assert isinstance(prosody["pauses"]["count"], int)

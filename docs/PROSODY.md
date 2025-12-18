@@ -53,9 +53,9 @@ pip install -r requirements.txt
 ```
 
 Required dependencies:
-- `numpy>=1.24.0`
+- `numpy>=2.3.5`
 - `praat-parselmouth>=0.4.0` - For pitch extraction
-- `librosa>=0.10.0` - For energy and audio processing
+- `librosa>=0.11.0` - For energy and audio processing
 
 ## Usage
 

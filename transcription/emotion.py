@@ -6,7 +6,9 @@ classification for audio segments.
 """
 
 import logging
+import os
 import threading
+from contextlib import nullcontext
 from typing import Any, Protocol, cast
 
 import numpy as np
@@ -299,14 +301,19 @@ class EmotionRecognizer:
         # Process audio through model
         assert self._dimensional_feature_extractor is not None
         assert self._dimensional_model is not None
-        with torch.no_grad():
+        autocast_ctx = (
+            torch.autocast(device_type="cuda", dtype=torch.float16)
+            if self._device == "cuda" and os.getenv("SLOWER_WHISPER_EMOTION_AUTOMIXED", "1") == "1"
+            else nullcontext()
+        )
+        with torch.inference_mode(), autocast_ctx:
             inputs = self._dimensional_feature_extractor(
                 audio, sampling_rate=self.TARGET_SAMPLE_RATE, return_tensors="pt", padding=True
             )
             inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
             outputs = self._dimensional_model(**inputs)
-            predictions = outputs.logits.cpu().numpy()[0]
+            predictions = outputs.logits[0].float().cpu().numpy()
 
         # MSP-Dim model outputs: [arousal, dominance, valence]
         # Raw scores may slightly exceed [0, 1] range; clamp for schema compliance
@@ -373,23 +380,27 @@ class EmotionRecognizer:
         # Process audio through model
         assert self._categorical_feature_extractor is not None
         assert self._categorical_model is not None
-        with torch.no_grad():
+        autocast_ctx = (
+            torch.autocast(device_type="cuda", dtype=torch.float16)
+            if self._device == "cuda" and os.getenv("SLOWER_WHISPER_EMOTION_AUTOMIXED", "1") == "1"
+            else nullcontext()
+        )
+        with torch.inference_mode(), autocast_ctx:
             inputs = self._categorical_feature_extractor(
                 audio, sampling_rate=self.TARGET_SAMPLE_RATE, return_tensors="pt", padding=True
             )
             inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
             outputs = self._categorical_model(**inputs)
-            logits = outputs.logits.cpu()
+            probs = torch.nn.functional.softmax(outputs.logits, dim=-1)[0]
 
-            # Apply softmax to get probabilities
-            probs = torch.nn.functional.softmax(logits, dim=-1)[0]
+        probs_cpu = probs.float().cpu().numpy()
 
         # Get label names from model config
         id2label = self._categorical_model.config.id2label
 
         # Create scores dictionary
-        all_scores = {id2label[i]: round(float(probs[i]), 3) for i in range(len(probs))}
+        all_scores = {id2label[i]: round(float(probs_cpu[i]), 3) for i in range(len(probs_cpu))}
 
         # Sort by confidence
         sorted_emotions = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)

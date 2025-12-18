@@ -1198,7 +1198,7 @@ class EnrichmentConfig:
         if "pause_threshold" in data:
             pause_val = data["pause_threshold"]
             if pause_val is not None:
-                if isinstance(pause_val, bool) or not isinstance(pause_val, (int, float)):
+                if isinstance(pause_val, bool) or not isinstance(pause_val, int | float):
                     raise ValueError(
                         f"pause_threshold must be a number or null, got {type(pause_val).__name__}"
                     )

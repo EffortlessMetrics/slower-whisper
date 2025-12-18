@@ -137,7 +137,7 @@ On PR or push to main:
   1. lint (ruff check)
   2. format (ruff format)
   3. type-check (mypy, continue-on-error)
-  4. test (Python 3.10/3.11/3.12)
+  4. test (Python 3.11/3.12)
   5. test-integration
   6. bdd-library ← NEW (library contract)
   7. bdd-api ← NEW (API contract)
@@ -200,7 +200,7 @@ GitHub Actions triggers:
   - Lint check (ruff)
   - Format check (ruff format)
   - Type check (mypy, warnings only)
-  - Unit tests (Python 3.10/3.11/3.12)
+  - Unit tests (Python 3.11/3.12)
   - Integration tests
   - BDD library contract (GATE)
   - BDD API contract (GATE)

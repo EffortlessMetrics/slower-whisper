@@ -620,7 +620,7 @@ class TestMissingDependencies:
 
         msg = str(exc_info.value)
         assert "Missing required dependencies for audio enrichment" in msg
-        assert "pip install -e" in msg or "uv sync" in msg
+        assert 'pip install "slower-whisper[full]"' in msg or "uv sync" in msg
 
 
 # ============================================================================

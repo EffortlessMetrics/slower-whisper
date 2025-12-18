@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cache uv
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .venv
@@ -45,11 +45,8 @@ jobs:
       - name: Set up Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v8
 
-      - name: Sync dependencies (dev + diarization + full extras)
-        run: nix develop .# --command uv sync --extra full --extra diarization --extra dev
-
       - name: Run verification (quick)
-        run: nix develop .# --command uv run slower-whisper-verify --quick
+        run: nix run .#verify -- --quick
 
   verify-full:
     name: Verify (full)
@@ -64,7 +61,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cache uv
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .venv
@@ -74,7 +71,7 @@ jobs:
             verify-uv-${{ runner.os }}-
 
       - name: Cache HuggingFace models
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/huggingface
           key: hf-models-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
@@ -109,7 +106,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cache uv
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .venv
