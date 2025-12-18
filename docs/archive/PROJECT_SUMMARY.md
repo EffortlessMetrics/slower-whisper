@@ -94,7 +94,7 @@ The project bridges the gap between audio and text by extracting prosodic and em
 ### Key Dependencies
 
 **Core (Stage 1: Transcription)**
-- `faster-whisper>=1.0.0` - Optimized Whisper implementation
+   - `faster-whisper>=1.2.1` - Optimized Whisper implementation
 - `ffmpeg` (system dependency) - Audio normalization
 
 **Enrichment (Stage 2: Optional)**

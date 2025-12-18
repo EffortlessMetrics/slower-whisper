@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slower-whisper"
-version = "1.6.0"
+version = "1.7.1"
 description = "Local-first conversation signal engine: transform audio into LLM-ready structured data with speaker diarization, prosody, and emotion"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.13"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "Steven", email = "steven@example.com"}
+    {name = "Effortless Metrics", email = "opensource@effortlessmetrics.com"}
 ]
 keywords = [
     "whisper",
@@ -30,10 +30,8 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Text Processing :: Linguistic",
@@ -41,32 +39,33 @@ classifiers = [
 
 # Minimum viable dependencies (Stage 1: Transcription only, ~2.5GB)
 dependencies = [
-    "faster-whisper>=1.0.0",
-    "typing-extensions>=4.9.0",
+    "faster-whisper>=1.2.1,<2",
+    "typing-extensions>=4.15.0",
 ]
 
 [project.optional-dependencies]
 # Stage 2a: Basic audio enrichment (prosody extraction, ~1GB additional)
 # Adds: soundfile, numpy, librosa stack (scipy, scikit-learn, numba)
 enrich-basic = [
-    "soundfile>=0.12.0",
-    "numpy>=1.24.0",
-    "librosa>=0.10.0",
+    "soundfile>=0.13.1",
+    "numpy>=2.3.5,<3",
+    "librosa>=0.11.0",
 ]
 
 # Stage 2b: Prosody with Praat (best accuracy, ~36MB additional)
 # Adds: praat-parselmouth for research-grade pitch extraction
 enrich-prosody = [
     "slower-whisper[enrich-basic]",
-    "praat-parselmouth>=0.4.0",
+    "praat-parselmouth>=0.4.7",
 ]
 
 # Stage 2c: Emotion recognition (heavy ML, ~4GB additional)
 # Adds: torch, transformers, CUDA dependencies
 emotion = [
     "slower-whisper[enrich-basic]",
-    "torch>=2.0.0",
-    "transformers>=4.30.0",
+    "torch>=2.8,<2.9",
+    "torchaudio>=2.8,<2.9",
+    "transformers>=4.57.3,<5",
 ]
 
 # Stage 2d: Speaker diarization (heavy ML, ~4GB additional)
@@ -74,8 +73,9 @@ emotion = [
 # Requires HF_TOKEN environment variable for model access
 diarization = [
     "slower-whisper[enrich-basic]",
-    "pyannote.audio>=3.1.0",
-    "torch>=2.0.0",
+    "pyannote.audio>=4.0.3",
+    "torch>=2.8,<2.9",
+    "torchaudio>=2.8,<2.9",
 ]
 
 # Full audio enrichment (prosody + emotion + diarization, ~4GB additional)
@@ -92,61 +92,69 @@ enrich = [
 
 # FastAPI service wrapper
 api = [
-    "fastapi>=0.104.0",
-    "uvicorn[standard]>=0.24.0",
-    "python-multipart>=0.0.6",  # Required for file uploads
+    "fastapi>=0.124.4",
+    "uvicorn[standard]>=0.38.0",
+    "python-multipart>=0.0.20",  # Required for file uploads
+]
+
+# Integrations (LangChain, LlamaIndex)
+integrations = [
+    "langchain-core",
+    "llama-index-core",
 ]
 
 # Development dependencies
 dev = [
     "slower-whisper[full]",
-    "numpy>=1.26",
+    "slower-whisper[integrations]",
+    "slower-whisper[api]",
+    "numpy>=2.3.5,<3",
     # Testing
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "pytest-mock>=3.10",
-    "pytest-asyncio>=0.21",
-    "pytest-xdist>=3.0",
-    "pytest-bdd>=7.0",
-    "httpx>=0.24.0",  # For API BDD tests
-    "jiwer>=3.0.0",  # For WER computation in benchmarks
-    "jsonschema>=4.21.0",  # For schema validation CLI/tests
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "pytest-asyncio>=1.3.0",
+    "pytest-xdist>=3.8.0",
+    "pytest-bdd>=8.1.0",
+    "httpx>=0.28.1",  # For API BDD tests
+    "jiwer>=4.0.0",  # For WER computation in benchmarks
+    "jsonschema>=4.25.1",  # For schema validation CLI/tests
     # Code quality (ruff replaces black, isort, flake8)
-    "mypy>=1.0",
-    "ruff>=0.1.0",
+    "mypy>=1.19.1",
+    "ruff>=0.14.9",
     # Type stubs
     "types-requests",
     "types-PyYAML",
     "types-jsonschema",
     # Documentation
-    "sphinx>=5.0",
-    "sphinx-rtd-theme>=1.0",
-    "sphinx-autodoc-typehints>=1.23",
-    "myst-parser>=2.0",
+    "sphinx>=8.2.3,<9",
+    "sphinx-rtd-theme>=3.0.2,<4",
+    "sphinx-autodoc-typehints>=3.5.2,<4",
+    "myst-parser>=4.0.1,<5",
     # Build & Distribution
-    "build>=1.0",
-    "twine>=4.0",
-    "wheel>=0.42",
+    "build>=1.3.0",
+    "twine>=6.2.0",
+    "wheel>=0.45.1",
     # Utilities
-    "pre-commit>=3.0",
-    "ipython>=8.0",
-    "ipdb>=0.13",
-    "rich>=13.0",
+    "pre-commit>=4.5.0",
+    "ipython>=9.8.0",
+    "ipdb>=0.13.13",
+    "rich>=14.2.0",
 ]
 
 # Security scanning
 security = [
-    "pip-audit>=2.0",
-    "safety>=2.0",
-    "bandit>=1.7",
+    "pip-audit>=2.10.0",
+    "safety>=3.7.0",
+    "bandit>=1.9.2",
 ]
 
 # Performance profiling
 profiling = [
-    "memory-profiler>=0.61",
-    "line-profiler>=4.0",
-    "py-spy>=0.3",
-    "psutil>=5.9.0",
+    "memory-profiler>=0.61.0",
+    "line-profiler>=5.0.0",
+    "py-spy>=0.4.1",
+    "psutil>=7.1.3",
 ]
 
 [project.scripts]
@@ -164,10 +172,10 @@ slower-whisper-dogfood = "transcription.dogfood:main"
 slower-whisper-enrich = "transcription.audio_enrich_cli:main"
 
 [project.urls]
-Homepage = "https://github.com/steven/slower-whisper"
-Documentation = "https://github.com/steven/slower-whisper#readme"
-Repository = "https://github.com/steven/slower-whisper"
-Issues = "https://github.com/steven/slower-whisper/issues"
+Homepage = "https://github.com/EffortlessMetrics/slower-whisper"
+Documentation = "https://github.com/EffortlessMetrics/slower-whisper#readme"
+Repository = "https://github.com/EffortlessMetrics/slower-whisper"
+Issues = "https://github.com/EffortlessMetrics/slower-whisper/issues"
 
 [tool.setuptools]
 packages = ["transcription", "scripts", "integrations"]
@@ -177,7 +185,7 @@ transcription = ["py.typed"]
 
 [tool.black]
 line-length = 100
-target-version = ['py310', 'py311', 'py312']
+target-version = ['py311', 'py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -204,7 +212,7 @@ use_parentheses = true
 ensure_newline_before_comments = true
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -224,6 +232,7 @@ module = [
     "librosa.*",
     "soundfile.*",
     "torch.*",
+    "torchcodec.*",
     "fastapi.*",
     "uvicorn.*",
     "pyannote.*",
@@ -289,7 +298,7 @@ exclude_lines = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [

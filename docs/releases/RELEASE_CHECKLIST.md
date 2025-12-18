@@ -39,7 +39,7 @@ This document provides a step-by-step checklist for releasing slower-whisper v1.
 - [x] **Update pyproject.toml metadata**:
   - [x] Description reflects LLM integration and diarization
   - [x] Keywords include "diarization", "llm-integration", "conversation-intelligence"
-  - [x] Classifiers include Python 3.13
+  - [x] Classifiers include Python 3.12
   - [x] Entry points defined (`slower-whisper`, `slower-whisper-verify`)
 
 - [x] **Verify CLI version flag**:

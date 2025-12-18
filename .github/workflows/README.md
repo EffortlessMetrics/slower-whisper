@@ -24,7 +24,7 @@ Runs on every push to `main` and on all pull requests.
    - Checks `transcription` and `tests` directories
 
 4. **Test** (`test`)
-   - Runs on Python 3.10, 3.11, and 3.12 in parallel
+   - Runs on Python 3.11 and 3.12 in parallel
    - Executes pytest with coverage reporting
    - Excludes `slow` and `heavy` marked tests
    - Uploads coverage to Codecov (for Python 3.12 only)

@@ -45,11 +45,8 @@ jobs:
       - name: Set up Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v8
 
-      - name: Sync dependencies (dev + diarization + full extras)
-        run: nix develop .# --command uv sync --extra full --extra diarization --extra dev
-
       - name: Run verification (quick)
-        run: nix develop .# --command uv run slower-whisper-verify --quick
+        run: nix run .#verify -- --quick
 
   verify-full:
     name: Verify (full)

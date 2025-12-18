@@ -10,6 +10,10 @@ Runs a suite of checks to validate:
 - Docker image build + CLI smoke tests
 - Kubernetes manifest validation (kubectl dry-run)
 
+Pre-flight: runs `uv sync --locked` with dev/full/diarization/integrations extras
+(and api unless `--skip-api` is provided).
+Pass `--skip-sync` to skip the sync step if the environment is already prepared.
+
 Usage:
     uv run python scripts/verify_all.py --quick
     uv run python scripts/verify_all.py --api
@@ -29,6 +33,21 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def ensure_synced_env(*, include_api: bool) -> None:
+    """Ensure the verification environment has all expected extras installed."""
+    extras = ["dev", "full", "diarization", "integrations"]
+    if include_api:
+        extras.append("api")
+
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("0️⃣  Syncing verification dependencies with uv")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    cmd = ["uv", "sync", "--locked"]
+    for extra in extras:
+        cmd += ["--extra", extra]
+    run(cmd)
 
 
 def run(
@@ -469,7 +488,11 @@ def feature_summary() -> None:
 
     trans_cfg = TranscriptionConfig.from_env()
     diar_requested = bool(trans_cfg.enable_diarization)
-    has_pyannote = importlib.util.find_spec("pyannote.audio") is not None
+    try:
+        has_pyannote = importlib.util.find_spec("pyannote.audio") is not None
+    except ValueError:
+        # Some mocked modules may not set __spec__; treat as missing
+        has_pyannote = False
     has_hf_token = bool(os.getenv("HF_TOKEN"))
     if not diar_requested:
         diar_status = "disabled"
@@ -513,6 +536,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Run API-only checks (FastAPI unit/integration + BDD).",
     )
     parser.add_argument(
+        "--skip-sync",
+        action="store_true",
+        help="Skip uv sync preflight (assumes env already has dev/full/diarization extras).",
+    )
+    parser.add_argument(
         "--skip-api",
         action="store_true",
         help="Skip API BDD tests (useful if httpx/uvicorn not installed).",
@@ -526,6 +554,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.api and args.skip_api:
         parser.error("--api and --skip-api cannot be used together.")
+
+    if not args.skip_sync:
+        ensure_synced_env(include_api=not args.skip_api)
 
     if args.api:
         if args.eval_diarization:

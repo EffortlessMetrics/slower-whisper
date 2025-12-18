@@ -218,8 +218,8 @@ class TestHealthCheckHelpers:
             assert "used_gb" in result
             assert "percent_used" in result
             # Validate metric types
-            assert isinstance(result["free_gb"], (int, float))
-            assert isinstance(result["total_gb"], (int, float))
-            assert isinstance(result["percent_used"], (int, float))
+            assert isinstance(result["free_gb"], int | float)
+            assert isinstance(result["total_gb"], int | float)
+            assert isinstance(result["percent_used"], int | float)
         elif result["status"] == "error":
             assert "message" in result

@@ -83,7 +83,7 @@ def enrich_turns_metadata(transcript: Transcript) -> list[dict[str, Any]]:
             prosody = audio_state.get("prosody") or {}
             pauses = prosody.get("pauses") or {}
             longest_ms = pauses.get("longest_ms")
-            if isinstance(longest_ms, (int, float)):
+            if isinstance(longest_ms, int | float):
                 avg_pause_ms = float(longest_ms)
 
         # Interruption heuristic: overlap with previous

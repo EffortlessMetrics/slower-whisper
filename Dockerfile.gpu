@@ -10,8 +10,8 @@
 # Stage 1: Base image with CUDA, Python, and system dependencies
 # -----------------------------------------------------------------------------
 # Using pinned CUDA runtime image for reproducibility
-# CUDA 12.1.0 with Ubuntu 22.04 (Jammy) runtime
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS base
+# CUDA 12.8.0 with Ubuntu 22.04 (Jammy) runtime
+FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04 AS base
 
 # Metadata
 LABEL maintainer="slower-whisper contributors"
@@ -41,9 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
-    python3.12-dev \
-    python3.12-distutils \
-    python3-pip \
+    python3.12-venv \
     ffmpeg \
     libsndfile1 \
     libgomp1 \
@@ -55,8 +53,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
 
-# Upgrade pip to latest version
-RUN python3.12 -m pip install --upgrade pip
+# Bootstrap an isolated pip for Python 3.12 (distutils is gone)
+RUN python3.12 -m venv /opt/venv
+
+# Prefer the venv-provided binaries (python/pip/uv)
+ENV PATH="/opt/venv/bin:${PATH}"
+
+RUN python -m pip install --upgrade pip
+
+# Install uv - pinned version for reproducibility
+ARG UV_VERSION=0.5.11
+RUN python -m pip install --no-cache-dir "uv==${UV_VERSION}"
 
 # Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash appuser
@@ -73,18 +80,16 @@ FROM base AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
+    python3.12-dev \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
-
-# Install uv - pinned version for reproducibility
-# uv is Astral's fast Python package manager
-ENV UV_VERSION=0.5.11
-RUN pip install --no-cache-dir uv==${UV_VERSION}
 
 # Copy dependency files and application code
 # Using layer caching optimization: copy dependency files first
 COPY pyproject.toml uv.lock README.md ./
 COPY transcription/ ./transcription/
+COPY scripts/ ./scripts/
+COPY integrations/ ./integrations/
 
 # Install Python dependencies using uv
 # ARG INSTALL_MODE controls which dependencies to install
@@ -92,37 +97,39 @@ COPY transcription/ ./transcription/
 # - full: all enrichment features (prosody + emotion, ~6GB additional with CUDA)
 ARG INSTALL_MODE=full
 
-# Install PyTorch with CUDA 12.1 support first (if needed)
-RUN --mount=type=cache,target=/root/.cache/uv \
-    if [ "$INSTALL_MODE" = "full" ]; then \
-        uv pip install --system \
-            torch==2.5.1+cu121 \
-            --index-url https://download.pytorch.org/whl/cu121; \
-    fi
-
 # Install remaining dependencies
-RUN --mount=type=cache,target=/root/.cache/uv \
-    if [ "$INSTALL_MODE" = "base" ]; then \
-        uv pip install --system -e .; \
+ARG TORCH_CUDA_INDEX=https://download.pytorch.org/whl/cu128
+ARG PYPI_INDEX=https://pypi.org/simple
+ARG TORCH_VERSION=2.8.0+cu128
+ARG TORCHAUDIO_VERSION=2.8.0+cu128
+
+RUN printf "torch==%s\ntorchaudio==%s\n" "$TORCH_VERSION" "$TORCHAUDIO_VERSION" > /tmp/constraints-gpu.txt
+
+RUN if [ "$INSTALL_MODE" = "base" ]; then \
+        uv pip install --link-mode=hardlink --index-url "${PYPI_INDEX}" -e . ; \
     elif [ "$INSTALL_MODE" = "full" ]; then \
-        uv pip install --system -e ".[full]"; \
+        uv pip install \
+            --link-mode=hardlink \
+            --index-strategy unsafe-best-match \
+            --index-url "${PYPI_INDEX}" \
+            --extra-index-url "${TORCH_CUDA_INDEX}" \
+            -c /tmp/constraints-gpu.txt \
+            -e ".[full]" ; \
     else \
         echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'base' or 'full')" && exit 1; \
-    fi
+    fi \
+    && rm -f /tmp/constraints-gpu.txt \
+    && rm -rf /root/.cache/uv
 
 # -----------------------------------------------------------------------------
 # Stage 3: Runtime image
 # -----------------------------------------------------------------------------
 FROM base AS runtime
 
-# Copy Python packages from builder
-# This keeps the final image smaller by excluding build tools
-COPY --from=builder /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy application code
-COPY --chown=appuser:appuser transcription/ /app/transcription/
-COPY --chown=appuser:appuser pyproject.toml /app/
+# Copy the fully-built venv and source tree from the builder.
+# (Editable install needs /app present at runtime.)
+COPY --link --from=builder /opt/venv /opt/venv
+COPY --link --from=builder --chown=1000:1000 /app /app
 
 # Copy legacy entry points for backward compatibility
 COPY --chown=appuser:appuser transcribe_pipeline.py audio_enrich.py /app/
@@ -225,8 +232,8 @@ CMD ["--help"]
 #    - RTX 20/30/40 series
 #    - Tesla V100, A100, etc.
 #
-# 3. NVIDIA driver version >= 525.60.13 (for CUDA 12.1)
+# 3. NVIDIA driver version >= 550 (for CUDA 12.8)
 #
 # 4. Verify installation:
-#    docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+#    docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
 #

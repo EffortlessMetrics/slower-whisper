@@ -4,12 +4,20 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, nixpkgs-unstable }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        unstablePkgs = import nixpkgs-unstable { inherit system; };
+        ruffPkg =
+          let pkg = unstablePkgs.ruff; in
+          assert (pkg.version == "0.14.9"); pkg;
+
+        runtimeBinPath = pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ];
+        runtimeLibPath = pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ];
 
         # System dependencies needed by slower-whisper
         systemDeps = with pkgs; [
@@ -32,7 +40,7 @@
           curl
 
           # Code quality (for pure checks)
-          ruff
+          ruffPkg
           python312Packages.mypy
 
           # SSL/compression
@@ -42,6 +50,7 @@
 
         # Common shell environment
         commonShellHook = ''
+          export PATH="${runtimeBinPath}:''${PATH:-}"
           # Set uv to use Nix's Python and local venv
           export UV_PYTHON="${pkgs.python312}/bin/python"
           export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
@@ -51,8 +60,8 @@
           export SLOWER_WHISPER_CACHE_ROOT="''${HOME}/.cache/slower-whisper"
           # Prefer the project venv on PYTHONPATH so uv-installed deps override nixpkgs shims
           export PYTHONPATH="$PWD/.venv/lib/python3.12/site-packages:$PWD:''${PYTHONPATH:-}"
-          # Make sure Python wheels (numpy/torch) find runtime libs
-          export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc pkgs.zlib ]}:''${LD_LIBRARY_PATH:-}"
+          # Make sure Python wheels (numpy/torch/ffmpeg) find runtime libs
+          export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
         '';
 
       in {
@@ -95,14 +104,14 @@
           '';
         };
 
-        # Pure offline checks (no network, no uv sync)
+        # Pure checks (offline-friendly via nixpkgs ruff/mypy)
         checks = {
-          # Lint check (pure - no network needed)
+          # Lint check (ruff pinned via nixpkgs, matches lockfile 0.14.9)
           lint = pkgs.runCommand "slower-whisper-lint" {
             src = ./.;
           } ''
             cd $src
-            ${pkgs.ruff}/bin/ruff check \
+            ${ruffPkg}/bin/ruff check \
               --no-cache \
               transcription/ tests/ examples/ benchmarks/ || {
               echo "❌ Lint failed. Run: nix run .#ci -- fast"
@@ -111,12 +120,12 @@
             touch $out
           '';
 
-          # Format check (pure - no network needed)
+          # Format check (ruff pinned via nixpkgs, matches lockfile 0.14.9)
           format = pkgs.runCommand "slower-whisper-format" {
             src = ./.;
           } ''
             cd $src
-            ${pkgs.ruff}/bin/ruff format \
+            ${ruffPkg}/bin/ruff format \
               --no-cache \
               --check \
               transcription/ tests/ examples/ benchmarks/ || {
@@ -134,6 +143,13 @@
             type = "app";
             program = toString (pkgs.writeShellScript "slower-whisper-ci" ''
               set -euo pipefail
+
+              PATH="${runtimeBinPath}:''${PATH:-}"
+              export PATH
+              export UV_PYTHON="${pkgs.python312}/bin/python"
+              export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+              export UV_CACHE_DIR="$PWD/.cache/uv"
+              export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
 
               # Parse mode argument (default: full)
               MODE="''${1:-full}"
@@ -191,9 +207,14 @@
                 ${pkgs.uv}/bin/uv run ruff format --check \
                   transcription/ tests/ examples/ benchmarks/
 
-              # Check 3: Type-check (allow warnings)
+              # Check 3: Type-check (typed surface)
               run_check "Type-check (mypy)" \
-                ${pkgs.uv}/bin/uv run mypy transcription/ tests/ || true
+                ${pkgs.uv}/bin/uv run mypy \
+                  transcription/ \
+                  tests/test_llm_utils.py \
+                  tests/test_writers.py \
+                  tests/test_turn_helpers.py \
+                  tests/test_audio_state_schema.py
 
               # Check 4: Fast tests
               run_check "Fast tests (pytest -m 'not slow and not heavy')" \
@@ -262,6 +283,12 @@
             type = "app";
             program = toString (pkgs.writeShellScript "dogfood" ''
               set -euo pipefail
+              PATH="${runtimeBinPath}:''${PATH:-}"
+              export PATH
+              export UV_PYTHON="${pkgs.python312}/bin/python"
+              export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+              export UV_CACHE_DIR="$PWD/.cache/uv"
+              export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
               exec ${pkgs.uv}/bin/uv run slower-whisper-dogfood "$@"
             '');
@@ -272,6 +299,12 @@
             type = "app";
             program = toString (pkgs.writeShellScript "verify" ''
               set -euo pipefail
+              PATH="${runtimeBinPath}:''${PATH:-}"
+              export PATH
+              export UV_PYTHON="${pkgs.python312}/bin/python"
+              export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+              export UV_CACHE_DIR="$PWD/.cache/uv"
+              export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
               exec ${pkgs.uv}/bin/uv run slower-whisper-verify "$@"
             '');

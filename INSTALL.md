@@ -7,7 +7,7 @@ environment if you prefer.
 ## Prerequisites
 
 - OS: Linux, macOS, or Windows (WSL supported)
-- Python: 3.10+ (managed by Nix or your system manager)
+- Python: 3.11+ (managed by Nix or your system manager)
 - System deps: `ffmpeg` and `libsndfile`
 - Python package manager: `uv` (recommended)
 - Optional GPU: NVIDIA GPU with recent drivers + CUDA for best performance
@@ -25,8 +25,8 @@ echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
 # 3) Enter the dev shell (provides Python, ffmpeg, libsndfile)
 nix develop
 
-# 4) Install Python deps via uv (full feature set for contributors)
-uv sync --extra full --extra diarization --extra dev
+# 4) Install Python deps (full feature set for contributors)
+make install  # runs uv sync --extra dev (includes full + integrations)
 
 # 5) Sanity-check the install
 uv run slower-whisper --version
@@ -44,8 +44,9 @@ uv run slower-whisper transcribe --help
 # 2) Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3) Install Python deps
-uv sync --extra full
+# 3) Install Python deps for contributors
+make install  # runs uv sync --extra dev (includes full + integrations)
+# For runtime-only installs, use: uv sync --extra full
 
 # 4) Verify CLI
 uv run slower-whisper --version

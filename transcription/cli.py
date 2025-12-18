@@ -539,7 +539,7 @@ def _config_from_enrich_args(args: argparse.Namespace) -> EnrichmentConfig:
     # Use from_sources to handle the full config chain
     config = EnrichmentConfig.from_sources(
         config_file=args.enrich_config,
-        cli_overrides=cli_overrides,
+        **cli_overrides,
     )
 
     # Convenience flag overrides granular analytics flags if provided
