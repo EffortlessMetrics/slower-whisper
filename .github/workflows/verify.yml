@@ -43,7 +43,7 @@ jobs:
             accept-flake-config = true
 
       - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v8
+        uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Run verification (quick)
         run: nix run .#verify -- --quick
@@ -87,7 +87,7 @@ jobs:
             accept-flake-config = true
 
       - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v8
+        uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Sync dependencies (dev + diarization + full extras)
         run: nix develop .# --command uv sync --extra full --extra diarization --extra dev
@@ -124,7 +124,7 @@ jobs:
             accept-flake-config = true
 
       - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v8
+        uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Sync dependencies (dev + api extras)
         run: nix develop .# --command uv sync --extra api --extra dev
