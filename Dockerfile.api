@@ -40,7 +40,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 # Create non-root user for security
-RUN useradd -m -u 1000 -s /bin/bash appuser
+# Explicitly create a same-named group (-U) so named ownership (appuser:appuser) is always resolvable.
+RUN useradd -m -u 1000 -U -s /bin/bash appuser
 
 # Set working directory
 WORKDIR /app

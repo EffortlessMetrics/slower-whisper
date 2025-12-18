@@ -66,7 +66,8 @@ ARG UV_VERSION=0.5.11
 RUN python -m pip install --no-cache-dir "uv==${UV_VERSION}"
 
 # Create non-root user for security
-RUN useradd -m -u 1000 -s /bin/bash appuser
+# Explicitly create a same-named group (-U) so named ownership (appuser:appuser) is always resolvable.
+RUN useradd -m -u 1000 -U -s /bin/bash appuser
 
 # Set working directory
 WORKDIR /app
@@ -128,6 +129,7 @@ FROM base AS runtime
 
 # Copy the fully-built venv and source tree from the builder.
 # (Editable install needs /app present at runtime.)
+# Note: avoid `--chown` here; some BuildKit versions error with `--link` + `--from` + named `--chown`.
 COPY --link --from=builder /opt/venv /opt/venv
 COPY --link --from=builder /app /app
 
