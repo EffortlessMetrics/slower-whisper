@@ -118,18 +118,18 @@ RUN if [ "$INSTALL_MODE" = "base" ]; then \
     else \
         echo "Invalid INSTALL_MODE: $INSTALL_MODE (must be 'base' or 'full')" && exit 1; \
     fi \
+    && rm -f /tmp/constraints-gpu.txt \
     && rm -rf /root/.cache/uv
 
 # -----------------------------------------------------------------------------
 # Stage 3: Runtime image
 # -----------------------------------------------------------------------------
-FROM builder AS runtime
+FROM base AS runtime
 
-# Drop build-only packages to keep the runtime image clean-ish
-RUN apt-get purge -y build-essential git python3.12-dev \
-  && apt-get autoremove -y \
-  && rm -rf /var/lib/apt/lists/* \
-  && apt-get clean
+# Copy the fully-built venv and source tree from the builder.
+# (Editable install needs /app present at runtime.)
+COPY --link --from=builder /opt/venv /opt/venv
+COPY --link --from=builder --chown=appuser:appuser /app /app
 
 # Copy legacy entry points for backward compatibility
 COPY --chown=appuser:appuser transcribe_pipeline.py audio_enrich.py /app/
