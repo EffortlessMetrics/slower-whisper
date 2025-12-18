@@ -26,7 +26,7 @@ jobs:
             accept-flake-config = true
 
       - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v8
+        uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Run pure checks
         run: nix flake check --print-build-logs
@@ -70,7 +70,7 @@ jobs:
             accept-flake-config = true
 
       - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v8
+        uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Run CI (fast mode)
         run: nix run .#ci -- fast
@@ -114,7 +114,7 @@ jobs:
             accept-flake-config = true
 
       - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v8
+        uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Run CI (full suite)
         run: nix run .#ci -- full
