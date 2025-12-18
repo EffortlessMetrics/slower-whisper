@@ -129,7 +129,7 @@ FROM base AS runtime
 # Copy the fully-built venv and source tree from the builder.
 # (Editable install needs /app present at runtime.)
 COPY --link --from=builder /opt/venv /opt/venv
-COPY --link --from=builder --chown=appuser:appuser /app /app
+COPY --link --from=builder --chown=1000:1000 /app /app
 
 # Copy legacy entry points for backward compatibility
 COPY --chown=appuser:appuser transcribe_pipeline.py audio_enrich.py /app/
