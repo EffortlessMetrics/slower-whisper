@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
-**Current Version:** v1.7.0 (Streaming enrichment, live semantics, unified config)
-**Last Updated:** 2025-12-02
+**Current Version:** v1.7.1 (Streaming enrichment, live semantics, unified config)
+**Last Updated:** 2025-12-15
 <!-- cspell:ignore pyannote disfluency disfluencies langchain llamaindex Praat
 cuda qwen Qwen Smol Neur INTERSPEECH IEMOCAP multimodal mypy -->
 

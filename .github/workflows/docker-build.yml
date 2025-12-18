@@ -36,10 +36,10 @@ jobs:
       fail-fast: false
       matrix:
         variant:
-          - { target: runtime-cpu, mode: base, tag-suffix: cpu-base }
-          - { target: runtime-cpu, mode: enrich, tag-suffix: cpu }
-          - { target: runtime-gpu, mode: base, tag-suffix: gpu-base }
-          - { target: runtime-gpu, mode: enrich, tag-suffix: gpu }
+          - { dockerfile: Dockerfile, target: runtime, mode: base, tag-suffix: cpu-base }
+          - { dockerfile: Dockerfile, target: runtime, mode: full, tag-suffix: cpu }
+          - { dockerfile: Dockerfile.gpu, target: runtime, mode: base, tag-suffix: gpu-base }
+          - { dockerfile: Dockerfile.gpu, target: runtime, mode: full, tag-suffix: gpu }
 
     steps:
       - name: Checkout repository
@@ -79,12 +79,15 @@ jobs:
             # Tag with PR number
             type=ref,event=pr
             # Tag with git SHA
-            type=sha,prefix={{branch}}-
+            type=sha,prefix=sha-
 
       - name: Build and push Docker image
+        id: build
+        if: ${{ !(github.event_name == 'pull_request' && matrix.variant.tag-suffix == 'gpu') }}
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ matrix.variant.dockerfile }}
           target: ${{ matrix.variant.target }}
           build-args: |
             INSTALL_MODE=${{ matrix.variant.mode }}
@@ -93,6 +96,21 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.variant.tag-suffix }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant.tag-suffix }}
+          platforms: linux/amd64
+
+      - name: Build Docker image (gpu full PR, no cache export)
+        if: ${{ github.event_name == 'pull_request' && matrix.variant.tag-suffix == 'gpu' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.variant.dockerfile }}
+          target: ${{ matrix.variant.target }}
+          build-args: |
+            INSTALL_MODE=${{ matrix.variant.mode }}
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.variant.tag-suffix }}
           platforms: linux/amd64
 
       - name: Generate artifact attestation
@@ -123,12 +141,12 @@ jobs:
           cat >> $GITHUB_STEP_SUMMARY << 'EOF'
           ## Docker Build Summary
 
-          | Variant | Target | Mode | Status |
-          |---------|--------|------|--------|
-          | CPU Base | runtime-cpu | base | ${{ needs.build.result == 'success' && '✅' || '❌' }} |
-          | CPU Full | runtime-cpu | enrich | ${{ needs.build.result == 'success' && '✅' || '❌' }} |
-          | GPU Base | runtime-gpu | base | ${{ needs.build.result == 'success' && '✅' || '❌' }} |
-          | GPU Full | runtime-gpu | enrich | ${{ needs.build.result == 'success' && '✅' || '❌' }} |
+          | Variant | Dockerfile | Target | Mode | Status |
+          |---------|------------|--------|------|--------|
+          | CPU Base | Dockerfile | runtime | base | ${{ needs.build.result == 'success' && '✅' || '❌' }} |
+          | CPU Full | Dockerfile | runtime | full | ${{ needs.build.result == 'success' && '✅' || '❌' }} |
+          | GPU Base | Dockerfile.gpu | runtime | base | ${{ needs.build.result == 'success' && '✅' || '❌' }} |
+          | GPU Full | Dockerfile.gpu | runtime | full | ${{ needs.build.result == 'success' && '✅' || '❌' }} |
 
           ### Images Built
           EOF

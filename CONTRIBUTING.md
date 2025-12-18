@@ -214,7 +214,7 @@ See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for complete Nix documentation.
 
 Before you begin, ensure you have:
 
-1. **Python 3.10 or later** - Check with `python --version`
+1. **Python 3.11 or later** - Check with `python --version`
 2. **ffmpeg** - Required for audio processing
    - Ubuntu/Debian: `sudo apt-get install ffmpeg libsndfile1`
    - macOS: `brew install ffmpeg`
@@ -987,7 +987,7 @@ If your changes affect any BDD scenarios (`tests/features/` or `features/`), you
    - Linting (ruff check)
    - Formatting check (ruff format)
    - Type checking (mypy)
-   - Tests on Python 3.10, 3.11, 3.12
+   - Tests on Python 3.11, 3.12
    - Integration tests
 
 2. **Review by maintainer** - A project maintainer will:
@@ -1414,7 +1414,7 @@ uv sync
 
 A: Common reasons:
 
-- Different Python version (CI tests 3.10, 3.11, 3.12)
+- Different Python version (CI tests 3.11, 3.12)
 - Missing test markers (slow/heavy tests)
 - File paths (use `Path` from pathlib)
 - Platform differences (use `os.path.join` or `pathlib`)
@@ -1427,8 +1427,8 @@ uv pip install tox
 uv run tox
 
 # Or use uv to test different Python versions
-uv python install 3.10
-uv run --python 3.10 pytest
+uv python install 3.11
+uv run --python 3.11 pytest
 ```
 
 ---

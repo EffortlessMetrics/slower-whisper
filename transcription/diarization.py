@@ -55,8 +55,8 @@ def _load_waveform_input(audio_path: Path) -> dict[str, Any]:
     import soundfile as sf
     import torch
 
-    data, sample_rate = sf.read(str(audio_path), always_2d=True)
-    waveform = torch.from_numpy(data.T).float()
+    data, sample_rate = sf.read(str(audio_path), always_2d=True, dtype="float32")
+    waveform = torch.from_numpy(data.T).contiguous()
     return {"waveform": waveform, "sample_rate": int(sample_rate), "uri": audio_path.stem}
 
 

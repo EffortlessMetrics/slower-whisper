@@ -198,7 +198,7 @@ section in your settings
 - ✅ Lint (ruff check) - Pass
 - ✅ Format check (ruff format) - Pass
 - ✅ Type check (mypy) - Pass (or continue-on-error)
-- ✅ Test (Python 3.10, 3.11, 3.12) - Pass
+- ✅ Test (Python 3.11, 3.12) - Pass
 - ✅ Integration tests - Pass
 - ✅ Docker builds - Pass (4 variants)
 

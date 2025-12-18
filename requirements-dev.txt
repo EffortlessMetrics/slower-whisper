@@ -23,7 +23,7 @@ jsonschema>=4.21.0,<5.0         # schema validation
 # ============================================================================
 # Code Quality & Formatting
 # ============================================================================
-black>=23.0,<25.0               # code formatter
+black>=23.0,<26.0               # code formatter
 flake8>=6.0,<8.0                # linter
 isort>=5.0,<8.0                 # import sorter
 mypy>=1.0,<2.0                  # static type checker
@@ -42,10 +42,10 @@ types-jsonschema>=4.21,<5.0
 # ============================================================================
 # Documentation
 # ============================================================================
-sphinx>=5.0,<9.0
-sphinx-rtd-theme>=1.0,<3.0
-sphinx-autodoc-typehints>=1.23,<4.0
-myst-parser>=2.0,<5.0           # markdown support
+sphinx>=8.2.3,<9
+sphinx-rtd-theme>=3.0.2,<4
+sphinx-autodoc-typehints>=3.5.2,<4
+myst-parser>=4.0.1,<5           # markdown support
 
 # ============================================================================
 # Security & Dependency Scanning
@@ -64,10 +64,10 @@ wheel>=0.42,<1.0                # wheel builder
 # ============================================================================
 # Utilities
 # ============================================================================
-pre-commit>=3.0,<4.0            # git hooks
-ipython>=8.0,<9.0               # interactive shell
+pre-commit>=3.0,<5.0            # git hooks
+ipython>=9.0,<10.0               # interactive shell
 ipdb>=0.13,<1.0                 # debugger
-rich>=13.0,<14.0                # rich console output
+rich>=13.0,<15.0                # rich console output
 
 # ============================================================================
 # Performance Profiling

@@ -2,7 +2,7 @@
   "include": ["transcription"],
   "exclude": ["tests", "benchmarks", "examples", "integrations"],
   "typeCheckingMode": "standard",
-  "pythonVersion": "3.10",
+  "pythonVersion": "3.11",
   "reportMissingImports": true,
   "reportMissingTypeStubs": false,
   "reportUnusedImport": "warning",

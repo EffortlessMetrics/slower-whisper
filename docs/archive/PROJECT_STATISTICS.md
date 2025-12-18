@@ -121,7 +121,7 @@ Based on test file sizes and module coverage:
 
 ### Core Dependencies
 - **Core Runtime:** 1 dependency
-  - `faster-whisper>=1.0.0`
+  - `faster-whisper>=1.2.1`
 
 ### Optional Dependencies
 - **Basic Enrichment:** 3 dependencies
