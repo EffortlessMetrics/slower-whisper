@@ -9,7 +9,12 @@ pytest-bdd requires this linkage file to discover and run scenarios.
 
 from __future__ import annotations
 
-from pytest_bdd import scenarios
+import pytest
+
+# Skip all tests if pytest-bdd is not installed
+pytest.importorskip("pytest_bdd")
+
+from pytest_bdd import scenarios  # noqa: E402
 
 # Ensure step definitions are imported
 pytest_plugins = ["features.steps.api_steps"]

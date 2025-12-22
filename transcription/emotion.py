@@ -55,9 +55,6 @@ class EmotionRecognizerLike(Protocol):
 
 
 # Optional emotion dependencies - gracefully handle missing/broken packages
-torch: Any
-AutoModelForAudioClassification: Any
-Wav2Vec2FeatureExtractor: Any
 EMOTION_AVAILABLE: bool = False
 try:
     # Suppress torchcodec/FFmpeg warnings from transformers' torch import chain.
@@ -69,13 +66,11 @@ try:
     warnings.filterwarnings("ignore", message=".*FFmpeg.*")
 
     import torch
-    from transformers import (  # type: ignore[no-redef]
-        AutoModelForAudioClassification,
-        Wav2Vec2FeatureExtractor,
-    )
+    from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
 
     EMOTION_AVAILABLE = True
 except Exception:
+    # Provide dummy values when dependencies are unavailable
     torch = cast(Any, None)
     AutoModelForAudioClassification = cast(Any, None)
     Wav2Vec2FeatureExtractor = cast(Any, None)

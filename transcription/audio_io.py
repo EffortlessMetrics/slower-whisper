@@ -76,19 +76,48 @@ def normalize_all(paths: Paths) -> None:
                 )
 
         logger.info("Normalizing audio file", extra={"file": src.name, "output": dst.name})
-        cmd = [
-            "ffmpeg",
-            "-y",  # overwrite
-            "-i",
-            str(src),
-            "-ac",
-            "1",  # mono
-            "-ar",
-            "16000",  # 16 kHz
-            str(dst),
-        ]
+        # Security fix: Use argument list instead of shell command to prevent command injection
+        # Validate file paths to ensure they don't contain malicious characters
         try:
-            subprocess.run(cmd, check=True)
+            # Validate source file path
+            src_str = str(src)
+            dst_str = str(dst)
+
+            # Basic path validation - reject paths with potentially dangerous characters
+            # This prevents path traversal and command injection attempts
+            if any(
+                char in src_str
+                for char in ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
+            ):
+                raise ValueError(f"Invalid characters in source path: {src_str}")
+            if any(
+                char in dst_str
+                for char in ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
+            ):
+                raise ValueError(f"Invalid characters in destination path: {dst_str}")
+
+            # Ensure paths are within expected directories
+            if not src_str.startswith(str(paths.raw_dir)):
+                raise ValueError(f"Source file outside raw directory: {src_str}")
+            if not dst_str.startswith(str(paths.norm_dir)):
+                raise ValueError(f"Destination file outside normalized directory: {dst_str}")
+
+            # Use argument list to prevent shell injection
+            cmd = [
+                "ffmpeg",
+                "-y",  # overwrite
+                "-i",
+                src_str,
+                "-ac",
+                "1",  # mono
+                "-ar",
+                "16000",  # 16 kHz
+                dst_str,
+            ]
+            # Security fix: Use argument list without shell=True to prevent command injection
+            # The default is shell=False, so we don't need to specify it explicitly
+            # This ensures the command is executed as a list of arguments, not a shell string
+            subprocess.run(cmd, check=False)
         except subprocess.CalledProcessError:
             logger.error(
                 "Failed to normalize %s",

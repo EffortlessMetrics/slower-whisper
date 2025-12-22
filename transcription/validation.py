@@ -28,7 +28,7 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def _require_jsonschema() -> Any:
     try:
-        import jsonschema
+        import jsonschema  # type: ignore[import-untyped]
     except Exception as exc:  # noqa: BLE001
         raise ConfigurationError(
             "jsonschema is required for validation. Install with `uv pip install jsonschema` "

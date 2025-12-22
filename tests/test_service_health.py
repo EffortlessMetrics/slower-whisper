@@ -1,9 +1,14 @@
 """Tests for service health check endpoints."""
 
 import pytest
-from fastapi.testclient import TestClient
 
-from transcription.service import app
+# Skip all tests if API dependencies are not installed
+pytest.importorskip("fastapi")
+pytest.importorskip("uvicorn")
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from transcription.service import app  # noqa: E402
 
 
 @pytest.fixture

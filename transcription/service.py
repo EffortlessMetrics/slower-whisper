@@ -144,6 +144,7 @@ def validate_audio_format(audio_path: Path) -> None:
 
     This performs a lightweight check by attempting to probe the file with ffmpeg.
     If ffmpeg cannot identify it as audio, we reject it early.
+    When ffprobe is not available, we perform basic Python-based validation.
 
     Args:
         audio_path: Path to the audio file to validate
@@ -215,11 +216,82 @@ def validate_audio_format(audio_path: Path) -> None:
             detail="Audio validation timeout: file may be corrupted or invalid.",
         ) from e
     except FileNotFoundError:
-        logger.error("ffprobe not found - audio validation unavailable")
-        # If ffprobe is not available, we can't validate, so we skip this check
-        # and let the transcription pipeline handle errors
-        logger.warning("Skipping audio format validation: ffprobe not available")
-        return
+        logger.error("ffprobe not found - using Python-based validation")
+        # Security fix: When ffprobe is not available, perform basic Python validation
+        # instead of accepting any file
+        _validate_audio_format_python(audio_path)
+
+
+def _validate_audio_format_python(audio_path: Path) -> None:
+    """
+    Basic Python-based audio file validation when ffprobe is not available.
+
+    This is a fallback validation that checks file headers and basic properties
+    to ensure the file is likely a valid audio file.
+
+    Args:
+        audio_path: Path to the audio file to validate
+
+    Raises:
+        HTTPException: 400 if file appears to be invalid
+    """
+    try:
+        # Check file size (must be larger than 0)
+        file_size = audio_path.stat().st_size
+        if file_size == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid audio file: file is empty.",
+            )
+
+        # Check file extension against allowed list
+        allowed_extensions = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
+        if audio_path.suffix.lower() not in allowed_extensions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Invalid audio file extension '{audio_path.suffix}'. "
+                    f"Allowed extensions: {', '.join(sorted(allowed_extensions))}"
+                ),
+            )
+
+        # Basic header validation for common formats
+        with open(audio_path, "rb") as f:
+            header = f.read(12)  # Read first 12 bytes for header check
+
+            # WAV files start with "RIFF" and have "WAVE" at bytes 8-11
+            if audio_path.suffix.lower() == ".wav":
+                if len(header) < 12 or not header.startswith(b"RIFF") or header[8:12] != b"WAVE":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid WAV file: incorrect header format.",
+                    )
+
+            # MP3 files typically start with ID3 tag or MPEG frame sync
+            elif audio_path.suffix.lower() == ".mp3":
+                if len(header) < 3 or not (
+                    header.startswith(b"ID3") or header.startswith(b"\xff\xfb")
+                ):
+                    # Not a definitive check, but catches obvious non-MP3 files
+                    logger.warning("Possible invalid MP3 file: missing ID3 tag or MPEG sync")
+
+            # M4A/AAC files start with "ftyp" box
+            elif audio_path.suffix.lower() in (".m4a", ".aac"):
+                if len(header) < 8 or header[4:8] != b"ftyp":
+                    logger.warning("Possible invalid M4A/AAC file: missing ftyp box")
+
+        # If we get here, basic checks passed
+        logger.info(f"Basic validation passed for {audio_path.name} (ffprobe unavailable)")
+
+    except HTTPException:
+        # Re-raise our own validation errors
+        raise
+    except Exception as e:
+        logger.error(f"Error during Python audio validation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid audio file: validation failed.",
+        ) from e
 
 
 def validate_transcript_json(transcript_content: bytes) -> None:
@@ -466,13 +538,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         exc_info=exc,
     )
 
+    # Security fix: Remove exception type information from client response
+    # This prevents potential information disclosure about internal implementation
+    # Exception details are still logged server-side for debugging
     return create_error_response(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         error_type="internal_error",
         message="An unexpected internal error occurred",
         request_id=request_id,
         details={
-            "exception_type": type(exc).__name__,
             "hint": "Check server logs for details",
         },
     )
@@ -886,18 +960,34 @@ async def transcribe_audio(
             logger.error("Failed to read uploaded audio file", exc_info=e)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to read uploaded audio file: {str(e)}",
+                detail="Failed to read uploaded audio file",
             ) from e
 
         # Validate file size before processing
         validate_file_size(content, MAX_AUDIO_SIZE_MB, file_type="audio")
 
-        # Save uploaded file
-        audio_path = tmpdir_path / "uploaded_audio"
+        # Security fix: Generate random filename to prevent directory traversal
+        # Only preserve the file extension from the original filename
+        # Sanitize the extension to prevent path traversal
+        safe_suffix = ""
         if audio.filename:
-            # Preserve extension if available
-            suffix = Path(audio.filename).suffix
-            audio_path = tmpdir_path / f"uploaded_audio{suffix}"
+            # Extract and sanitize the file extension
+            import re
+
+            # Match only the last extension after the final dot
+            ext_match = re.search(r"(\.[^.]+)$", audio.filename)
+            if ext_match:
+                ext = ext_match.group(1)
+                # Only allow common audio extensions
+                allowed_extensions = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
+                if ext.lower() in allowed_extensions:
+                    safe_suffix = ext
+
+        # Generate a secure random filename with the sanitized extension
+        import secrets
+
+        random_id = secrets.token_hex(16)
+        audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
 
         try:
             audio_path.write_bytes(content)
@@ -1099,15 +1189,36 @@ async def enrich_audio(
         # Validate audio file size
         validate_file_size(audio_content, MAX_AUDIO_SIZE_MB, file_type="audio")
 
-        # Save uploaded audio
-        audio_path = tmpdir_path / "audio.wav"
+        # Security fix: Generate random filename to prevent directory traversal
+        # Only preserve the file extension from the original filename
+        # Sanitize the extension to prevent path traversal
+        safe_suffix = ".wav"  # Default to .wav for audio files
+        if audio.filename:
+            # Extract and sanitize the file extension
+            import re
+
+            # Match only the last extension after the final dot
+            ext_match = re.search(r"(\.[^.]+)$", audio.filename)
+            if ext_match:
+                ext = ext_match.group(1)
+                # Only allow common audio extensions
+                allowed_extensions = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
+                if ext.lower() in allowed_extensions:
+                    safe_suffix = ext
+
+        # Generate a secure random filename with the sanitized extension
+        import secrets
+
+        random_id = secrets.token_hex(16)
+        audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
+
         try:
             audio_path.write_bytes(audio_content)
         except Exception as e:
             logger.error("Failed to save audio file", exc_info=e)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to save audio file: {str(e)}",
+                detail="Failed to save audio file",
             ) from e
 
         # Validate audio format

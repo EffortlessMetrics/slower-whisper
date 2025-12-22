@@ -11,7 +11,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from pytest_bdd import given, parsers, scenarios, then, when
+
+# Skip all tests if pytest-bdd is not installed
+pytest.importorskip("pytest_bdd")
+
+from pytest_bdd import given, parsers, scenarios, then, when  # noqa: E402
 
 from transcription import TranscriptionConfig, transcribe_directory, transcribe_file
 
