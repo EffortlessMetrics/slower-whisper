@@ -23,6 +23,8 @@ from __future__ import annotations
 import copy
 import logging
 import os
+import re
+import shutil
 import wave
 from pathlib import Path
 from typing import Any, Literal
@@ -523,40 +525,17 @@ def transcribe_file(
     audio_io.ensure_dirs(paths)
 
     # Copy to raw_audio if not already there
-    # Security fix: Validate and sanitize file paths to prevent directory traversal
-    import shutil
+    # Sanitize filename to prevent directory traversal attacks
+    safe_stem = re.sub(r"[^\w\-_.]", "_", audio_path.stem) or "audio_file"
+    safe_suffix = audio_path.suffix if re.match(r"^\.\w+$", audio_path.suffix) else ""
+    raw_dest = paths.raw_dir / f"{safe_stem}{safe_suffix}"
 
-    # Validate the source path is safe
+    # Validate destination is within allowed directory (defense in depth)
     try:
-        source_str = str(audio_path.resolve())
-        # Check for path traversal attempts in the source path
-        if ".." in source_str or source_str.startswith("/"):
-            # Allow absolute paths but validate they point to actual files
-            if not audio_path.is_file():
-                raise TranscriptionError(f"Invalid source path: {audio_path}")
-    except (OSError, ValueError) as e:
-        raise TranscriptionError(f"Invalid source path: {audio_path}") from e
-
-    # Create a safe destination filename
-    # Use only the stem (filename without extension) to avoid extension-based attacks
-    safe_name = audio_path.stem
-    # Sanitize the filename to remove dangerous characters
-    import re
-
-    safe_name = re.sub(r"[^\w\-_.]", "_", safe_name)
-    # Ensure the name is not empty after sanitization
-    if not safe_name:
-        safe_name = "audio_file"
-
-    # Reconstruct the filename with the original extension
-    safe_filename = f"{safe_name}{audio_path.suffix}"
-    raw_dest = paths.raw_dir / safe_filename
-
-    # Validate the destination path is within the expected directory
-    try:
-        dest_str = str(raw_dest.resolve())
-        if not dest_str.startswith(str(paths.raw_dir.resolve())):
-            raise TranscriptionError(f"Destination path outside allowed directory: {raw_dest}")
+        resolved_dest = raw_dest.resolve()
+        resolved_raw_dir = paths.raw_dir.resolve()
+        if not resolved_dest.is_relative_to(resolved_raw_dir):
+            raise TranscriptionError(f"Destination path escapes allowed directory: {raw_dest}")
     except (OSError, ValueError) as e:
         raise TranscriptionError(f"Invalid destination path: {raw_dest}") from e
 
