@@ -27,6 +27,16 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def _require_jsonschema() -> Any:
+    """Import and return the jsonschema module, raising ConfigurationError if unavailable.
+
+    This is used for lazy import of optional validation dependencies.
+
+    Returns:
+        The jsonschema module.
+
+    Raises:
+        ConfigurationError: If jsonschema is not installed.
+    """
     try:
         import jsonschema
     except Exception as exc:  # noqa: BLE001

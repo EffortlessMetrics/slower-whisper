@@ -186,7 +186,7 @@ v1.x JSON is forward-compatible with v2.x readers.
 ## v1.7.0 — Streaming Enrichment & Live Semantics (SHIPPED ✅)
 
 **Released:** 2025-12-02
-**Status:** Current stable version
+**Status:** Superseded by v1.8.0
 
 ### What Shipped (v1.7.0)
 
@@ -230,6 +230,54 @@ v1.x JSON is forward-compatible with v2.x readers.
 - Event callback API for easier downstream integration
 - Semantic tuning based on real-world usage
 - Enhanced test coverage for streaming semantics
+
+---
+
+## Code Quality & Maintainability (ONGOING 🔧)
+
+**Updated:** 2025-12-22
+
+### Codebase Health Metrics
+
+- **Test coverage**: 713 tests passing
+- **Type coverage**: 43/43 source files pass mypy
+- **Lint status**: All ruff checks pass
+- **Documentation**: 65+ markdown docs
+
+### Recent Improvements (Post-1.8.0)
+
+**Error Handling & Logging:**
+- Fixed dead error handler in `audio_io.py` - now captures and logs ffmpeg stderr
+- Added debug logging for silent exceptions in `diarization.py` stub mode
+
+**Code Deduplication:**
+- Extracted `_extract_audio_descriptors()` utility in `llm_utils.py` (consolidated 3 duplicate implementations)
+- Identified additional consolidation opportunities for timestamp formatters and dict conversion helpers
+
+**Documentation:**
+- Added docstrings to 10+ undocumented helper functions across `chunking.py`, `turns_enrich.py`, `speaker_stats.py`, `validation.py`
+- Improved CLI help text consistency across transcribe/enrich commands
+
+**CLI Improvements:**
+- Renamed `--enrich-config` to `--config` for command consistency
+- Clarified device flag help text (ASR vs emotion models)
+- Added choices validation for device arguments
+
+### Known Technical Debt
+
+**Test Coverage Gaps** (identified via exploration):
+- 18 of 41 modules have dedicated test files (~44% module coverage)
+- Key untested modules: `api.py`, `pipeline.py`, `cli.py`, `service.py`
+- Recommendation: Prioritize test coverage for public API surface
+
+**Code Duplication** (low priority):
+- 3 dict conversion helpers (`_to_dict`, `_as_dict`, `turn_to_dict`) with similar logic
+- 4 timestamp formatting functions across modules
+- Documented in CLAUDE.md; consolidation deferred to avoid breaking changes
+
+**Configuration Complexity**:
+- Overlapping `AsrConfig`, `AppConfig`, `TranscriptionConfig` classes
+- Legacy backward-compatibility maintained but adds cognitive overhead
 
 ---
 

@@ -73,8 +73,15 @@ def _make_stub_pyannote_pipeline():
             with sf.SoundFile(audio_path, "r") as f:
                 if f.samplerate:
                     return float(max(len(f) / f.samplerate, 0.5))
-        except Exception:
-            pass
+        except Exception as e:
+            # Log why duration detection failed (helps debug stub mode issues)
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "Could not infer audio duration from %s: %s. Using fallback of 4.0s.",
+                audio_path,
+                e,
+            )
         return 4.0
 
     class _StubSegment:

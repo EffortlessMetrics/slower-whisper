@@ -27,6 +27,16 @@ _FILLERS = {
 
 
 def _is_question(text: str) -> bool:
+    """Detect if text is likely a question based on punctuation and common prefixes.
+
+    Checks for trailing '?' or common question word prefixes (who, what, when, etc.).
+
+    Args:
+        text: Text to analyze.
+
+    Returns:
+        True if text appears to be a question.
+    """
     t = (text or "").strip()
     if not t:
         return False
@@ -40,6 +50,17 @@ def _is_question(text: str) -> bool:
 
 
 def _estimate_disfluency_ratio(text: str) -> float:
+    """Estimate ratio of filler words (um, uh, like, etc.) in text.
+
+    Used as a rough indicator of speech disfluency. Common fillers defined
+    in _FILLERS module constant.
+
+    Args:
+        text: Text to analyze for fillers.
+
+    Returns:
+        Ratio of filler tokens to total tokens (0.0 to 1.0).
+    """
     tokens = [t.strip(".,!?\"'`").lower() for t in text.split()]
     if not tokens:
         return 0.0

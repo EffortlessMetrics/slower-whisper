@@ -222,11 +222,21 @@ def normalize_all(paths: Paths) -> None:
             # Security fix: Use argument list without shell=True to prevent command injection
             # The default is shell=False, so we don't need to specify it explicitly
             # This ensures the command is executed as a list of arguments, not a shell string
-            subprocess.run(cmd, check=False)
-        except subprocess.CalledProcessError:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error(
+                    "Failed to normalize %s (exit code %d): %s",
+                    src.name,
+                    result.returncode,
+                    result.stderr.strip() if result.stderr else "No error output",
+                    extra={"file": src.name},
+                )
+        except OSError as e:
+            # Handle subprocess launch failures (e.g., ffmpeg not found)
             logger.error(
-                "Failed to normalize %s",
+                "Failed to run ffmpeg for %s: %s",
                 src.name,
+                e,
                 exc_info=True,
                 extra={"file": src.name},
             )

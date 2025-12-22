@@ -70,7 +70,9 @@ try:
 
     EMOTION_AVAILABLE = True
 except Exception:
-    # Provide dummy values when dependencies are unavailable
+    # Provide dummy values when dependencies are unavailable.
+    # Use cast(Any, None) to satisfy mypy - without cast, mypy reports "already defined"
+    # errors because it sees both the import and the except-block assignment.
     torch = cast(Any, None)
     AutoModelForAudioClassification = cast(Any, None)
     Wav2Vec2FeatureExtractor = cast(Any, None)
@@ -206,6 +208,7 @@ class EmotionRecognizer:
         audio characteristics important for emotion recognition.
         """
         if orig_sr == target_sr:
+            # Explicit cast needed for mypy: astype returns generic ndarray
             return cast(NDArray[np.float32], audio.astype(np.float32))
 
         try:
@@ -218,6 +221,7 @@ class EmotionRecognizer:
                 target_sr=target_sr,
                 res_type="soxr_hq",  # High-quality resampling
             )
+            # Explicit cast needed for mypy: astype returns generic ndarray
             return cast(NDArray[np.float32], resampled.astype(np.float32))
         except ImportError:
             # Fallback to linear interpolation if librosa not available
@@ -229,6 +233,7 @@ class EmotionRecognizer:
             target_length = int(duration * target_sr)
             indices = np.linspace(0, len(audio) - 1, target_length)
             resampled = np.interp(indices, np.arange(len(audio)), audio)
+            # Explicit cast needed for mypy: astype returns generic ndarray
             return cast(NDArray[np.float32], resampled.astype(np.float32))
 
     def _classify_valence(self, score: float) -> str:

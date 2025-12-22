@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **CLI consistency**: Renamed `--enrich-config` to `--config` in enrich command for consistency with transcribe command (old flag still works via dest mapping).
+- **CLI help text**: Improved help text for `--device` flags to clarify ASR vs emotion model usage, `--compute-type` to list valid options, `--diarization-device` to explain 'auto' behavior, and `--enable-speaker-analytics` to document override behavior.
+
+### Fixed
+
+- **Subprocess error handling** (`audio_io.py`): Fixed dead error handler in `normalize_all()` - now properly captures stderr and logs ffmpeg errors with exit codes.
+- **Silent exception logging** (`diarization.py`): Added debug logging for audio duration detection failures in stub mode to aid troubleshooting.
+
+### Developer Experience
+
+- **Code deduplication** (`llm_utils.py`): Extracted `_extract_audio_descriptors()` utility to consolidate 3 duplicate implementations of `[audio: ...]` parsing.
+- **Missing docstrings**: Added docstrings to 10+ helper functions across `chunking.py`, `turns_enrich.py`, `speaker_stats.py`, and `validation.py`.
+- **Type annotation comments**: Added explanatory comments to `cast()` usage in `emotion.py` for mypy workarounds.
+- **Test improvements**: Updated `test_audio_io.py` mock to support new subprocess call signature.
+
 ## [1.8.0] - 2025-12-22
 
 ### Added

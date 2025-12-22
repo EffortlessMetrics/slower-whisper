@@ -46,6 +46,15 @@ def _speaker_id(value: Any) -> str | None:
 
 
 def _estimate_tokens(text: str) -> int:
+    """Estimate token count for text using word-based heuristic.
+
+    Uses a 1.3x multiplier on word count to approximate tokenizer output,
+    which typically produces more tokens than whitespace-split words
+    due to subword tokenization.
+
+    Returns:
+        Estimated token count, minimum 1 for non-empty text.
+    """
     words = text.split()
     if not words:
         return 0
@@ -87,6 +96,17 @@ def _normalize_turns(turns: Iterable[Any]) -> list[dict[str, Any]]:
 
 
 def _finalize_chunk(idx: int, units: list[dict[str, Any]]) -> Chunk:
+    """Create a Chunk from a list of turn/segment units.
+
+    Aggregates segment IDs, turn IDs, speaker IDs, and text from all units.
+
+    Args:
+        idx: Chunk index (used for generating chunk ID).
+        units: List of normalized turn or segment dicts with start/end/text/segment_ids.
+
+    Returns:
+        Chunk dataclass with aggregated metadata and text.
+    """
     start = units[0]["start"]
     end = units[-1]["end"]
     text = " ".join(u["text"].strip() for u in units if u.get("text", "").strip())
@@ -114,6 +134,17 @@ def _finalize_chunk(idx: int, units: list[dict[str, Any]]) -> Chunk:
 
 
 def _segment_units(transcript: Transcript) -> list[dict[str, Any]]:
+    """Convert transcript segments to normalized unit dicts for chunking.
+
+    Each unit dict has: id, start, end, text, segment_ids, speaker_id.
+    Used as fallback when transcript has no turns.
+
+    Args:
+        transcript: Transcript with segments to convert.
+
+    Returns:
+        List of normalized segment unit dicts.
+    """
     units: list[dict[str, Any]] = []
     for seg in transcript.segments:
         units.append(

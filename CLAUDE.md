@@ -440,6 +440,14 @@ Three helpers exist for converting objects to JSON-serializable dicts:
 - If meta can't be converted to dict, `write_json()` logs a warning and uses `{}`
 - Nested objects (like `DiarizationMeta`) are converted via their `to_dict()` methods
 
+### Audio Rendering Utilities
+
+**`_extract_audio_descriptors()` in `llm_utils.py`**:
+- Parses `[audio: high pitch, loud volume]` format rendering strings
+- Returns list of descriptor strings (e.g., `["high pitch", "loud volume"]`)
+- Used by `render_segment()`, `_render_turn_dict()`, and `_collect_audio_descriptors()`
+- **Use this instead of reimplementing the `[audio:...]` parsing pattern**
+
 ### Optional Dependency Pattern
 
 For heavy optional dependencies (emotion, diarization), we use a protocol + factory pattern:

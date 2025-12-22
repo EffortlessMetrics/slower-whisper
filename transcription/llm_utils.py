@@ -34,6 +34,22 @@ def _resolve_speaker_label(
     return speaker_id
 
 
+def _extract_audio_descriptors(rendering: str) -> list[str]:
+    """Extract comma-separated descriptors from '[audio: ...]' format.
+
+    Args:
+        rendering: A rendering string like "[audio: high pitch, loud volume]"
+
+    Returns:
+        List of descriptor strings, e.g. ["high pitch", "loud volume"]
+        Returns empty list if format doesn't match.
+    """
+    if rendering.startswith("[audio:") and rendering.endswith("]"):
+        desc = rendering[7:-1].strip()  # Remove "[audio:" and "]"
+        return [d.strip() for d in desc.split(",") if d.strip()]
+    return []
+
+
 def _as_dict(value: Any) -> dict[str, Any]:
     """Coerce dataclasses or objects with to_dict into plain dicts."""
     if isinstance(value, dict):
@@ -87,12 +103,9 @@ def render_segment(
         cues.append(speaker_label)
 
     if include_audio_cues and segment.audio_state and segment.audio_state.get("rendering"):
-        # Extract just the descriptors from rendering like "[audio: high pitch, loud volume]"
-        rendering = segment.audio_state["rendering"]
-        # Strip "[audio: " and trailing "]"
-        if rendering.startswith("[audio:") and rendering.endswith("]"):
-            audio_desc = rendering[7:-1].strip()  # Remove "[audio:" and "]"
-            cues.append(audio_desc)
+        descriptors = _extract_audio_descriptors(segment.audio_state["rendering"])
+        if descriptors:
+            cues.append(", ".join(descriptors))
 
     if cues:
         parts.append(f"[{' | '.join(cues)}]")
@@ -162,12 +175,8 @@ def _render_turn_dict(
             # Find segment by ID
             segment = next((s for s in transcript.segments if s.id == seg_id), None)
             if segment and segment.audio_state and segment.audio_state.get("rendering"):
-                rendering = segment.audio_state["rendering"]
-                if rendering.startswith("[audio:") and rendering.endswith("]"):
-                    desc = rendering[7:-1].strip()
-                    # Split comma-separated descriptors and collect unique ones
-                    for d in desc.split(","):
-                        audio_descriptors.add(d.strip())
+                for desc in _extract_audio_descriptors(segment.audio_state["rendering"]):
+                    audio_descriptors.add(desc)
 
         if audio_descriptors:
             cues.append(", ".join(sorted(audio_descriptors)))
@@ -356,13 +365,8 @@ def _collect_audio_descriptors(
     for seg_id in segment_ids:
         segment = segment_index.get(seg_id)
         if segment and segment.audio_state and segment.audio_state.get("rendering"):
-            rendering = segment.audio_state["rendering"]
-            if rendering.startswith("[audio:") and rendering.endswith("]"):
-                desc = rendering[7:-1].strip()
-                for item in desc.split(","):
-                    cleaned = item.strip()
-                    if cleaned:
-                        descriptors.add(cleaned)
+            for desc in _extract_audio_descriptors(segment.audio_state["rendering"]):
+                descriptors.add(desc)
     return sorted(descriptors)
 
 
