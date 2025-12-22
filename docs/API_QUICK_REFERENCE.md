@@ -29,6 +29,7 @@ from transcription import (
     # Models
     Transcript,
     Segment,
+    Word,  # v1.8+ word-level timestamps
     Chunk,
     # Batch Processing Results
     BatchProcessingResult,
@@ -64,6 +65,23 @@ transcript = transcribe_file(
     root="/path/to/project",
     config=config
 )
+```
+
+### Word-Level Timestamps (v1.8+)
+
+```python
+config = TranscriptionConfig(
+    model="large-v3",
+    word_timestamps=True  # Enable per-word timing
+)
+
+transcript = transcribe_file("audio.mp3", "/project", config)
+
+# Access word-level data
+for segment in transcript.segments:
+    if segment.words:
+        for word in segment.words:
+            print(f"{word.word}: {word.start:.2f}s - {word.end:.2f}s (prob: {word.probability:.2f})")
 ```
 
 ## Enrichment

@@ -23,7 +23,6 @@ from __future__ import annotations
 import copy
 import logging
 import os
-import re
 import shutil
 import wave
 from pathlib import Path
@@ -519,25 +518,21 @@ def transcribe_file(
     )
 
     # Normalize the audio file
-    from . import audio_io
+    from .audio_io import ensure_dirs, ensure_within_dir, sanitize_filename
 
     paths = Paths(root=root)
-    audio_io.ensure_dirs(paths)
+    ensure_dirs(paths)
 
     # Copy to raw_audio if not already there
     # Sanitize filename to prevent directory traversal attacks
-    safe_stem = re.sub(r"[^\w\-_.]", "_", audio_path.stem) or "audio_file"
-    safe_suffix = audio_path.suffix if re.match(r"^\.\w+$", audio_path.suffix) else ""
+    safe_stem, safe_suffix = sanitize_filename(audio_path.stem, audio_path.suffix)
     raw_dest = paths.raw_dir / f"{safe_stem}{safe_suffix}"
 
     # Validate destination is within allowed directory (defense in depth)
     try:
-        resolved_dest = raw_dest.resolve()
-        resolved_raw_dir = paths.raw_dir.resolve()
-        if not resolved_dest.is_relative_to(resolved_raw_dir):
-            raise TranscriptionError(f"Destination path escapes allowed directory: {raw_dest}")
-    except (OSError, ValueError) as e:
-        raise TranscriptionError(f"Invalid destination path: {raw_dest}") from e
+        ensure_within_dir(raw_dest, paths.raw_dir)
+    except ValueError as e:
+        raise TranscriptionError(str(e)) from e
 
     raw_dest.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -546,8 +541,6 @@ def transcribe_file(
         same_file = False
 
     if not same_file:
-        # Always refresh the raw copy so repeated calls with the same filename
-        # pick up updated audio instead of reusing a stale file.
         shutil.copy2(audio_path, raw_dest)
 
     # Normalize to input_audio
@@ -555,8 +548,8 @@ def transcribe_file(
 
     normalize_all(paths)
 
-    # Find the normalized file
-    stem = audio_path.stem
+    # Find the normalized file (use the actual destination stem, not original)
+    stem = raw_dest.stem
     norm_wav = paths.norm_dir / f"{stem}.wav"
 
     if not norm_wav.exists():
