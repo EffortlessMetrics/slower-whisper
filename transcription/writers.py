@@ -17,7 +17,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
-from .models import SCHEMA_VERSION, Chunk, Segment, Transcript
+from .models import SCHEMA_VERSION, Chunk, Segment, Transcript, Word
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,8 @@ def write_json(transcript: Transcript, out_path: Path) -> None:
                 "speaker": s.speaker,
                 "tone": s.tone,
                 "audio_state": s.audio_state,
+                # Word-level timestamps (v1.8+) - only include if present
+                **({"words": [w.to_dict() for w in s.words]} if s.words is not None else {}),
             }
             for s in transcript.segments
         ],
@@ -141,6 +143,12 @@ def load_transcript_from_json(json_path: Path) -> Transcript:
 
     segments = []
     for seg_data in data.get("segments", []):
+        # Parse word-level timestamps if present (v1.8+)
+        words: list[Word] | None = None
+        raw_words = seg_data.get("words")
+        if raw_words is not None:
+            words = [Word.from_dict(w) for w in raw_words]
+
         segment = Segment(
             id=seg_data["id"],
             start=seg_data["start"],
@@ -149,6 +157,7 @@ def load_transcript_from_json(json_path: Path) -> Transcript:
             speaker=seg_data.get("speaker"),
             tone=seg_data.get("tone"),
             audio_state=seg_data.get("audio_state"),  # Gracefully handles missing field
+            words=words,  # Word-level timestamps (v1.8+)
         )
         segments.append(segment)
 

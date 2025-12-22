@@ -12,7 +12,7 @@ slower-whisper transforms audio conversations into **LLM-ready structured data**
 
 Unlike traditional transcription tools that output plain text, slower-whisper produces a rich, versioned JSON format with:
 
-- **Timestamped segments** (word-level alignment planned)
+- **Timestamped segments** with optional word-level alignment (v1.8+)
 - **Speaker diarization** (v1.1 experimental - who spoke when, speaker attribution per segment)
 - **Prosodic features** (pitch, energy, speaking rate, pauses)
 - **Emotional state** (valence, arousal, categorical emotions)
@@ -134,7 +134,7 @@ slower-whisper uses a **layered enrichment pipeline** where each layer adds prog
 
 - Fast, deterministic transcription via faster-whisper
 - Timestamped segments with confidence scores
-- Word-level alignment (optional, via WhisperX integration planned)
+- Word-level alignment (optional, v1.8+, via `--word-timestamps` flag)
 - **Fully local, GPU-accelerated**
 
 ### Layer 2 – Acoustic & Structural Enrichment (local, modular)

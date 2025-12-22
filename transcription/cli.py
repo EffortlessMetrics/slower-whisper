@@ -133,6 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Beam size for decoding (default: 5).",
     )
+    p_trans.add_argument(
+        "--word-timestamps",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Extract word-level timestamps (v1.8+, default: False).",
+    )
     # Skip existing transcripts flag - aliased for consistency with enrich command
     skip_existing_group = p_trans.add_mutually_exclusive_group()
     skip_existing_group.add_argument(
@@ -481,6 +487,8 @@ def _config_from_transcribe_args(args: argparse.Namespace) -> TranscriptionConfi
         vad_min_silence_ms=args.vad_min_silence_ms,
         beam_size=args.beam_size,
         skip_existing_json=args.skip_existing_json,
+        # Word-level alignment (v1.8+)
+        word_timestamps=getattr(args, "word_timestamps", None),
         # Chunking settings (with getattr for backward compatibility)
         enable_chunking=getattr(args, "enable_chunking", None),
         chunk_target_duration_s=getattr(args, "chunk_target_duration_s", None),

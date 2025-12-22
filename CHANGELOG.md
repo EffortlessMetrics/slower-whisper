@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2025-12-22
+
+### Added
+
+- **Word-Level Timestamps**: New `--word-timestamps` CLI flag and `word_timestamps` config option enable per-word timing extraction from faster-whisper. Each word includes start/end timestamps and confidence probability.
+- **Word Model** (`Word` dataclass): New data model for word-level timing with fields: `word`, `start`, `end`, `probability`, and optional `speaker` for word-level diarization alignment.
+- **Segment.words Field**: Segments now include an optional `words` list containing `Word` objects when word-level timestamps are enabled.
+- **Word-Level Speaker Alignment** (`assign_speakers_to_words`): New function for granular speaker assignment at the word level, enabling detection of speaker changes within segments. Segment speaker is derived from the dominant word-level speaker.
+- **JSON Serialization**: Word-level timestamps are automatically serialized to/from JSON with backward compatibility (old transcripts without words load correctly).
+
+### Changed
+
+- **README**: Updated to reflect word-level alignment is now implemented (v1.8+) rather than planned.
+- **CLAUDE.md**: Updated feature description to include word-level alignment.
+- **Speaker Diarization Docs**: Updated roadmap to show word-level alignment as implemented in v1.8.
+
+### Documentation
+
+- **API Exports**: `Word` dataclass now exported from `transcription/__init__.py` for public use.
+- **Config Environment Variables**: Added `SLOWER_WHISPER_WORD_TIMESTAMPS` environment variable support.
+
 ## [1.7.1] - 2025-12-15
 
 ### Fixed

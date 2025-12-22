@@ -415,6 +415,7 @@ def transcribe_directory(
         beam_size=config.beam_size,
         language=config.language,
         task=config.task,
+        word_timestamps=config.word_timestamps,
     )
     app_cfg = AppConfig(
         paths=paths,
@@ -512,6 +513,7 @@ def transcribe_file(
         beam_size=config.beam_size,
         language=config.language,
         task=config.task,
+        word_timestamps=config.word_timestamps,
     )
 
     # Normalize the audio file

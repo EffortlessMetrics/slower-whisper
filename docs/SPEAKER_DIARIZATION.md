@@ -622,8 +622,12 @@ cache_key = hash(
 - Per-speaker sentiment/emotion aggregation
 - `speaker_stats[]` with interaction patterns
 
-**v1.3: Advanced Diarization**
-- Word-level speaker alignment (not just segment-level)
+**v1.8: Word-Level Alignment** (Implemented)
+- Word-level timestamps with `--word-timestamps` flag
+- Word-level speaker alignment via `assign_speakers_to_words()` function
+- Segment speaker derived from dominant word-level speaker
+
+**v1.9+: Advanced Diarization**
 - Overlapping speech detection and handling
 - Speaker embedding extraction for re-identification
 

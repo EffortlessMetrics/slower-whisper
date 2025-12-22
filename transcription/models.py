@@ -21,6 +21,58 @@ from typing import Any, Literal
 
 SCHEMA_VERSION: int = 2
 AUDIO_STATE_VERSION: str = "1.0.0"
+WORD_ALIGNMENT_VERSION: str = "1.0.0"
+
+
+@dataclass
+class Word:
+    """
+    A single word with timing and confidence information.
+
+    This dataclass represents word-level alignment data extracted from
+    faster-whisper's word_timestamps feature, enabling precise timing
+    for each word within a segment.
+
+    Attributes:
+        word: The transcribed word text (may include leading/trailing punctuation).
+        start: Start time in seconds.
+        end: End time in seconds.
+        probability: Confidence score from the ASR model (0.0-1.0).
+        speaker: Optional speaker ID assigned via word-level diarization alignment.
+                 None when diarization is disabled or speaker assignment is ambiguous.
+    """
+
+    word: str
+    start: float
+    end: float
+    probability: float = 1.0
+    speaker: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize word to a JSON-serializable dict.
+
+        Used by writers.py for JSON serialization of word-level timestamps.
+        """
+        result: dict[str, Any] = {
+            "word": self.word,
+            "start": self.start,
+            "end": self.end,
+            "probability": self.probability,
+        }
+        if self.speaker is not None:
+            result["speaker"] = self.speaker
+        return result
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Word":
+        """Deserialize word from a dict."""
+        return cls(
+            word=str(d.get("word", "")),
+            start=float(d.get("start", 0.0)),
+            end=float(d.get("end", 0.0)),
+            probability=float(d.get("probability", 1.0)),
+            speaker=d.get("speaker"),
+        )
 
 
 @dataclass
@@ -468,6 +520,10 @@ class Segment:
                      The structure and content of this dictionary is defined by
                      AUDIO_STATE_VERSION. When None, indicates no audio features
                      have been extracted or enriched for this segment.
+        words: Optional list of Word objects with per-word timestamps (v1.8+).
+               Populated when word_timestamps=True during transcription.
+               Each Word contains: word, start, end, probability, and optional speaker.
+               The structure is defined by WORD_ALIGNMENT_VERSION.
     """
 
     id: int
@@ -477,6 +533,7 @@ class Segment:
     speaker: dict[str, Any] | None = None
     tone: str | None = None
     audio_state: dict[str, Any] | None = None
+    words: list[Word] | None = None
 
 
 @dataclass
