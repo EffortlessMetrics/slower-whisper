@@ -17,7 +17,7 @@
 # ============================================================================
 
 # Core transcription engine
-faster-whisper>=1.2.1,<2.0
+faster-whisper>=1.2.1
 
 # Transitive dependencies (auto-installed):
 # - ctranslate2>=4.0,<5         (~130MB: CPU/GPU inference engine)
