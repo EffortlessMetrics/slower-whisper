@@ -54,7 +54,14 @@ Exceptions:
     - ConfigurationError: Raised when configuration is invalid
 """
 
-from typing import Any
+from __future__ import annotations
+
+import importlib
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .streaming_enrich import StreamingEnrichmentConfig, StreamingEnrichmentSession
+    from .streaming_semantic import LiveSemanticsConfig, LiveSemanticSession, SemanticUpdatePayload
 
 # Version of the transcription pipeline; included in JSON metadata.
 # Must be defined before other imports to avoid circular imports
@@ -111,21 +118,63 @@ from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticA
 from .speaker_id import get_speaker_id, get_speaker_label_or_id
 from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamEventType, StreamingSession
 
-# v1.7.0 streaming features
-from .streaming_enrich import StreamingEnrichmentConfig, StreamingEnrichmentSession
-from .streaming_semantic import LiveSemanticsConfig, LiveSemanticSession, SemanticUpdatePayload
+# v1.7.0 streaming features are lazy-imported via __getattr__ below
+# to avoid pulling in soundfile/heavy deps in base installs
 from .turn_helpers import turn_to_dict
 from .types_audio import AudioState, EmotionState, ExtractionStatus, ProsodyState
 from .validation import validate_transcript_json
 
+# Lazy imports for optional/heavy exports that must not break base installs.
+# Accessing these names triggers an import; missing deps produce a helpful error.
+# NOTE: These are NOT in __all__ because `from transcription import *` would fail
+# on base installs when trying to resolve them.
+_LAZY_OPTIONAL: dict[str, str] = {
+    # v1.7.0 streaming features - require full extra (soundfile, etc.)
+    "StreamingEnrichmentConfig": ".streaming_enrich",
+    "StreamingEnrichmentSession": ".streaming_enrich",
+    "LiveSemanticsConfig": ".streaming_semantic",
+    "LiveSemanticSession": ".streaming_semantic",
+    "SemanticUpdatePayload": ".streaming_semantic",
+}
+
+# Lazy imports for circular import avoidance (not due to missing deps)
+_LAZY_CIRCULAR: dict[str, str] = {
+    "run_pipeline": ".pipeline",
+}
+
 
 def __getattr__(name: str) -> Any:
-    """Lazy import for run_pipeline to avoid circular imports."""
-    if name == "run_pipeline":
-        from .pipeline import run_pipeline
+    """Lazy import for optional/heavy exports and circular import avoidance."""
+    # Handle optional deps that require 'full' extra
+    if name in _LAZY_OPTIONAL:
+        module_name = _LAZY_OPTIONAL[name]
+        try:
+            mod = importlib.import_module(module_name, __name__)
+        except Exception as exc:  # noqa: BLE001
+            raise ImportError(
+                f"{name} requires optional dependencies. Install the 'full' extra "
+                "(e.g., `uv sync --extra full` or `pip install 'slower-whisper[full]'`), "
+                "or use the full Docker image."
+            ) from exc
+        value = getattr(mod, name)
+        globals()[name] = value  # cache for future lookups
+        return value
 
-        return run_pipeline
+    # Handle circular import avoidance (re-raise original error if import fails)
+    if name in _LAZY_CIRCULAR:
+        module_name = _LAZY_CIRCULAR[name]
+        mod = importlib.import_module(module_name, __name__)
+        value = getattr(mod, name)
+        globals()[name] = value
+        return value
+
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    """Include lazy imports in dir() output for discoverability."""
+    lazy_names = list(_LAZY_OPTIONAL.keys()) + list(_LAZY_CIRCULAR.keys())
+    return sorted(set(list(globals().keys()) + lazy_names))
 
 
 __all__ = [
@@ -152,9 +201,9 @@ __all__ = [
     "EnrichmentConfig",
     "ChunkingConfig",
     "StreamConfig",
-    # v1.7.0: Streaming enrichment and semantic configs
-    "StreamingEnrichmentConfig",
-    "LiveSemanticsConfig",
+    # NOTE: StreamingEnrichmentConfig and LiveSemanticsConfig are lazy imports
+    # and excluded from __all__ to prevent `from transcription import *` failures
+    # on base installs. Access them directly: transcription.StreamingEnrichmentConfig
     # Models
     "Chunk",
     "Segment",
@@ -177,10 +226,8 @@ __all__ = [
     "StreamChunk",
     "StreamEvent",
     "StreamingSession",
-    # v1.7.0: Streaming sessions and payloads
-    "StreamingEnrichmentSession",
-    "LiveSemanticSession",
-    "SemanticUpdatePayload",
+    # NOTE: StreamingEnrichmentSession, LiveSemanticSession, SemanticUpdatePayload
+    # are lazy imports - see note above about __all__ exclusion
     # Utilities
     "turn_to_dict",
     "get_speaker_id",
@@ -194,5 +241,5 @@ __all__ = [
     "AppConfig",
     "AsrConfig",
     "Paths",
-    "run_pipeline",
+    # NOTE: run_pipeline is a lazy import for circular import avoidance
 ]
