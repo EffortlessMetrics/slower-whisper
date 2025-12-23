@@ -122,6 +122,7 @@ def _render_turn_dict(
     include_audio_cues: bool = True,
     include_timestamps: bool = False,
     speaker_labels: dict[str, str] | None = None,
+    segment_index: dict[int, Segment] | None = None,
 ) -> str:
     """
     Render a turn dictionary from transcript.turns as text.
@@ -134,6 +135,8 @@ def _render_turn_dict(
         include_audio_cues: If True, include audio cues from segments
         include_timestamps: If True, include timestamp for turn start
         speaker_labels: Optional mapping from speaker IDs to human-readable labels
+        segment_index: Optional pre-built mapping from segment ID to Segment for O(1) lookup.
+            If not provided, falls back to linear search (O(n) per lookup).
 
     Returns:
         Rendered turn text
@@ -172,8 +175,11 @@ def _render_turn_dict(
         audio_descriptors: set[str] = set()
 
         for seg_id in segment_ids:
-            # Find segment by ID
-            segment = next((s for s in transcript.segments if s.id == seg_id), None)
+            # Find segment by ID - use index for O(1) lookup if available
+            if segment_index is not None:
+                segment = segment_index.get(seg_id)
+            else:
+                segment = next((s for s in transcript.segments if s.id == seg_id), None)
             if segment and segment.audio_state and segment.audio_state.get("rendering"):
                 for desc in _extract_audio_descriptors(segment.audio_state["rendering"]):
                     audio_descriptors.add(desc)
@@ -262,6 +268,8 @@ def render_conversation_for_llm(
     # Render content
     if mode == "turns" and transcript.turns:
         # Turn-based rendering (recommended)
+        # Build segment index once for O(1) lookups instead of O(n) per segment
+        segment_index = {seg.id: seg for seg in transcript.segments}
         for turn_dict in transcript.turns:
             rendered = _render_turn_dict(
                 turn_dict,
@@ -269,6 +277,7 @@ def render_conversation_for_llm(
                 include_audio_cues=include_audio_cues,
                 include_timestamps=include_timestamps,
                 speaker_labels=speaker_labels,
+                segment_index=segment_index,
             )
             if rendered:
                 output.append(rendered)

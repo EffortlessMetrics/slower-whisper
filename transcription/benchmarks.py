@@ -20,6 +20,7 @@ Environment variables respected:
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -27,6 +28,8 @@ from pathlib import Path
 from typing import Any
 
 from transcription.cache import CachePaths
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -293,8 +296,13 @@ def _parse_iemocap_emotions(eval_file: Path, clip_id: str) -> list[str] | None:
                         }
                         emotion = emotion_map.get(emotion_code, emotion_code)
                         return [emotion]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(
+            "Failed to parse IEMOCAP emotion annotations from %s (clip %s): %s",
+            eval_file,
+            clip_id,
+            e,
+        )
     return None
 
 

@@ -231,6 +231,14 @@ def normalize_all(paths: Paths) -> None:
                     result.stderr.strip() if result.stderr else "No error output",
                     extra={"file": src.name},
                 )
+                # Clean up partial/corrupt output file on failure
+                if dst.exists():
+                    try:
+                        dst.unlink()
+                        logger.debug("Removed partial output: %s", dst.name)
+                    except OSError:
+                        pass  # Best effort cleanup
+                continue
         except OSError as e:
             # Handle subprocess launch failures (e.g., ffmpeg not found)
             logger.error(
@@ -240,6 +248,13 @@ def normalize_all(paths: Paths) -> None:
                 exc_info=True,
                 extra={"file": src.name},
             )
+            # Clean up any partial output (defensive)
+            if dst.exists():
+                try:
+                    dst.unlink()
+                except OSError:
+                    pass
+            continue
 
     if not any_src:
         logger.info("No files found in raw_audio/ directory")

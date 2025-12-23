@@ -51,8 +51,6 @@ def _setup_progress_logging(show_progress: bool) -> None:
     Args:
         show_progress: Whether to show progress indicators (file counters).
     """
-    import logging
-
     level = logging.INFO if show_progress else logging.WARNING
 
     # Configure basic format first (only works on first call)
@@ -240,6 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_enrich.add_argument(
         "--config",
+        "--enrich-config",  # deprecated alias, kept for backward compatibility
         type=Path,
         default=None,
         dest="enrich_config",
