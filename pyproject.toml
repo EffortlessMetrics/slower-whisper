@@ -131,7 +131,7 @@ dev = [
     "types-PyYAML",
     "types-jsonschema",
     # Documentation
-    "sphinx>=8,<9",
+    "sphinx>=8,<10",
     "sphinx-rtd-theme>=3,<4",
     "sphinx-autodoc-typehints>=3,<4",
     "myst-parser>=4,<5",
