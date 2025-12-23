@@ -1155,6 +1155,18 @@ uv pip install --upgrade numpy
 uv sync
 ```
 
+**Regenerate requirements files:**
+
+> ⚠️ **Important:** The `requirements*.txt` files are generated from `uv.lock`.
+> Don't edit them by hand.
+
+```bash
+# Regenerate all requirements files after modifying dependencies
+./scripts/regenerate-requirements.sh
+```
+
+This ensures pip-based installs (Docker, CI fallbacks) stay in sync with uv.
+
 **Clean up environment:**
 
 ```bash
