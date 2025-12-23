@@ -34,6 +34,7 @@ Streaming:
 Models:
     - Transcript: Complete transcript with segments
     - Segment: Single transcribed segment
+    - Word: Word-level timestamp with confidence (v1.8+)
     - Turn: Speaker turn with contiguous segments
     - TurnMeta: Metadata for speaker turns (question counts, interruptions)
     - AudioState: Audio enrichment container with prosody and emotion features
@@ -57,7 +58,7 @@ from typing import Any
 
 # Version of the transcription pipeline; included in JSON metadata.
 # Must be defined before other imports to avoid circular imports
-__version__ = "1.7.1"
+__version__ = "1.8.0"
 
 # Configure global cache environment for all model downloads
 # This ensures all HF/torch models are cached under SLOWER_WHISPER_CACHE_ROOT
@@ -104,6 +105,7 @@ from .models import (
     Transcript,
     Turn,
     TurnMeta,
+    Word,
 )
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
 from .speaker_id import get_speaker_id, get_speaker_label_or_id
@@ -159,6 +161,7 @@ __all__ = [
     "Transcript",
     "Turn",
     "TurnMeta",
+    "Word",
     "SpeakerStats",
     "DiarizationMeta",
     "BatchFileResult",

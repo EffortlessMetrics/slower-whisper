@@ -24,6 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 def _collect_segment_durations_by_speaker(transcript: Transcript) -> dict[str, list[float]]:
+    """Collect segment durations grouped by speaker ID.
+
+    Args:
+        transcript: Transcript with segments containing speaker info.
+
+    Returns:
+        Dict mapping speaker ID to list of segment durations (seconds).
+        Unknown speakers assigned to "spk_0".
+    """
     durations: dict[str, list[float]] = defaultdict(list)
     for seg in transcript.segments:
         speaker_id = get_speaker_id(seg.speaker) or "spk_0"
@@ -32,6 +41,17 @@ def _collect_segment_durations_by_speaker(transcript: Transcript) -> dict[str, l
 
 
 def _collect_prosody_by_speaker(transcript: Transcript) -> dict[str, dict[str, list[float]]]:
+    """Collect prosody metrics (pitch, energy) grouped by speaker ID.
+
+    Extracts pitch (mean_hz) and energy (db_rms) from segment audio_state.
+
+    Args:
+        transcript: Transcript with enriched audio_state containing prosody.
+
+    Returns:
+        Nested dict: speaker_id -> metric_name -> list of values.
+        E.g. {"spk_0": {"pitch": [245.3, 220.1], "energy": [-8.2, -10.1]}}
+    """
     by_speaker: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for seg in transcript.segments:
         speaker_id = get_speaker_id(seg.speaker) or "spk_0"
@@ -54,6 +74,17 @@ def _collect_prosody_by_speaker(transcript: Transcript) -> dict[str, dict[str, l
 
 
 def _collect_sentiment_by_speaker(transcript: Transcript) -> dict[str, Counter]:
+    """Collect sentiment level counts grouped by speaker ID.
+
+    Extracts valence level (positive/neutral/negative) from emotion data.
+
+    Args:
+        transcript: Transcript with enriched audio_state containing emotion.
+
+    Returns:
+        Dict mapping speaker ID to Counter of sentiment levels.
+        E.g. {"spk_0": Counter({"positive": 5, "neutral": 3})}
+    """
     counts: dict[str, Counter] = defaultdict(Counter)
     for seg in transcript.segments:
         speaker_id = get_speaker_id(seg.speaker) or "spk_0"

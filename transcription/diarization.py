@@ -73,8 +73,13 @@ def _make_stub_pyannote_pipeline():
             with sf.SoundFile(audio_path, "r") as f:
                 if f.samplerate:
                     return float(max(len(f) / f.samplerate, 0.5))
-        except Exception:
-            pass
+        except Exception as e:
+            # Log why duration detection failed (helps debug stub mode issues)
+            logger.debug(
+                "Could not infer audio duration from %s: %s. Using fallback of 4.0s.",
+                audio_path,
+                e,
+            )
         return 4.0
 
     class _StubSegment:
@@ -506,6 +511,155 @@ def assign_speakers(
     transcript.speakers = sorted(speaker_stats.values(), key=lambda s: s["id"])
 
     return transcript
+
+
+def assign_speakers_to_words(
+    transcript: Transcript,
+    speaker_turns: list[SpeakerTurn],
+    overlap_threshold: float = 0.3,
+) -> Transcript:
+    """
+    Assign speaker labels to individual words within segments (v1.8+).
+
+    This function provides more granular speaker assignment than segment-level
+    alignment. It's particularly useful for:
+    - Detecting speaker changes within a segment
+    - Precise speaker attribution in overlapping speech
+    - Improving downstream turn detection accuracy
+
+    **Assignment logic**:
+    1. For each word [w_start, w_end]:
+       - Compute overlap duration with all speaker turns
+       - Choose speaker with maximum overlap duration
+       - Compute overlap_ratio = overlap_duration / word_duration
+    2. If overlap_ratio >= threshold: assign speaker to word
+    3. Else: word.speaker = None
+
+    **Note**: This function also updates segment.speaker based on the
+    dominant word-level speaker (most common speaker among words).
+
+    **Mutates transcript in-place** and returns it for convenience.
+
+    Args:
+        transcript: Transcript with segments that have word-level timestamps.
+        speaker_turns: List of SpeakerTurn from diarization.
+        overlap_threshold: Minimum overlap ratio to assign speaker (default 0.3).
+
+    Returns:
+        Updated transcript with:
+        - word.speaker populated for each word (or None if low confidence)
+        - segment.speaker derived from dominant word-level speaker
+        - transcript.speakers list built from unique speaker IDs
+    """
+
+    # Normalize speaker IDs: backend IDs → spk_N
+    speaker_map: dict[str, int] = {}
+
+    # Per-speaker aggregates
+    speaker_stats: dict[str, dict[str, Any]] = {}
+
+    for segment in transcript.segments:
+        if not segment.words:
+            # Fall back to segment-level assignment if no words
+            seg_duration = segment.end - segment.start
+            if seg_duration <= 0:
+                segment.speaker = None
+                continue
+
+            best_speaker_id, max_overlap = _find_best_speaker(
+                segment.start, segment.end, speaker_turns
+            )
+            overlap_ratio = max_overlap / seg_duration if seg_duration > 0 else 0.0
+
+            if overlap_ratio >= overlap_threshold and best_speaker_id is not None:
+                normalized_id = _normalize_speaker_id(best_speaker_id, speaker_map)
+                segment.speaker = {"id": normalized_id, "confidence": overlap_ratio}
+                _update_speaker_stats(speaker_stats, normalized_id, seg_duration)
+            else:
+                segment.speaker = None
+            continue
+
+        # Word-level speaker assignment
+        word_speaker_counts: dict[str, int] = {}
+        word_durations_by_speaker: dict[str, float] = {}
+
+        for word in segment.words:
+            word_duration = word.end - word.start
+            if word_duration <= 0:
+                continue
+
+            best_speaker_id, max_overlap = _find_best_speaker(word.start, word.end, speaker_turns)
+            overlap_ratio = max_overlap / word_duration if word_duration > 0 else 0.0
+
+            if overlap_ratio >= overlap_threshold and best_speaker_id is not None:
+                normalized_id = _normalize_speaker_id(best_speaker_id, speaker_map)
+                word.speaker = normalized_id
+                word_speaker_counts[normalized_id] = word_speaker_counts.get(normalized_id, 0) + 1
+                word_durations_by_speaker[normalized_id] = (
+                    word_durations_by_speaker.get(normalized_id, 0.0) + word_duration
+                )
+            else:
+                word.speaker = None
+
+        # Update speaker stats for ALL word-level speakers
+        for spk_id, duration in word_durations_by_speaker.items():
+            _update_speaker_stats(speaker_stats, spk_id, duration)
+
+        # Derive segment speaker from dominant word-level speaker
+        if word_speaker_counts:
+            # Choose speaker with most word duration (not just count)
+            dominant_speaker = max(word_durations_by_speaker.items(), key=lambda x: x[1])[0]
+            seg_duration = segment.end - segment.start
+            # Confidence = ratio of dominant speaker's word duration to segment duration
+            confidence = (
+                word_durations_by_speaker[dominant_speaker] / seg_duration
+                if seg_duration > 0
+                else 0.0
+            )
+            segment.speaker = {"id": dominant_speaker, "confidence": min(1.0, confidence)}
+        else:
+            segment.speaker = None
+
+    # Build speakers[] array
+    transcript.speakers = sorted(speaker_stats.values(), key=lambda s: s["id"])
+
+    return transcript
+
+
+def _find_best_speaker(
+    start: float, end: float, speaker_turns: list[SpeakerTurn]
+) -> tuple[str | None, float]:
+    """Find speaker with maximum overlap for a time range."""
+    best_speaker_id: str | None = None
+    max_overlap_duration = 0.0
+
+    for turn in speaker_turns:
+        overlap_duration = _compute_overlap(start, end, turn.start, turn.end)
+
+        if overlap_duration > max_overlap_duration:
+            max_overlap_duration = overlap_duration
+            best_speaker_id = turn.speaker_id
+        elif overlap_duration == max_overlap_duration and overlap_duration > 0:
+            # Equal overlap: choose first alphabetically (deterministic)
+            if best_speaker_id is None or turn.speaker_id < best_speaker_id:
+                best_speaker_id = turn.speaker_id
+
+    return best_speaker_id, max_overlap_duration
+
+
+def _update_speaker_stats(
+    stats: dict[str, dict[str, Any]], speaker_id: str, duration: float
+) -> None:
+    """Update speaker statistics for a speaker."""
+    if speaker_id not in stats:
+        stats[speaker_id] = {
+            "id": speaker_id,
+            "label": None,
+            "total_speech_time": 0.0,
+            "num_segments": 0,
+        }
+    stats[speaker_id]["total_speech_time"] += duration
+    stats[speaker_id]["num_segments"] += 1
 
 
 def assign_speakers_to_segments(

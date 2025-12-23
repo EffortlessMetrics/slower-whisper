@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Unlike traditional transcription tools that output plain text, slower-whisper produces a rich, versioned JSON format capturing:
 
-- **What was said** (text, segment-level timestamps; word-level alignment planned)
+- **What was said** (text, segment-level timestamps, word-level alignment v1.8+)
 - **Who said it** (speaker diarization, turn structure) — *v1.1 priority*
 - **How it was said** (prosody, emotion, interaction patterns)
 - **Semantic context** (chunk summaries, intent tags) — *v1.3 optional*
@@ -439,6 +439,14 @@ Three helpers exist for converting objects to JSON-serializable dicts:
 - Must be a dict, None, or object convertible via `_to_dict()`
 - If meta can't be converted to dict, `write_json()` logs a warning and uses `{}`
 - Nested objects (like `DiarizationMeta`) are converted via their `to_dict()` methods
+
+### Audio Rendering Utilities
+
+**`_extract_audio_descriptors()` in `llm_utils.py`**:
+- Parses `[audio: high pitch, loud volume]` format rendering strings
+- Returns list of descriptor strings (e.g., `["high pitch", "loud volume"]`)
+- Used by `render_segment()`, `_render_turn_dict()`, and `_collect_audio_descriptors()`
+- **Use this instead of reimplementing the `[audio:...]` parsing pattern**
 
 ### Optional Dependency Pattern
 

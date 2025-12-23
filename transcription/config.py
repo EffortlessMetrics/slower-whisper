@@ -158,6 +158,8 @@ class AsrConfig:
     # Optional language and task; if language is None, auto-detect is used.
     language: str | None = None  # e.g. "en"
     task: str = "transcribe"  # or "translate"
+    # Word-level timestamps (v1.8+)
+    word_timestamps: bool = False
 
     def __post_init__(self):
         """Validate model name and auto-detect compute_type based on device if using default."""
@@ -211,6 +213,9 @@ class TranscriptionConfig:
     # Advanced options
     vad_min_silence_ms: int = 500
     beam_size: int = 5
+
+    # Word-level alignment (v1.8+)
+    word_timestamps: bool = False
 
     # Chunking (v1.3 preview)
     enable_chunking: bool = False
@@ -330,6 +335,7 @@ class TranscriptionConfig:
         bool_fields = [
             "skip_existing_json",
             "enable_diarization",
+            "word_timestamps",
         ]
         for field_name in bool_fields:
             if field_name in data and not isinstance(data[field_name], bool):
@@ -380,6 +386,7 @@ class TranscriptionConfig:
             "skip_existing_json",
             "vad_min_silence_ms",
             "beam_size",
+            "word_timestamps",
             "enable_chunking",
             "chunk_target_duration_s",
             "chunk_max_duration_s",
@@ -489,6 +496,17 @@ class TranscriptionConfig:
             else:
                 raise ValueError(
                     f"Invalid {prefix}SKIP_EXISTING_JSON: {skip_existing}. "
+                    "Must be true/false, 1/0, yes/no, or on/off"
+                )
+        if word_timestamps := os.getenv(f"{prefix}WORD_TIMESTAMPS"):
+            word_timestamps_lower = word_timestamps.lower()
+            if word_timestamps_lower in ("true", "1", "yes", "on"):
+                config_dict["word_timestamps"] = True
+            elif word_timestamps_lower in ("false", "0", "no", "off"):
+                config_dict["word_timestamps"] = False
+            else:
+                raise ValueError(
+                    f"Invalid {prefix}WORD_TIMESTAMPS: {word_timestamps}. "
                     "Must be true/false, 1/0, yes/no, or on/off"
                 )
         if enable_chunking := os.getenv(f"{prefix}ENABLE_CHUNKING"):
@@ -764,6 +782,7 @@ class TranscriptionConfig:
                 skip_existing_json=filtered_overrides.get(
                     "skip_existing_json", config.skip_existing_json
                 ),
+                word_timestamps=filtered_overrides.get("word_timestamps", config.word_timestamps),
                 enable_chunking=filtered_overrides.get("enable_chunking", config.enable_chunking),
                 chunk_target_duration_s=filtered_overrides.get(
                     "chunk_target_duration_s", config.chunk_target_duration_s
@@ -912,6 +931,9 @@ def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> 
             skip_existing_json=override.skip_existing_json
             if override.skip_existing_json != base.skip_existing_json
             else base.skip_existing_json,
+            word_timestamps=override.word_timestamps
+            if override.word_timestamps != base.word_timestamps
+            else base.word_timestamps,
             enable_chunking=override.enable_chunking
             if override.enable_chunking != base.enable_chunking
             else base.enable_chunking,
@@ -960,6 +982,9 @@ def _merge_configs(base: TranscriptionConfig, override: TranscriptionConfig) -> 
         skip_existing_json=override.skip_existing_json
         if "skip_existing_json" in source_fields
         else base.skip_existing_json,
+        word_timestamps=override.word_timestamps
+        if "word_timestamps" in source_fields
+        else base.word_timestamps,
         enable_chunking=override.enable_chunking
         if "enable_chunking" in source_fields
         else base.enable_chunking,

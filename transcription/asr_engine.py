@@ -19,7 +19,7 @@ from typing import Any, Protocol, cast
 
 from .cache import CachePaths
 from .config import AsrConfig
-from .models import Segment, Transcript
+from .models import Segment, Transcript, Word
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +275,9 @@ class TranscriptionEngine:
             kwargs["vad_filter"] = True
         if include_vad and self._supports_vad_parameters:
             kwargs["vad_parameters"] = {"min_silence_duration_ms": self.cfg.vad_min_silence_ms}
+        # Word-level timestamps (v1.8+)
+        if getattr(self.cfg, "word_timestamps", False):
+            kwargs["word_timestamps"] = True
         return kwargs
 
     def _transcribe_with_model(self, audio_path: Path) -> TranscriptionResult:
@@ -336,7 +339,10 @@ class TranscriptionEngine:
 
     def _build_segments(self, raw_segments: Iterable[Any]) -> list[Segment]:
         """Convert raw Whisper segments into our Segment dataclass."""
-        validated: list[tuple[float, float, str]] = []
+        # Collect validated segments with optional word-level data
+        validated: list[tuple[float, float, str, list[Word] | None]] = []
+        extract_words = getattr(self.cfg, "word_timestamps", False)
+
         for idx, seg in enumerate(raw_segments):
             try:
                 start = float(seg.start)
@@ -359,7 +365,15 @@ class TranscriptionEngine:
                 )
 
             text_str = "" if text is None else str(text)
-            validated.append((start, end, text_str.strip()))
+
+            # Extract word-level timestamps if available
+            words: list[Word] | None = None
+            if extract_words:
+                raw_words = getattr(seg, "words", None)
+                if raw_words:
+                    words = self._build_words(raw_words, idx)
+
+            validated.append((start, end, text_str.strip(), words))
 
         is_monotonic = all(
             validated[i][0] <= validated[i + 1][0] for i in range(len(validated) - 1)
@@ -374,10 +388,51 @@ class TranscriptionEngine:
                 start=start,
                 end=end,
                 text=text,
+                words=words,
             )
-            for idx, (start, end, text) in enumerate(validated)
+            for idx, (start, end, text, words) in enumerate(validated)
         ]
         return seg_objs
+
+    def _build_words(self, raw_words: Iterable[Any], segment_idx: int) -> list[Word]:
+        """Convert raw faster-whisper words into our Word dataclass."""
+        words: list[Word] = []
+        for word_idx, w in enumerate(raw_words):
+            try:
+                word_text = getattr(w, "word", "")
+                word_start = float(getattr(w, "start", 0.0))
+                word_end = float(getattr(w, "end", 0.0))
+                word_prob = float(getattr(w, "probability", 1.0))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Invalid word at segment %d, word %d: %s",
+                    segment_idx,
+                    word_idx,
+                    exc,
+                )
+                continue
+
+            # Validate word timing
+            if not (math.isfinite(word_start) and math.isfinite(word_end)):
+                logger.warning(
+                    "Skipping word with non-finite timing at segment %d, word %d",
+                    segment_idx,
+                    word_idx,
+                )
+                continue
+
+            # Clamp probability to valid range
+            word_prob = max(0.0, min(1.0, word_prob))
+
+            words.append(
+                Word(
+                    word=str(word_text) if word_text else "",
+                    start=word_start,
+                    end=word_end,
+                    probability=word_prob,
+                )
+            )
+        return words
 
     def transcribe_file(self, audio_path: Path) -> Transcript:
         """

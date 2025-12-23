@@ -23,6 +23,7 @@ from __future__ import annotations
 import copy
 import logging
 import os
+import shutil
 import wave
 from pathlib import Path
 from typing import Any, Literal
@@ -415,6 +416,7 @@ def transcribe_directory(
         beam_size=config.beam_size,
         language=config.language,
         task=config.task,
+        word_timestamps=config.word_timestamps,
     )
     app_cfg = AppConfig(
         paths=paths,
@@ -512,17 +514,25 @@ def transcribe_file(
         beam_size=config.beam_size,
         language=config.language,
         task=config.task,
+        word_timestamps=config.word_timestamps,
     )
 
     # Normalize the audio file
-    from . import audio_io
+    from .audio_io import ensure_dirs, ensure_within_dir, sanitize_filename
 
     paths = Paths(root=root)
-    audio_io.ensure_dirs(paths)
+    ensure_dirs(paths)
 
     # Copy to raw_audio if not already there
-    raw_dest = paths.raw_dir / audio_path.name
-    import shutil
+    # Sanitize filename to prevent directory traversal attacks
+    safe_stem, safe_suffix = sanitize_filename(audio_path.stem, audio_path.suffix)
+    raw_dest = paths.raw_dir / f"{safe_stem}{safe_suffix}"
+
+    # Validate destination is within allowed directory (defense in depth)
+    try:
+        ensure_within_dir(raw_dest, paths.raw_dir)
+    except ValueError as e:
+        raise TranscriptionError(str(e)) from e
 
     raw_dest.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -531,8 +541,6 @@ def transcribe_file(
         same_file = False
 
     if not same_file:
-        # Always refresh the raw copy so repeated calls with the same filename
-        # pick up updated audio instead of reusing a stale file.
         shutil.copy2(audio_path, raw_dest)
 
     # Normalize to input_audio
@@ -540,8 +548,8 @@ def transcribe_file(
 
     normalize_all(paths)
 
-    # Find the normalized file
-    stem = audio_path.stem
+    # Find the normalized file (use the actual destination stem, not original)
+    stem = raw_dest.stem
     norm_wav = paths.norm_dir / f"{stem}.wav"
 
     if not norm_wav.exists():

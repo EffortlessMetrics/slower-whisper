@@ -51,8 +51,6 @@ def _setup_progress_logging(show_progress: bool) -> None:
     Args:
         show_progress: Whether to show progress indicators (file counters).
     """
-    import logging
-
     level = logging.INFO if show_progress else logging.WARNING
 
     # Configure basic format first (only works on first call)
@@ -103,12 +101,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_trans.add_argument(
         "--device",
         default=None,
-        help="Device: cuda or cpu (default: cuda).",
+        choices=["cuda", "cpu"],
+        help="Device for ASR (Whisper) inference (default: cuda if available).",
     )
     p_trans.add_argument(
         "--compute-type",
         default=None,
-        help="faster-whisper compute type (e.g. float16, int8).",
+        help="faster-whisper compute type: float16, float32, int8, int8_float16, etc. "
+        "(default: auto-selected based on device).",
     )
     p_trans.add_argument(
         "--language",
@@ -132,6 +132,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Beam size for decoding (default: 5).",
+    )
+    p_trans.add_argument(
+        "--word-timestamps",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Extract word-level timestamps (v1.8+, default: False).",
     )
     # Skip existing transcripts flag - aliased for consistency with enrich command
     skip_existing_group = p_trans.add_mutually_exclusive_group()
@@ -195,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--diarization-device",
         choices=["auto", "cuda", "cpu"],
         default=None,
-        help="Device for diarization ('auto', 'cuda', or 'cpu'). Defaults to 'auto'.",
+        help="Device for diarization. 'auto' selects cuda if available, else cpu (default: auto).",
     )
     p_trans.add_argument(
         "--min-speakers",
@@ -231,9 +237,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Project root.",
     )
     p_enrich.add_argument(
-        "--enrich-config",
+        "--config",
+        "--enrich-config",  # deprecated alias, kept for backward compatibility
         type=Path,
         default=None,
+        dest="enrich_config",
         help="Path to EnrichmentConfig JSON file. Precedence: CLI flags > config file > env vars > defaults.",
     )
     p_enrich.add_argument(
@@ -295,13 +303,14 @@ def build_parser() -> argparse.ArgumentParser:
         dest="enable_speaker_analytics",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Convenience flag to enable/disable both turn metadata and speaker stats together.",
+        help="Convenience flag: overrides both --enable-turn-metadata and --enable-speaker-stats. "
+        "Omit to control each feature individually.",
     )
     p_enrich.add_argument(
         "--device",
         default=None,
         choices=["cpu", "cuda"],
-        help="Device to run emotion models on (default: cpu).",
+        help="Device for emotion model inference (default: cpu).",
     )
     p_enrich.add_argument(
         "--pause-threshold",
@@ -481,6 +490,8 @@ def _config_from_transcribe_args(args: argparse.Namespace) -> TranscriptionConfi
         vad_min_silence_ms=args.vad_min_silence_ms,
         beam_size=args.beam_size,
         skip_existing_json=args.skip_existing_json,
+        # Word-level alignment (v1.8+)
+        word_timestamps=getattr(args, "word_timestamps", None),
         # Chunking settings (with getattr for backward compatibility)
         enable_chunking=getattr(args, "enable_chunking", None),
         chunk_target_duration_s=getattr(args, "chunk_target_duration_s", None),

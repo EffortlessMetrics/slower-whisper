@@ -131,7 +131,7 @@ COPY --chown=appuser:appuser integrations/ /app/integrations/
 COPY --chown=appuser:appuser pyproject.toml /app/
 
 # Copy legacy entry points for backward compatibility
-COPY --chown=appuser:appuser transcribe_pipeline.py audio_enrich.py /app/
+COPY --chown=appuser:appuser scripts/transcribe_pipeline.py scripts/audio_enrich.py /app/
 
 # Create data directories
 # These will typically be mounted as volumes

@@ -134,7 +134,7 @@ COPY --link --from=builder /opt/venv /opt/venv
 COPY --link --from=builder /app /app
 
 # Copy legacy entry points for backward compatibility
-COPY transcribe_pipeline.py audio_enrich.py /app/
+COPY scripts/transcribe_pipeline.py scripts/audio_enrich.py /app/
 
 # Create data directories
 # These will typically be mounted as volumes

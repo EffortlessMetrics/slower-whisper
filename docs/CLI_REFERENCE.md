@@ -67,15 +67,16 @@ slower-whisper transcribe [OPTIONS]
 | `--root PATH` | `.` | Project root containing `raw_audio/` and output folders |
 | `--config FILE` | `None` | Transcription config JSON (merged with env + CLI) |
 | `--model NAME` | `large-v3` | Whisper model |
-| `--device {cuda,cpu}` | `cuda` | Device for ASR |
-| `--compute-type TYPE` | auto (`float16` on CUDA, `int8` on CPU) | faster-whisper compute type |
+| `--device {cuda,cpu}` | `cuda` | Device for ASR (Whisper) inference |
+| `--compute-type TYPE` | auto | faster-whisper compute type (float16, float32, int8, int8_float16) |
 | `--language CODE` | auto | Force language (e.g. `en`) |
 | `--task {transcribe,translate}` | `transcribe` | Whisper task |
 | `--vad-min-silence-ms INT` | `500` | Minimum silence to split segments |
 | `--beam-size INT` | `5` | Beam search size |
+| `--word-timestamps / --no-word-timestamps` | `False` | Extract word-level timestamps (v1.8+) |
 | `--skip-existing-json / --no-skip-existing-json` | `True` | Skip files that already have JSON |
 | `--enable-diarization` | `False` | Run experimental speaker diarization (pyannote) |
-| `--diarization-device {auto,cuda,cpu}` | `auto` | Device for diarization |
+| `--diarization-device {auto,cuda,cpu}` | `auto` | Device for diarization (auto selects cuda if available) |
 | `--min-speakers INT` | `None` | Speaker count hint (min) |
 | `--max-speakers INT` | `None` | Speaker count hint (max) |
 | `--overlap-threshold FLOAT` | `0.3` | Min overlap ratio to assign a speaker |
@@ -111,12 +112,14 @@ slower-whisper enrich [OPTIONS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--root PATH` | `.` | Project root |
-| `--enrich-config FILE` | `None` | Enrichment config JSON (merged with env + CLI) |
+| `--config FILE` | `None` | Enrichment config JSON (merged with env + CLI) |
 | `--skip-existing / --no-skip-existing` | `True` | Skip segments that already have `audio_state` |
 | `--enable-prosody / --no-enable-prosody` | `True` | Extract prosody features |
 | `--enable-emotion / --no-enable-emotion` | `True` | Extract dimensional emotion |
 | `--enable-categorical-emotion / --no-enable-categorical-emotion` | `False` | Extract categorical emotions (slower) |
-| `--device {cpu,cuda}` | `cpu` | Device for emotion models |
+| `--enable-speaker-analytics / --no-enable-speaker-analytics` | `None` | Enable both turn metadata and speaker stats (overrides individual flags) |
+| `--device {cpu,cuda}` | `cpu` | Device for emotion model inference |
+| `--pause-threshold FLOAT` | `None` | Min pause (seconds) to split turns for same speaker |
 
 **Examples**
 
@@ -131,7 +134,10 @@ slower-whisper enrich --no-enable-emotion
 slower-whisper enrich --enable-categorical-emotion --device cuda
 
 # Respect existing audio_state and use a config file
-slower-whisper enrich --enrich-config config/enrich.json --skip-existing
+slower-whisper enrich --config config/enrich.json --skip-existing
+
+# Enable speaker analytics (turn metadata + speaker stats)
+slower-whisper enrich --enable-speaker-analytics
 ```
 
 ---

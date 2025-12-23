@@ -13,14 +13,27 @@ import pytest
 from transcription.audio_utils import AudioSegmentExtractor
 from transcription.models import Segment, Transcript
 
-# Check for optional dependencies
-EMOTION_AVAILABLE = True
+# Check for optional dependencies (must be real packages, not mocks from conftest)
+EMOTION_AVAILABLE = False
 PROSODY_AVAILABLE = True
 
 try:
-    from transcription.emotion import extract_emotion_categorical, extract_emotion_dimensional
-except (ImportError, ValueError):
-    EMOTION_AVAILABLE = False
+    # Check for real transformers, not mock - from_pretrained must be callable
+    from transformers import AutoModelForAudioClassification
+
+    if hasattr(AutoModelForAudioClassification, "from_pretrained") and callable(
+        getattr(AutoModelForAudioClassification, "from_pretrained", None)
+    ):
+        from transcription.emotion import (
+            extract_emotion_categorical,
+            extract_emotion_dimensional,
+        )
+
+        EMOTION_AVAILABLE = True
+except (ImportError, ValueError, AttributeError):
+    pass
+
+if not EMOTION_AVAILABLE:
     extract_emotion_dimensional = None
     extract_emotion_categorical = None
 

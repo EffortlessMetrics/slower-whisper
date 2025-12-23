@@ -53,6 +53,9 @@ def get_speaker_id(speaker: Any) -> str | None:
         return str(raw_id) if raw_id is not None else None
 
     # Handle dataclasses with speaker_id attribute
+    # Note: is_dataclass() returns True for both instances and types,
+    # so we check it's not a type to ensure we have an instance.
+    # mypy can't narrow `Any` through is_dataclass(), so we ignore unreachable.
     if is_dataclass(speaker) and not isinstance(speaker, type):
         data = asdict(speaker)
         speaker_id = data.get("speaker_id") or data.get("id")
@@ -106,6 +109,9 @@ def get_speaker_label_or_id(speaker: Any, fallback: str = "unknown") -> str:
         return fallback
 
     # Handle dataclasses
+    # Note: is_dataclass() returns True for both instances and types,
+    # so we check it's not a type to ensure we have an instance.
+    # mypy can't narrow `Any` through is_dataclass(), so we ignore unreachable.
     if is_dataclass(speaker) and not isinstance(speaker, type):
         data = asdict(speaker)
         speaker_id = data.get("id") or data.get("speaker_id")

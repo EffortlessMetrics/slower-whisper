@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+_No unreleased changes._
+
+## [1.8.0] - 2025-12-22
+
+### Added
+
+- **Word-Level Timestamps**: New `--word-timestamps` CLI flag and `word_timestamps` config option enable per-word timing extraction from faster-whisper. Each word includes start/end timestamps and confidence probability.
+- **Word Model** (`Word` dataclass): New data model for word-level timing with fields: `word`, `start`, `end`, `probability`, and optional `speaker` for word-level diarization alignment.
+- **Segment.words Field**: Segments now include an optional `words` list containing `Word` objects when word-level timestamps are enabled.
+- **Word-Level Speaker Alignment** (`assign_speakers_to_words`): New function for granular speaker assignment at the word level, enabling detection of speaker changes within segments. Segment speaker is derived from the dominant word-level speaker.
+- **JSON Serialization**: Word-level timestamps are automatically serialized to/from JSON with backward compatibility (old transcripts without words load correctly).
+
+### Changed
+
+- **README**: Updated to reflect word-level alignment is now implemented (v1.8+) rather than planned.
+- **CLAUDE.md**: Updated feature description to include word-level alignment.
+- **Speaker Diarization Docs**: Updated roadmap to show word-level alignment as implemented in v1.8.
+- **CLI consistency**: Renamed `--enrich-config` to `--config` in enrich command for consistency with transcribe command (`--enrich-config` remains as deprecated alias for backward compatibility).
+- **CLI help text**: Improved help text for `--device` flags to clarify ASR vs emotion model usage, `--compute-type` to list valid options, `--diarization-device` to explain 'auto' behavior, and `--enable-speaker-analytics` to document override behavior.
+
+### Fixed
+
+- **Subprocess error handling** (`audio_io.py`): Fixed dead error handler in `normalize_all()` - now properly captures stderr, logs ffmpeg errors with exit codes, and cleans up partial output files on failure.
+- **Silent exception logging** (`diarization.py`): Added debug logging for audio duration detection failures in stub mode to aid troubleshooting.
+- **Dockerfile paths**: Fixed COPY paths for legacy entry points (`transcribe_pipeline.py`, `audio_enrich.py`) in both CPU and GPU Dockerfiles.
+
+### Documentation
+
+- **API Exports**: `Word` dataclass now exported from `transcription/__init__.py` for public use.
+- **Config Environment Variables**: Added `SLOWER_WHISPER_WORD_TIMESTAMPS` environment variable support.
+
+### Developer Experience
+
+- **Code deduplication** (`llm_utils.py`): Extracted `_extract_audio_descriptors()` utility to consolidate 3 duplicate implementations of `[audio: ...]` parsing.
+- **Missing docstrings**: Added docstrings to 10+ helper functions across `chunking.py`, `turns_enrich.py`, `speaker_stats.py`, and `validation.py`.
+- **Type annotation comments**: Added explanatory comments to `cast()` usage in `emotion.py` for mypy workarounds.
+- **Test improvements**: Updated `test_audio_io.py` mock to support new subprocess call signature.
+
 ## [1.7.1] - 2025-12-15
 
 ### Fixed

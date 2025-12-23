@@ -17,11 +17,19 @@ def test_normalize_all_refreshes_when_source_is_newer(tmp_path, monkeypatch):
 
     calls: list[list[str]] = []
 
-    def fake_run(cmd, check):
+    class FakeResult:
+        """Fake subprocess.CompletedProcess for testing."""
+
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
         calls.append(list(cmd))
         dst = Path(cmd[-1])
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_text(f"run-{len(calls)}", encoding="utf-8")
+        return FakeResult()
 
     monkeypatch.setattr(audio_io.subprocess, "run", fake_run)
 

@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
-**Current Version:** v1.7.1 (Streaming enrichment, live semantics, unified config)
-**Last Updated:** 2025-12-15
+**Current Version:** v1.8.0 (Word-level timestamps and speaker alignment)
+**Last Updated:** 2025-12-22
 <!-- cspell:ignore pyannote disfluency disfluencies langchain llamaindex Praat
 cuda qwen Qwen Smol Neur INTERSPEECH IEMOCAP multimodal mypy -->
 
@@ -186,7 +186,7 @@ v1.x JSON is forward-compatible with v2.x readers.
 ## v1.7.0 — Streaming Enrichment & Live Semantics (SHIPPED ✅)
 
 **Released:** 2025-12-02
-**Status:** Current stable version
+**Status:** Superseded by v1.8.0
 
 ### What Shipped (v1.7.0)
 
@@ -211,12 +211,73 @@ v1.x JSON is forward-compatible with v2.x readers.
 - `docs/CONFIGURATION.md`: Complete configuration management guide
 - Updated `docs/API.md`: Quick reference for new streaming and config APIs
 
-### Future Enhancements (v1.8.0)
+## v1.8.0 — Word-Level Alignment (SHIPPED ✅)
+
+**Released:** 2025-12-22
+**Status:** Stable; adds granular word-level timestamps and speaker alignment
+
+### What Shipped (v1.8.0)
+
+- **Word-level timestamps**: New `--word-timestamps` CLI flag and `word_timestamps` config option enable per-word timing extraction from faster-whisper. Each word includes start/end timestamps and confidence probability.
+- **Word model**: New `Word` dataclass exported from `transcription` package with fields: `word`, `start`, `end`, `probability`, and optional `speaker`.
+- **Segment.words field**: Segments now include an optional `words` list containing `Word` objects when word-level timestamps are enabled.
+- **Word-level speaker alignment** (`assign_speakers_to_words`): New function for granular speaker assignment at the word level, enabling detection of speaker changes within segments. Segment speaker is derived from the dominant word-level speaker.
+- **JSON serialization**: Word-level timestamps are automatically serialized to/from JSON with backward compatibility (old transcripts without words load correctly).
+
+### Future Enhancements (v1.9+)
 
 - Streaming semantics integration quality improvements
 - Event callback API for easier downstream integration
 - Semantic tuning based on real-world usage
 - Enhanced test coverage for streaming semantics
+
+---
+
+## Code Quality & Maintainability (ONGOING 🔧)
+
+**Updated:** 2025-12-22
+
+### Codebase Health Metrics
+
+- **Test coverage**: 713 tests passing
+- **Type coverage**: 43/43 source files pass mypy
+- **Lint status**: All ruff checks pass
+- **Documentation**: 65+ markdown docs
+
+### Recent Improvements (Post-1.8.0)
+
+**Error Handling & Logging:**
+- Fixed dead error handler in `audio_io.py` - now captures and logs ffmpeg stderr
+- Added debug logging for silent exceptions in `diarization.py` stub mode
+
+**Code Deduplication:**
+- Extracted `_extract_audio_descriptors()` utility in `llm_utils.py` (consolidated 3 duplicate implementations)
+- Identified additional consolidation opportunities for timestamp formatters and dict conversion helpers
+
+**Documentation:**
+- Added docstrings to 10+ undocumented helper functions across `chunking.py`, `turns_enrich.py`, `speaker_stats.py`, `validation.py`
+- Improved CLI help text consistency across transcribe/enrich commands
+
+**CLI Improvements:**
+- Renamed `--enrich-config` to `--config` for command consistency
+- Clarified device flag help text (ASR vs emotion models)
+- Added choices validation for device arguments
+
+### Known Technical Debt
+
+**Test Coverage Gaps** (identified via exploration):
+- 18 of 41 modules have dedicated test files (~44% module coverage)
+- Key untested modules: `api.py`, `pipeline.py`, `cli.py`, `service.py`
+- Recommendation: Prioritize test coverage for public API surface
+
+**Code Duplication** (low priority):
+- 3 dict conversion helpers (`_to_dict`, `_as_dict`, `turn_to_dict`) with similar logic
+- 4 timestamp formatting functions across modules
+- Documented in CLAUDE.md; consolidation deferred to avoid breaking changes
+
+**Configuration Complexity**:
+- Overlapping `AsrConfig`, `AppConfig`, `TranscriptionConfig` classes
+- Legacy backward-compatibility maintained but adds cognitive overhead
 
 ---
 
