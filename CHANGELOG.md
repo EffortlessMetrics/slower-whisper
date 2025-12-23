@@ -29,7 +29,6 @@ _No unreleased changes._
 
 ### Fixed
 
-- **Base install/Docker imports**: Streaming enrichment modules (`streaming_enrich`, `streaming_semantic`) are now lazy-imported via PEP 562 to avoid pulling in `soundfile`/heavy deps at package import time. Base Docker images can now run `slower-whisper --version` without ImportError.
 - **Subprocess error handling** (`audio_io.py`): Fixed dead error handler in `normalize_all()` - now properly captures stderr, logs ffmpeg errors with exit codes, and cleans up partial output files on failure.
 - **Silent exception logging** (`diarization.py`): Added debug logging for audio duration detection failures in stub mode to aid troubleshooting.
 - **Dockerfile paths**: Fixed COPY paths for legacy entry points (`transcribe_pipeline.py`, `audio_enrich.py`) in both CPU and GPU Dockerfiles.

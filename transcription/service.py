@@ -970,6 +970,8 @@ async def transcribe_audio(
         safe_suffix = ""
         if audio.filename:
             # Extract and sanitize the file extension
+            import re
+
             # Match only the last extension after the final dot
             ext_match = re.search(r"(\.[^.]+)$", audio.filename)
             if ext_match:
@@ -980,6 +982,8 @@ async def transcribe_audio(
                     safe_suffix = ext
 
         # Generate a secure random filename with the sanitized extension
+        import secrets
+
         random_id = secrets.token_hex(16)
         audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
 
@@ -1189,6 +1193,8 @@ async def enrich_audio(
         safe_suffix = ".wav"  # Default to .wav for audio files
         if audio.filename:
             # Extract and sanitize the file extension
+            import re
+
             # Match only the last extension after the final dot
             ext_match = re.search(r"(\.[^.]+)$", audio.filename)
             if ext_match:
@@ -1199,6 +1205,8 @@ async def enrich_audio(
                     safe_suffix = ext
 
         # Generate a secure random filename with the sanitized extension
+        import secrets
+
         random_id = secrets.token_hex(16)
         audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
 
