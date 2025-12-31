@@ -141,8 +141,8 @@ v1.x JSON is forward-compatible with v2.x readers.
 
 ## v1.3.0 — Ecosystem & Evaluation (SHIPPED ✅)
 
-**Released:** 2026-01-15
-**Status:** Current version; consolidates ecosystem adapters, exports, and populated benchmarks.
+**Released:** 2025-11-15
+**Status:** Stable; consolidates ecosystem adapters, exports, and populated benchmarks.
 
 ### What Shipped (v1.3.0)
 
@@ -158,7 +158,7 @@ v1.x JSON is forward-compatible with v2.x readers.
 
 ## Type System Hardening (DONE ✅)
 
-**Completed:** 2026-01-XX (part of v1.3.1 maintenance)
+**Completed:** 2025-11-20 (part of v1.3.1 maintenance)
 
 ### What Was Done
 
@@ -224,12 +224,65 @@ v1.x JSON is forward-compatible with v2.x readers.
 - **Word-level speaker alignment** (`assign_speakers_to_words`): New function for granular speaker assignment at the word level, enabling detection of speaker changes within segments. Segment speaker is derived from the dominant word-level speaker.
 - **JSON serialization**: Word-level timestamps are automatically serialized to/from JSON with backward compatibility (old transcripts without words load correctly).
 
-### Future Enhancements (v1.9+)
+---
 
-- Streaming semantics integration quality improvements
-- Event callback API for easier downstream integration
-- Semantic tuning based on real-world usage
-- Enhanced test coverage for streaming semantics
+## v1.9.0 — Streaming Quality & Event API (PLANNED 🚧)
+
+**Target:** Q1 2026
+**Theme:** Production-ready streaming with robust event callbacks
+
+### Core Features
+
+#### 1. Event Callback API ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
+
+```python
+# Standardized callback interface
+class StreamCallbacks(Protocol):
+    def on_segment_finalized(self, segment: Segment) -> None: ...
+    def on_speaker_turn(self, turn: Turn) -> None: ...
+    def on_semantic_update(self, payload: SemanticUpdatePayload) -> None: ...
+    def on_error(self, error: Exception) -> None: ...
+
+# Usage
+session = StreamingEnrichmentSession(
+    config=config,
+    callbacks=MyCallbacks()  # New parameter
+)
+```
+
+- Async callback support for non-blocking downstream processing
+- Error handling and retry logic
+- Configurable event filtering
+
+#### 2. Streaming Quality Improvements
+
+- **Latency optimization**: P95 < 250ms for enrichment (currently ~220ms P95)
+- **Edge case handling**: Short segments (<0.5s), silence detection, overlapping speech
+- **Turn boundary detection**: Improved accuracy at segment boundaries
+
+#### 3. Test Coverage Expansion ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45))
+
+- `streaming_semantic.py`: > 90% line coverage (currently ~70%)
+- Performance regression tests in CI
+- Memory profiling for long conversations
+- BDD scenarios for semantic streaming behavior
+
+#### 4. Turn-Aware Chunking Enhancements ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
+
+- Improve chunk boundary detection at speaker turn transitions
+- Configurable `turn_affinity` parameter (0.0-1.0)
+- Cross-turn penalty for chunks that split mid-turn
+- Edge cases: rapid turn-taking and overlapping speech
+
+### Acceptance Criteria
+
+- [ ] Callback API documented in `docs/STREAMING_ARCHITECTURE.md`
+- [ ] P95 latency < 250ms verified in benchmarks
+- [ ] All callback integration tests passing
+- [ ] Example callback integration in `examples/streaming/`
+- [ ] > 90% coverage for streaming semantic module
+- [ ] Turn-aware chunking with configurable affinity ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
+- [ ] Complete test_pipeline.py implementation ([#58](https://github.com/EffortlessMetrics/slower-whisper/issues/58))
 
 ---
 
@@ -283,40 +336,168 @@ v1.x JSON is forward-compatible with v2.x readers.
 
 ## v2.0.0 — Streaming & Semantic Depth (PLANNED 🚧)
 
+**Target:** Q3-Q4 2026
 **Theme:** Real-time streaming, LLM-backed semantic annotation, and larger benchmark coverage.
 
-### Focus Areas
+### Core Features
 
-- **Streaming architecture:** Flesh out concrete partial/final message flows in `docs/STREAMING_ARCHITECTURE.md`; ensure `Transcript`/`Chunk` structures support incremental diarization and analytics.
-- **LLM semantic annotator:** Design LLM-backed annotations (topic/risk/action) written into `annotations.semantic` without breaking v1.x consumers; define config knobs and safety/guardrail strategy.
-- **Benchmarks at scale:** Expand DER/WER datasets beyond fixtures; add streaming + semantic evaluation tracks; harden performance/throughput gates.
-- **DX + APIs:** Keep exports/validation contracts stable while introducing streaming endpoints and integration adapters for live flows.
+#### 1. Real-Time Streaming Architecture ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46))
+
+```
+Audio Stream → Chunker → ASR → Partial Segments → Enrichment → Final Segments
+                                    ↓                              ↓
+                              PARTIAL event              SEGMENT_FINALIZED event
+                                    ↓                              ↓
+                              UI feedback              Semantic annotation
+                                                                   ↓
+                                                       SEMANTIC_UPDATE event
+```
+
+**Components:**
+- `StreamingTranscriber` class with partial segment support
+- WebSocket endpoint: `ws://host/stream`
+- REST endpoints: `/stream/start`, `/stream/audio`, `/stream/status`
+- Backpressure handling for slow consumers
+- Incremental diarization support
+
+**Event Types:**
+- `PARTIAL`: Low-confidence interim transcript
+- `FINALIZED`: High-confidence completed segment
+- `SPEAKER_TURN`: Speaker change detected
+- `SEMANTIC_UPDATE`: Topic/risk/action annotation
+- `ERROR`: Processing error with recovery info
+
+**Performance Targets:**
+- End-to-end latency: < 500ms from audio chunk to partial transcript
+- Throughput: > 10 concurrent streams per GPU
+- Memory: < 500MB per active stream
+
+#### 2. LLM-Backed Semantic Annotator ([#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47))
+
+**Schema (v2.0.0):**
+```json
+{
+  "annotations": {
+    "semantic": {
+      "version": "2.0.0",
+      "annotator": "llm",
+      "model": "qwen2.5-7b",
+      "topics": [
+        {"label": "pricing", "confidence": 0.92, "span": [0, 5]}
+      ],
+      "risks": [
+        {"type": "escalation", "severity": "high", "evidence": "..."}
+      ],
+      "actions": [
+        {"description": "Send proposal", "assignee": null, "due": null}
+      ]
+    }
+  }
+}
+```
+
+**Configuration:**
+```python
+@dataclass
+class SemanticLLMConfig:
+    backend: Literal["local", "openai", "anthropic"] = "local"
+    model: str = "qwen2.5-7b"  # or gpt-4o-mini, claude-3-haiku
+    enable_topics: bool = True
+    enable_risks: bool = True
+    enable_actions: bool = True
+    max_tokens_per_chunk: int = 500
+    rate_limit_rpm: int = 60
+```
+
+**Design Principles:**
+- Local-first: Support local models (Qwen, SmolLM) by default
+- Opt-in cloud: Optional OpenAI/Anthropic API for higher quality
+- Backward compatible: v1.x consumers ignore new fields
+- Guardrails: Rate limiting, content filtering, cost controls
+
+#### 3. Expanded Benchmarks & Evaluation ([#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48))
+
+| Track | Metric | Target | Current |
+|-------|--------|--------|---------|
+| ASR | WER on LibriSpeech | < 5% | ~4.2% |
+| Diarization | DER on AMI | < 15% | ~18% |
+| Streaming | P95 Latency | < 500ms | N/A |
+| Semantic | Topic F1 | > 0.8 | N/A |
+
+**Benchmark CLI:**
+```bash
+slower-whisper benchmark --track asr --dataset librispeech
+slower-whisper benchmark --track diarization --dataset ami
+slower-whisper benchmark --track streaming --duration 1h
+```
+
+**CI Integration:**
+- Performance regression detection (> 5% degradation fails CI)
+- Historical trend tracking
+- JSON/Markdown report generation
+
+#### 4. Documentation & Migration ([#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54), [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
+
+- **Migration guide** (`docs/MIGRATION_V2.md`): Step-by-step upgrade from v1.x
+- **Streaming architecture docs** (`docs/STREAMING_ARCHITECTURE.md`): WebSocket protocol, event flow, client examples
+- **Breaking changes documentation**: All deprecated v1.x items removed in v2.0
+- **API reference updates**: New streaming endpoints and callbacks
+
+### Breaking Changes (v1.x → v2.x)
+
+| Change | v1.x Behavior | v2.x Behavior | Migration |
+|--------|---------------|---------------|-----------|
+| `--enrich-config` | Deprecated alias | Removed | Use `--config` |
+| Legacy CLI scripts | Functional | Removed | Use `slower-whisper` CLI |
+| `annotations.semantic.version` | "1.0.0" | "2.0.0" | Auto-upgrade on load |
+
+### Acceptance Criteria
+
+- [ ] WebSocket streaming endpoint functional ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46))
+- [ ] Local LLM annotator working with qwen2.5-7b ([#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47))
+- [ ] At least one cloud LLM backend (OpenAI or Anthropic) ([#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47))
+- [ ] 3+ benchmark tracks running in CI ([#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48))
+- [ ] Performance gates enforced
+- [ ] Migration guide published ([#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54))
+- [ ] Streaming architecture documented ([#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
+- [ ] Benchmark track runners implemented ([#57](https://github.com/EffortlessMetrics/slower-whisper/issues/57))
+- [ ] Deprecated APIs cleaned up ([#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59))
 
 ---
 
 ## v3.0.0 — Intelligence Layer (2027+)
 
+**Target:** 2027+
 **Theme:** Semantic understanding + domain specialization.
 
 ### Core Features (v3.0.0)
 
 #### 1. Semantic Audio Analysis
 
-- Intent detection from prosody + text
-- Discourse structure analysis
+- Intent detection from prosody + text ([#60](https://github.com/EffortlessMetrics/slower-whisper/issues/60))
+- Discourse structure analysis ([#65](https://github.com/EffortlessMetrics/slower-whisper/issues/65))
 - Topic segmentation with acoustic cues
 
 #### 2. Domain Packs
 
-- Clinical speech analysis (therapy, diagnosis)
+- Clinical speech analysis (therapy, diagnosis) ([#61](https://github.com/EffortlessMetrics/slower-whisper/issues/61))
 - Legal transcription (court proceedings)
 - Meeting summarization (action items, decisions)
 
-#### 3. Contextual Enrichment
+#### 3. Contextual Enrichment ([#62](https://github.com/EffortlessMetrics/slower-whisper/issues/62))
 
 - Background noise classification
 - Acoustic scene analysis
 - Audio event detection (laughter, applause)
+
+### Acceptance Criteria
+
+- [ ] Intent detection with prosody+text fusion ([#60](https://github.com/EffortlessMetrics/slower-whisper/issues/60))
+- [ ] Clinical speech domain pack ([#61](https://github.com/EffortlessMetrics/slower-whisper/issues/61))
+- [ ] Acoustic scene and event detection ([#62](https://github.com/EffortlessMetrics/slower-whisper/issues/62))
+- [ ] Discourse structure analysis ([#65](https://github.com/EffortlessMetrics/slower-whisper/issues/65))
+- [ ] Domain pack plugin architecture
+- [ ] At least 2 production-ready domain packs
 
 ---
 
@@ -324,20 +505,25 @@ v1.x JSON is forward-compatible with v2.x readers.
 
 ### Documentation & Education
 
-- [ ] Video tutorials and walkthroughs
+- [x] Comprehensive API documentation (65+ docs)
+- [x] Working examples (12+ scripts in `examples/`)
+- [ ] Video tutorials and walkthroughs (planned Q2 2026)
 - [ ] Interactive documentation with live examples
 - [ ] Academic paper on acoustic feature rendering for LLMs
 - [ ] Conference presentations (PyCon, NeurIPS, INTERSPEECH)
 
 ### Community Building
 
-- [ ] Discord/Slack community
+- [ ] GitHub Discussions enabled ([#63](https://github.com/EffortlessMetrics/slower-whisper/issues/63))
+- [ ] Issue templates for bugs/features ([#64](https://github.com/EffortlessMetrics/slower-whisper/issues/64))
+- [ ] Discord/Slack community (evaluating platforms)
 - [ ] Monthly community calls
 - [ ] Contributor recognition program
 - [ ] User showcase gallery
 
 ### Research Collaborations
 
+- [x] Open-source benchmarks (WER, DER reports)
 - [ ] Partner with linguistics departments
 - [ ] Collaborate with speech therapy researchers
 - [ ] Contribute to open speech datasets
@@ -368,22 +554,43 @@ v1.x JSON is forward-compatible with v2.x readers.
 
 ## Contribution Opportunities
 
-### Near Term (post-1.3.0 stabilization)
+### Good First Issues
 
-- [ ] Run pyannote-backed diarization benchmark (HF_TOKEN) and refresh `benchmarks/DIARIZATION_REPORT.*` plus `docs/SPEAKER_DIARIZATION.md`.
-- [ ] Broaden CLI/integration smoke tests around `export`, `validate`, and metrics/redaction examples.
-- [ ] Doc polish for LangChain/LlamaIndex adapters, chunking semantics, and KPI scripts.
+- [ ] Add missing docstrings to public functions in `speaker_stats.py` ([#50](https://github.com/EffortlessMetrics/slower-whisper/issues/50))
+- [ ] Improve error messages for missing ffmpeg dependency ([#51](https://github.com/EffortlessMetrics/slower-whisper/issues/51))
+- [ ] Add type annotations to test fixtures ([#52](https://github.com/EffortlessMetrics/slower-whisper/issues/52))
+- [ ] Write BDD scenario for edge case: empty audio file handling ([#53](https://github.com/EffortlessMetrics/slower-whisper/issues/53))
 
-### V2 Prep
+### v1.9.0 Contributions ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44), [#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45), [#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
 
-- [ ] Flesh out streaming message sequences in `docs/STREAMING_ARCHITECTURE.md` and add lightweight contract tests.
-- [ ] Specify LLM-backed `SemanticAnnotator` schema/config (topics/risks/actions) with guardrails.
-- [ ] Grow evaluation datasets (ASR/DER/analytics) and automate gates in `make verify-quick`/CI.
+- [ ] Implement streaming callback interface ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
+- [ ] Add integration tests for event callbacks ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
+- [ ] Write performance benchmarks for streaming enrichment ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45))
+- [ ] Expand test coverage for `streaming_semantic.py` ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45))
+- [ ] Implement turn-aware chunking enhancements ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
 
-### Longer Term
+### v2.0.0 Contributions ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46), [#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47), [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48), [#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54), [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
 
-- [ ] Streaming endpoints + adapters once contracts are locked.
-- [ ] Additional semantic tasks and domain packs after streaming lands.
+- [ ] Design WebSocket streaming protocol ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46))
+- [ ] Implement local LLM semantic annotator ([#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47))
+- [ ] Add OpenAI/Anthropic backend for semantic annotation ([#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47))
+- [ ] Expand benchmark datasets (AMI, CALLHOME) ([#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48))
+- [ ] Write migration guide for v1.x → v2.x ([#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54))
+- [ ] Write streaming architecture documentation ([#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
+
+### Testing & Quality ([#56](https://github.com/EffortlessMetrics/slower-whisper/issues/56))
+
+- [ ] Expand test coverage for `api.py` (>80% coverage)
+- [ ] Expand test coverage for `pipeline.py` (>70% coverage)
+- [ ] Add end-to-end CLI tests
+- [ ] Add REST API contract tests for `service.py`
+
+### Completed (v1.0-v1.8)
+
+- [x] pyannote diarization benchmark (v1.3.0)
+- [x] Export/validate CLI smoke tests (v1.3.0)
+- [x] LangChain/LlamaIndex adapter documentation (v1.3.0)
+- [x] Word-level timestamp implementation (v1.8.0)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started.
 
@@ -410,21 +617,33 @@ This roadmap is a living document. Priorities shift based on:
 
 ## Deprecation Policy
 
-**Current Deprecations:** None (v1.1.0 is stable; diarization remains opt-in)
+### Current Deprecations (v1.8.0)
 
-**Future Deprecation Timeline:**
+| Deprecated | Replacement | Warning Since | Removal Target |
+|------------|-------------|---------------|----------------|
+| `--enrich-config` flag | `--config` | v1.8.0 | v2.0.0 |
+| `transcribe_pipeline.py` script | `slower-whisper transcribe` CLI | v1.3.0 | v2.0.0 |
+| `audio_enrich.py` script | `slower-whisper enrich` CLI | v1.3.0 | v2.0.0 |
 
-- Deprecation announced: 6 months before removal
-- Warning period: Deprecation warnings in code
-- Removal: Only in major version bumps
+### Deprecation Timeline Policy
 
-**Example:**
+- **Announcement**: At least 2 minor versions before removal
+- **Warning period**: Deprecation warnings logged during usage
+- **Removal**: Only in major version bumps (v2.0.0, v3.0.0)
+
+### Example Lifecycle
 
 ```text
-v1.8.0: Deprecate legacy CLI (announce only)
-v1.9.0: Legacy CLI works but logs warnings
-v2.0.0: Legacy CLI removed (unified CLI only)
+v1.8.0: --enrich-config deprecated (announce + warning)
+v1.9.0: --enrich-config still works, logs deprecation warning
+v2.0.0: --enrich-config removed (use --config)
 ```
+
+### Backward Compatibility Guarantees
+
+- **JSON Schema v2**: Forward-compatible through v2.x (new optional fields only)
+- **Python API**: `transcribe_directory()`, `enrich_directory()` signatures stable through v2.x
+- **CLI**: Core subcommands (`transcribe`, `enrich`, `export`, `validate`) stable through v2.x
 
 ---
 
@@ -468,3 +687,16 @@ enabling truly multimodal understanding of human communication.
 - 2025-11-30: Updated for v1.1.0 release and diarization/LLM rendering
   shipment; added v1.1.x hardening priorities
 - 2025-12-01: Updated for v1.2.0 (speaker analytics) and v1.3.0 (exports, evaluation)
+- 2025-12-22: Updated for v1.8.0 (word-level timestamps)
+- 2025-12-31: Major roadmap expansion: added formal v1.9.0 section, detailed v2.0.0
+  specifications with concrete deliverables, updated deprecation policy with v1.8.0
+  items, refreshed contribution opportunities with issue links, updated community
+  checkboxes to reflect current progress
+- 2025-12-31: Created GitHub milestones (v1.9.0, v2.0.0) and linked all roadmap items
+  to issues. Added issues #49-56 for turn-aware chunking, good first issues, migration
+  guide, streaming docs, and test coverage expansion.
+- 2025-12-31: Added v3.0.0 milestone and issues #57-65. Created issues for benchmark
+  runners (#57), pipeline tests (#58), deprecated API cleanup (#59), intent detection
+  (#60), clinical domain pack (#61), acoustic scene analysis (#62), GitHub Discussions
+  (#63), issue templates (#64), and discourse structure (#65). Fixed incorrect community
+  checkboxes (Discussions and templates not yet implemented).
