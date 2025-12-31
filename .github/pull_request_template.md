@@ -45,8 +45,8 @@ Closes #
 
 <!-- Complete before requesting review -->
 
+- [ ] I have run `uv run slower-whisper-verify --quick` and all checks pass locally
 - [ ] My code follows the project's style guidelines (ruff)
-- [ ] I have run `uv run ruff check --fix .` and `uv run ruff format .`
 - [ ] I have added tests that prove my fix/feature works
 - [ ] New and existing unit tests pass locally
 - [ ] I have updated documentation as needed

@@ -73,5 +73,5 @@ body:
       options:
         - label: I have searched existing issues to ensure this bug hasn't been reported
           required: true
-        - label: I am using a supported Python version (3.10+)
+        - label: I am using a supported Python version (3.11+)
           required: true

@@ -3,6 +3,6 @@ contact_links:
   - name: Documentation
     url: https://github.com/EffortlessMetrics/slower-whisper#readme
     about: Check the README for usage instructions
-  - name: Discussions (Coming Soon)
-    url: https://github.com/EffortlessMetrics/slower-whisper/issues
-    about: For questions and general discussion, please open an issue for now
+  - name: Ask a Question or Start a Discussion
+    url: https://github.com/EffortlessMetrics/slower-whisper/issues/new/choose
+    about: For questions and general discussion, please use an issue template.
