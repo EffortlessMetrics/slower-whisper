@@ -5,7 +5,10 @@ These tests use the FastAPI TestClient to verify endpoint behavior without
 requiring a running server.
 """
 
+from __future__ import annotations
+
 import json
+from pathlib import Path
 
 import pytest
 
@@ -20,13 +23,13 @@ from transcription.service import app  # noqa: E402
 
 
 @pytest.fixture
-def client():
+def client() -> TestClient:
     """Create a test client for the FastAPI app."""
     return TestClient(app)
 
 
 @pytest.fixture
-def sample_transcript():
+def sample_transcript() -> Transcript:
     """Create a sample transcript for testing."""
     return Transcript(
         file_name="test.wav",
@@ -50,7 +53,7 @@ def sample_transcript():
 
 
 @pytest.fixture
-def sample_audio_wav(tmp_path):
+def sample_audio_wav(tmp_path: Path) -> Path:
     """
     Create a minimal valid WAV file for testing.
 
