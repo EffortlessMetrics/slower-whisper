@@ -250,7 +250,7 @@ session = StreamingEnrichmentSession(
 )
 ```
 
-- Async callback support for non-blocking downstream processing
+- Async callback support (optional/stretch) for non-blocking downstream processing
 - Error handling and retry logic
 - Configurable event filtering
 
@@ -380,7 +380,7 @@ Audio Stream → Chunker → ASR → Partial Segments → Enrichment → Final S
   "annotations": {
     "semantic": {
       "version": "2.0.0",
-      "annotator": "llm",
+      "backend": "local",
       "model": "qwen2.5-7b",
       "topics": [
         {"label": "pricing", "confidence": 0.92, "span": [0, 5]}
@@ -419,8 +419,8 @@ class SemanticLLMConfig:
 
 | Track | Metric | Target | Current |
 |-------|--------|--------|---------|
-| ASR | WER on LibriSpeech | < 5% | ~4.2% |
-| Diarization | DER on AMI | < 15% | ~18% |
+| ASR | WER on LibriSpeech | < 5% | ~4.2% (est.) |
+| Diarization | DER on AMI | < 15% | ~18% (est.) |
 | Streaming | P95 Latency | < 500ms | N/A |
 | Semantic | Topic F1 | > 0.8 | N/A |
 
@@ -688,15 +688,10 @@ enabling truly multimodal understanding of human communication.
   shipment; added v1.1.x hardening priorities
 - 2025-12-01: Updated for v1.2.0 (speaker analytics) and v1.3.0 (exports, evaluation)
 - 2025-12-22: Updated for v1.8.0 (word-level timestamps)
-- 2025-12-31: Major roadmap expansion: added formal v1.9.0 section, detailed v2.0.0
-  specifications with concrete deliverables, updated deprecation policy with v1.8.0
-  items, refreshed contribution opportunities with issue links, updated community
-  checkboxes to reflect current progress
-- 2025-12-31: Created GitHub milestones (v1.9.0, v2.0.0) and linked all roadmap items
-  to issues. Added issues #49-56 for turn-aware chunking, good first issues, migration
-  guide, streaming docs, and test coverage expansion.
-- 2025-12-31: Added v3.0.0 milestone and issues #57-65. Created issues for benchmark
-  runners (#57), pipeline tests (#58), deprecated API cleanup (#59), intent detection
-  (#60), clinical domain pack (#61), acoustic scene analysis (#62), GitHub Discussions
-  (#63), issue templates (#64), and discourse structure (#65). Fixed incorrect community
-  checkboxes (Discussions and templates not yet implemented).
+- 2025-12-31: Major roadmap expansion and GitHub project setup:
+  - Added formal v1.9.0 section with detailed v2.0.0/v3.0.0 specifications
+  - Created milestones (v1.9.0, v2.0.0, v3.0.0) and linked all items to issues
+  - Added issues #49-65: turn-aware chunking, good first issues, migration guide,
+    streaming docs, benchmark runners, pipeline tests, API cleanup, intent detection,
+    clinical domain pack, acoustic scene analysis, Discussions, templates, discourse
+  - Updated deprecation policy, contribution opportunities, and community checkboxes
