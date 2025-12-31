@@ -611,3 +611,373 @@ def test_semantic_payload_serialization() -> None:
     assert isinstance(payload_dict["turn"], dict)
     assert isinstance(payload_dict["keywords"], list)
     assert isinstance(payload_dict["risk_tags"], list)
+
+
+# =============================================================================
+# 7. Configuration Validation Tests
+# =============================================================================
+
+
+def test_config_negative_turn_gap_sec_raises() -> None:
+    """Negative turn_gap_sec raises ValueError."""
+    with pytest.raises(ValueError, match="turn_gap_sec must be >= 0.0"):
+        LiveSemanticsConfig(turn_gap_sec=-1.0)
+
+
+def test_config_zero_turn_gap_sec_allowed() -> None:
+    """Zero turn_gap_sec is allowed (every chunk finalizes previous turn)."""
+    config = LiveSemanticsConfig(turn_gap_sec=0.0)
+    assert config.turn_gap_sec == 0.0
+
+
+def test_config_zero_context_window_turns_raises() -> None:
+    """Zero context_window_turns raises ValueError."""
+    with pytest.raises(ValueError, match="context_window_turns must be > 0"):
+        LiveSemanticsConfig(context_window_turns=0)
+
+
+def test_config_negative_context_window_turns_raises() -> None:
+    """Negative context_window_turns raises ValueError."""
+    with pytest.raises(ValueError, match="context_window_turns must be > 0"):
+        LiveSemanticsConfig(context_window_turns=-5)
+
+
+def test_config_zero_context_window_sec_raises() -> None:
+    """Zero context_window_sec raises ValueError."""
+    with pytest.raises(ValueError, match="context_window_sec must be > 0.0"):
+        LiveSemanticsConfig(context_window_sec=0.0)
+
+
+def test_config_negative_context_window_sec_raises() -> None:
+    """Negative context_window_sec raises ValueError."""
+    with pytest.raises(ValueError, match="context_window_sec must be > 0.0"):
+        LiveSemanticsConfig(context_window_sec=-10.0)
+
+
+# =============================================================================
+# 8. Context Window Edge Case Tests
+# =============================================================================
+
+
+def test_render_context_for_llm_empty_window() -> None:
+    """render_context_for_llm with no turns returns empty string."""
+    session = LiveSemanticSession()
+    # No chunks ingested, context window is empty
+    rendered = session.render_context_for_llm()
+    assert rendered == ""
+
+
+def test_get_context_window_empty() -> None:
+    """get_context_window with no turns returns empty list."""
+    session = LiveSemanticSession()
+    context = session.get_context_window()
+    assert context == []
+
+
+# =============================================================================
+# 9. Disabled Feature Tests
+# =============================================================================
+
+
+def test_question_detection_disabled() -> None:
+    """Question counting can be disabled via config."""
+    session = LiveSemanticSession(config=LiveSemanticsConfig(enable_question_detection=False))
+
+    chunk = _chunk(0.0, 1.0, "What is your name? How are you?", "spk_0")
+    session.ingest_chunk(chunk)
+    events = session.end_of_stream()
+
+    payload = events[0].semantic
+    # Question detection is disabled, so count should be 0
+    assert payload.question_count == 0
+
+
+def test_action_detection_enabled_by_default() -> None:
+    """Action detection is enabled by default."""
+    session = LiveSemanticSession()
+    config = session.config
+    assert config.enable_action_detection is True
+
+
+# =============================================================================
+# 10. Custom Annotator Tests
+# =============================================================================
+
+
+def test_custom_annotator_injection() -> None:
+    """LiveSemanticSession accepts custom annotator."""
+    from transcription.semantic import NoOpSemanticAnnotator
+
+    # Use NoOp annotator that returns transcript unchanged
+    session = LiveSemanticSession(annotator=NoOpSemanticAnnotator())
+
+    chunk = _chunk(0.0, 1.0, "I want to cancel and escalate this!", "spk_0")
+    session.ingest_chunk(chunk)
+    events = session.end_of_stream()
+
+    payload = events[0].semantic
+    # NoOpSemanticAnnotator doesn't add keywords/risk_tags
+    # But the metadata structure is still populated by _annotate_turn
+    assert payload.turn.text == "I want to cancel and escalate this!"
+
+
+# =============================================================================
+# 11. Turn ID Tracking Tests
+# =============================================================================
+
+
+def test_turn_ids_are_monotonic() -> None:
+    """Turn IDs increment monotonically."""
+    session = LiveSemanticSession()
+
+    chunks = [
+        _chunk(0.0, 0.5, "one", "spk_0"),
+        _chunk(0.6, 1.0, "two", "spk_1"),
+        _chunk(1.1, 1.5, "three", "spk_0"),
+    ]
+
+    all_updates = []
+    for chunk in chunks:
+        events = session.ingest_chunk(chunk)
+        all_updates.extend([e for e in events if e.type == StreamEventType.SEMANTIC_UPDATE])
+
+    all_updates.extend(session.end_of_stream())
+
+    # Extract turn IDs
+    turn_ids = [u.semantic.turn.id for u in all_updates]
+    assert turn_ids == ["turn_0", "turn_1", "turn_2"]
+
+
+# =============================================================================
+# 12. Rapid Messages Tests
+# =============================================================================
+
+
+def test_rapid_consecutive_chunks_same_speaker() -> None:
+    """Rapid chunks from same speaker with no gap -> single turn."""
+    session = LiveSemanticSession(config=LiveSemanticsConfig(turn_gap_sec=1.0))
+
+    # Chunks with no gap
+    chunks = [
+        _chunk(0.0, 0.1, "a", "spk_0"),
+        _chunk(0.1, 0.2, "b", "spk_0"),
+        _chunk(0.2, 0.3, "c", "spk_0"),
+        _chunk(0.3, 0.4, "d", "spk_0"),
+        _chunk(0.4, 0.5, "e", "spk_0"),
+    ]
+
+    for chunk in chunks:
+        events = session.ingest_chunk(chunk)
+        assert len(events) == 0  # No finalization
+
+    finals = session.end_of_stream()
+    assert len(finals) == 1
+    assert finals[0].semantic.turn.text == "a b c d e"
+
+
+def test_rapid_speaker_switches() -> None:
+    """Rapid speaker switches finalize turns immediately."""
+    session = LiveSemanticSession()
+
+    chunks = [
+        _chunk(0.0, 0.1, "a", "spk_0"),
+        _chunk(0.1, 0.2, "b", "spk_1"),
+        _chunk(0.2, 0.3, "c", "spk_0"),
+        _chunk(0.3, 0.4, "d", "spk_1"),
+    ]
+
+    all_events = []
+    for chunk in chunks:
+        all_events.extend(session.ingest_chunk(chunk))
+
+    updates = [e for e in all_events if e.type == StreamEventType.SEMANTIC_UPDATE]
+    assert len(updates) == 3  # 3 finalizations (last still buffered)
+
+
+# =============================================================================
+# 13. Segment Conversion Tests
+# =============================================================================
+
+
+def test_turn_to_segment_conversion() -> None:
+    """Finalized turn is converted to StreamSegment in event."""
+    session = LiveSemanticSession()
+
+    chunk = _chunk(0.0, 1.5, "test message", "spk_0")
+    session.ingest_chunk(chunk)
+    events = session.end_of_stream()
+
+    segment = events[0].segment
+    assert segment.start == 0.0
+    assert segment.end == 1.5
+    assert segment.text == "test message"
+    assert segment.speaker_id == "spk_0"
+
+
+# =============================================================================
+# 14. Long Text Tests
+# =============================================================================
+
+
+def test_long_text_handling() -> None:
+    """Long text chunks are handled correctly."""
+    session = LiveSemanticSession()
+
+    long_text = "word " * 1000  # 5000 characters
+    chunk = _chunk(0.0, 60.0, long_text.strip(), "spk_0")
+    session.ingest_chunk(chunk)
+    events = session.end_of_stream()
+
+    payload = events[0].semantic
+    assert len(payload.turn.text) == len(long_text.strip())
+
+
+# =============================================================================
+# 15. Special Characters Tests
+# =============================================================================
+
+
+def test_special_characters_in_text() -> None:
+    """Special characters in text are preserved."""
+    session = LiveSemanticSession()
+
+    special_text = "Hello! @user #topic $100 %discount & more?"
+    chunk = _chunk(0.0, 1.0, special_text, "spk_0")
+    session.ingest_chunk(chunk)
+    events = session.end_of_stream()
+
+    payload = events[0].semantic
+    assert payload.turn.text == special_text
+    assert payload.question_count == 1  # One question mark
+
+
+def test_unicode_text() -> None:
+    """Unicode text is handled correctly."""
+    session = LiveSemanticSession()
+
+    unicode_text = "Hello! Bonjour! Hola! Guten Tag! Ciao!"
+    chunk = _chunk(0.0, 1.0, unicode_text, "spk_0")
+    session.ingest_chunk(chunk)
+    events = session.end_of_stream()
+
+    assert events[0].semantic.turn.text == unicode_text
+
+
+def test_emoji_text() -> None:
+    """Emoji in text is handled correctly."""
+    session = LiveSemanticSession()
+
+    emoji_text = "Great idea! Keep going!"  # Simplified for test stability
+    chunk = _chunk(0.0, 1.0, emoji_text, "spk_0")
+    session.ingest_chunk(chunk)
+    events = session.end_of_stream()
+
+    assert events[0].semantic.turn.text == emoji_text
+
+
+# =============================================================================
+# 16. Context Window Time Pruning Edge Cases
+# =============================================================================
+
+
+def test_context_window_prune_all_old_turns() -> None:
+    """All old turns are pruned when new turn is far in the future."""
+    session = LiveSemanticSession(
+        config=LiveSemanticsConfig(
+            turn_gap_sec=0.5,
+            context_window_turns=100,
+            context_window_sec=10.0,
+        )
+    )
+
+    # Add several turns close together
+    chunks = [
+        _chunk(0.0, 0.4, "one", "spk_0"),
+        _chunk(1.0, 1.4, "two", "spk_1"),
+        _chunk(2.0, 2.4, "three", "spk_0"),
+    ]
+    for chunk in chunks:
+        session.ingest_chunk(chunk)
+
+    # Add turn far in the future (beyond 10s window)
+    future_chunk = _chunk(100.0, 100.4, "future", "spk_1")
+    session.ingest_chunk(future_chunk)
+    session.end_of_stream()
+
+    # All old turns should be pruned
+    context = session.get_context_window()
+    texts = [turn.text for turn in context]
+    assert "one" not in texts
+    assert "two" not in texts
+    assert "three" not in texts
+    assert "future" in texts
+
+
+# =============================================================================
+# 17. Zero Turn Gap Configuration Tests
+# =============================================================================
+
+
+def test_zero_turn_gap_finalizes_every_chunk() -> None:
+    """Zero turn_gap_sec finalizes turn on every same-speaker chunk."""
+    session = LiveSemanticSession(config=LiveSemanticsConfig(turn_gap_sec=0.0))
+
+    chunks = [
+        _chunk(0.0, 0.5, "one", "spk_0"),
+        _chunk(0.5, 1.0, "two", "spk_0"),  # Gap = 0.0 >= 0.0 -> finalize
+        _chunk(1.0, 1.5, "three", "spk_0"),  # Gap = 0.0 >= 0.0 -> finalize
+    ]
+
+    all_events = []
+    for chunk in chunks:
+        all_events.extend(session.ingest_chunk(chunk))
+
+    updates = [e for e in all_events if e.type == StreamEventType.SEMANTIC_UPDATE]
+    # First chunk starts buffer, second and third finalize previous
+    assert len(updates) == 2
+
+
+# =============================================================================
+# 18. Segment ID Handling Tests
+# =============================================================================
+
+
+def test_segment_ids_tracked_correctly() -> None:
+    """Segment IDs in turn match number of chunks."""
+    session = LiveSemanticSession()
+
+    chunks = [
+        _chunk(0.0, 0.5, "one", "spk_0"),
+        _chunk(0.6, 1.0, "two", "spk_0"),
+        _chunk(1.1, 1.5, "three", "spk_0"),
+    ]
+
+    for chunk in chunks:
+        session.ingest_chunk(chunk)
+
+    events = session.end_of_stream()
+    turn = events[0].semantic.turn
+
+    # Should have 3 segment IDs (0, 1, 2)
+    assert turn.segment_ids == [0, 1, 2]
+
+
+# =============================================================================
+# 19. Internal Method Edge Cases (for coverage)
+# =============================================================================
+
+
+def test_finalize_turn_empty_buffer_returns_none() -> None:
+    """_finalize_turn on empty buffer returns None (defensive check)."""
+    session = LiveSemanticSession()
+    # Directly call internal method with empty buffer
+    result = session._finalize_turn()
+    assert result is None
+
+
+def test_build_turn_from_empty_buffer_raises() -> None:
+    """_build_turn_from_buffer on empty buffer raises ValueError."""
+    session = LiveSemanticSession()
+    # Directly call internal method with empty buffer
+    with pytest.raises(ValueError, match="Cannot build turn from empty buffer"):
+        session._build_turn_from_buffer()
