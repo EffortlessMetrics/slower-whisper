@@ -111,6 +111,9 @@ from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticA
 from .speaker_id import get_speaker_id, get_speaker_label_or_id
 from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamEventType, StreamingSession
 
+# v1.9.0 streaming callbacks
+from .streaming_callbacks import StreamCallbacks, StreamingError
+
 # v1.7.0 streaming features
 from .streaming_enrich import StreamingEnrichmentConfig, StreamingEnrichmentSession
 from .streaming_semantic import LiveSemanticsConfig, LiveSemanticSession, SemanticUpdatePayload
@@ -181,6 +184,9 @@ __all__ = [
     "StreamingEnrichmentSession",
     "LiveSemanticSession",
     "SemanticUpdatePayload",
+    # v1.9.0: Streaming callbacks
+    "StreamCallbacks",
+    "StreamingError",
     # Utilities
     "turn_to_dict",
     "get_speaker_id",

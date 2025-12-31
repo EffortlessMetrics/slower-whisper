@@ -33,6 +33,11 @@ from .streaming import (
     StreamingSession,
     StreamSegment,
 )
+from .streaming_callbacks import (
+    StreamCallbacks,
+    StreamingError,
+    invoke_callback_safely,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +112,21 @@ class StreamingEnrichmentSession:
         >>> # Finalize stream
         >>> final_events = session.end_of_stream()
 
+    Callbacks (v1.9.0):
+        The session supports optional callbacks for real-time event handling:
+
+        >>> class MyCallbacks:
+        ...     def on_segment_finalized(self, segment):
+        ...         print(f"Finalized: {segment.text}")
+        ...
+        >>> session = StreamingEnrichmentSession(
+        ...     wav_path,
+        ...     config=config,
+        ...     callbacks=MyCallbacks()
+        ... )
+
+        See streaming_callbacks.StreamCallbacks for the full interface.
+
     Performance notes:
         - Prosody extraction: ~5-20ms per segment
         - Emotion extraction: ~50-200ms per segment (GPU-accelerated)
@@ -118,6 +138,7 @@ class StreamingEnrichmentSession:
         self,
         wav_path: Path | str,
         config: StreamingEnrichmentConfig | None = None,
+        callbacks: StreamCallbacks | object | None = None,
     ) -> None:
         """
         Initialize streaming enrichment session.
@@ -125,12 +146,16 @@ class StreamingEnrichmentSession:
         Args:
             wav_path: Path to normalized 16kHz mono WAV file for audio extraction.
             config: Enrichment configuration. Defaults to no enrichment.
+            callbacks: Optional callbacks for real-time event handling.
+                      Callback exceptions are caught and logged; they never
+                      crash the streaming pipeline.
 
         Raises:
             FileNotFoundError: If wav_path does not exist.
             RuntimeError: If audio file cannot be opened.
         """
         self.config = config or StreamingEnrichmentConfig()
+        self._callbacks = callbacks
         self.wav_path = Path(wav_path)
 
         # Initialize base streaming session
@@ -200,6 +225,13 @@ class StreamingEnrichmentSession:
                     enriched_segment.end,
                     enriched_segment.text[:50],
                 )
+
+                # Invoke callback for finalized segment
+                invoke_callback_safely(
+                    self._callbacks,
+                    "on_segment_finalized",
+                    enriched_segment,
+                )
             else:
                 # PARTIAL segments passed through without enrichment
                 enriched_events.append(event)
@@ -235,6 +267,13 @@ class StreamingEnrichmentSession:
                 StreamEvent(type=StreamEventType.FINAL_SEGMENT, segment=enriched_segment)
             )
             self._segment_count += 1
+
+            # Invoke callback for finalized segment
+            invoke_callback_safely(
+                self._callbacks,
+                "on_segment_finalized",
+                enriched_segment,
+            )
 
         logger.info(
             "Stream ended: %d chunks ingested, %d segments finalized, %d enrichment errors",
@@ -322,6 +361,16 @@ class StreamingEnrichmentSession:
                     errors,
                 )
 
+                # Invoke on_error callback for enrichment errors
+                error = StreamingError(
+                    exception=RuntimeError("; ".join(errors)),
+                    context="Enrichment completed with partial errors",
+                    segment_start=segment.start,
+                    segment_end=segment.end,
+                    recoverable=True,
+                )
+                invoke_callback_safely(self._callbacks, "on_error", error)
+
             # Return new StreamSegment with audio_state
             return StreamSegment(
                 start=segment.start,
@@ -336,6 +385,16 @@ class StreamingEnrichmentSession:
             self._enrichment_errors += 1
             error_msg = f"Failed to enrich segment: {e}"
             logger.error(error_msg, exc_info=True)
+
+            # Invoke on_error callback for enrichment failure
+            error = StreamingError(
+                exception=e,
+                context="Failed to enrich segment",
+                segment_start=segment.start,
+                segment_end=segment.end,
+                recoverable=True,
+            )
+            invoke_callback_safely(self._callbacks, "on_error", error)
 
             # Return segment with error audio_state
             return StreamSegment(
@@ -387,4 +446,7 @@ class StreamingEnrichmentSession:
 __all__ = [
     "StreamingEnrichmentConfig",
     "StreamingEnrichmentSession",
+    # Re-export callback types for convenience
+    "StreamCallbacks",
+    "StreamingError",
 ]
