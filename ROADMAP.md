@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
 **Current Version:** v1.8.0 (Word-level timestamps and speaker alignment)
-**Last Updated:** 2025-12-22
+**Last Updated:** 2025-12-31
 <!-- cspell:ignore pyannote disfluency disfluencies langchain llamaindex Praat
 cuda qwen Qwen Smol Neur INTERSPEECH IEMOCAP multimodal mypy -->
 
@@ -260,19 +260,16 @@ session = StreamingEnrichmentSession(
 - **Edge case handling**: Short segments (<0.5s), silence detection, overlapping speech
 - **Turn boundary detection**: Improved accuracy at segment boundaries
 
-#### 3. Test Coverage Expansion ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45))
+#### 3. Optional: word_timestamps REST API ([#71](https://github.com/EffortlessMetrics/slower-whisper/issues/71))
 
-- `streaming_semantic.py`: > 90% line coverage (currently ~70%)
-- Performance regression tests in CI
-- Memory profiling for long conversations
-- BDD scenarios for semantic streaming behavior
+- Add `word_timestamps` parameter to `/transcribe` endpoint
+- Stretch goal; move to Backlog if not required by downstream integration
 
-#### 4. Turn-Aware Chunking Enhancements ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
+### Completed in v1.9.0 (PR #103)
 
-- Improve chunk boundary detection at speaker turn transitions
-- Configurable `turn_affinity` parameter (0.0-1.0)
-- Cross-turn penalty for chunks that split mid-turn
-- Edge cases: rapid turn-taking and overlapping speech
+- [x] **Test Coverage Expansion** ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45)): Streaming semantics validation tests, BDD improvements
+- [x] **Turn-Aware Chunking Enhancements** ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49)): Improved boundary handling in chunking module
+- [x] **test_pipeline.py Implementation** ([#58](https://github.com/EffortlessMetrics/slower-whisper/issues/58)): Deterministic fixtures and expanded integration tests
 
 ### Acceptance Criteria
 
@@ -280,19 +277,19 @@ session = StreamingEnrichmentSession(
 - [ ] P95 latency < 250ms verified in benchmarks
 - [ ] All callback integration tests passing
 - [ ] Example callback integration in `examples/streaming/`
-- [ ] > 90% coverage for streaming semantic module
-- [ ] Turn-aware chunking with configurable affinity ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
-- [ ] Complete test_pipeline.py implementation ([#58](https://github.com/EffortlessMetrics/slower-whisper/issues/58))
+- [x] > 90% coverage for streaming semantic module (achieved in PR #103)
+- [x] Turn-aware chunking with configurable affinity ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49)) ✅
+- [x] Complete test_pipeline.py implementation ([#58](https://github.com/EffortlessMetrics/slower-whisper/issues/58)) ✅
 
 ---
 
 ## Code Quality & Maintainability (ONGOING 🔧)
 
-**Updated:** 2025-12-22
+**Updated:** 2025-12-31
 
 ### Codebase Health Metrics
 
-- **Test coverage**: 713 tests passing
+- **Test coverage**: 1100 tests passing (~73% line coverage)
 - **Type coverage**: 43/43 source files pass mypy
 - **Lint status**: All ruff checks pass
 - **Documentation**: 65+ markdown docs
@@ -458,7 +455,7 @@ slower-whisper benchmark --track streaming --duration 1h
 - [ ] At least one cloud LLM backend (OpenAI or Anthropic) ([#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47))
 - [ ] 3+ benchmark tracks running in CI ([#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48))
 - [ ] Performance gates enforced
-- [ ] Migration guide published ([#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54))
+- [x] Migration guide published ([#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54)) ✅ (docs/MIGRATION_V2.md)
 - [ ] Streaming architecture documented ([#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
 - [ ] Benchmark track runners implemented ([#57](https://github.com/EffortlessMetrics/slower-whisper/issues/57))
 - [ ] Deprecated APIs cleaned up ([#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59))
@@ -515,7 +512,7 @@ slower-whisper benchmark --track streaming --duration 1h
 ### Community Building
 
 - [ ] GitHub Discussions enabled ([#63](https://github.com/EffortlessMetrics/slower-whisper/issues/63))
-- [ ] Issue templates for bugs/features ([#64](https://github.com/EffortlessMetrics/slower-whisper/issues/64))
+- [x] Issue templates for bugs/features ([#64](https://github.com/EffortlessMetrics/slower-whisper/issues/64)) ✅
 - [ ] Discord/Slack community (evaluating platforms)
 - [ ] Monthly community calls
 - [ ] Contributor recognition program
@@ -554,36 +551,39 @@ slower-whisper benchmark --track streaming --duration 1h
 
 ## Contribution Opportunities
 
-### Good First Issues
+### Good First Issues (Completed in PR #103)
 
-- [ ] Add missing docstrings to public functions in `speaker_stats.py` ([#50](https://github.com/EffortlessMetrics/slower-whisper/issues/50))
-- [ ] Improve error messages for missing ffmpeg dependency ([#51](https://github.com/EffortlessMetrics/slower-whisper/issues/51))
-- [ ] Add type annotations to test fixtures ([#52](https://github.com/EffortlessMetrics/slower-whisper/issues/52))
-- [ ] Write BDD scenario for edge case: empty audio file handling ([#53](https://github.com/EffortlessMetrics/slower-whisper/issues/53))
+- [x] Add missing docstrings to public functions in `speaker_stats.py` ([#50](https://github.com/EffortlessMetrics/slower-whisper/issues/50)) ✅
+- [x] Improve error messages for missing ffmpeg dependency ([#51](https://github.com/EffortlessMetrics/slower-whisper/issues/51)) ✅
+- [x] Add type annotations to test fixtures ([#52](https://github.com/EffortlessMetrics/slower-whisper/issues/52)) ✅
+- [x] Write BDD scenario for edge case: empty audio file handling ([#53](https://github.com/EffortlessMetrics/slower-whisper/issues/53)) ✅
 
-### v1.9.0 Contributions ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44), [#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45), [#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
+### v1.9.0 Contributions ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
 
+**Remaining work:**
 - [ ] Implement streaming callback interface ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
 - [ ] Add integration tests for event callbacks ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
-- [ ] Write performance benchmarks for streaming enrichment ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45))
-- [ ] Expand test coverage for `streaming_semantic.py` ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45))
-- [ ] Implement turn-aware chunking enhancements ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
 
-### v2.0.0 Contributions ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46), [#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47), [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48), [#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54), [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
+**Completed in PR #103:**
+- [x] Write performance benchmarks for streaming enrichment ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45)) ✅
+- [x] Expand test coverage for `streaming_semantic.py` ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45)) ✅
+- [x] Implement turn-aware chunking enhancements ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49)) ✅
+
+### v2.0.0 Contributions ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46), [#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47), [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48), [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
 
 - [ ] Design WebSocket streaming protocol ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46))
 - [ ] Implement local LLM semantic annotator ([#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47))
 - [ ] Add OpenAI/Anthropic backend for semantic annotation ([#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47))
 - [ ] Expand benchmark datasets (AMI, CALLHOME) ([#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48))
-- [ ] Write migration guide for v1.x → v2.x ([#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54))
+- [x] Write migration guide for v1.x → v2.x ([#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54)) ✅ (PR #103)
 - [ ] Write streaming architecture documentation ([#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
 
-### Testing & Quality ([#56](https://github.com/EffortlessMetrics/slower-whisper/issues/56))
+### Testing & Quality (Completed in PR #103)
 
-- [ ] Expand test coverage for `api.py` (>80% coverage)
-- [ ] Expand test coverage for `pipeline.py` (>70% coverage)
-- [ ] Add end-to-end CLI tests
-- [ ] Add REST API contract tests for `service.py`
+- [x] Expand test coverage for `api.py` (>80% coverage) ([#56](https://github.com/EffortlessMetrics/slower-whisper/issues/56)) ✅
+- [x] Expand test coverage for `pipeline.py` (>70% coverage) ([#56](https://github.com/EffortlessMetrics/slower-whisper/issues/56)) ✅
+- [x] Add end-to-end CLI tests ([#56](https://github.com/EffortlessMetrics/slower-whisper/issues/56)) ✅
+- [x] Add REST API contract tests for `service.py` ([#56](https://github.com/EffortlessMetrics/slower-whisper/issues/56)) ✅
 
 ### Completed (v1.0-v1.8)
 
@@ -695,3 +695,8 @@ enabling truly multimodal understanding of human communication.
     streaming docs, benchmark runners, pipeline tests, API cleanup, intent detection,
     clinical domain pack, acoustic scene analysis, Discussions, templates, discourse
   - Updated deprecation policy, contribution opportunities, and community checkboxes
+- 2025-12-31: Post-PR #103 reality sync:
+  - Closed issues #49, #50, #51, #52, #53, #54, #56, #58 (completed in PR #103)
+  - Updated test metrics: 1100 tests passing (~73% line coverage)
+  - v1.9.0 scope reduced to #44 (Event Callback API) + optional #71 (word_timestamps REST)
+  - Marked completed items in Good First Issues, Testing & Quality, v1.9.0 sections
