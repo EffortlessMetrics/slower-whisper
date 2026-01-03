@@ -195,7 +195,93 @@ def aggregate_turn_stats(turns: list[Turn]) -> dict[str, Any]:
     Raises:
         NotImplementedError: v1.2 feature - deferred.
     """
-    raise NotImplementedError(
-        "Turn statistics aggregation is a v1.2 feature. "
-        "This is a placeholder for future conversation-level metrics."
-    )
+    # Import turn_to_dict locally to avoid circular imports
+    from .turn_helpers import turn_to_dict
+
+    # Handle empty turns list
+    if not turns:
+        return {
+            "total_turns": 0,
+            "avg_turn_duration": 0.0,
+            "turn_switches": 0,
+            "interruption_rate": 0.0,
+            "question_density": 0.0,
+        }
+
+    # Handle single turn
+    if len(turns) == 1:
+        turn_dict = turn_to_dict(turns[0])
+        duration = turn_dict.get("end", 0.0) - turn_dict.get("start", 0.0)
+
+        # Get question count from metadata if available
+        metadata = turn_dict.get("metadata") or {}
+        question_count = metadata.get("question_count", 0)
+
+        # Calculate question density (questions per minute)
+        question_density = 0.0
+        if duration > 0:
+            question_density = (question_count / duration) * 60.0
+
+        return {
+            "total_turns": 1,
+            "avg_turn_duration": duration,
+            "turn_switches": 0,
+            "interruption_rate": 0.0,
+            "question_density": question_density,
+        }
+
+    # Process multiple turns
+    total_turns = len(turns)
+    total_duration = 0.0
+    turn_switches = 0
+    interruption_count = 0
+    total_questions = 0
+    total_speech_time = 0.0
+
+    prev_speaker_id: str | None = None
+
+    for turn in turns:
+        turn_dict = turn_to_dict(turn)
+
+        # Calculate turn duration
+        start = turn_dict.get("start", 0.0)
+        end = turn_dict.get("end", 0.0)
+        duration = end - start
+        total_duration += duration
+        total_speech_time += duration
+
+        # Get speaker ID
+        current_speaker_id = turn_dict.get("speaker_id")
+
+        # Count speaker switches (transition from one speaker to another)
+        if prev_speaker_id is not None and current_speaker_id != prev_speaker_id:
+            turn_switches += 1
+        prev_speaker_id = current_speaker_id
+
+        # Get metadata if available
+        metadata = turn_dict.get("metadata") or {}
+
+        # Count interruptions
+        if metadata.get("interruption_started_here", False):
+            interruption_count += 1
+
+        # Count questions
+        question_count = metadata.get("question_count", 0)
+        total_questions += question_count
+
+    # Calculate averages and rates
+    avg_turn_duration = total_duration / total_turns if total_turns > 0 else 0.0
+    interruption_rate = interruption_count / total_turns if total_turns > 0 else 0.0
+
+    # Calculate question density (questions per minute)
+    question_density = 0.0
+    if total_speech_time > 0:
+        question_density = (total_questions / total_speech_time) * 60.0
+
+    return {
+        "total_turns": total_turns,
+        "avg_turn_duration": avg_turn_duration,
+        "turn_switches": turn_switches,
+        "interruption_rate": interruption_rate,
+        "question_density": question_density,
+    }

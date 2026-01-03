@@ -13,6 +13,7 @@ This directory contains formal JSON Schema specifications for slower-whisper tra
 This schema defines:
 - Transcript metadata (file, language, ASR settings)
 - Segment structure (id, start, end, text)
+- Word-level timestamps with optional speaker attribution (v1.8+)
 - Optional audio features (prosody, emotion)
 - Extraction status tracking
 
@@ -140,6 +141,13 @@ transcript-v2.schema.json
         ├── start: number
         ├── end: number
         ├── text: string
+        ├── words: array | null (v1.8+)
+        │   └── word
+        │       ├── word: string
+        │       ├── start: number
+        │       ├── end: number
+        │       ├── probability: number (optional)
+        │       └── speaker: string | null (optional)
         ├── speaker: string | null
         ├── tone: string | null
         └── audio_state: object | null

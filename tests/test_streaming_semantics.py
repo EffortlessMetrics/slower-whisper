@@ -700,6 +700,212 @@ def test_action_detection_enabled_by_default() -> None:
 
 
 # =============================================================================
+# 9.5. Callback Integration Tests
+# =============================================================================
+
+
+def test_on_semantic_update_called_when_turn_finalized() -> None:
+    """on_semantic_update callback is invoked when a turn is finalized."""
+    from transcription.streaming_semantic import SemanticUpdatePayload
+
+    semantic_updates = []
+
+    class CallbackRecorder:
+        def on_semantic_update(self, payload: SemanticUpdatePayload) -> None:
+            semantic_updates.append(payload)
+
+    callbacks = CallbackRecorder()
+    session = LiveSemanticSession(callbacks=callbacks)
+
+    # Speaker change triggers finalization
+    chunk1 = _chunk(0.0, 1.0, "I want to cancel", "spk_0")
+    chunk2 = _chunk(1.5, 2.5, "Let me help you", "spk_1")
+
+    session.ingest_chunk(chunk1)
+    session.ingest_chunk(chunk2)  # Finalizes spk_0's turn
+
+    # Callback should have been invoked once
+    assert len(semantic_updates) == 1
+    payload = semantic_updates[0]
+
+    # Verify payload structure
+    assert isinstance(payload, SemanticUpdatePayload)
+    assert payload.turn.speaker_id == "spk_0"
+    assert payload.turn.text == "I want to cancel"
+    assert "cancel" in payload.keywords
+    assert "churn_risk" in payload.risk_tags
+    assert payload.question_count == 0
+    assert payload.context_size == 1
+
+
+def test_on_semantic_update_called_on_end_of_stream() -> None:
+    """on_semantic_update callback is invoked on end_of_stream."""
+    from transcription.streaming_semantic import SemanticUpdatePayload
+
+    semantic_updates = []
+
+    class CallbackRecorder:
+        def on_semantic_update(self, payload: SemanticUpdatePayload) -> None:
+            semantic_updates.append(payload)
+
+    session = LiveSemanticSession(callbacks=CallbackRecorder())
+
+    chunk = _chunk(0.0, 2.0, "The price is too expensive", "spk_0")
+    session.ingest_chunk(chunk)
+
+    # No callback yet
+    assert len(semantic_updates) == 0
+
+    # End of stream finalizes the turn
+    session.end_of_stream()
+
+    assert len(semantic_updates) == 1
+    payload = semantic_updates[0]
+    assert "price" in payload.keywords
+    assert "expensive" in payload.keywords
+    assert "pricing" in payload.risk_tags
+
+
+def test_on_semantic_update_includes_context_size() -> None:
+    """on_semantic_update payload includes current context window size."""
+    semantic_updates = []
+
+    class CallbackRecorder:
+        def on_semantic_update(self, payload) -> None:  # type: ignore[no-untyped-def]
+            semantic_updates.append(payload)
+
+    session = LiveSemanticSession(callbacks=CallbackRecorder())
+
+    chunks = [
+        _chunk(0.0, 0.5, "first", "spk_0"),
+        _chunk(0.6, 1.0, "second", "spk_1"),
+        _chunk(1.1, 1.5, "third", "spk_0"),
+    ]
+
+    for chunk in chunks:
+        session.ingest_chunk(chunk)
+
+    # Should have received 2 callbacks (last turn not finalized)
+    assert len(semantic_updates) == 2
+
+    # First turn: context_size is 1 (just added itself)
+    assert semantic_updates[0].context_size == 1
+
+    # Second turn: context_size is 2 (both turns in window)
+    assert semantic_updates[1].context_size == 2
+
+
+def test_on_semantic_update_includes_question_count() -> None:
+    """on_semantic_update payload includes question count."""
+    semantic_updates = []
+
+    class CallbackRecorder:
+        def on_semantic_update(self, payload) -> None:  # type: ignore[no-untyped-def]
+            semantic_updates.append(payload)
+
+    session = LiveSemanticSession(callbacks=CallbackRecorder())
+
+    chunk = _chunk(0.0, 1.0, "What is your name? How can I help?", "spk_0")
+    session.ingest_chunk(chunk)
+    session.end_of_stream()
+
+    assert len(semantic_updates) == 1
+    assert semantic_updates[0].question_count == 2
+
+
+def test_on_semantic_update_includes_actions() -> None:
+    """on_semantic_update payload includes detected actions."""
+    semantic_updates = []
+
+    class CallbackRecorder:
+        def on_semantic_update(self, payload) -> None:  # type: ignore[no-untyped-def]
+            semantic_updates.append(payload)
+
+    session = LiveSemanticSession(callbacks=CallbackRecorder())
+
+    chunk = _chunk(0.0, 1.0, "I'll send you the email tomorrow", "spk_1")
+    session.ingest_chunk(chunk)
+    session.end_of_stream()
+
+    assert len(semantic_updates) == 1
+    assert len(semantic_updates[0].actions) > 0
+
+
+def test_callback_exception_does_not_crash_session() -> None:
+    """Callback exceptions are caught and don't crash the session."""
+
+    class FailingCallbacks:
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def on_semantic_update(self, payload) -> None:  # type: ignore[no-untyped-def]
+            self.call_count += 1
+            raise RuntimeError("Callback failed")
+
+    callbacks = FailingCallbacks()
+    session = LiveSemanticSession(callbacks=callbacks)
+
+    chunk1 = _chunk(0.0, 0.5, "hello", "spk_0")
+    chunk2 = _chunk(0.6, 1.0, "world", "spk_1")
+
+    # Should not raise even though callback will fail
+    session.ingest_chunk(chunk1)
+    events = session.ingest_chunk(chunk2)
+
+    # Session continues normally
+    assert len(events) == 1
+    assert events[0].type == StreamEventType.SEMANTIC_UPDATE
+
+    # Callback was called (and failed)
+    assert callbacks.call_count == 1
+
+
+def test_session_with_no_callbacks() -> None:
+    """Session works correctly when callbacks is None."""
+    session = LiveSemanticSession(callbacks=None)
+
+    chunk1 = _chunk(0.0, 0.5, "hello", "spk_0")
+    chunk2 = _chunk(0.6, 1.0, "world", "spk_1")
+
+    # Should not raise
+    events1 = session.ingest_chunk(chunk1)
+    events2 = session.ingest_chunk(chunk2)
+
+    assert len(events1) == 0
+    assert len(events2) == 1  # Finalized first turn
+
+
+def test_multiple_callbacks_for_multiple_turns() -> None:
+    """Multiple turns invoke the callback multiple times."""
+    semantic_updates = []
+
+    class CallbackRecorder:
+        def on_semantic_update(self, payload) -> None:  # type: ignore[no-untyped-def]
+            semantic_updates.append(payload)
+
+    session = LiveSemanticSession(
+        config=LiveSemanticsConfig(turn_gap_sec=0.5),
+        callbacks=CallbackRecorder(),
+    )
+
+    chunks = [
+        _chunk(0.0, 0.4, "one", "spk_0"),
+        _chunk(1.0, 1.4, "two", "spk_1"),
+        _chunk(2.0, 2.4, "three", "spk_0"),
+    ]
+
+    for chunk in chunks:
+        session.ingest_chunk(chunk)
+
+    session.end_of_stream()
+
+    # Should have 3 callbacks (one per turn)
+    assert len(semantic_updates) == 3
+    texts = [payload.turn.text for payload in semantic_updates]
+    assert texts == ["one", "two", "three"]
+
+
+# =============================================================================
 # 10. Custom Annotator Tests
 # =============================================================================
 

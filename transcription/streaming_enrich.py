@@ -33,6 +33,11 @@ from .streaming import (
     StreamingSession,
     StreamSegment,
 )
+from .streaming_callbacks import (
+    StreamCallbacks,
+    StreamingError,
+    invoke_callback_safely,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +112,21 @@ class StreamingEnrichmentSession:
         >>> # Finalize stream
         >>> final_events = session.end_of_stream()
 
+    Callbacks (v1.9.0):
+        The session supports optional callbacks for real-time event handling:
+
+        >>> class MyCallbacks:
+        ...     def on_segment_finalized(self, segment):
+        ...         print(f"Finalized: {segment.text}")
+        ...
+        >>> session = StreamingEnrichmentSession(
+        ...     wav_path,
+        ...     config=config,
+        ...     callbacks=MyCallbacks()
+        ... )
+
+        See streaming_callbacks.StreamCallbacks for the full interface.
+
     Performance notes:
         - Prosody extraction: ~5-20ms per segment
         - Emotion extraction: ~50-200ms per segment (GPU-accelerated)
@@ -118,6 +138,7 @@ class StreamingEnrichmentSession:
         self,
         wav_path: Path | str,
         config: StreamingEnrichmentConfig | None = None,
+        callbacks: StreamCallbacks | object | None = None,
     ) -> None:
         """
         Initialize streaming enrichment session.
@@ -125,12 +146,16 @@ class StreamingEnrichmentSession:
         Args:
             wav_path: Path to normalized 16kHz mono WAV file for audio extraction.
             config: Enrichment configuration. Defaults to no enrichment.
+            callbacks: Optional callbacks for real-time event handling.
+                      Callback exceptions are caught and logged; they never
+                      crash the streaming pipeline.
 
         Raises:
             FileNotFoundError: If wav_path does not exist.
             RuntimeError: If audio file cannot be opened.
         """
         self.config = config or StreamingEnrichmentConfig()
+        self._callbacks = callbacks
         self.wav_path = Path(wav_path)
 
         # Initialize base streaming session
@@ -153,6 +178,11 @@ class StreamingEnrichmentSession:
         self._chunk_count = 0
         self._segment_count = 0
         self._enrichment_errors = 0
+
+        # Track speaker turns for on_speaker_turn callback
+        self._current_turn_segments: list[StreamSegment] = []
+        self._current_turn_speaker: str | None = None
+        self._turn_counter = 0
 
     def ingest_chunk(self, chunk: StreamChunk) -> list[StreamEvent]:
         """
@@ -200,6 +230,16 @@ class StreamingEnrichmentSession:
                     enriched_segment.end,
                     enriched_segment.text[:50],
                 )
+
+                # Track speaker turns and detect boundaries
+                self._track_speaker_turn(enriched_segment)
+
+                # Invoke callback for finalized segment
+                invoke_callback_safely(
+                    self._callbacks,
+                    "on_segment_finalized",
+                    enriched_segment,
+                )
             else:
                 # PARTIAL segments passed through without enrichment
                 enriched_events.append(event)
@@ -236,6 +276,16 @@ class StreamingEnrichmentSession:
             )
             self._segment_count += 1
 
+            # Invoke callback for finalized segment
+            invoke_callback_safely(
+                self._callbacks,
+                "on_segment_finalized",
+                enriched_segment,
+            )
+
+        # Finalize any remaining turn
+        self._finalize_current_turn()
+
         logger.info(
             "Stream ended: %d chunks ingested, %d segments finalized, %d enrichment errors",
             self._chunk_count,
@@ -264,6 +314,9 @@ class StreamingEnrichmentSession:
         self._chunk_count = 0
         self._segment_count = 0
         self._enrichment_errors = 0
+        self._current_turn_segments = []
+        self._current_turn_speaker = None
+        self._turn_counter = 0
         logger.debug("Session reset")
 
     def _enrich_stream_segment(self, segment: StreamSegment) -> StreamSegment:
@@ -322,6 +375,16 @@ class StreamingEnrichmentSession:
                     errors,
                 )
 
+                # Invoke on_error callback for enrichment errors
+                error = StreamingError(
+                    exception=RuntimeError("; ".join(errors)),
+                    context="Enrichment completed with partial errors",
+                    segment_start=segment.start,
+                    segment_end=segment.end,
+                    recoverable=True,
+                )
+                invoke_callback_safely(self._callbacks, "on_error", error)
+
             # Return new StreamSegment with audio_state
             return StreamSegment(
                 start=segment.start,
@@ -336,6 +399,16 @@ class StreamingEnrichmentSession:
             self._enrichment_errors += 1
             error_msg = f"Failed to enrich segment: {e}"
             logger.error(error_msg, exc_info=True)
+
+            # Invoke on_error callback for enrichment failure
+            error = StreamingError(
+                exception=e,
+                context="Failed to enrich segment",
+                segment_start=segment.start,
+                segment_end=segment.end,
+                recoverable=True,
+            )
+            invoke_callback_safely(self._callbacks, "on_error", error)
 
             # Return segment with error audio_state
             return StreamSegment(
@@ -355,6 +428,110 @@ class StreamingEnrichmentSession:
                     },
                 },
             )
+
+    def _track_speaker_turn(self, segment: StreamSegment) -> None:
+        """
+        Track speaker turns and invoke on_speaker_turn callback when a turn boundary is detected.
+
+        A turn boundary occurs when:
+        1. Speaker changes (different speaker_id)
+        2. First segment with a speaker (starting a new turn)
+
+        Args:
+            segment: The finalized segment to track.
+        """
+        # Check if we have a speaker change
+        speaker_changed = segment.speaker_id != self._current_turn_speaker
+
+        if speaker_changed:
+            # Finalize the current turn before starting a new one
+            self._finalize_current_turn()
+
+            # Start new turn with this segment
+            self._current_turn_speaker = segment.speaker_id
+            self._current_turn_segments = [segment]
+        else:
+            # Continue current turn
+            self._current_turn_segments.append(segment)
+
+    def _finalize_current_turn(self) -> None:
+        """
+        Finalize the current turn and invoke on_speaker_turn callback.
+
+        Builds a turn dict from accumulated segments and calls the callback
+        if there are any segments in the current turn.
+        """
+        if not self._current_turn_segments:
+            return
+
+        # Build turn dict
+        turn_dict = self._build_turn_dict(
+            turn_id=self._turn_counter,
+            segments=self._current_turn_segments,
+            speaker_id=self._current_turn_speaker,
+        )
+
+        # Increment turn counter
+        self._turn_counter += 1
+
+        # Invoke callback
+        invoke_callback_safely(
+            self._callbacks,
+            "on_speaker_turn",
+            turn_dict,
+        )
+
+        logger.debug(
+            "Finalized turn %s: speaker=%s, segments=%d, duration=%.2fs",
+            turn_dict["id"],
+            turn_dict["speaker_id"],
+            len(turn_dict["segment_ids"]),
+            turn_dict["end"] - turn_dict["start"],
+        )
+
+        # Clear turn buffer
+        self._current_turn_segments = []
+        self._current_turn_speaker = None
+
+    def _build_turn_dict(
+        self,
+        turn_id: int,
+        segments: list[StreamSegment],
+        speaker_id: str | None,
+    ) -> dict[str, Any]:
+        """
+        Build a turn dictionary from accumulated segments.
+
+        Args:
+            turn_id: Sequential turn identifier.
+            segments: List of segments in this turn.
+            speaker_id: Speaker ID for this turn.
+
+        Returns:
+            Turn dict with keys: id, speaker_id, start, end, segment_ids, text.
+        """
+        if not segments:
+            raise ValueError("Cannot build turn from empty segments list")
+
+        # Extract segment IDs (use segment count as proxy since StreamSegment doesn't have id)
+        # We'll use the index in the overall stream as a rough segment ID
+        segment_ids = list(range(self._segment_count - len(segments), self._segment_count))
+
+        # Aggregate text from all segments
+        texts = [seg.text.strip() for seg in segments if seg.text.strip()]
+
+        # Time bounds
+        start = segments[0].start
+        end = segments[-1].end
+
+        return {
+            "id": f"turn_{turn_id}",
+            "speaker_id": speaker_id or "unknown",
+            "start": start,
+            "end": end,
+            "segment_ids": segment_ids,
+            "text": " ".join(texts),
+        }
 
     def get_stats(self) -> dict[str, Any]:
         """
@@ -387,4 +564,7 @@ class StreamingEnrichmentSession:
 __all__ = [
     "StreamingEnrichmentConfig",
     "StreamingEnrichmentSession",
+    # Re-export callback types for convenience
+    "StreamCallbacks",
+    "StreamingError",
 ]
