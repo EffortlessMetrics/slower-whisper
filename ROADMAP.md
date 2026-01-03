@@ -569,7 +569,7 @@ slower-whisper benchmark --track streaming --duration 1h
 - [x] Expand test coverage for `streaming_semantic.py` ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45)) ✅
 - [x] Implement turn-aware chunking enhancements ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49)) ✅
 
-### v2.0.0 Contributions ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46), [#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47), [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48), [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
+### v2.0.0 Contributions ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46), [#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47), [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48), [#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54), [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
 
 - [ ] Design WebSocket streaming protocol ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46))
 - [ ] Implement local LLM semantic annotator ([#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47))
