@@ -1,6 +1,6 @@
 # Streaming Architecture
 
-**Version:** v1.8.0 (with v1.9.0 and v2.0.0 planned features)
+**Version:** v1.9.0 (with v2.0.0 planned features)
 **Last Updated:** 2025-12-31
 
 This document provides comprehensive documentation for slower-whisper's streaming architecture, covering the real-time transcription pipeline, enrichment layers, and semantic annotation.
@@ -13,7 +13,7 @@ This document provides comprehensive documentation for slower-whisper's streamin
 2. [Message Flow](#message-flow)
 3. [Event Types](#event-types)
 4. [Session Classes](#session-classes)
-5. [Callback Interface (v1.9.0)](#callback-interface-v190)
+5. [Event Callback API (v1.9.0)](#event-callback-api-v190)
 6. [WebSocket Protocol (v2.0.0)](#websocket-protocol-v200)
 7. [Performance Characteristics](#performance-characteristics)
 8. [Examples](#examples)
@@ -484,117 +484,571 @@ final_events = session.end_of_stream()
 
 ---
 
-## Callback Interface (v1.9.0)
+## Event Callback API (v1.9.0)
 
-The v1.9.0 release introduces a standardized callback interface for event-driven downstream processing.
+The v1.9.0 release introduces a standardized callback interface for event-driven downstream processing. The callback API enables real-time reactive patterns like logging, persistence, alerting, and UI updates without polling or manual event processing.
+
+### Overview
+
+**Key Design Principles:**
+
+1. **Protocol-Based**: Type-safe callback interface using Python `Protocol`
+2. **Optional Methods**: Implement only the callbacks you need
+3. **Exception Isolation**: Callback errors never crash the streaming pipeline
+4. **Sync-First**: Synchronous callbacks for simplicity (async support planned for v2.0)
+
+**Architecture:**
+
+```
+StreamChunk → StreamingEnrichmentSession → Events → Callbacks → Your Code
+                      │                        │
+                      │                   on_segment_finalized()
+                      │                   on_speaker_turn()
+                      │                   on_semantic_update()
+                      │                   on_error()
+                      │
+                invoke_callback_safely() catches exceptions
+```
+
+---
 
 ### StreamCallbacks Protocol
 
+The `StreamCallbacks` protocol defines four optional callback methods for different event types:
+
 ```python
 from typing import Protocol
-from transcription.models import Segment, Turn
+from transcription.streaming import StreamSegment
 from transcription.streaming_semantic import SemanticUpdatePayload
+from transcription.streaming_callbacks import StreamingError
 
 class StreamCallbacks(Protocol):
-    """Protocol for streaming event callbacks (v1.9.0+).
+    """Protocol for streaming event callbacks.
 
-    Implement this protocol to receive streaming events as they occur.
-    All methods are optional; unimplemented methods are no-ops.
+    Implement this protocol to receive real-time notifications as
+    segments are finalized, speaker turns are detected, and semantic
+    annotations are computed.
+
+    All callbacks are optional - implement only what you need.
+    Unimplemented methods default to no-op behavior.
+
+    Important: Callback implementations must not raise exceptions.
+    If a callback raises, it will be caught, logged, and on_error
+    will be invoked. The streaming pipeline continues regardless.
     """
 
-    def on_partial_segment(self, segment: Segment) -> None:
-        """Called when a partial segment is emitted.
+    def on_segment_finalized(self, segment: StreamSegment) -> None:
+        """Called when a segment is finalized with enrichment complete.
 
-        Args:
-            segment: The partial segment (may change with more chunks).
-        """
-        ...
-
-    def on_segment_finalized(self, segment: Segment) -> None:
-        """Called when a segment is finalized (complete, won't change).
+        This is the primary callback for consuming enriched segments.
+        The segment will have audio_state populated if enrichment was
+        enabled and succeeded.
 
         Args:
             segment: The finalized segment with optional audio_state.
+                     Guaranteed to have start, end, text, and speaker_id.
         """
         ...
 
-    def on_speaker_turn(self, turn: Turn) -> None:
+    def on_speaker_turn(self, turn: dict) -> None:
         """Called when a speaker turn is detected.
 
+        A turn is a contiguous sequence of segments from the same speaker.
+        This callback fires when a turn boundary is detected (speaker change
+        or long pause).
+
         Args:
-            turn: The detected turn boundary.
+            turn: Turn dictionary with keys:
+                - id: Turn identifier (e.g., "turn_0")
+                - speaker_id: Speaker identifier
+                - start: Turn start time in seconds
+                - end: Turn end time in seconds
+                - segment_ids: List of segment IDs in this turn
+                - text: Concatenated text from all segments
         """
         ...
 
     def on_semantic_update(self, payload: SemanticUpdatePayload) -> None:
-        """Called when semantic annotation is complete for a turn.
+        """Called when semantic annotations are computed for a turn.
+
+        Semantic updates include keywords, risk tags, and action items
+        extracted from the turn text.
 
         Args:
-            payload: Semantic data including keywords, risk tags, actions.
+            payload: SemanticUpdatePayload with:
+                - turn: The annotated Turn object
+                - keywords: List of extracted keywords
+                - risk_tags: List of detected risk flags
+                - actions: List of action items
+                - context_summary: Recent conversation context
         """
         ...
 
-    def on_error(self, error: Exception, recoverable: bool) -> None:
-        """Called when a processing error occurs.
+    def on_error(self, error: StreamingError) -> None:
+        """Called when an error occurs during streaming.
+
+        This includes enrichment failures, callback exceptions, and
+        other recoverable errors. The streaming pipeline continues
+        after recoverable errors.
 
         Args:
-            error: The exception that occurred.
-            recoverable: Whether processing can continue.
+            error: StreamingError with exception details and context.
         """
         ...
 ```
 
-### Usage with Callbacks
+---
+
+### StreamingError Dataclass
+
+The `StreamingError` dataclass provides structured error context:
 
 ```python
-from transcription.streaming_enrich import StreamingEnrichmentSession
+from dataclasses import dataclass
 
-class MyCallbacks:
-    """Custom callback implementation."""
+@dataclass(slots=True)
+class StreamingError:
+    """Error context for callback error handling.
 
-    def on_segment_finalized(self, segment):
-        print(f"Finalized: {segment.text}")
-        # Persist to database, update UI, etc.
+    Attributes:
+        exception: The exception that occurred.
+        context: Human-readable context about where the error occurred.
+        segment_start: Start time of segment being processed (if applicable).
+        segment_end: End time of segment being processed (if applicable).
+        recoverable: Whether the pipeline can continue after this error.
+    """
 
-    def on_semantic_update(self, payload):
-        if "escalation" in payload.risk_tags:
-            self.alert_manager(payload.turn)
-
-    def on_error(self, error, recoverable):
-        logger.error(f"Stream error: {error}", exc_info=True)
-        if not recoverable:
-            self.abort_session()
-
-# Initialize with callbacks (v1.9.0+)
-session = StreamingEnrichmentSession(
-    config=config,
-    callbacks=MyCallbacks()  # New parameter
-)
-
-# Events automatically dispatched to callbacks
-for chunk in chunks:
-    session.ingest_chunk(chunk)  # Callbacks invoked internally
+    exception: Exception
+    context: str
+    segment_start: float | None = None
+    segment_end: float | None = None
+    recoverable: bool = True
 ```
 
-### Async Callback Support (v1.9.0+)
+**Example Error Objects:**
+
+```python
+# Enrichment error (recoverable)
+StreamingError(
+    exception=RuntimeError("Prosody extraction failed"),
+    context="Enrichment completed with partial errors",
+    segment_start=12.5,
+    segment_end=15.8,
+    recoverable=True
+)
+
+# Callback exception (recoverable)
+StreamingError(
+    exception=DatabaseError("Connection timeout"),
+    context="Exception in callback on_segment_finalized",
+    segment_start=None,
+    segment_end=None,
+    recoverable=True
+)
+```
+
+---
+
+### invoke_callback_safely Helper
+
+The `invoke_callback_safely` function ensures callback exceptions never crash the pipeline:
+
+```python
+def invoke_callback_safely(
+    callbacks: StreamCallbacks | object | None,
+    method_name: str,
+    *args,
+    **kwargs,
+) -> bool:
+    """Invoke a callback method safely, catching and logging any exceptions.
+
+    This function ensures that callback exceptions never crash the streaming
+    pipeline. If a callback raises, it's logged and on_error is invoked
+    (if available and not the failing method).
+
+    Args:
+        callbacks: The callbacks object (may be None).
+        method_name: Name of the method to invoke (e.g., "on_segment_finalized").
+        *args: Positional arguments to pass to the callback.
+        **kwargs: Keyword arguments to pass to the callback.
+
+    Returns:
+        True if the callback was invoked successfully, False if it failed
+        or callbacks was None.
+    """
+```
+
+**Internal Behavior:**
+
+1. Returns `False` if `callbacks` is `None` or method doesn't exist
+2. Invokes the callback method with provided arguments
+3. If callback raises:
+   - Logs the exception with full traceback
+   - Constructs a `StreamingError` object
+   - Invokes `on_error(error)` (if available and not the failing method)
+   - Returns `False` (pipeline continues)
+
+**Example Usage in Session:**
+
+```python
+# In StreamingEnrichmentSession.ingest_chunk()
+if event.type == StreamEventType.FINAL_SEGMENT:
+    # Invoke callback for finalized segment
+    invoke_callback_safely(
+        self._callbacks,
+        "on_segment_finalized",
+        enriched_segment,
+    )
+```
+
+---
+
+### Integration with StreamingEnrichmentSession
+
+The `StreamingEnrichmentSession` class integrates callbacks at key pipeline stages:
+
+```python
+from pathlib import Path
+from transcription.streaming_enrich import (
+    StreamingEnrichmentSession,
+    StreamingEnrichmentConfig,
+)
+from transcription.streaming import StreamConfig
+
+# Create callbacks object
+class MyCallbacks:
+    def on_segment_finalized(self, segment):
+        print(f"[{segment.start:.2f}s] {segment.text}")
+        self.db.insert(segment)
+
+    def on_error(self, error):
+        if not error.recoverable:
+            self.alert_ops_team(error)
+
+# Initialize session with callbacks
+config = StreamingEnrichmentConfig(
+    base_config=StreamConfig(max_gap_sec=1.0),
+    enable_prosody=True,
+    enable_emotion=True,
+)
+
+session = StreamingEnrichmentSession(
+    wav_path=Path("audio.wav"),
+    config=config,
+    callbacks=MyCallbacks()  # Pass callbacks to session
+)
+
+# Process chunks - callbacks invoked automatically
+for chunk in chunks:
+    events = session.ingest_chunk(chunk)
+    # No need to manually process events; callbacks already invoked
+
+# Finalize stream
+final_events = session.end_of_stream()
+```
+
+**Callback Invocation Points:**
+
+| Session Method | Callback Invoked | When |
+|----------------|------------------|------|
+| `ingest_chunk()` | `on_segment_finalized()` | After enriching FINAL segments |
+| `ingest_chunk()` | `on_error()` | On enrichment errors |
+| `end_of_stream()` | `on_segment_finalized()` | For any remaining segments |
+| `_enrich_stream_segment()` | `on_error()` | On enrichment failures |
+
+---
+
+### Example: LoggingCallbacks Implementation
+
+The `examples/streaming/callback_demo.py` demonstrates a complete callback implementation:
+
+```python
+from dataclasses import dataclass, field
+from transcription.streaming import StreamSegment
+from transcription.streaming_callbacks import StreamingError
+
+@dataclass
+class LoggingCallbacks:
+    """
+    Example callback implementation that logs all events to console.
+
+    Attributes:
+        verbose: If True, prints detailed segment info including audio_state.
+        segment_count: Running count of finalized segments.
+        error_count: Running count of errors encountered.
+        segments: List of all finalized segments (for post-processing).
+    """
+
+    verbose: bool = False
+    segment_count: int = field(default=0, init=False)
+    error_count: int = field(default=0, init=False)
+    segments: list[StreamSegment] = field(default_factory=list, init=False)
+
+    def on_segment_finalized(self, segment: StreamSegment) -> None:
+        """Log finalized segment with optional audio_state."""
+        self.segment_count += 1
+        self.segments.append(segment)
+
+        # Format timestamp range
+        time_range = f"{segment.start:>6.2f}s - {segment.end:>6.2f}s"
+        speaker = segment.speaker_id or "unknown"
+
+        print(f"\n[FINALIZED #{self.segment_count}] {time_range} | speaker={speaker}")
+        print(f'  Text: "{segment.text}"')
+
+        # Show audio_state if present and verbose
+        if segment.audio_state and self.verbose:
+            rendering = segment.audio_state.get("rendering", "[no rendering]")
+            print(f"  Audio: {rendering}")
+
+            # Show extraction status
+            status = segment.audio_state.get("extraction_status", {})
+            prosody_status = status.get("prosody", "n/a")
+            emotion_status = status.get("emotion_dimensional", "n/a")
+            print(f"  Status: prosody={prosody_status}, emotion={emotion_status}")
+
+    def on_error(self, error: StreamingError) -> None:
+        """Log errors with context."""
+        self.error_count += 1
+
+        severity = "RECOVERABLE" if error.recoverable else "FATAL"
+        print(f"\n[ERROR - {severity}] {error.context}")
+        print(f"  Exception: {error.exception}")
+
+        if error.segment_start is not None and error.segment_end is not None:
+            print(f"  Segment: {error.segment_start:.2f}s - {error.segment_end:.2f}s")
+
+    def print_summary(self) -> None:
+        """Print summary statistics at the end of the stream."""
+        print("\n" + "=" * 60)
+        print("CALLBACK SUMMARY")
+        print("=" * 60)
+        print(f"Segments finalized: {self.segment_count}")
+        print(f"Errors encountered: {self.error_count}")
+
+        if self.segments:
+            total_duration = self.segments[-1].end - self.segments[0].start
+            print(f"Total duration: {total_duration:.2f}s")
+
+            # Count segments with audio enrichment
+            enriched = sum(1 for s in self.segments if s.audio_state)
+            print(f"Segments with audio_state: {enriched}/{self.segment_count}")
+
+
+# Usage
+callbacks = LoggingCallbacks(verbose=True)
+session = StreamingEnrichmentSession(
+    wav_path=Path("audio.wav"),
+    config=config,
+    callbacks=callbacks
+)
+
+# Process stream
+for chunk in chunks:
+    session.ingest_chunk(chunk)
+
+session.end_of_stream()
+
+# Print final summary
+callbacks.print_summary()
+```
+
+**Output:**
+
+```
+[FINALIZED #1]   0.00s -   2.50s | speaker=spk_0
+  Text: "Hello world"
+  Audio: [audio: high pitch, loud volume]
+  Status: prosody=success, emotion=success
+
+[FINALIZED #2]   3.00s -   5.50s | speaker=spk_1
+  Text: "How are you today?"
+  Audio: [audio: neutral pitch, moderate volume, positive]
+  Status: prosody=success, emotion=success
+
+[ERROR - RECOVERABLE] Enrichment completed with partial errors
+  Exception: Failed to extract emotion
+  Segment: 6.00s - 8.20s
+
+====================================================================
+CALLBACK SUMMARY
+====================================================================
+Segments finalized: 2
+Errors encountered: 1
+Total duration: 5.50s
+Segments with audio_state: 2/2
+```
+
+---
+
+### Best Practices
+
+#### 1. Exception Handling
+
+**DO: Let invoke_callback_safely handle exceptions**
+
+```python
+class MyCallbacks:
+    def on_segment_finalized(self, segment):
+        # No try/except needed - invoke_callback_safely catches exceptions
+        self.db.insert(segment)  # May raise DatabaseError
+        self.update_ui(segment)  # May raise ConnectionError
+```
+
+**DON'T: Wrap everything in try/except**
+
+```python
+# Not needed - adds unnecessary complexity
+class MyCallbacks:
+    def on_segment_finalized(self, segment):
+        try:
+            self.db.insert(segment)
+        except Exception as e:
+            logger.error(e)  # invoke_callback_safely already does this
+```
+
+#### 2. Error Monitoring
+
+**DO: Use on_error for centralized error handling**
+
+```python
+class MyCallbacks:
+    def __init__(self):
+        self.error_count = 0
+        self.metrics = PrometheusClient()
+
+    def on_error(self, error):
+        self.error_count += 1
+        self.metrics.increment("streaming_errors", {
+            "context": error.context,
+            "recoverable": str(error.recoverable),
+        })
+
+        if not error.recoverable:
+            self.alert_ops_team(error)
+```
+
+#### 3. Stateful Callbacks
+
+**DO: Accumulate state for post-processing**
+
+```python
+class StatefulCallbacks:
+    def __init__(self):
+        self.segments = []
+        self.risk_flags = []
+
+    def on_segment_finalized(self, segment):
+        self.segments.append(segment)
+
+    def on_semantic_update(self, payload):
+        if payload.risk_tags:
+            self.risk_flags.append({
+                "turn_id": payload.turn.id,
+                "tags": payload.risk_tags,
+                "timestamp": payload.turn.start,
+            })
+
+    def generate_report(self):
+        return {
+            "total_segments": len(self.segments),
+            "total_duration": self.segments[-1].end - self.segments[0].start,
+            "risk_flags": self.risk_flags,
+        }
+```
+
+#### 4. Async Considerations (v2.0 Future)
+
+**Current (v1.9): Synchronous callbacks only**
+
+```python
+class MyCallbacks:
+    def on_segment_finalized(self, segment):
+        # Must be synchronous - blocks streaming pipeline
+        self.db.insert(segment)
+```
+
+**Future (v2.0): Async callback support planned**
+
+```python
+class AsyncCallbacks:
+    async def on_segment_finalized(self, segment):
+        # Non-blocking database insert
+        await self.db.insert_async(segment)
+        await self.notify_websocket_clients(segment)
+```
+
+**Workaround for v1.9: Use background queue**
+
+```python
+import queue
+import threading
+
+class QueuedCallbacks:
+    def __init__(self):
+        self.segment_queue = queue.Queue()
+        self.worker_thread = threading.Thread(target=self._worker, daemon=True)
+        self.worker_thread.start()
+
+    def on_segment_finalized(self, segment):
+        # Non-blocking enqueue
+        self.segment_queue.put(segment)
+
+    def _worker(self):
+        while True:
+            segment = self.segment_queue.get()
+            # Async-like processing in background thread
+            self.db.insert(segment)
+            self.segment_queue.task_done()
+```
+
+---
+
+### Running the Demo
+
+See the complete working example in `examples/streaming/callback_demo.py`:
+
+```bash
+# Basic demo with sample transcript
+uv run python examples/streaming/callback_demo.py
+
+# With custom audio and prosody enrichment
+uv run python examples/streaming/callback_demo.py \
+    --audio input_audio/conversation.wav \
+    --enable-prosody
+
+# Verbose mode (show full audio_state)
+uv run python examples/streaming/callback_demo.py \
+    --audio input_audio/conversation.wav \
+    --enable-prosody \
+    --verbose
+```
+
+---
+
+### Async Callback Support (Future: v2.0.0)
+
+Async callback support is planned for v2.0.0 to enable non-blocking downstream processing:
 
 ```python
 import asyncio
 from typing import Protocol
 
 class AsyncStreamCallbacks(Protocol):
-    """Async variant for non-blocking callbacks."""
+    """Async variant for non-blocking callbacks (v2.0.0+)."""
 
-    async def on_segment_finalized(self, segment: Segment) -> None: ...
+    async def on_segment_finalized(self, segment: StreamSegment) -> None: ...
     async def on_semantic_update(self, payload: SemanticUpdatePayload) -> None: ...
-    async def on_error(self, error: Exception, recoverable: bool) -> None: ...
+    async def on_error(self, error: StreamingError) -> None: ...
 
 class AsyncProcessor:
     async def on_segment_finalized(self, segment):
+        # Non-blocking database insert
         await self.db.insert(segment)
-        await self.notify_clients(segment)
+        # Non-blocking WebSocket broadcast
+        await self.ws_manager.broadcast(segment)
 
-# Async session wrapper (v1.9.0+)
+# Async session wrapper (v2.0.0+)
 async with AsyncStreamingSession(config, AsyncProcessor()) as session:
     async for chunk in audio_stream:
         await session.ingest_chunk(chunk)
@@ -1321,5 +1775,5 @@ handler.setFormatter(logging.Formatter(
 |---------|---------|
 | v1.7.0 | Initial streaming enrichment and live semantics |
 | v1.8.0 | Word-level alignment support in segments |
-| v1.9.0 | Callback interface (planned) |
-| v2.0.0 | WebSocket protocol, LLM-backed semantics (planned) |
+| v1.9.0 | Event callback API with StreamCallbacks protocol, StreamingError dataclass, invoke_callback_safely helper |
+| v2.0.0 | WebSocket protocol, LLM-backed semantics, async callbacks (planned) |
