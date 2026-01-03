@@ -276,6 +276,9 @@ class StreamingEnrichmentSession:
             )
             self._segment_count += 1
 
+            # Track speaker turns for this segment (same as ingest_chunk)
+            self._track_speaker_turn(enriched_segment)
+
             # Invoke callback for finalized segment
             invoke_callback_safely(
                 self._callbacks,
