@@ -19,6 +19,7 @@ from pathlib import Path
 
 from . import __version__
 from . import api as api_module
+from .benchmark_cli import build_benchmark_parser, handle_benchmark_command
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -457,6 +458,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"Override schema path (default: {DEFAULT_SCHEMA_PATH})",
     )
+
+    # ============================================================================
+    # benchmark subcommand
+    # ============================================================================
+    build_benchmark_parser(subparsers)
 
     return parser
 
@@ -962,6 +968,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         elif args.command == "validate":
             return _handle_validate_command(args)
+
+        elif args.command == "benchmark":
+            return handle_benchmark_command(args)
 
         else:
             parser.error(f"Unknown command: {args.command}")

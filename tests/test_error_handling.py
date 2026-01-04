@@ -21,6 +21,7 @@ import json
 import os
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -54,7 +55,7 @@ from transcription.models import Segment, Transcript
 
 
 @pytest.fixture
-def temp_project_root(tmp_path):
+def temp_project_root(tmp_path: Path) -> Path:
     """
     Create a temporary project root with expected directory structure.
     """
@@ -70,7 +71,7 @@ def temp_project_root(tmp_path):
 
 
 @pytest.fixture
-def valid_transcript():
+def valid_transcript() -> Transcript:
     """Create a valid Transcript object for testing."""
     return Transcript(
         file_name="test.wav",
@@ -91,7 +92,7 @@ def valid_transcript():
 
 
 @pytest.fixture
-def test_audio_file(tmp_path):
+def test_audio_file(tmp_path: Path) -> Path:
     """Create a test WAV file with synthetic audio."""
     import numpy as np
     import soundfile as sf

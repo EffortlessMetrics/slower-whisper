@@ -36,14 +36,26 @@ jobs:
       fail-fast: false
       matrix:
         variant:
-          - { dockerfile: Dockerfile, target: runtime, mode: base, tag-suffix: cpu-base }
-          - { dockerfile: Dockerfile, target: runtime, mode: full, tag-suffix: cpu }
-          - { dockerfile: Dockerfile.gpu, target: runtime, mode: base, tag-suffix: gpu-base }
-          - { dockerfile: Dockerfile.gpu, target: runtime, mode: full, tag-suffix: gpu }
+          - { dockerfile: config/Dockerfile, target: runtime, mode: base, tag-suffix: cpu-base }
+          - { dockerfile: config/Dockerfile, target: runtime, mode: full, tag-suffix: cpu }
+          - { dockerfile: config/Dockerfile.gpu, target: runtime, mode: base, tag-suffix: gpu-base }
+          - { dockerfile: config/Dockerfile.gpu, target: runtime, mode: full, tag-suffix: gpu }
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      # Free disk space for large GPU builds (~8GB+ with CUDA/PyTorch)
+      - name: Free disk space
+        if: contains(matrix.variant.tag-suffix, 'gpu')
+        run: |
+          echo "=== Disk space before cleanup ==="
+          df -h /
+          # Remove pre-installed software we don't need
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          echo "=== Disk space after cleanup ==="
+          df -h /
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

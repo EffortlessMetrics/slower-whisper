@@ -13,6 +13,8 @@ This test suite covers:
 Tests use pytest fixtures and mocking to avoid requiring actual GPU/models.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -42,7 +44,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def temp_project_root(tmp_path):
+def temp_project_root(tmp_path: Path) -> Path:
     """
     Create a temporary project root with expected directory structure.
 
@@ -64,7 +66,7 @@ def temp_project_root(tmp_path):
 
 
 @pytest.fixture
-def test_audio_file(tmp_path):
+def test_audio_file(tmp_path: Path) -> Path:
     """
     Create a test WAV file with synthetic audio.
 
@@ -97,12 +99,12 @@ def test_audio_file(tmp_path):
 
 
 @pytest.fixture
-def multiple_audio_files(temp_project_root):
+def multiple_audio_files(temp_project_root: Path) -> list[Path]:
     """Create multiple test audio files in raw_audio directory."""
     import soundfile as sf
 
     sr = 16000
-    audio_files = []
+    audio_files: list[Path] = []
 
     for i in range(3):
         duration = 2.0
@@ -117,7 +119,7 @@ def multiple_audio_files(temp_project_root):
 
 
 @pytest.fixture
-def test_transcript():
+def test_transcript() -> Transcript:
     """Create a test transcript with multiple segments."""
     segments = [
         Segment(id=0, start=0.0, end=1.0, text="Hello world"),
@@ -138,7 +140,7 @@ def test_transcript():
 
 
 @pytest.fixture
-def enriched_transcript():
+def enriched_transcript() -> Transcript:
     """Create a test transcript with enriched audio_state data."""
     segments = [
         Segment(

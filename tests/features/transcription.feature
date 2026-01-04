@@ -110,3 +110,29 @@ Feature: Transcribing audio into transcripts
     And meta.diarization.error_type is "auth"
     And the "speakers" field is null
     And the "turns" field is null
+
+  # Edge case scenarios for empty/invalid audio files (Issue #53)
+  Scenario: Empty audio file produces graceful error
+    Given a project with an empty audio file named "empty.wav"
+    When I attempt to transcribe the project with default settings
+    Then transcription fails gracefully with an error about the empty file
+    And no transcript JSON is created for "empty.wav"
+
+  Scenario: Zero-duration audio file handling
+    Given a project with a zero-duration WAV file named "zero_duration.wav"
+    When I attempt to transcribe the project with default settings
+    Then the transcription completes or fails gracefully
+    And if a transcript exists for "zero_duration.wav", it has placeholder segments
+
+  Scenario: Silent audio file produces empty transcript
+    Given a project with a silent audio file named "silence.wav"
+    When I transcribe the project with default settings
+    Then a transcript JSON exists for "silence.wav"
+    And the transcript may contain zero or more segments
+    And the JSON file has schema version 2
+
+  Scenario: Very short audio file is handled
+    Given a project with a very short audio file named "short.wav" of 0.1 seconds
+    When I transcribe the project with default settings
+    Then the transcription completes or fails gracefully
+    And if transcript exists, it has valid schema
