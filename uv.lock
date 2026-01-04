@@ -5147,7 +5147,7 @@ requires-dist = [
     { name = "slower-whisper", extras = ["full"], marker = "extra == 'enrich'" },
     { name = "slower-whisper", extras = ["integrations"], marker = "extra == 'dev'" },
     { name = "soundfile", marker = "extra == 'enrich-basic'", specifier = ">=0.13.1" },
-    { name = "sphinx", marker = "extra == 'dev'", specifier = ">=8,<9" },
+    { name = "sphinx", marker = "extra == 'dev'", specifier = ">=8,<10" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'dev'", specifier = ">=3,<4" },
     { name = "sphinx-rtd-theme", marker = "extra == 'dev'", specifier = ">=3,<4" },
     { name = "torch", marker = "extra == 'diarization'", specifier = ">=2.8.0,<3" },
