@@ -7,6 +7,8 @@ management. All audio is normalized to 16kHz mono WAV format for ASR processing.
 from __future__ import annotations
 
 import logging
+import os
+import platform
 import re
 import shutil
 import subprocess
@@ -16,6 +18,79 @@ from secrets import token_hex
 from .config import Paths
 
 logger = logging.getLogger(__name__)
+
+
+# User-friendly error message for missing ffmpeg dependency
+FFMPEG_MISSING_MESSAGE = """
+================================================================================
+FFmpeg is not installed or not found on your system PATH.
+
+FFmpeg is required for audio normalization (converting audio to 16kHz mono WAV).
+
+INSTALLATION INSTRUCTIONS:
+--------------------------
+
+  Linux (Debian/Ubuntu):
+    sudo apt update && sudo apt install ffmpeg
+
+  Linux (Fedora):
+    sudo dnf install ffmpeg
+
+  Linux (Arch):
+    sudo pacman -S ffmpeg
+
+  macOS (Homebrew):
+    brew install ffmpeg
+
+  Windows (Chocolatey):
+    choco install ffmpeg
+
+  Windows (Scoop):
+    scoop install ffmpeg
+
+  Nix (recommended for this project):
+    nix develop  # ffmpeg is included in the dev shell
+
+VERIFICATION:
+-------------
+After installation, open a NEW terminal and run:
+    ffmpeg -version
+
+If you see version information, ffmpeg is correctly installed.
+
+DOCUMENTATION:
+--------------
+  Official site: https://ffmpeg.org/
+  Download page: https://ffmpeg.org/download.html
+
+================================================================================
+"""
+
+
+class FFmpegNotFoundError(RuntimeError):
+    """Raised when ffmpeg is not available on the system PATH."""
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or FFMPEG_MISSING_MESSAGE)
+
+
+class FFmpegError(RuntimeError):
+    """Raised when ffmpeg command fails during audio processing."""
+
+    def __init__(
+        self,
+        message: str,
+        returncode: int | None = None,
+        stderr: str | None = None,
+    ) -> None:
+        self.returncode = returncode
+        self.stderr = stderr
+        full_message = message
+        if returncode is not None:
+            full_message += f" (exit code: {returncode})"
+        if stderr:
+            full_message += f"\n\nffmpeg stderr:\n{stderr}"
+        super().__init__(full_message)
 
 
 def sanitize_filename(
@@ -135,20 +210,137 @@ def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+def get_ffmpeg_version() -> str | None:
+    """
+    Get ffmpeg version string if available.
+
+    Returns:
+        Version string (e.g., "6.1.1") or None if ffmpeg is not available.
+    """
+    if not ffmpeg_available():
+        return None
+
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout:
+            # Parse version from first line: "ffmpeg version 6.1.1 Copyright..."
+            first_line = result.stdout.split("\n")[0]
+            parts = first_line.split()
+            if len(parts) >= 3 and parts[0] == "ffmpeg" and parts[1] == "version":
+                return parts[2]
+        return None
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+
+
+def check_ffmpeg_installation() -> None:
+    """
+    Check if ffmpeg is properly installed and raise a helpful error if not.
+
+    Raises:
+        FFmpegNotFoundError: If ffmpeg is not found or not working.
+    """
+    if not ffmpeg_available():
+        system = platform.system()
+        hint = ""
+
+        if system == "Linux":
+            hint = "\n\nHint: On Linux, install with: sudo apt install ffmpeg"
+        elif system == "Darwin":
+            hint = "\n\nHint: On macOS, install with: brew install ffmpeg"
+        elif system == "Windows":
+            hint = "\n\nHint: On Windows, install with: choco install ffmpeg"
+
+        logger.error(
+            "ffmpeg not found on PATH. System: %s, PATH: %s",
+            system,
+            os.environ.get("PATH", "<not set>"),
+        )
+        raise FFmpegNotFoundError(FFMPEG_MISSING_MESSAGE + hint)
+
+    # Verify ffmpeg actually works
+    version = get_ffmpeg_version()
+    if version:
+        logger.debug("ffmpeg version %s detected", version)
+    else:
+        logger.warning(
+            "ffmpeg found on PATH but version could not be determined. "
+            "Proceeding anyway, but audio normalization may fail."
+        )
+
+
+def _log_ffmpeg_error(filename: str, returncode: int, stderr: str) -> None:
+    """
+    Log a detailed error message for ffmpeg failures with debugging hints.
+
+    Analyzes the stderr output to provide more specific guidance.
+    """
+    # Common ffmpeg error patterns and helpful messages
+    error_hints = []
+
+    if "No such file or directory" in stderr:
+        error_hints.append("The input file may have been moved or deleted.")
+    if "Invalid data found" in stderr or "Invalid argument" in stderr:
+        error_hints.append(
+            "The audio file may be corrupted or in an unsupported format. "
+            "Try re-encoding the source file."
+        )
+    if "Permission denied" in stderr:
+        error_hints.append(
+            "Check file permissions on input/output paths. Ensure the output directory is writable."
+        )
+    if "codec not found" in stderr.lower() or "decoder" in stderr.lower():
+        error_hints.append(
+            "A required codec may be missing. "
+            "Ensure ffmpeg was built with the necessary codec support."
+        )
+    if "out of memory" in stderr.lower() or "cannot allocate" in stderr.lower():
+        error_hints.append("System ran out of memory. Try closing other applications.")
+    if "disk" in stderr.lower() and ("full" in stderr.lower() or "space" in stderr.lower()):
+        error_hints.append("Disk may be full. Free up space and try again.")
+
+    # Build the error message
+    hint_text = ""
+    if error_hints:
+        hint_text = "\n  Possible causes:\n    - " + "\n    - ".join(error_hints)
+
+    logger.error(
+        "ffmpeg failed to normalize '%s' (exit code %d)%s\n  Full ffmpeg stderr output:\n%s",
+        filename,
+        returncode,
+        hint_text,
+        _indent_stderr(stderr) if stderr else "    (no stderr output)",
+        extra={"file": filename, "returncode": returncode, "stderr": stderr},
+    )
+
+
+def _indent_stderr(stderr: str, indent: str = "    ") -> str:
+    """Indent each line of stderr for readable logging."""
+    if not stderr:
+        return ""
+    lines = stderr.strip().split("\n")
+    return "\n".join(f"{indent}{line}" for line in lines)
+
+
 def normalize_all(paths: Paths) -> None:
     """
     Convert all files in raw_dir to 16 kHz mono WAV in norm_dir using ffmpeg.
 
     Existing normalized WAVs are skipped so the operation is idempotent.
     Failures for individual files are logged and do not abort the entire run.
+
+    Raises:
+        FFmpegNotFoundError: If ffmpeg is not installed or not on PATH.
     """
     logger.info("Starting audio normalization with ffmpeg")
 
-    if not ffmpeg_available():
-        raise RuntimeError(
-            "ffmpeg not found on PATH. Install it (for example via Chocolatey) "
-            "and make sure 'ffmpeg' works in a new shell."
-        )
+    # Check ffmpeg installation with helpful error messages
+    check_ffmpeg_installation()
 
     any_src = False
     for src in sorted(paths.raw_dir.iterdir()):
@@ -224,13 +416,8 @@ def normalize_all(paths: Paths) -> None:
             # This ensures the command is executed as a list of arguments, not a shell string
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
-                logger.error(
-                    "Failed to normalize %s (exit code %d): %s",
-                    src.name,
-                    result.returncode,
-                    result.stderr.strip() if result.stderr else "No error output",
-                    extra={"file": src.name},
-                )
+                stderr_output = result.stderr.strip() if result.stderr else ""
+                _log_ffmpeg_error(src.name, result.returncode, stderr_output)
                 # Clean up partial/corrupt output file on failure
                 if dst.exists():
                     try:
@@ -239,10 +426,22 @@ def normalize_all(paths: Paths) -> None:
                     except OSError:
                         pass  # Best effort cleanup
                 continue
-        except OSError as e:
-            # Handle subprocess launch failures (e.g., ffmpeg not found)
+        except FileNotFoundError as e:
+            # ffmpeg binary not found (shouldn't happen after check, but defensive)
             logger.error(
-                "Failed to run ffmpeg for %s: %s",
+                "ffmpeg executable not found while processing '%s'. "
+                "This is unexpected since we checked earlier. "
+                "Please verify ffmpeg is installed and on PATH.",
+                src.name,
+                exc_info=True,
+                extra={"file": src.name},
+            )
+            raise FFmpegNotFoundError() from e
+        except OSError as e:
+            # Handle other subprocess launch failures
+            logger.error(
+                "Failed to run ffmpeg for '%s': %s. "
+                "This may indicate a permissions issue or system resource problem.",
                 src.name,
                 e,
                 exc_info=True,

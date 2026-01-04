@@ -7,7 +7,10 @@ End-to-end tests covering:
 - Full pipeline with all optional features
 """
 
+from __future__ import annotations
+
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -55,7 +58,7 @@ except (ImportError, ValueError):
 
 
 @pytest.fixture
-def test_audio_file(tmp_path):
+def test_audio_file(tmp_path: Path) -> Path:
     """
     Create a test WAV file with synthetic speech-like audio.
 
@@ -92,7 +95,7 @@ def test_audio_file(tmp_path):
 
 
 @pytest.fixture
-def test_transcript():
+def test_transcript() -> Transcript:
     """Create a test transcript with multiple segments."""
     segments = [
         Segment(id=0, start=0.0, end=1.0, text="Hello world"),

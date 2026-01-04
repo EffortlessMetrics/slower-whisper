@@ -1,477 +1,1633 @@
-# Streaming Architecture (v0.1–v0.2)
+# Streaming Architecture
 
-Goal: ship a small, predictable streaming surface for slower-whisper without changing the offline JSON contract. This document captures the v0.1 data model and state rules for streaming **post-ASR text chunks** (no audio transport yet).
+**Version:** v1.9.0 (with v2.0.0 planned features)
+**Last Updated:** 2025-12-31
 
-## Data Model
+This document provides comprehensive documentation for slower-whisper's streaming architecture, covering the real-time transcription pipeline, enrichment layers, and semantic annotation.
 
-### StreamChunk (input)
+---
 
-```python
-class StreamChunk(TypedDict):
-    start: float   # seconds
-    end: float
-    text: str
-    speaker_id: str | None
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Message Flow](#message-flow)
+3. [Event Types](#event-types)
+4. [Session Classes](#session-classes)
+5. [Event Callback API (v1.9.0)](#event-callback-api-v190)
+6. [WebSocket Protocol (v2.0.0)](#websocket-protocol-v200)
+7. [Performance Characteristics](#performance-characteristics)
+8. [Examples](#examples)
+9. [Integration Patterns](#integration-patterns)
+10. [Monitoring and Metrics](#monitoring-and-metrics)
+
+---
+
+## Overview
+
+The streaming architecture enables real-time transcription and enrichment of audio conversations. It is designed around three core principles:
+
+1. **Event-Driven**: All state changes emit typed events that downstream consumers can process
+2. **Layered Processing**: Each layer (ASR, enrichment, semantic) operates independently
+3. **Graceful Degradation**: Failures in enrichment do not block transcription
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        STREAMING PIPELINE                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────┐    ┌──────────────────┐    ┌────────────────────────────┐ │
+│  │  Audio   │───▶│  ASR Engine      │───▶│   StreamingSession         │ │
+│  │  Input   │    │  (faster-whisper)│    │   (base state machine)     │ │
+│  └──────────┘    └──────────────────┘    └─────────────┬──────────────┘ │
+│                                                        │                 │
+│                        StreamChunk                     │                 │
+│                    ┌───────────────────────────────────┘                 │
+│                    │                                                     │
+│                    ▼                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │                    ENRICHMENT LAYER (Optional)                       ││
+│  │  ┌────────────────────────┐    ┌────────────────────────┐           ││
+│  │  │ StreamingEnrichment    │    │ LiveSemanticSession    │           ││
+│  │  │ Session                │    │                        │           ││
+│  │  │ - Prosody extraction   │    │ - Turn detection       │           ││
+│  │  │ - Emotion recognition  │    │ - Keyword extraction   │           ││
+│  │  │ - Audio state          │    │ - Risk tag detection   │           ││
+│  │  └────────────┬───────────┘    └──────────┬─────────────┘           ││
+│  │               │                           │                          ││
+│  └───────────────┼───────────────────────────┼──────────────────────────┘│
+│                  │                           │                           │
+│                  ▼                           ▼                           │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │                        EVENT STREAM                                  ││
+│  │                                                                      ││
+│  │  PARTIAL_SEGMENT ──▶ FINAL_SEGMENT ──▶ SEMANTIC_UPDATE              ││
+│  │       │                    │                   │                     ││
+│  │       └────────────────────┴───────────────────┘                     ││
+│  │                            │                                         ││
+│  │                            ▼                                         ││
+│  │                    Downstream Consumers                              ││
+│  │              (UI, LLM, Storage, Analytics)                           ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-Chunks are **post-ASR** for v0.1. Audio/VAD/encoder streaming will layer on later.
+### Component Summary
 
-### StreamSegment (state)
+| Component | Module | Purpose |
+|-----------|--------|---------|
+| `StreamingSession` | `streaming.py` | Base state machine for post-ASR chunks |
+| `StreamingEnrichmentSession` | `streaming_enrich.py` | Audio feature extraction layer |
+| `LiveSemanticSession` | `streaming_semantic.py` | Turn-aware semantic annotation |
 
-```python
-@dataclass(slots=True)
-class StreamSegment:
-    start: float
-    end: float
-    text: str
-    speaker_id: str | None = None
+---
+
+## Message Flow
+
+### Data Flow Sequence
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         MESSAGE FLOW DIAGRAM                             │
+└─────────────────────────────────────────────────────────────────────────┘
+
+ Audio              ASR                 Streaming           Enrichment
+ Input            Engine                Session              Layer
+   │                 │                     │                    │
+   │  audio chunk    │                     │                    │
+   │────────────────▶│                     │                    │
+   │                 │                     │                    │
+   │                 │   StreamChunk       │                    │
+   │                 │    {start, end,     │                    │
+   │                 │     text,           │                    │
+   │                 │     speaker_id}     │                    │
+   │                 │────────────────────▶│                    │
+   │                 │                     │                    │
+   │                 │                     │──┐                 │
+   │                 │                     │  │ State Machine   │
+   │                 │                     │  │ - validate      │
+   │                 │                     │  │ - extend/close  │
+   │                 │                     │◀─┘                 │
+   │                 │                     │                    │
+   │                 │                     │  PARTIAL_SEGMENT   │
+   │                 │                     │───────────────────▶│ (pass-through)
+   │                 │                     │                    │
+   │                 │                     │  FINAL_SEGMENT     │
+   │                 │                     │───────────────────▶│
+   │                 │                     │                    │──┐
+   │                 │                     │                    │  │ Extract
+   │                 │                     │                    │  │ - prosody
+   │                 │                     │                    │  │ - emotion
+   │                 │                     │                    │◀─┘
+   │                 │                     │                    │
+   │                 │                     │                    │
+   │                 │                     │    StreamEvent     │
+   │                 │                     │◀───────────────────│
+   │                 │                     │    (enriched)      │
+   │                 │                     │                    │
 ```
 
-### StreamEvent (output)
+### Chunk → Segment State Transitions
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                    STATE TRANSITION DIAGRAM                             │
+└────────────────────────────────────────────────────────────────────────┘
+
+                         ┌─────────────────┐
+                         │     EMPTY       │
+                         │   (no partial)  │
+                         └────────┬────────┘
+                                  │
+                         chunk arrives
+                                  │
+                                  ▼
+                         ┌─────────────────┐
+              ┌──────────│    PARTIAL      │◀────────────┐
+              │          │   (in-flight)   │             │
+              │          └────────┬────────┘             │
+              │                   │                      │
+         same speaker        different speaker       same speaker
+         gap <= max          OR gap > max            gap <= max
+              │                   │                      │
+              │                   ▼                      │
+              │          ┌─────────────────┐             │
+              │          │   FINALIZED     │             │
+              │          │                 │             │
+              │          └────────┬────────┘             │
+              │                   │                      │
+              │          emit FINAL_SEGMENT              │
+              │                   │                      │
+              │                   ▼                      │
+              │          ┌─────────────────┐             │
+              │          │  NEW PARTIAL    │─────────────┘
+              │          │  (from chunk)   │
+              │          └─────────────────┘
+              │
+              │
+              │  extend segment
+              │  emit PARTIAL_SEGMENT
+              │
+              └──────────────────────────────────────────┘
+```
+
+### Finalization Rules
+
+A segment is finalized when:
+
+1. **Speaker change**: New chunk has different `speaker_id`
+2. **Time gap**: Gap between chunks exceeds `max_gap_sec` (default: 1.0s)
+3. **End of stream**: `end_of_stream()` called explicitly
+
+---
+
+## Event Types
+
+### StreamEventType Enum
 
 ```python
 class StreamEventType(Enum):
-    PARTIAL_SEGMENT = "partial_segment"  # may change as more chunks arrive
-    FINAL_SEGMENT = "final_segment"      # no further changes expected
+    """Event types emitted by streaming sessions."""
+
+    PARTIAL_SEGMENT = "partial_segment"   # Segment may change
+    FINAL_SEGMENT = "final_segment"       # Segment complete, no more changes
+    SEMANTIC_UPDATE = "semantic_update"   # Semantic annotation attached (v1.7+)
+```
+
+### Event Type Details
+
+#### PARTIAL_SEGMENT
+
+Emitted after each chunk when the segment is still building.
+
+```python
+StreamEvent(
+    type=StreamEventType.PARTIAL_SEGMENT,
+    segment=StreamSegment(
+        start=0.0,
+        end=2.5,
+        text="Hello world",
+        speaker_id="spk_0",
+        audio_state=None  # Not enriched for partials
+    ),
+    semantic=None
+)
+```
+
+**When to use**: Show live transcription in UI, update live caption display.
+
+**Guarantees**:
+- Text may grow or change with subsequent chunks
+- Same segment may emit multiple PARTIAL events
+- audio_state is always None (enrichment deferred to FINAL)
+
+#### FINAL_SEGMENT
+
+Emitted when a segment is complete and will not change.
+
+```python
+StreamEvent(
+    type=StreamEventType.FINAL_SEGMENT,
+    segment=StreamSegment(
+        start=0.0,
+        end=4.2,
+        text="Hello world, how are you today?",
+        speaker_id="spk_0",
+        audio_state={
+            "prosody": {"pitch": {"level": "high", "mean_hz": 245.3}},
+            "emotion": {"valence": {"level": "positive", "score": 0.72}},
+            "rendering": "[audio: high pitch, positive]"
+        }
+    ),
+    semantic=None
+)
+```
+
+**When to use**: Persist to database, send to LLM, update final transcript.
+
+**Guarantees**:
+- Text is final and will not change
+- audio_state populated (if enrichment enabled)
+- Exactly one FINAL event per segment
+
+#### SEMANTIC_UPDATE (v1.7+)
+
+Emitted when semantic annotation completes for a finalized turn.
+
+```python
+StreamEvent(
+    type=StreamEventType.SEMANTIC_UPDATE,
+    segment=StreamSegment(
+        start=0.0,
+        end=12.5,
+        text="Can you send me the proposal by Friday?",
+        speaker_id="spk_1"
+    ),
+    semantic=SemanticUpdatePayload(
+        turn=Turn(id="turn_0", speaker_id="spk_1", ...),
+        keywords=["proposal", "deadline"],
+        risk_tags=[],
+        actions=[{"text": "send proposal", "pattern": "imperative"}],
+        question_count=1,
+        context_size=5
+    )
+)
+```
+
+**When to use**: Route to action item workflow, detect escalation, trigger LLM analysis.
+
+**Guarantees**:
+- Only emitted for finalized turns (not segments)
+- semantic field contains SemanticUpdatePayload
+- Context window reflects recent conversation history
+
+#### Future Event Types (v2.0.0)
+
+| Event Type | Description |
+|------------|-------------|
+| `SPEAKER_TURN` | Explicit speaker change notification |
+| `ERROR` | Processing error with recovery information |
+| `HEARTBEAT` | Connection keep-alive (WebSocket only) |
+
+---
+
+## Session Classes
+
+### StreamingSession (Base)
+
+The core state machine for processing post-ASR chunks.
+
+```python
+from transcription.streaming import (
+    StreamChunk,
+    StreamConfig,
+    StreamingSession,
+    StreamEvent,
+    StreamEventType,
+)
+
+# Configuration
+config = StreamConfig(
+    max_gap_sec=1.0  # Gap threshold to finalize segment
+)
+
+# Initialize session
+session = StreamingSession(config)
+
+# Process chunks
+chunk: StreamChunk = {
+    "start": 0.0,
+    "end": 2.5,
+    "text": "Hello world",
+    "speaker_id": "spk_0"
+}
+
+events = session.ingest_chunk(chunk)
+for event in events:
+    if event.type == StreamEventType.PARTIAL_SEGMENT:
+        print(f"[PARTIAL] {event.segment.text}")
+    elif event.type == StreamEventType.FINAL_SEGMENT:
+        print(f"[FINAL] {event.segment.text}")
+
+# Finalize stream
+final_events = session.end_of_stream()
+```
+
+#### StreamConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max_gap_sec` | float | 1.0 | Gap threshold to start new segment |
+
+#### StreamChunk (Input)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `start` | float | Yes | Start time in seconds |
+| `end` | float | Yes | End time in seconds |
+| `text` | str | Yes | Transcribed text |
+| `speaker_id` | str \| None | No | Speaker identifier |
+
+#### StreamSegment (State/Output)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `start` | float | Segment start time |
+| `end` | float | Segment end time |
+| `text` | str | Aggregated text |
+| `speaker_id` | str \| None | Speaker identifier |
+| `audio_state` | dict \| None | Audio enrichment data (v1.7+) |
+
+### StreamingEnrichmentSession
+
+Extends base session with real-time audio feature extraction.
+
+```python
+from pathlib import Path
+from transcription.streaming_enrich import (
+    StreamingEnrichmentSession,
+    StreamingEnrichmentConfig,
+)
+from transcription.streaming import StreamConfig, StreamEventType
+
+# Configure enrichment
+config = StreamingEnrichmentConfig(
+    base_config=StreamConfig(max_gap_sec=1.0),
+    enable_prosody=True,       # Extract pitch, energy, rate
+    enable_emotion=True,       # Extract valence, arousal
+    enable_categorical_emotion=False,  # Skip categorical labels
+    speaker_baseline=None      # Use absolute thresholds
+)
+
+# Initialize with audio file
+wav_path = Path("normalized_audio.wav")
+session = StreamingEnrichmentSession(wav_path, config)
+
+# Process chunks (same as base session)
+events = session.ingest_chunk(chunk)
+
+# FINAL segments now have audio_state populated
+for event in events:
+    if event.type == StreamEventType.FINAL_SEGMENT:
+        audio_state = event.segment.audio_state
+        if audio_state:
+            print(f"Rendering: {audio_state['rendering']}")
+            # "[audio: high pitch, loud volume, positive]"
+
+# Get session statistics
+stats = session.get_stats()
+print(f"Processed {stats['chunk_count']} chunks")
+print(f"Finalized {stats['segment_count']} segments")
+print(f"Errors: {stats['enrichment_errors']}")
+
+# Reset for reuse with same audio file
+session.reset()
+```
+
+#### StreamingEnrichmentConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `base_config` | StreamConfig | StreamConfig() | Base session configuration |
+| `enable_prosody` | bool | False | Extract prosodic features |
+| `enable_emotion` | bool | False | Extract dimensional emotion |
+| `enable_categorical_emotion` | bool | False | Extract categorical labels |
+| `speaker_baseline` | dict \| None | None | Baseline for speaker-relative normalization |
+
+### LiveSemanticSession
+
+Turn-aware semantic annotation for streaming conversations.
+
+```python
+from transcription.streaming_semantic import (
+    LiveSemanticSession,
+    LiveSemanticsConfig,
+    SemanticUpdatePayload,
+)
+from transcription.streaming import StreamChunk, StreamEventType
+
+# Configure semantics
+config = LiveSemanticsConfig(
+    turn_gap_sec=2.0,              # Gap to finalize turn
+    context_window_turns=10,       # Keep 10 recent turns
+    context_window_sec=120.0,      # Keep last 2 minutes
+    enable_question_detection=True,
+    enable_action_detection=True,
+)
+
+# Initialize session
+session = LiveSemanticSession(config)
+
+# Process chunks
+for chunk in stream_of_chunks:
+    events = session.ingest_chunk(chunk)
+
+    for event in events:
+        if event.type == StreamEventType.SEMANTIC_UPDATE:
+            payload: SemanticUpdatePayload = event.semantic
+
+            print(f"Turn {payload.turn.id} by {payload.turn.speaker_id}")
+            print(f"  Keywords: {payload.keywords}")
+            print(f"  Risk tags: {payload.risk_tags}")
+            print(f"  Actions: {payload.actions}")
+            print(f"  Questions: {payload.question_count}")
+
+# Get context window for LLM
+context = session.get_context_window()  # List of Turn objects
+llm_context = session.render_context_for_llm()  # Formatted string
+
+# Finalize stream
+final_events = session.end_of_stream()
+```
+
+#### LiveSemanticsConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `turn_gap_sec` | float | 2.0 | Gap to finalize turn |
+| `context_window_turns` | int | 10 | Max turns in context |
+| `context_window_sec` | float | 120.0 | Max context age (seconds) |
+| `enable_question_detection` | bool | True | Count questions |
+| `enable_action_detection` | bool | True | Detect action items |
+
+#### SemanticUpdatePayload
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `turn` | Turn | Finalized Turn object |
+| `keywords` | list[str] | Extracted keywords |
+| `risk_tags` | list[str] | Risk indicators |
+| `actions` | list[dict] | Detected action items |
+| `question_count` | int | Number of questions |
+| `context_size` | int | Current context window size |
+
+---
+
+## Event Callback API (v1.9.0)
+
+The v1.9.0 release introduces a standardized callback interface for event-driven downstream processing. The callback API enables real-time reactive patterns like logging, persistence, alerting, and UI updates without polling or manual event processing.
+
+### Overview
+
+**Key Design Principles:**
+
+1. **Protocol-Based**: Type-safe callback interface using Python `Protocol`
+2. **Optional Methods**: Implement only the callbacks you need
+3. **Exception Isolation**: Callback errors never crash the streaming pipeline
+4. **Sync-First**: Synchronous callbacks for simplicity (async support planned for v2.0)
+
+**Architecture:**
+
+```
+StreamChunk → StreamingEnrichmentSession → Events → Callbacks → Your Code
+                      │                        │
+                      │                   on_segment_finalized()
+                      │                   on_speaker_turn()
+                      │                   on_semantic_update()
+                      │                   on_error()
+                      │
+                invoke_callback_safely() catches exceptions
+```
+
+---
+
+### StreamCallbacks Protocol
+
+The `StreamCallbacks` protocol defines four optional callback methods for different event types:
+
+```python
+from typing import Protocol
+from transcription.streaming import StreamSegment
+from transcription.streaming_semantic import SemanticUpdatePayload
+from transcription.streaming_callbacks import StreamingError
+
+class StreamCallbacks(Protocol):
+    """Protocol for streaming event callbacks.
+
+    Implement this protocol to receive real-time notifications as
+    segments are finalized, speaker turns are detected, and semantic
+    annotations are computed.
+
+    All callbacks are optional - implement only what you need.
+    Unimplemented methods default to no-op behavior.
+
+    Important: Callback implementations must not raise exceptions.
+    If a callback raises, it will be caught, logged, and on_error
+    will be invoked. The streaming pipeline continues regardless.
+    """
+
+    def on_segment_finalized(self, segment: StreamSegment) -> None:
+        """Called when a segment is finalized with enrichment complete.
+
+        This is the primary callback for consuming enriched segments.
+        The segment will have audio_state populated if enrichment was
+        enabled and succeeded.
+
+        Args:
+            segment: The finalized segment with optional audio_state.
+                     Guaranteed to have start, end, text, and speaker_id.
+        """
+        ...
+
+    def on_speaker_turn(self, turn: dict) -> None:
+        """Called when a speaker turn is detected.
+
+        A turn is a contiguous sequence of segments from the same speaker.
+        This callback fires when a turn boundary is detected (speaker change
+        or long pause).
+
+        Args:
+            turn: Turn dictionary with keys:
+                - id: Turn identifier (e.g., "turn_0")
+                - speaker_id: Speaker identifier
+                - start: Turn start time in seconds
+                - end: Turn end time in seconds
+                - segment_ids: List of segment IDs in this turn
+                - text: Concatenated text from all segments
+        """
+        ...
+
+    def on_semantic_update(self, payload: SemanticUpdatePayload) -> None:
+        """Called when semantic annotations are computed for a turn.
+
+        Semantic updates include keywords, risk tags, and action items
+        extracted from the turn text.
+
+        Args:
+            payload: SemanticUpdatePayload with:
+                - turn: The annotated Turn object
+                - keywords: List of extracted keywords
+                - risk_tags: List of detected risk flags
+                - actions: List of action items
+                - context_summary: Recent conversation context
+        """
+        ...
+
+    def on_error(self, error: StreamingError) -> None:
+        """Called when an error occurs during streaming.
+
+        This includes enrichment failures, callback exceptions, and
+        other recoverable errors. The streaming pipeline continues
+        after recoverable errors.
+
+        Args:
+            error: StreamingError with exception details and context.
+        """
+        ...
+```
+
+---
+
+### StreamingError Dataclass
+
+The `StreamingError` dataclass provides structured error context:
+
+```python
+from dataclasses import dataclass
 
 @dataclass(slots=True)
-class StreamEvent:
-    type: StreamEventType
-    segment: StreamSegment
+class StreamingError:
+    """Error context for callback error handling.
+
+    Attributes:
+        exception: The exception that occurred.
+        context: Human-readable context about where the error occurred.
+        segment_start: Start time of segment being processed (if applicable).
+        segment_end: End time of segment being processed (if applicable).
+        recoverable: Whether the pipeline can continue after this error.
+    """
+
+    exception: Exception
+    context: str
+    segment_start: float | None = None
+    segment_end: float | None = None
+    recoverable: bool = True
 ```
 
-Optional future events: `TURN_BOUNDARY`, `CHUNK_BOUNDARY`.
-
-### Configuration
+**Example Error Objects:**
 
 ```python
-@dataclass(slots=True)
-class StreamConfig:
-    max_gap_sec: float = 1.0  # gap threshold to start a new segment
+# Enrichment error (recoverable)
+StreamingError(
+    exception=RuntimeError("Prosody extraction failed"),
+    context="Enrichment completed with partial errors",
+    segment_start=12.5,
+    segment_end=15.8,
+    recoverable=True
+)
+
+# Callback exception (recoverable)
+StreamingError(
+    exception=DatabaseError("Connection timeout"),
+    context="Exception in callback on_segment_finalized",
+    segment_start=None,
+    segment_end=None,
+    recoverable=True
+)
 ```
 
-## State rules
+---
 
-- Chunks arrive with **monotonic time**. If `chunk.start < current.end`, `ingest_chunk` raises `ValueError`.
-- A chunk **extends the current partial segment** when:
-  - Same `speaker_id` (including both `None`), and
-  - Gap `chunk.start - current.end` is `<= max_gap_sec`.
-- Otherwise, the current partial is finalized and a new partial begins.
-- `ingest_chunk(chunk)` returns the events produced by that chunk:
-  - Zero or one `FINAL_SEGMENT` for the previous segment (if it closed).
-  - Exactly one `PARTIAL_SEGMENT` for the current segment state.
-- `end_of_stream()` flushes any remaining partial as a `FINAL_SEGMENT` and clears session state.
+### invoke_callback_safely Helper
 
-## Session surface
+The `invoke_callback_safely` function ensures callback exceptions never crash the pipeline:
 
 ```python
-class StreamingSession:
-    def __init__(self, config: StreamConfig | None = None) -> None: ...
-    def ingest_chunk(self, chunk: StreamChunk) -> list[StreamEvent]: ...
-    def end_of_stream(self) -> list[StreamEvent]: ...
+def invoke_callback_safely(
+    callbacks: StreamCallbacks | object | None,
+    method_name: str,
+    *args,
+    **kwargs,
+) -> bool:
+    """Invoke a callback method safely, catching and logging any exceptions.
+
+    This function ensures that callback exceptions never crash the streaming
+    pipeline. If a callback raises, it's logged and on_error is invoked
+    (if available and not the failing method).
+
+    Args:
+        callbacks: The callbacks object (may be None).
+        method_name: Name of the method to invoke (e.g., "on_segment_finalized").
+        *args: Positional arguments to pass to the callback.
+        **kwargs: Keyword arguments to pass to the callback.
+
+    Returns:
+        True if the callback was invoked successfully, False if it failed
+        or callbacks was None.
+    """
 ```
 
-Pure Python, no asyncio or sockets. This simulates how downstream consumers will see a live transcription feed.
+**Internal Behavior:**
 
-## Implementation Status
+1. Returns `False` if `callbacks` is `None` or method doesn't exist
+2. Invokes the callback method with provided arguments
+3. If callback raises:
+   - Logs the exception with full traceback
+   - Constructs a `StreamingError` object
+   - Invokes `on_error(error)` (if available and not the failing method)
+   - Returns `False` (pipeline continues)
 
-| Component | Status |
-|-----------|--------|
-| Type definitions | ✅ Implemented in v0.1 |
-| StreamingSession state machine | ✅ Implemented in v0.1 |
-| WebSocket server | 🚧 Not started (future) |
-| Audio buffering/VAD | 🚧 Not started (future) |
-| Event replay/apply | 🚧 Not started (future) |
-
-## Usage
+**Example Usage in Session:**
 
 ```python
-from transcription.streaming import StreamChunk, StreamConfig, StreamingSession
+# In StreamingEnrichmentSession.ingest_chunk()
+if event.type == StreamEventType.FINAL_SEGMENT:
+    # Invoke callback for finalized segment
+    invoke_callback_safely(
+        self._callbacks,
+        "on_segment_finalized",
+        enriched_segment,
+    )
+```
 
+---
+
+### Integration with StreamingEnrichmentSession
+
+The `StreamingEnrichmentSession` class integrates callbacks at key pipeline stages:
+
+```python
+from pathlib import Path
+from transcription.streaming_enrich import (
+    StreamingEnrichmentSession,
+    StreamingEnrichmentConfig,
+)
+from transcription.streaming import StreamConfig
+
+# Create callbacks object
+class MyCallbacks:
+    def on_segment_finalized(self, segment):
+        print(f"[{segment.start:.2f}s] {segment.text}")
+        self.db.insert(segment)
+
+    def on_error(self, error):
+        if not error.recoverable:
+            self.alert_ops_team(error)
+
+# Initialize session with callbacks
+config = StreamingEnrichmentConfig(
+    base_config=StreamConfig(max_gap_sec=1.0),
+    enable_prosody=True,
+    enable_emotion=True,
+)
+
+session = StreamingEnrichmentSession(
+    wav_path=Path("audio.wav"),
+    config=config,
+    callbacks=MyCallbacks()  # Pass callbacks to session
+)
+
+# Process chunks - callbacks invoked automatically
+for chunk in chunks:
+    events = session.ingest_chunk(chunk)
+    # No need to manually process events; callbacks already invoked
+
+# Finalize stream
+final_events = session.end_of_stream()
+```
+
+**Callback Invocation Points:**
+
+| Session Method | Callback Invoked | When |
+|----------------|------------------|------|
+| `ingest_chunk()` | `on_segment_finalized()` | After enriching FINAL segments |
+| `ingest_chunk()` | `on_error()` | On enrichment errors |
+| `end_of_stream()` | `on_segment_finalized()` | For any remaining segments |
+| `_enrich_stream_segment()` | `on_error()` | On enrichment failures |
+
+---
+
+### Example: LoggingCallbacks Implementation
+
+The `examples/streaming/callback_demo.py` demonstrates a complete callback implementation:
+
+```python
+from dataclasses import dataclass, field
+from transcription.streaming import StreamSegment
+from transcription.streaming_callbacks import StreamingError
+
+@dataclass
+class LoggingCallbacks:
+    """
+    Example callback implementation that logs all events to console.
+
+    Attributes:
+        verbose: If True, prints detailed segment info including audio_state.
+        segment_count: Running count of finalized segments.
+        error_count: Running count of errors encountered.
+        segments: List of all finalized segments (for post-processing).
+    """
+
+    verbose: bool = False
+    segment_count: int = field(default=0, init=False)
+    error_count: int = field(default=0, init=False)
+    segments: list[StreamSegment] = field(default_factory=list, init=False)
+
+    def on_segment_finalized(self, segment: StreamSegment) -> None:
+        """Log finalized segment with optional audio_state."""
+        self.segment_count += 1
+        self.segments.append(segment)
+
+        # Format timestamp range
+        time_range = f"{segment.start:>6.2f}s - {segment.end:>6.2f}s"
+        speaker = segment.speaker_id or "unknown"
+
+        print(f"\n[FINALIZED #{self.segment_count}] {time_range} | speaker={speaker}")
+        print(f'  Text: "{segment.text}"')
+
+        # Show audio_state if present and verbose
+        if segment.audio_state and self.verbose:
+            rendering = segment.audio_state.get("rendering", "[no rendering]")
+            print(f"  Audio: {rendering}")
+
+            # Show extraction status
+            status = segment.audio_state.get("extraction_status", {})
+            prosody_status = status.get("prosody", "n/a")
+            emotion_status = status.get("emotion_dimensional", "n/a")
+            print(f"  Status: prosody={prosody_status}, emotion={emotion_status}")
+
+    def on_error(self, error: StreamingError) -> None:
+        """Log errors with context."""
+        self.error_count += 1
+
+        severity = "RECOVERABLE" if error.recoverable else "FATAL"
+        print(f"\n[ERROR - {severity}] {error.context}")
+        print(f"  Exception: {error.exception}")
+
+        if error.segment_start is not None and error.segment_end is not None:
+            print(f"  Segment: {error.segment_start:.2f}s - {error.segment_end:.2f}s")
+
+    def print_summary(self) -> None:
+        """Print summary statistics at the end of the stream."""
+        print("\n" + "=" * 60)
+        print("CALLBACK SUMMARY")
+        print("=" * 60)
+        print(f"Segments finalized: {self.segment_count}")
+        print(f"Errors encountered: {self.error_count}")
+
+        if self.segments:
+            total_duration = self.segments[-1].end - self.segments[0].start
+            print(f"Total duration: {total_duration:.2f}s")
+
+            # Count segments with audio enrichment
+            enriched = sum(1 for s in self.segments if s.audio_state)
+            print(f"Segments with audio_state: {enriched}/{self.segment_count}")
+
+
+# Usage
+callbacks = LoggingCallbacks(verbose=True)
+session = StreamingEnrichmentSession(
+    wav_path=Path("audio.wav"),
+    config=config,
+    callbacks=callbacks
+)
+
+# Process stream
+for chunk in chunks:
+    session.ingest_chunk(chunk)
+
+session.end_of_stream()
+
+# Print final summary
+callbacks.print_summary()
+```
+
+**Output:**
+
+```
+[FINALIZED #1]   0.00s -   2.50s | speaker=spk_0
+  Text: "Hello world"
+  Audio: [audio: high pitch, loud volume]
+  Status: prosody=success, emotion=success
+
+[FINALIZED #2]   3.00s -   5.50s | speaker=spk_1
+  Text: "How are you today?"
+  Audio: [audio: neutral pitch, moderate volume, positive]
+  Status: prosody=success, emotion=success
+
+[ERROR - RECOVERABLE] Enrichment completed with partial errors
+  Exception: Failed to extract emotion
+  Segment: 6.00s - 8.20s
+
+====================================================================
+CALLBACK SUMMARY
+====================================================================
+Segments finalized: 2
+Errors encountered: 1
+Total duration: 5.50s
+Segments with audio_state: 2/2
+```
+
+---
+
+### Best Practices
+
+#### 1. Exception Handling
+
+**DO: Let invoke_callback_safely handle exceptions**
+
+```python
+class MyCallbacks:
+    def on_segment_finalized(self, segment):
+        # No try/except needed - invoke_callback_safely catches exceptions
+        self.db.insert(segment)  # May raise DatabaseError
+        self.update_ui(segment)  # May raise ConnectionError
+```
+
+**DON'T: Wrap everything in try/except**
+
+```python
+# Not needed - adds unnecessary complexity
+class MyCallbacks:
+    def on_segment_finalized(self, segment):
+        try:
+            self.db.insert(segment)
+        except Exception as e:
+            logger.error(e)  # invoke_callback_safely already does this
+```
+
+#### 2. Error Monitoring
+
+**DO: Use on_error for centralized error handling**
+
+```python
+class MyCallbacks:
+    def __init__(self):
+        self.error_count = 0
+        self.metrics = PrometheusClient()
+
+    def on_error(self, error):
+        self.error_count += 1
+        self.metrics.increment("streaming_errors", {
+            "context": error.context,
+            "recoverable": str(error.recoverable),
+        })
+
+        if not error.recoverable:
+            self.alert_ops_team(error)
+```
+
+#### 3. Stateful Callbacks
+
+**DO: Accumulate state for post-processing**
+
+```python
+class StatefulCallbacks:
+    def __init__(self):
+        self.segments = []
+        self.risk_flags = []
+
+    def on_segment_finalized(self, segment):
+        self.segments.append(segment)
+
+    def on_semantic_update(self, payload):
+        if payload.risk_tags:
+            self.risk_flags.append({
+                "turn_id": payload.turn.id,
+                "tags": payload.risk_tags,
+                "timestamp": payload.turn.start,
+            })
+
+    def generate_report(self):
+        return {
+            "total_segments": len(self.segments),
+            "total_duration": self.segments[-1].end - self.segments[0].start,
+            "risk_flags": self.risk_flags,
+        }
+```
+
+#### 4. Async Considerations (v2.0 Future)
+
+**Current (v1.9): Synchronous callbacks only**
+
+```python
+class MyCallbacks:
+    def on_segment_finalized(self, segment):
+        # Must be synchronous - blocks streaming pipeline
+        self.db.insert(segment)
+```
+
+**Future (v2.0): Async callback support planned**
+
+```python
+class AsyncCallbacks:
+    async def on_segment_finalized(self, segment):
+        # Non-blocking database insert
+        await self.db.insert_async(segment)
+        await self.notify_websocket_clients(segment)
+```
+
+**Workaround for v1.9: Use background queue**
+
+```python
+import queue
+import threading
+
+class QueuedCallbacks:
+    def __init__(self):
+        self.segment_queue = queue.Queue()
+        self.worker_thread = threading.Thread(target=self._worker, daemon=True)
+        self.worker_thread.start()
+
+    def on_segment_finalized(self, segment):
+        # Non-blocking enqueue
+        self.segment_queue.put(segment)
+
+    def _worker(self):
+        while True:
+            segment = self.segment_queue.get()
+            # Async-like processing in background thread
+            self.db.insert(segment)
+            self.segment_queue.task_done()
+```
+
+---
+
+### Running the Demo
+
+See the complete working example in `examples/streaming/callback_demo.py`:
+
+```bash
+# Basic demo with sample transcript
+uv run python examples/streaming/callback_demo.py
+
+# With custom audio and prosody enrichment
+uv run python examples/streaming/callback_demo.py \
+    --audio input_audio/conversation.wav \
+    --enable-prosody
+
+# Verbose mode (show full audio_state)
+uv run python examples/streaming/callback_demo.py \
+    --audio input_audio/conversation.wav \
+    --enable-prosody \
+    --verbose
+```
+
+---
+
+### Async Callback Support (Future: v2.0.0)
+
+Async callback support is planned for v2.0.0 to enable non-blocking downstream processing:
+
+```python
+import asyncio
+from typing import Protocol
+
+class AsyncStreamCallbacks(Protocol):
+    """Async variant for non-blocking callbacks (v2.0.0+)."""
+
+    async def on_segment_finalized(self, segment: StreamSegment) -> None: ...
+    async def on_semantic_update(self, payload: SemanticUpdatePayload) -> None: ...
+    async def on_error(self, error: StreamingError) -> None: ...
+
+class AsyncProcessor:
+    async def on_segment_finalized(self, segment):
+        # Non-blocking database insert
+        await self.db.insert(segment)
+        # Non-blocking WebSocket broadcast
+        await self.ws_manager.broadcast(segment)
+
+# Async session wrapper (v2.0.0+)
+async with AsyncStreamingSession(config, AsyncProcessor()) as session:
+    async for chunk in audio_stream:
+        await session.ingest_chunk(chunk)
+```
+
+---
+
+## WebSocket Protocol (v2.0.0)
+
+The v2.0.0 release introduces a WebSocket-based real-time streaming API.
+
+### Connection Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    WEBSOCKET CONNECTION LIFECYCLE                        │
+└─────────────────────────────────────────────────────────────────────────┘
+
+ Client                                                      Server
+   │                                                           │
+   │  WS CONNECT /stream                                       │
+   │──────────────────────────────────────────────────────────▶│
+   │                                                           │
+   │                           CONNECTED                       │
+   │◀──────────────────────────────────────────────────────────│
+   │                                                           │
+   │  START_SESSION {config: {...}}                            │
+   │──────────────────────────────────────────────────────────▶│
+   │                                                           │
+   │                   SESSION_STARTED {session_id}            │
+   │◀──────────────────────────────────────────────────────────│
+   │                                                           │
+   │  AUDIO_CHUNK {data: base64, sequence: 1}                  │
+   │──────────────────────────────────────────────────────────▶│
+   │                                                           │
+   │                   PARTIAL {segment: {...}}                │
+   │◀──────────────────────────────────────────────────────────│
+   │                                                           │
+   │  AUDIO_CHUNK {data: base64, sequence: 2}                  │
+   │──────────────────────────────────────────────────────────▶│
+   │                                                           │
+   │                   FINALIZED {segment: {...}}              │
+   │◀──────────────────────────────────────────────────────────│
+   │                                                           │
+   │                   SEMANTIC_UPDATE {payload: {...}}        │
+   │◀──────────────────────────────────────────────────────────│
+   │                                                           │
+   │  END_SESSION                                              │
+   │──────────────────────────────────────────────────────────▶│
+   │                                                           │
+   │                   SESSION_ENDED {stats: {...}}            │
+   │◀──────────────────────────────────────────────────────────│
+   │                                                           │
+   │  WS CLOSE                                                 │
+   │◀─────────────────────────────────────────────────────────▶│
+   │                                                           │
+```
+
+### Message Types
+
+#### Client → Server
+
+| Type | Payload | Description |
+|------|---------|-------------|
+| `START_SESSION` | `{config: StreamConfig}` | Initialize streaming session |
+| `AUDIO_CHUNK` | `{data: string, sequence: int}` | Base64-encoded audio chunk |
+| `END_SESSION` | `{}` | Finalize and close session |
+| `PING` | `{timestamp: int}` | Heartbeat request |
+
+#### Server → Client
+
+| Type | Payload | Description |
+|------|---------|-------------|
+| `SESSION_STARTED` | `{session_id: string}` | Session ready |
+| `PARTIAL` | `{segment: StreamSegment}` | Partial segment update |
+| `FINALIZED` | `{segment: StreamSegment}` | Finalized segment |
+| `SPEAKER_TURN` | `{turn: Turn}` | Speaker change detected |
+| `SEMANTIC_UPDATE` | `{payload: SemanticUpdatePayload}` | Semantic annotation |
+| `ERROR` | `{code: string, message: string, recoverable: bool}` | Error notification |
+| `SESSION_ENDED` | `{stats: dict}` | Session statistics |
+| `PONG` | `{timestamp: int}` | Heartbeat response |
+
+### Example: WebSocket Client (JavaScript)
+
+```javascript
+const ws = new WebSocket('ws://localhost:8000/stream');
+
+ws.onopen = () => {
+    // Start session with configuration
+    ws.send(JSON.stringify({
+        type: 'START_SESSION',
+        config: {
+            max_gap_sec: 1.0,
+            enable_prosody: true,
+            enable_emotion: true
+        }
+    }));
+};
+
+ws.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+
+    switch (message.type) {
+        case 'SESSION_STARTED':
+            console.log(`Session started: ${message.session_id}`);
+            startAudioCapture();
+            break;
+
+        case 'PARTIAL':
+            updateLiveCaption(message.segment.text);
+            break;
+
+        case 'FINALIZED':
+            appendToTranscript(message.segment);
+            break;
+
+        case 'SEMANTIC_UPDATE':
+            handleSemantics(message.payload);
+            break;
+
+        case 'ERROR':
+            if (!message.recoverable) {
+                handleFatalError(message);
+            }
+            break;
+    }
+};
+
+function sendAudioChunk(audioData, sequence) {
+    ws.send(JSON.stringify({
+        type: 'AUDIO_CHUNK',
+        data: btoa(audioData),  // Base64 encode
+        sequence: sequence
+    }));
+}
+```
+
+### REST Endpoints (v2.0.0)
+
+Companion REST endpoints for session management:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/stream/sessions` | POST | Create new session (returns session_id) |
+| `/stream/sessions/{id}/status` | GET | Get session status and stats |
+| `/stream/sessions/{id}` | DELETE | Force-close session |
+| `/stream/config` | GET | Get default streaming configuration |
+
+---
+
+## Performance Characteristics
+
+### Latency Targets
+
+| Operation | Target (P50) | Target (P95) | Current (v1.8) |
+|-----------|--------------|--------------|----------------|
+| Chunk ingestion | < 1ms | < 5ms | ~0.5ms |
+| Prosody extraction | < 10ms | < 30ms | ~15ms |
+| Emotion extraction | < 100ms | < 200ms | ~150ms |
+| Full enrichment | < 120ms | < 250ms | ~170ms |
+| Semantic annotation | < 20ms | < 50ms | ~25ms |
+| End-to-end (with enrichment) | < 150ms | < 300ms | ~200ms |
+
+### Memory Usage
+
+| Component | Per-Session | Notes |
+|-----------|-------------|-------|
+| StreamingSession | ~10 KB | Base state machine |
+| StreamingEnrichmentSession | ~50 MB | Audio extractor + models |
+| LiveSemanticSession | ~5 KB + context | Context window scales with turns |
+| Emotion model (loaded) | ~2 GB | Shared across sessions |
+
+### Throughput
+
+| Metric | Target | Current (v1.8) |
+|--------|--------|----------------|
+| Concurrent sessions (GPU) | > 10 | ~8 |
+| Concurrent sessions (CPU) | > 3 | ~3 |
+| Chunks per second per session | > 10 | ~20 |
+| Audio real-time factor | < 0.3x | ~0.25x |
+
+### Scaling Recommendations
+
+**Horizontal Scaling:**
+- One session per audio stream
+- Use message queue (Redis Streams, Kafka) for distribution
+- Stateless design enables load balancing
+
+**Vertical Scaling:**
+- GPU-accelerated ASR and emotion (CUDA)
+- CPU-only prosody extraction
+- Separate GPU instances for high-throughput LLM
+
+**Memory Management:**
+- Use `context_window_turns` to bound context memory
+- Call `session.reset()` between streams for same audio file
+- Lazy model loading reduces cold start memory
+
+---
+
+## Examples
+
+### Example 1: Basic Streaming
+
+```python
+"""Minimal streaming example without enrichment."""
+
+from transcription.streaming import (
+    StreamChunk,
+    StreamConfig,
+    StreamingSession,
+    StreamEventType,
+)
+
+# Simulate ASR output chunks
+chunks: list[StreamChunk] = [
+    {"start": 0.0, "end": 1.5, "text": "Hello", "speaker_id": "spk_0"},
+    {"start": 1.5, "end": 3.0, "text": "world", "speaker_id": "spk_0"},
+    {"start": 4.5, "end": 6.0, "text": "How are you?", "speaker_id": "spk_1"},
+]
+
+# Initialize session
 session = StreamingSession(StreamConfig(max_gap_sec=1.0))
 
-for chunk in stream_of_chunks:
+# Process chunks
+for chunk in chunks:
     events = session.ingest_chunk(chunk)
     for event in events:
         if event.type == StreamEventType.PARTIAL_SEGMENT:
-            print("Partial:", event.segment.text)
+            print(f"[PARTIAL] {event.segment.speaker_id}: {event.segment.text}")
         elif event.type == StreamEventType.FINAL_SEGMENT:
-            print("Final:", event.segment.text)
+            print(f"[FINAL] {event.segment.speaker_id}: {event.segment.text}")
 
+# Finalize
 for event in session.end_of_stream():
-    print("Final:", event.segment.text)
+    print(f"[FINAL] {event.segment.speaker_id}: {event.segment.text}")
+```
+
+Output:
+```
+[PARTIAL] spk_0: Hello
+[PARTIAL] spk_0: Hello world
+[FINAL] spk_0: Hello world
+[PARTIAL] spk_1: How are you?
+[FINAL] spk_1: How are you?
+```
+
+### Example 2: Streaming with Audio Enrichment
+
+```python
+"""Streaming with real-time prosody and emotion extraction."""
+
+from pathlib import Path
+from transcription.streaming_enrich import (
+    StreamingEnrichmentSession,
+    StreamingEnrichmentConfig,
+)
+from transcription.streaming import StreamConfig, StreamEventType
+
+# Configuration
+config = StreamingEnrichmentConfig(
+    base_config=StreamConfig(max_gap_sec=1.0),
+    enable_prosody=True,
+    enable_emotion=True,
+)
+
+# Initialize with audio file
+wav_path = Path("conversation.wav")
+session = StreamingEnrichmentSession(wav_path, config)
+
+# Simulate chunks from ASR
+chunks = [
+    {"start": 0.0, "end": 2.5, "text": "This is exciting!", "speaker_id": "spk_0"},
+    {"start": 3.0, "end": 5.0, "text": "I agree completely.", "speaker_id": "spk_1"},
+]
+
+for chunk in chunks:
+    events = session.ingest_chunk(chunk)
+    for event in events:
+        if event.type == StreamEventType.FINAL_SEGMENT:
+            seg = event.segment
+            audio = seg.audio_state or {}
+
+            print(f"\n[FINAL] {seg.speaker_id}: {seg.text}")
+            print(f"  Rendering: {audio.get('rendering', 'N/A')}")
+
+            if prosody := audio.get("prosody"):
+                print(f"  Pitch: {prosody.get('pitch', {}).get('level', 'N/A')}")
+                print(f"  Energy: {prosody.get('energy', {}).get('level', 'N/A')}")
+
+            if emotion := audio.get("emotion"):
+                print(f"  Valence: {emotion.get('valence', {}).get('level', 'N/A')}")
+
+# Finalize and get stats
+for event in session.end_of_stream():
+    seg = event.segment
+    print(f"\n[FINAL] {seg.speaker_id}: {seg.text}")
+
+stats = session.get_stats()
+print(f"\n--- Stats ---")
+print(f"Chunks: {stats['chunk_count']}")
+print(f"Segments: {stats['segment_count']}")
+print(f"Errors: {stats['enrichment_errors']}")
+```
+
+### Example 3: Live Semantic Annotation
+
+```python
+"""Turn-aware semantic annotation for action item detection."""
+
+from transcription.streaming_semantic import (
+    LiveSemanticSession,
+    LiveSemanticsConfig,
+)
+from transcription.streaming import StreamChunk, StreamEventType
+
+# Configuration
+config = LiveSemanticsConfig(
+    turn_gap_sec=2.0,
+    context_window_turns=10,
+    enable_action_detection=True,
+)
+
+session = LiveSemanticSession(config)
+
+# Conversation chunks
+chunks: list[StreamChunk] = [
+    {"start": 0.0, "end": 3.0, "text": "Can you review the proposal?", "speaker_id": "spk_0"},
+    {"start": 3.5, "end": 5.0, "text": "Sure, I'll do it by Friday.", "speaker_id": "spk_1"},
+    {"start": 8.0, "end": 11.0, "text": "Great, also schedule a follow-up meeting.", "speaker_id": "spk_0"},
+]
+
+action_items = []
+
+for chunk in chunks:
+    events = session.ingest_chunk(chunk)
+
+    for event in events:
+        if event.type == StreamEventType.SEMANTIC_UPDATE:
+            payload = event.semantic
+            print(f"\nTurn: {payload.turn.speaker_id}: {payload.turn.text}")
+            print(f"  Keywords: {payload.keywords}")
+            print(f"  Questions: {payload.question_count}")
+
+            if payload.actions:
+                for action in payload.actions:
+                    action_items.append({
+                        "speaker": payload.turn.speaker_id,
+                        "action": action,
+                        "timestamp": payload.turn.start,
+                    })
+                    print(f"  ACTION: {action}")
+
+# Finalize
+for event in session.end_of_stream():
+    if event.type == StreamEventType.SEMANTIC_UPDATE:
+        for action in event.semantic.actions:
+            action_items.append({
+                "speaker": event.semantic.turn.speaker_id,
+                "action": action,
+            })
+
+# Get LLM-ready context
+llm_context = session.render_context_for_llm()
+print(f"\n--- LLM Context ---\n{llm_context}")
+print(f"\n--- Action Items ---")
+for item in action_items:
+    print(f"  - {item}")
+```
+
+### Example 4: Full Pipeline Integration
+
+```python
+"""Complete streaming pipeline with all layers."""
+
+from pathlib import Path
+from transcription.streaming import StreamConfig, StreamChunk, StreamEventType
+from transcription.streaming_enrich import (
+    StreamingEnrichmentSession,
+    StreamingEnrichmentConfig,
+)
+from transcription.streaming_semantic import (
+    LiveSemanticSession,
+    LiveSemanticsConfig,
+)
+
+class StreamingPipeline:
+    """Unified streaming pipeline combining enrichment and semantics."""
+
+    def __init__(self, wav_path: Path):
+        # Enrichment layer
+        self.enrich_session = StreamingEnrichmentSession(
+            wav_path,
+            StreamingEnrichmentConfig(
+                base_config=StreamConfig(max_gap_sec=1.0),
+                enable_prosody=True,
+                enable_emotion=True,
+            )
+        )
+
+        # Semantic layer
+        self.semantic_session = LiveSemanticSession(
+            LiveSemanticsConfig(
+                turn_gap_sec=2.0,
+                context_window_turns=15,
+            )
+        )
+
+        self.finalized_segments = []
+        self.semantic_updates = []
+
+    def process_chunk(self, chunk: StreamChunk) -> dict:
+        """Process a single chunk through all layers."""
+        result = {"partial": None, "finalized": [], "semantic": []}
+
+        # Layer 1: Enrichment
+        enrich_events = self.enrich_session.ingest_chunk(chunk)
+
+        for event in enrich_events:
+            if event.type == StreamEventType.PARTIAL_SEGMENT:
+                result["partial"] = event.segment
+
+            elif event.type == StreamEventType.FINAL_SEGMENT:
+                self.finalized_segments.append(event.segment)
+                result["finalized"].append(event.segment)
+
+                # Layer 2: Semantic (process finalized segments)
+                semantic_events = self.semantic_session.ingest_chunk(chunk)
+                for sem_event in semantic_events:
+                    if sem_event.type == StreamEventType.SEMANTIC_UPDATE:
+                        self.semantic_updates.append(sem_event.semantic)
+                        result["semantic"].append(sem_event.semantic)
+
+        return result
+
+    def finalize(self) -> dict:
+        """End stream and get final results."""
+        result = {"finalized": [], "semantic": []}
+
+        # Finalize enrichment
+        for event in self.enrich_session.end_of_stream():
+            self.finalized_segments.append(event.segment)
+            result["finalized"].append(event.segment)
+
+        # Finalize semantics
+        for event in self.semantic_session.end_of_stream():
+            if event.type == StreamEventType.SEMANTIC_UPDATE:
+                self.semantic_updates.append(event.semantic)
+                result["semantic"].append(event.semantic)
+
+        return result
+
+    def get_summary(self) -> dict:
+        """Get pipeline summary."""
+        return {
+            "segments": len(self.finalized_segments),
+            "semantic_updates": len(self.semantic_updates),
+            "enrich_stats": self.enrich_session.get_stats(),
+            "context_window": self.semantic_session.get_context_window(),
+        }
+
+# Usage
+pipeline = StreamingPipeline(Path("meeting.wav"))
+
+for chunk in stream_of_chunks:
+    result = pipeline.process_chunk(chunk)
+
+    if result["partial"]:
+        update_live_display(result["partial"].text)
+
+    for segment in result["finalized"]:
+        persist_segment(segment)
+
+    for semantic in result["semantic"]:
+        if semantic.risk_tags:
+            trigger_alert(semantic)
+
+final = pipeline.finalize()
+summary = pipeline.get_summary()
 ```
 
 ---
 
-## Integration Patterns (v0.2)
+## Integration Patterns
 
-v0.2 adds **semantic annotation** and **LLM integration** to the streaming pipeline. These patterns show how to combine streaming transcription with real-time semantic enrichment and LLM-based routing.
+### Pattern 1: Streaming + LLM Routing
 
-### Pattern 1: Streaming + Semantic Annotation
-
-Annotate streaming segments with keywords and intent tags as they arrive. Uses `KeywordSemanticAnnotator` from `transcription.semantic` for lightweight, deterministic tagging.
+Route finalized segments to different LLM workflows based on intent.
 
 ```python
-from transcription.streaming import StreamChunk, StreamConfig, StreamingSession, StreamEventType
-from transcription.semantic import KeywordSemanticAnnotator
-
-# Initialize streaming and semantic components
-stream_config = StreamConfig(max_gap_sec=1.0)
-
-session = StreamingSession(stream_config)
-# Use KeywordSemanticAnnotator with default keywords
-annotator = KeywordSemanticAnnotator()
-
-# Process chunks with semantic annotation
-for chunk in stream_of_chunks:
-    events = session.ingest_chunk(chunk)
-
-    for event in events:
-        segment = event.segment
-
-        # Annotate FINAL segments only (avoids re-annotation of changing text)
-        if event.type == StreamEventType.FINAL_SEGMENT:
-            # Create minimal transcript for annotation
-            from transcription.models import Transcript
-            temp_transcript = Transcript(
-                file_name="stream", language="en",
-                segments=[segment], meta={}
-            )
-            annotated_transcript = annotator.annotate(temp_transcript)
-            semantic_data = annotated_transcript.segments[0].annotations.get("semantic", {})
-
-            # Emit annotated segment downstream
-            annotated = {
-                "start": segment.start,
-                "end": segment.end,
-                "text": segment.text,
-                "speaker_id": segment.speaker_id,
-                "keywords": keywords,
-                "intent": intent,
-                "timestamp": segment.end  # Use end time as stable reference
-            }
-            yield annotated
-
-        elif event.type == StreamEventType.PARTIAL_SEGMENT:
-            # Show partial transcription without annotation
-            print(f"[PARTIAL] {segment.text}")
-
-# Finalize and annotate remaining segments
-for event in session.end_of_stream():
-    segment = event.segment
-    keywords = annotator.extract_keywords(segment.text)
-    intent = annotator.classify_intent(segment.text)
-
-    annotated = {
-        "start": segment.start,
-        "end": segment.end,
-        "text": segment.text,
-        "speaker_id": segment.speaker_id,
-        "keywords": keywords,
-        "intent": intent,
-        "timestamp": segment.end
-    }
-    yield annotated
-```
-
-**Key design decisions:**
-- Only annotate `FINAL_SEGMENT` to avoid wasted computation on changing text
-- Use lightweight keyword extraction (no LLM calls) for real-time performance
-- Emit annotated segments incrementally for downstream consumers
-
-**See also:** `docs/LLM_PROMPT_PATTERNS.md` for semantic annotation strategies.
-
-### Pattern 2: Streaming + LLM Routing
-
-Route streaming segments to different LLM workflows based on intent classification. Useful for real-time assistants, meeting bots, or call center analytics.
-
-```python
-from transcription.streaming import StreamChunk, StreamConfig, StreamingSession, StreamEventType
-from transcription.semantic import KeywordSemanticAnnotator, SemanticConfig
-from transcription.llm_utils import render_segment_for_llm
 from enum import Enum
+from transcription.streaming import StreamingSession, StreamEventType
+from transcription.semantic import KeywordSemanticAnnotator
 
 class WorkflowType(Enum):
     QUESTION = "question"
-    ACTION_ITEM = "action_item"
-    DECISION = "decision"
+    ACTION_ITEM = "action"
+    ESCALATION = "escalation"
     GENERAL = "general"
 
-def route_to_workflow(intent: str) -> WorkflowType:
-    """Map intent tags to LLM workflows."""
-    if intent in ("question", "clarification"):
+def route_segment(segment, annotator) -> WorkflowType:
+    """Classify segment intent for routing."""
+    # Quick keyword-based classification
+    text_lower = segment.text.lower()
+
+    if "?" in segment.text:
         return WorkflowType.QUESTION
-    elif intent in ("action_item", "commitment"):
+    if any(kw in text_lower for kw in ["will do", "i'll", "by friday"]):
         return WorkflowType.ACTION_ITEM
-    elif intent in ("decision", "agreement"):
-        return WorkflowType.DECISION
-    else:
-        return WorkflowType.GENERAL
+    if any(kw in text_lower for kw in ["escalate", "manager", "unacceptable"]):
+        return WorkflowType.ESCALATION
+    return WorkflowType.GENERAL
 
-# Initialize components
-session = StreamingSession(StreamConfig(max_gap_sec=1.0))
-annotator = KeywordSemanticAnnotator(SemanticConfig(enable_intent=True))
+# Process and route
+session = StreamingSession()
+annotator = KeywordSemanticAnnotator()
+workflow_queues = {wf: [] for wf in WorkflowType}
 
-# Workflow queues (in production: use proper queue like Redis/RabbitMQ)
-workflow_queues = {
-    WorkflowType.QUESTION: [],
-    WorkflowType.ACTION_ITEM: [],
-    WorkflowType.DECISION: [],
-    WorkflowType.GENERAL: []
-}
-
-# Process chunks and route to workflows
-for chunk in stream_of_chunks:
-    events = session.ingest_chunk(chunk)
-
-    for event in events:
+for chunk in chunks:
+    for event in session.ingest_chunk(chunk):
         if event.type == StreamEventType.FINAL_SEGMENT:
-            segment = event.segment
+            workflow = route_segment(event.segment, annotator)
+            workflow_queues[workflow].append(event.segment)
 
-            # Classify intent and route
-            intent = annotator.classify_intent(segment.text)
-            workflow = route_to_workflow(intent)
-
-            # Prepare LLM-ready format
-            llm_segment = {
-                "text": segment.text,
-                "speaker": segment.speaker_id or "Unknown",
-                "start": segment.start,
-                "end": segment.end,
-                "intent": intent
-            }
-
-            # Route to appropriate workflow queue
-            workflow_queues[workflow].append(llm_segment)
-
-            print(f"[{workflow.value.upper()}] {segment.text}")
-
-            # Trigger LLM processing for high-priority workflows
-            if workflow == WorkflowType.QUESTION:
-                # Example: immediate LLM processing for questions
-                prompt = f"Answer this question from the conversation:\nQ: {segment.text}\nA:"
-                # response = call_llm(prompt)  # Placeholder
-                print(f"  → Triggering immediate LLM response")
-
-# Flush remaining segments
-for event in session.end_of_stream():
-    segment = event.segment
-    intent = annotator.classify_intent(segment.text)
-    workflow = route_to_workflow(intent)
-
-    llm_segment = {
-        "text": segment.text,
-        "speaker": segment.speaker_id or "Unknown",
-        "start": segment.start,
-        "end": segment.end,
-        "intent": intent
-    }
-    workflow_queues[workflow].append(llm_segment)
+            if workflow == WorkflowType.ESCALATION:
+                trigger_immediate_review(event.segment)
 ```
 
-**Key design decisions:**
-- Deterministic routing based on intent tags (no LLM calls in routing logic)
-- Separate queues for different workflow types enable parallel processing
-- High-priority workflows (e.g., questions) can trigger immediate LLM responses
-- Low-priority workflows can batch process after stream ends
+### Pattern 2: Progressive Context Building
 
-**See also:** `docs/LLM_PROMPT_PATTERNS.md` for workflow-specific prompt templates.
-
-### Pattern 3: Progressive Context Building
-
-Build a rolling context window for LLM consumption as segments arrive. Useful for real-time summarization, meeting assistants, or context-aware chatbots.
+Build rolling context for incremental LLM summarization.
 
 ```python
-from transcription.streaming import StreamChunk, StreamConfig, StreamingSession, StreamEventType
-from transcription.llm_utils import render_segment_for_llm
-from transcription.semantic import KeywordSemanticAnnotator, SemanticConfig
 from collections import deque
-from dataclasses import dataclass
+from transcription.streaming import StreamingSession, StreamEventType
 
-@dataclass
 class ContextWindow:
-    """Rolling window of finalized segments for LLM context."""
-    max_segments: int = 10
-    max_time_sec: float = 120.0
-    segments: deque = None
-
-    def __post_init__(self):
-        if self.segments is None:
-            self.segments = deque(maxlen=self.max_segments)
+    def __init__(self, max_turns: int = 10, max_age_sec: float = 120.0):
+        self.max_turns = max_turns
+        self.max_age_sec = max_age_sec
+        self.turns = deque(maxlen=max_turns)
 
     def add(self, segment):
-        """Add segment and prune old segments by time."""
-        self.segments.append(segment)
+        self.turns.append(segment)
+        self._prune_old()
 
-        # Prune segments older than max_time_sec
-        if len(self.segments) > 1:
-            latest_end = self.segments[-1]["end"]
-            while self.segments and (latest_end - self.segments[0]["end"]) > self.max_time_sec:
-                self.segments.popleft()
+    def _prune_old(self):
+        if not self.turns:
+            return
+        cutoff = self.turns[-1].end - self.max_age_sec
+        while self.turns and self.turns[0].end < cutoff:
+            self.turns.popleft()
 
     def render_for_llm(self) -> str:
-        """Render context window as LLM-ready text."""
-        if not self.segments:
-            return ""
-
-        lines = ["Recent conversation context:"]
-        for seg in self.segments:
-            speaker = seg.get("speaker_id") or "Unknown"
-            text = seg["text"]
-            timestamp = f"{seg['start']:.1f}s"
-            lines.append(f"[{timestamp}] {speaker}: {text}")
-
+        lines = ["Recent conversation:"]
+        for seg in self.turns:
+            speaker = seg.speaker_id or "Unknown"
+            lines.append(f"[{seg.start:.1f}s] {speaker}: {seg.text}")
         return "\n".join(lines)
 
-    def get_keywords(self) -> list[str]:
-        """Extract unique keywords from context window."""
-        all_keywords = []
-        for seg in self.segments:
-            all_keywords.extend(seg.get("keywords", []))
-        return list(set(all_keywords))  # Deduplicate
+# Usage
+context = ContextWindow(max_turns=15, max_age_sec=180.0)
+session = StreamingSession()
 
-# Initialize components
-session = StreamingSession(StreamConfig(max_gap_sec=1.0))
-annotator = KeywordSemanticAnnotator(SemanticConfig(enable_keywords=True, enable_intent=True))
-context = ContextWindow(max_segments=15, max_time_sec=180.0)
-
-# Process chunks with progressive context building
-for chunk in stream_of_chunks:
-    events = session.ingest_chunk(chunk)
-
-    for event in events:
+for chunk in chunks:
+    for event in session.ingest_chunk(chunk):
         if event.type == StreamEventType.FINAL_SEGMENT:
-            segment = event.segment
+            context.add(event.segment)
 
-            # Annotate segment
-            keywords = annotator.extract_keywords(segment.text)
-            intent = annotator.classify_intent(segment.text)
-
-            # Add to context window
-            context_segment = {
-                "start": segment.start,
-                "end": segment.end,
-                "text": segment.text,
-                "speaker_id": segment.speaker_id,
-                "keywords": keywords,
-                "intent": intent
-            }
-            context.add(context_segment)
-
-            print(f"[FINAL] {segment.text}")
-            print(f"  Context: {len(context.segments)} segments, keywords={context.get_keywords()}")
-
-            # Example: trigger LLM summary every 5 segments
-            if len(context.segments) % 5 == 0:
-                llm_context = context.render_for_llm()
-                prompt = f"{llm_context}\n\nSummarize the key points discussed:"
-                # summary = call_llm(prompt)  # Placeholder
-                print(f"  → Triggering incremental summary")
-
-        elif event.type == StreamEventType.PARTIAL_SEGMENT:
-            print(f"[PARTIAL] {event.segment.text}")
-
-# Finalize context and generate final summary
-for event in session.end_of_stream():
-    segment = event.segment
-    keywords = annotator.extract_keywords(segment.text)
-    intent = annotator.classify_intent(segment.text)
-
-    context_segment = {
-        "start": segment.start,
-        "end": segment.end,
-        "text": segment.text,
-        "speaker_id": segment.speaker_id,
-        "keywords": keywords,
-        "intent": intent
-    }
-    context.add(context_segment)
-
-# Generate final summary with full context
-llm_context = context.render_for_llm()
-keywords = context.get_keywords()
-prompt = f"""{llm_context}
-
-Conversation keywords: {', '.join(keywords)}
-
-Generate a final summary covering:
-1. Main topics discussed
-2. Key decisions made
-3. Action items identified
-"""
-# final_summary = call_llm(prompt)  # Placeholder
-print(f"\n[STREAM END] Final context: {len(context.segments)} segments")
+            # Trigger summary every 5 segments
+            if len(context.turns) % 5 == 0:
+                llm_prompt = f"{context.render_for_llm()}\n\nSummarize:"
+                # summary = call_llm(llm_prompt)
 ```
 
-**Key design decisions:**
-- Rolling window with dual constraints: max segments AND max time
-- Incremental summaries every N segments (configurable trigger)
-- Context pruning prevents unbounded memory growth
-- Final summary uses full context window
-- Keywords tracked across window for topic continuity
+### Pattern 3: Real-Time Metrics
 
-**See also:**
-- `transcription/llm_utils.py` for `render_segment_for_llm()` utilities
-- `docs/LLM_PROMPT_PATTERNS.md` for progressive summarization prompts
+Track streaming performance metrics.
 
----
-
-## Performance Considerations
-
-### Real-Time Constraints
-
-**Latency budget per chunk:**
-- ASR decoding: ~100-500ms (faster-whisper on GPU)
-- Keyword extraction: ~1-5ms (regex-based)
-- Intent classification: ~1-5ms (keyword matching)
-- LLM routing decision: <1ms (dict lookup)
-- **Total: ~100-510ms** (suitable for real-time streaming)
-
-**NOT real-time:**
-- Full LLM summarization: 1-10s per call (depends on model, context length)
-- Emotion recognition: 50-200ms per segment (wav2vec2 model)
-- Speaker diarization: 100-500ms per segment (pyannote.audio)
-
-### Throughput Optimization
-
-**Batching strategies:**
-- **Semantic annotation**: Batch FINAL segments for keyword extraction (not implemented in v0.2, future optimization)
-- **LLM calls**: Buffer segments and batch every N segments or T seconds
-- **Workflow routing**: Use async queues to decouple streaming from LLM processing
-
-**Memory management:**
-- Use `ContextWindow.max_segments` to bound memory usage
-- Prune old segments by time window (e.g., keep last 2 minutes)
-- For long streams (>1 hour), periodically checkpoint context and reset
-
-### Scaling Patterns
-
-**Horizontal scaling:**
-- Run multiple `StreamingSession` instances (one per audio stream)
-- Use message queue (Redis Streams, Kafka) to distribute chunks
-- Route LLM workflows to separate worker pools by priority
-
-**Vertical scaling:**
-- GPU-accelerated ASR (faster-whisper with CUDA)
-- CPU-only semantic annotation (keyword extraction is fast)
-- Offload LLM calls to separate GPU instances
-
-**Backpressure handling:**
-- If LLM workflow queues grow too large, drop low-priority segments
-- Implement exponential backoff for retries
-- Log dropped segments for offline batch processing
-
-### Monitoring Metrics
-
-**Key metrics to track:**
-- Chunk ingestion rate (chunks/sec)
-- End-to-end latency (chunk arrival → annotated output)
-- Context window size (segments, time span)
-- LLM call frequency and latency
-- Workflow queue depths
-
-**Example monitoring:**
 ```python
 import time
 from dataclasses import dataclass, field
@@ -481,46 +1637,143 @@ class StreamMetrics:
     chunks_ingested: int = 0
     segments_finalized: int = 0
     segments_partial: int = 0
-    llm_calls: int = 0
+    semantic_updates: int = 0
+    errors: int = 0
     start_time: float = field(default_factory=time.time)
 
-    def record_chunk(self):
+    def record_event(self, event_type: str):
+        if event_type == "partial":
+            self.segments_partial += 1
+        elif event_type == "finalized":
+            self.segments_finalized += 1
+        elif event_type == "semantic":
+            self.semantic_updates += 1
+        elif event_type == "error":
+            self.errors += 1
         self.chunks_ingested += 1
 
-    def record_final_segment(self):
-        self.segments_finalized += 1
-
-    def record_partial_segment(self):
-        self.segments_partial += 1
-
-    def record_llm_call(self):
-        self.llm_calls += 1
-
-    def report(self):
+    def report(self) -> dict:
         elapsed = time.time() - self.start_time
         return {
-            "elapsed_sec": elapsed,
-            "chunks_per_sec": self.chunks_ingested / elapsed,
+            "elapsed_sec": round(elapsed, 2),
+            "chunks_per_sec": round(self.chunks_ingested / max(elapsed, 0.001), 2),
             "segments_finalized": self.segments_finalized,
-            "segments_partial": self.segments_partial,
-            "llm_calls": self.llm_calls,
-            "llm_calls_per_min": (self.llm_calls / elapsed) * 60
+            "error_rate": round(self.errors / max(self.chunks_ingested, 1), 4),
         }
 
-# Usage
+# Usage with session
 metrics = StreamMetrics()
-for chunk in stream_of_chunks:
-    metrics.record_chunk()
-    events = session.ingest_chunk(chunk)
-    for event in events:
-        if event.type == StreamEventType.FINAL_SEGMENT:
-            metrics.record_final_segment()
-        else:
-            metrics.record_partial_segment()
+session = StreamingSession()
+
+for chunk in chunks:
+    try:
+        events = session.ingest_chunk(chunk)
+        for event in events:
+            if event.type == StreamEventType.FINAL_SEGMENT:
+                metrics.record_event("finalized")
+            else:
+                metrics.record_event("partial")
+    except Exception as e:
+        metrics.record_event("error")
+        logger.error(f"Stream error: {e}")
 
 print(metrics.report())
 ```
 
-**See also:**
-- `transcription/service.py` for production service patterns
-- `docs/DEPLOYMENT.md` for scaling and monitoring guidance (future)
+---
+
+## Monitoring and Metrics
+
+### Key Metrics to Track
+
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| `stream.chunk_rate` | Chunks ingested per second | < 5/s (stalled) |
+| `stream.latency_p95` | End-to-end latency (P95) | > 500ms |
+| `stream.error_rate` | Errors per chunk | > 1% |
+| `stream.context_size` | Context window turns | > 50 (memory) |
+| `enrichment.duration_ms` | Enrichment time per segment | > 300ms |
+| `semantic.turn_rate` | Turns finalized per minute | N/A (informational) |
+
+### Prometheus Metrics Example
+
+```python
+from prometheus_client import Counter, Histogram, Gauge
+
+# Counters
+chunks_total = Counter('stream_chunks_total', 'Total chunks ingested')
+segments_total = Counter('stream_segments_total', 'Total segments finalized',
+                         ['type'])  # partial, finalized
+errors_total = Counter('stream_errors_total', 'Total stream errors',
+                       ['error_type'])
+
+# Histograms
+latency_histogram = Histogram(
+    'stream_latency_seconds',
+    'End-to-end latency',
+    buckets=[0.05, 0.1, 0.2, 0.3, 0.5, 1.0]
+)
+enrichment_histogram = Histogram(
+    'enrichment_duration_seconds',
+    'Enrichment processing time',
+    buckets=[0.01, 0.05, 0.1, 0.2, 0.5]
+)
+
+# Gauges
+active_sessions = Gauge('stream_active_sessions', 'Number of active sessions')
+context_window_size = Gauge('stream_context_window_size', 'Context window size')
+
+# Usage in session
+class InstrumentedSession:
+    def ingest_chunk(self, chunk):
+        chunks_total.inc()
+        start = time.time()
+
+        try:
+            events = self._session.ingest_chunk(chunk)
+            for event in events:
+                segments_total.labels(type=event.type.value).inc()
+            latency_histogram.observe(time.time() - start)
+            return events
+        except Exception as e:
+            errors_total.labels(error_type=type(e).__name__).inc()
+            raise
+```
+
+### Logging Configuration
+
+```python
+import logging
+
+# Configure streaming logger
+logging.getLogger("transcription.streaming").setLevel(logging.INFO)
+logging.getLogger("transcription.streaming_enrich").setLevel(logging.DEBUG)
+logging.getLogger("transcription.streaming_semantic").setLevel(logging.INFO)
+
+# Structured logging format
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s [%(name)s] %(message)s'
+))
+```
+
+---
+
+## Related Documentation
+
+- [ROADMAP.md](/ROADMAP.md) - v1.9.0 and v2.0.0 streaming features
+- [API_QUICK_REFERENCE.md](API_QUICK_REFERENCE.md) - Public API summary
+- [LLM_PROMPT_PATTERNS.md](LLM_PROMPT_PATTERNS.md) - LLM integration patterns
+- [CONFIGURATION.md](CONFIGURATION.md) - Configuration management
+- [PERFORMANCE.md](PERFORMANCE.md) - Performance benchmarks
+
+---
+
+## Changelog
+
+| Version | Changes |
+|---------|---------|
+| v1.7.0 | Initial streaming enrichment and live semantics |
+| v1.8.0 | Word-level alignment support in segments |
+| v1.9.0 | Event callback API with StreamCallbacks protocol, StreamingError dataclass, invoke_callback_safely helper |
+| v2.0.0 | WebSocket protocol, LLM-backed semantics, async callbacks (planned) |

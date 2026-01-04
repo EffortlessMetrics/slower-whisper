@@ -5,9 +5,12 @@ Tests that enable_diarization=True doesn't crash the pipeline,
 and properly marks the transcript with meta.diarization.status.
 """
 
+from __future__ import annotations
+
 import subprocess
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -666,7 +669,7 @@ def test_transcribe_file_without_diarization(tmp_path, sample_audio_path):
 
 
 @pytest.fixture
-def sample_audio_path(tmp_path):
+def sample_audio_path(tmp_path: Path) -> Path:
     """
     Create a minimal WAV file for testing.
 
