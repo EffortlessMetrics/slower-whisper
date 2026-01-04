@@ -79,6 +79,12 @@ from .api import (
 )
 from .chunking import ChunkingConfig, build_chunks
 from .config import AppConfig, AsrConfig, EnrichmentConfig, Paths, TranscriptionConfig
+from .device import (
+    ResolvedDevice,
+    format_preflight_banner,
+    get_device_summary,
+    resolve_device,
+)
 from .exceptions import (
     ConfigurationError,
     EnrichmentError,
@@ -191,6 +197,11 @@ __all__ = [
     "turn_to_dict",
     "get_speaker_id",
     "get_speaker_label_or_id",
+    # Device detection (v1.9.1+)
+    "ResolvedDevice",
+    "resolve_device",
+    "format_preflight_banner",
+    "get_device_summary",
     # Exceptions
     "SlowerWhisperError",
     "TranscriptionError",
