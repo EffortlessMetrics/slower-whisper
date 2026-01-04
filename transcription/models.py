@@ -184,6 +184,13 @@ class Chunk:
 
     Chunks group one or more turns/segments into a RAG-ready slice with
     stable IDs and lightweight metadata for loaders.
+
+    Turn-aware metadata (v1.3.1+):
+        crosses_turn_boundary: True if chunk contains segments from multiple turns.
+        turn_boundary_count: Number of speaker turn transitions within this chunk.
+        has_rapid_turn_taking: True if chunk contains rapid turn-taking patterns
+            (speaker switches with minimal gaps).
+        has_overlapping_speech: True if chunk contains overlapping speech segments.
     """
 
     id: str
@@ -194,6 +201,11 @@ class Chunk:
     speaker_ids: list[str] = field(default_factory=list)
     token_count_estimate: int = 0
     text: str = ""
+    # Turn-aware metadata (v1.3.1+)
+    crosses_turn_boundary: bool = False
+    turn_boundary_count: int = 0
+    has_rapid_turn_taking: bool = False
+    has_overlapping_speech: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize chunk to a JSON-serializable dict.
@@ -210,6 +222,10 @@ class Chunk:
             "speaker_ids": list(self.speaker_ids),
             "token_count_estimate": self.token_count_estimate,
             "text": self.text,
+            "crosses_turn_boundary": self.crosses_turn_boundary,
+            "turn_boundary_count": self.turn_boundary_count,
+            "has_rapid_turn_taking": self.has_rapid_turn_taking,
+            "has_overlapping_speech": self.has_overlapping_speech,
         }
 
     @classmethod
@@ -223,6 +239,10 @@ class Chunk:
             speaker_ids=list(d.get("speaker_ids", [])),
             token_count_estimate=int(d.get("token_count_estimate", 0)),
             text=str(d.get("text", "")),
+            crosses_turn_boundary=bool(d.get("crosses_turn_boundary", False)),
+            turn_boundary_count=int(d.get("turn_boundary_count", 0)),
+            has_rapid_turn_taking=bool(d.get("has_rapid_turn_taking", False)),
+            has_overlapping_speech=bool(d.get("has_overlapping_speech", False)),
         )
 
 
