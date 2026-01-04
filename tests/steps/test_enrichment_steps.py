@@ -5,8 +5,11 @@ This module implements Gherkin steps for testing the audio enrichment pipeline
 using pytest-bdd. Steps use the public API from transcription.api.
 """
 
+from __future__ import annotations
+
 import shutil
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -41,7 +44,7 @@ scenarios("../features/enrichment.feature")
 
 
 @pytest.fixture
-def enrich_state():
+def enrich_state() -> dict[str, Any]:
     """Shared state dictionary for enrichment tests."""
     return {
         "project_root": None,

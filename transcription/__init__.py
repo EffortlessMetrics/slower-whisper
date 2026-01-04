@@ -58,7 +58,7 @@ from typing import Any
 
 # Version of the transcription pipeline; included in JSON metadata.
 # Must be defined before other imports to avoid circular imports
-__version__ = "1.8.0"
+__version__ = "1.9.0"
 
 # Configure global cache environment for all model downloads
 # This ensures all HF/torch models are cached under SLOWER_WHISPER_CACHE_ROOT
@@ -110,6 +110,9 @@ from .models import (
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
 from .speaker_id import get_speaker_id, get_speaker_label_or_id
 from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamEventType, StreamingSession
+
+# v1.9.0 streaming callbacks
+from .streaming_callbacks import StreamCallbacks, StreamingError
 
 # v1.7.0 streaming features
 from .streaming_enrich import StreamingEnrichmentConfig, StreamingEnrichmentSession
@@ -181,6 +184,9 @@ __all__ = [
     "StreamingEnrichmentSession",
     "LiveSemanticSession",
     "SemanticUpdatePayload",
+    # v1.9.0: Streaming callbacks
+    "StreamCallbacks",
+    "StreamingError",
     # Utilities
     "turn_to_dict",
     "get_speaker_id",
