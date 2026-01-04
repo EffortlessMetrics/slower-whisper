@@ -81,23 +81,23 @@ def _detect_ctranslate2_cuda() -> tuple[bool, int, str | None]:
         return False, 0, f"CTranslate2 CUDA detection failed: {e}"
 
 
-def _detect_torch_cuda() -> tuple[bool, str | None]:
+def _detect_torch_cuda() -> tuple[bool, int, str | None]:
     """Detect CUDA availability via PyTorch (for emotion/diarization).
 
     Returns:
-        Tuple of (cuda_available, error_reason)
+        Tuple of (cuda_available, device_count, error_reason)
     """
     try:
         import torch
 
         if torch.cuda.is_available():
-            return True, None
+            return True, torch.cuda.device_count(), None
         else:
-            return False, "torch.cuda.is_available() returned False"
+            return False, 0, "torch.cuda.is_available() returned False"
     except ImportError:
-        return False, "PyTorch not installed"
+        return False, 0, "PyTorch not installed"
     except Exception as e:
-        return False, f"PyTorch CUDA detection failed: {e}"
+        return False, 0, f"PyTorch CUDA detection failed: {e}"
 
 
 def resolve_device(
@@ -125,8 +125,7 @@ def resolve_device(
     if backend == "ctranslate2":
         cuda_available, cuda_count, cuda_error = _detect_ctranslate2_cuda()
     else:
-        cuda_available, cuda_error = _detect_torch_cuda()
-        cuda_count = 0  # torch doesn't provide count in same way
+        cuda_available, cuda_count, cuda_error = _detect_torch_cuda()
 
     # Resolve "auto" to actual device
     if requested == "auto":

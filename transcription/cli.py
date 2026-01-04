@@ -771,17 +771,17 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     _setup_progress_logging(args.progress)
 
     # Resolve device with auto-detection and print preflight banner
-    # cfg.device is validated by CLI choices, so cast is safe
+    # CLI flag is the only "explicit" signal we can trust for device
     requested_device: DeviceChoice = (
-        cfg.device  # type: ignore[assignment]
-        if cfg.device in ("auto", "cuda", "cpu")
-        else "auto"
+        args.device if args.device in ("auto", "cuda", "cpu") else "auto"
     )
     resolved = resolve_device(requested_device, allow_fallback=True)
 
     # Override config with resolved values
     cfg.device = resolved.device
-    if cfg.compute_type is None:
+    # CRITICAL: Only keep user's explicit --compute-type; otherwise sync with resolved device
+    # This prevents CPU fallback from retaining incompatible GPU compute types (e.g., float16)
+    if args.compute_type is None:
         cfg.compute_type = resolved.compute_type
 
     # Print preflight banner to stderr (keeps stdout clean for structured output)

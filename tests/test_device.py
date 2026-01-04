@@ -91,11 +91,12 @@ class TestResolveDevice:
     @patch("transcription.device._detect_torch_cuda")
     def test_torch_backend_uses_torch_detection(self, mock_detect: MagicMock) -> None:
         """When torch backend specified, use torch CUDA detection."""
-        mock_detect.return_value = (True, None)
+        mock_detect.return_value = (True, 1, None)
 
         result = resolve_device("auto", backend="torch")
 
         assert result.device == "cuda"
+        assert result.cuda_device_count == 1
         mock_detect.assert_called_once()
 
 
@@ -227,5 +228,6 @@ class TestDetectionFunctions:
         from transcription.device import _detect_torch_cuda
 
         # This should not raise even if torch is missing
-        available, error = _detect_torch_cuda()
+        available, count, error = _detect_torch_cuda()
         assert isinstance(available, bool)
+        assert isinstance(count, int)
