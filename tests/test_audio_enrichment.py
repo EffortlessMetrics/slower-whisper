@@ -7,6 +7,10 @@ This module tests the enrichment of transcripts with audio features including:
 - Error handling and edge cases
 """
 
+from __future__ import annotations
+
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -50,7 +54,7 @@ except (ImportError, ValueError):
 
 
 @pytest.fixture
-def synthetic_audio():
+def synthetic_audio() -> tuple[np.ndarray, int]:
     """Create synthetic audio for testing (1 second, 16kHz, sine wave)."""
     sr = 16000
     duration = 1.0
@@ -61,7 +65,7 @@ def synthetic_audio():
 
 
 @pytest.fixture
-def synthetic_audio_file(tmp_path, synthetic_audio):
+def synthetic_audio_file(tmp_path: Path, synthetic_audio: tuple[np.ndarray, int]) -> Path:
     """Create a temporary WAV file with synthetic audio."""
     import soundfile as sf
 
@@ -72,7 +76,7 @@ def synthetic_audio_file(tmp_path, synthetic_audio):
 
 
 @pytest.fixture
-def sample_transcript():
+def sample_transcript() -> Transcript:
     """Create a sample transcript for testing."""
     segments = [
         Segment(id=0, start=0.0, end=1.0, text="Hello world"),

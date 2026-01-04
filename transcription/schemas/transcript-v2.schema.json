@@ -180,6 +180,51 @@
               }
             }
           }
+        },
+        "diarization": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "description": "Diarization run status tracking (v1.1+)",
+              "required": ["requested", "status"],
+              "properties": {
+                "requested": {
+                  "type": "boolean",
+                  "description": "Whether diarization was requested via config"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["disabled", "skipped", "ok", "error"],
+                  "description": "Outcome of diarization attempt: disabled (not requested), skipped (requested but unavailable), ok (successful), error (failed)"
+                },
+                "backend": {
+                  "type": ["string", "null"],
+                  "description": "Diarization backend used (e.g., 'pyannote.audio')"
+                },
+                "num_speakers": {
+                  "type": ["integer", "null"],
+                  "minimum": 0,
+                  "description": "Number of speakers detected by diarization"
+                },
+                "error_type": {
+                  "type": ["string", "null"],
+                  "enum": ["missing_dependency", "auth", "file_not_found", "unknown", null],
+                  "description": "Type of error encountered if status is 'error'"
+                },
+                "message": {
+                  "type": ["string", "null"],
+                  "description": "Human-readable status or error message"
+                },
+                "error": {
+                  "type": ["string", "null"],
+                  "description": "Detailed error information if status is 'error'"
+                }
+              },
+              "additionalProperties": false
+            }
+          ],
+          "description": "Diarization run status tracking (v1.1+, null if not attempted)"
         }
       },
       "additionalProperties": true
@@ -318,6 +363,38 @@
     }
   },
   "$defs": {
+    "word": {
+      "type": "object",
+      "description": "Word-level timestamp with optional speaker attribution",
+      "required": ["word", "start", "end"],
+      "properties": {
+        "word": {
+          "type": "string",
+          "description": "The transcribed word"
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Word start time in seconds"
+        },
+        "end": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Word end time in seconds"
+        },
+        "probability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Confidence probability for this word (optional)"
+        },
+        "speaker": {
+          "type": ["string", "null"],
+          "pattern": "^spk_[0-9]+$",
+          "description": "Speaker ID for this word (optional, v1.8+)"
+        }
+      }
+    },
     "segment": {
       "type": "object",
       "description": "A single segment of transcribed audio with optional enriched features",
@@ -341,6 +418,16 @@
         "text": {
           "type": "string",
           "description": "Transcribed text for this segment"
+        },
+        "words": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "array",
+              "items": {"$ref": "#/$defs/word"}
+            }
+          ],
+          "description": "Word-level timestamps with optional speaker attribution (v1.8+)"
         },
         "speaker": {
           "oneOf": [

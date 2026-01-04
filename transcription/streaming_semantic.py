@@ -19,11 +19,15 @@ from __future__ import annotations
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .models import Turn, TurnMeta
 from .semantic import KeywordSemanticAnnotator
 from .streaming import StreamChunk, StreamEvent, StreamEventType, StreamSegment
+from .streaming_callbacks import invoke_callback_safely
+
+if TYPE_CHECKING:
+    from .streaming_callbacks import StreamCallbacks
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +139,7 @@ class LiveSemanticSession:
         self,
         config: LiveSemanticsConfig | None = None,
         annotator: KeywordSemanticAnnotator | None = None,
+        callbacks: StreamCallbacks | None = None,
     ) -> None:
         """Initialize live semantic session.
 
@@ -143,9 +148,13 @@ class LiveSemanticSession:
                    If None, uses default LiveSemanticsConfig().
             annotator: Semantic annotator instance. If None, creates a
                       default KeywordSemanticAnnotator().
+            callbacks: Optional callback handler for semantic update events.
+                      If provided, on_semantic_update will be invoked when
+                      turns are finalized with annotations.
         """
         self.config = config or LiveSemanticsConfig()
         self._annotator = annotator or KeywordSemanticAnnotator()
+        self._callbacks = callbacks
 
         # Turn buffer state
         self._turn_buffer: list[StreamSegment] = []
@@ -342,6 +351,14 @@ class LiveSemanticSession:
 
         # Build semantic payload
         payload = self._build_semantic_payload(annotated_turn)
+
+        # Invoke on_semantic_update callback if provided
+        if self._callbacks:
+            invoke_callback_safely(
+                self._callbacks,
+                "on_semantic_update",
+                payload,
+            )
 
         # Clear turn buffer
         self._turn_buffer = []
