@@ -124,7 +124,8 @@ class StreamCallbacks(Protocol):
                 - keywords: List of extracted keywords
                 - risk_tags: List of detected risk flags
                 - actions: List of action items
-                - context_summary: Recent conversation context
+                - question_count: Number of questions in the turn
+                - context_size: Current context window size (turn count)
         """
         ...
 
