@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -37,7 +38,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def mock_transcribe_directory():
+def mock_transcribe_directory() -> Generator[MagicMock, None, None]:
     """Mock the transcribe_directory API function and run_pipeline."""
     from transcription.pipeline import PipelineBatchResult
 
@@ -63,7 +64,7 @@ def mock_transcribe_directory():
 
 
 @pytest.fixture
-def mock_enrich_directory():
+def mock_enrich_directory() -> Generator[MagicMock, None, None]:
     """Mock the enrich_directory API function."""
     with patch("transcription.cli.enrich_directory") as mock:
         # Return a list of mock enriched transcripts
@@ -72,7 +73,7 @@ def mock_enrich_directory():
 
 
 @pytest.fixture
-def temp_project_root(tmp_path):
+def temp_project_root(tmp_path: Path) -> Path:
     """Create a temporary project structure."""
     root = tmp_path / "project"
     root.mkdir()
