@@ -7,12 +7,16 @@ This module provides:
 - Test configuration
 """
 
+from __future__ import annotations
+
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pytest import Item
 
 # Ensure the project package is importable when running pytest as an installed script
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +31,7 @@ if str(PROJECT_ROOT) not in sys.path:
 os.environ.setdefault("SLOWER_WHISPER_PYANNOTE_MODE", "auto")
 
 
-def mock_module(module_name, attrs=None):
+def mock_module(module_name: str, attrs: dict[str, Any] | None = None) -> MagicMock:
     """Create a mock module with optional attributes."""
     mock = MagicMock()
     if attrs:
@@ -113,35 +117,36 @@ except Exception:
     import numpy as np
 
     class MockSoundFile:
-        def __init__(self, path, mode="r"):
+        def __init__(self, path: str, mode: str = "r") -> None:
             self._wf = wave.open(path, mode)
-            self.samplerate = self._wf.getframerate()
-            self.channels = self._wf.getnchannels()
+            self.samplerate: int = self._wf.getframerate()
+            self.channels: int = self._wf.getnchannels()
 
-        def __len__(self):
-            return self._wf.getnframes()
+        def __len__(self) -> int:
+            # cast needed: wave.Wave_read.getnframes() returns Any in typeshed
+            return int(self._wf.getnframes())
 
-        def __enter__(self):
+        def __enter__(self) -> MockSoundFile:
             return self
 
-        def __exit__(self, *args):
+        def __exit__(self, *args: Any) -> None:
             self._wf.close()
 
-        def seek(self, frame):
+        def seek(self, frame: int) -> None:
             self._wf.setpos(frame)
 
-        def read(self, frames, dtype="float32"):
+        def read(self, frames: int, dtype: str = "float32") -> np.ndarray:
             raw = self._wf.readframes(frames)
             data = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
             return data
 
-    def mock_read(path, dtype="float32"):
+    def mock_read(path: str, dtype: str = "float32") -> tuple[np.ndarray, int]:
         with wave.open(path, "rb") as wf:
             raw = wf.readframes(wf.getnframes())
             data = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
             return (data.astype(dtype), wf.getframerate())
 
-    def mock_write(path, data, sr):
+    def mock_write(path: str | Path, data: Any, sr: int) -> None:
         pcm = (np.array(data, dtype=np.float32) * 32767).astype("<i2")
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -176,6 +181,7 @@ if PYANNOTE_AVAILABLE:
         sys.modules["pyannote.audio"] = mock_module("pyannote.audio", {"Pipeline": MagicMock})
 
 
-def pytest_runtest_setup(item):
+def pytest_runtest_setup(item: Item) -> None:
+    """Skip tests based on marker requirements and dependency availability."""
     if item.get_closest_marker("requires_diarization") and not PYANNOTE_AVAILABLE:
         pytest.skip("pyannote.audio not available; skipping diarization tests")

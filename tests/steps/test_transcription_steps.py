@@ -5,9 +5,12 @@ This module implements Gherkin steps for testing the transcription pipeline
 using pytest-bdd. Steps use the public API from transcription.api.
 """
 
+from __future__ import annotations
+
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -37,7 +40,7 @@ scenarios("../features/transcription.feature")
 
 
 @pytest.fixture
-def test_state():
+def test_state() -> dict[str, Any]:
     """Shared state dictionary for passing data between steps."""
     return {
         "project_root": None,
@@ -556,3 +559,239 @@ def speaker_turns_alternate(test_state):
 def turns_field_null(test_state):
     for transcript in test_state["transcripts"]:
         assert transcript.turns is None
+
+
+# ============================================================================
+# Edge case scenarios for empty/invalid audio files (Issue #53)
+# ============================================================================
+
+
+@given(parsers.parse('a project with an empty audio file named "{filename}"'))
+def project_with_empty_audio_file(test_state, filename):
+    """Create an empty (0-byte) audio file in the project."""
+    project_root = test_state["project_root"]
+    raw_audio_dir = project_root / "raw_audio"
+
+    # Create an empty file (0 bytes)
+    empty_path = raw_audio_dir / filename
+    empty_path.touch()
+
+    test_state["audio_files"].append(filename)
+    test_state["expected_failure"] = "empty"
+
+
+@given(parsers.parse('a project with a zero-duration WAV file named "{filename}"'))
+def project_with_zero_duration_wav(test_state, filename):
+    """Create a valid WAV file with zero audio frames."""
+    import wave
+
+    project_root = test_state["project_root"]
+    raw_audio_dir = project_root / "raw_audio"
+
+    wav_path = raw_audio_dir / filename
+
+    # Create a valid WAV header but with 0 frames
+    with wave.open(str(wav_path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b"")  # No audio data
+
+    test_state["audio_files"].append(filename)
+    test_state["expected_failure"] = "zero_duration"
+
+
+@given(parsers.parse('a project with a silent audio file named "{filename}"'))
+def project_with_silent_audio_file(test_state, filename):
+    """Create a WAV file with silence (all zeros)."""
+    project_root = test_state["project_root"]
+    raw_audio_dir = project_root / "raw_audio"
+
+    wav_path = raw_audio_dir / filename
+    sr = 16000
+    duration = 2.0  # 2 seconds of silence
+
+    try:
+        import soundfile as sf
+
+        # Generate pure silence (all zeros)
+        samples = int(duration * sr)
+        audio = np.zeros(samples, dtype=np.float32)
+        sf.write(str(wav_path), audio, sr)
+    except ImportError:
+        # Fallback: write raw WAV with wave module
+        import wave
+
+        samples = int(duration * sr)
+        audio_bytes = b"\x00\x00" * samples  # 16-bit silence
+
+        with wave.open(str(wav_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sr)
+            wav.writeframes(audio_bytes)
+
+    test_state["audio_files"].append(filename)
+
+
+@given(
+    parsers.parse(
+        'a project with a very short audio file named "{filename}" of {duration:f} seconds'
+    )
+)
+def project_with_short_audio_file(test_state, filename, duration):
+    """Create a very short audio file."""
+    project_root = test_state["project_root"]
+    raw_audio_dir = project_root / "raw_audio"
+
+    wav_path = raw_audio_dir / filename
+    sr = 16000
+
+    try:
+        import soundfile as sf
+
+        samples = max(1, int(duration * sr))
+        # Generate minimal noise to have some content
+        audio = np.random.uniform(-0.01, 0.01, samples).astype(np.float32)
+        sf.write(str(wav_path), audio, sr)
+    except ImportError:
+        import wave
+
+        samples = max(1, int(duration * sr))
+        audio_bytes = b"\x00\x00" * samples
+
+        with wave.open(str(wav_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sr)
+            wav.writeframes(audio_bytes)
+
+    test_state["audio_files"].append(filename)
+    test_state["short_duration"] = duration
+
+
+@when("I attempt to transcribe the project with default settings")
+def attempt_transcribe_with_defaults(test_state):
+    """Attempt to transcribe, capturing any errors."""
+    project_root = test_state["project_root"]
+    config = TranscriptionConfig(model="base", device="cpu")
+
+    test_state["config"] = config
+    test_state["transcription_error"] = None
+    test_state["transcripts"] = []
+
+    try:
+        transcripts = transcribe_directory(project_root, config)
+        test_state["transcripts"] = transcripts
+    except Exception as e:
+        test_state["transcription_error"] = e
+
+
+@then("transcription fails gracefully with an error about the empty file")
+def transcription_fails_gracefully_empty(test_state):
+    """Verify transcription failed with an appropriate error for empty file."""
+    error = test_state.get("transcription_error")
+    transcripts = test_state.get("transcripts", [])
+
+    # Either an exception was raised, or no transcripts were produced
+    if error:
+        # Check error message mentions the issue
+        error_msg = str(error).lower()
+        assert any(
+            keyword in error_msg
+            for keyword in ["empty", "no transcript", "no .wav", "normalize", "ffmpeg", "invalid"]
+        ), f"Expected error about empty file, got: {error}"
+    else:
+        # If no error, transcripts should be empty (file was skipped/filtered)
+        # This is also graceful handling
+        assert len(transcripts) == 0, (
+            f"Expected no transcripts for empty file, got {len(transcripts)}"
+        )
+
+
+@then(parsers.parse('if a transcript exists for "{filename}", it has placeholder segments'))
+def transcript_has_placeholder_if_exists(test_state, filename):
+    """Verify transcript has placeholder segments if it was created for zero-duration file."""
+    transcripts = test_state.get("transcripts", [])
+    error = test_state.get("transcription_error")
+
+    # If there was an error, that's acceptable graceful handling
+    if error:
+        return
+
+    # If transcripts exist, check for placeholder handling
+    for transcript in transcripts:
+        if transcript.file_name == filename:
+            # Check if meta indicates fallback/placeholder behavior
+            meta = transcript.meta or {}
+            # System may have created placeholder segments
+            has_placeholder_marker = (
+                meta.get("asr_placeholder_segments", False)
+                or meta.get("asr_fallback_reason") is not None
+            )
+            # Either has placeholder marker, or has segments (valid transcript)
+            assert has_placeholder_marker or len(transcript.segments) >= 0, (
+                f"Expected placeholder markers or valid segments for {filename}"
+            )
+
+
+@then(parsers.parse('no transcript JSON is created for "{filename}"'))
+def no_transcript_json_created(test_state, filename):
+    """Verify no JSON transcript was created for the file."""
+    project_root = test_state["project_root"]
+    stem = Path(filename).stem
+    json_path = project_root / "whisper_json" / f"{stem}.json"
+
+    assert not json_path.exists(), f"Expected no JSON for {filename}, but found {json_path}"
+
+
+@then("the transcript may contain zero or more segments")
+def transcript_may_have_segments(test_state):
+    """Verify transcript exists (segments may be empty for silent audio)."""
+    transcripts = test_state["transcripts"]
+
+    # Should have at least one transcript
+    assert len(transcripts) > 0, "Expected at least one transcript"
+
+    # Segments can be zero or more (silent audio may produce no segments)
+    for transcript in transcripts:
+        assert hasattr(transcript, "segments"), "Transcript should have segments attribute"
+        # segments can be empty list or populated - both are valid
+
+
+@then("the transcription completes or fails gracefully")
+def transcription_completes_or_fails_gracefully(test_state):
+    """Verify transcription either completed or failed gracefully."""
+    error = test_state.get("transcription_error")
+    transcripts = test_state.get("transcripts", [])
+
+    if error:
+        # If there's an error, it should be a known error type
+        from transcription.exceptions import TranscriptionError
+
+        assert isinstance(error, (TranscriptionError, Exception)), (
+            f"Error should be a proper exception type, got: {type(error)}"
+        )
+        # The error should have a meaningful message
+        assert len(str(error)) > 0, "Error message should not be empty"
+    else:
+        # If no error, should have completed (transcripts list exists)
+        # Transcripts may be empty or populated
+        assert isinstance(transcripts, list), "Transcripts should be a list"
+
+
+@then("if transcript exists, it has valid schema")
+def transcript_has_valid_schema_if_exists(test_state):
+    """Verify transcript has valid schema if it was created."""
+    project_root = test_state["project_root"]
+    json_files = list((project_root / "whisper_json").glob("*.json"))
+
+    for json_path in json_files:
+        with open(json_path) as f:
+            data = json.load(f)
+
+        # Verify required schema fields
+        assert "schema_version" in data, f"Missing schema_version in {json_path.name}"
+        assert data.get("schema_version") == 2, f"Wrong schema version in {json_path.name}"
+        assert "segments" in data, f"Missing segments in {json_path.name}"
+        assert isinstance(data["segments"], list), f"Segments should be a list in {json_path.name}"

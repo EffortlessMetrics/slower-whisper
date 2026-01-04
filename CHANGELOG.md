@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [1.9.0] - 2025-12-31
+
+### Added
+
+- **Event Callback API**: New `StreamCallbacks` protocol for real-time event handling during streaming transcription and enrichment
+  - `on_segment_finalized(segment)`: Called when a segment is finalized with text and timing
+  - `on_speaker_turn(turn)`: Called when a speaker turn is detected (requires diarization)
+  - `on_semantic_update(payload)`: Called when semantic annotations are updated (requires semantic enrichment)
+  - `on_error(error)`: Called when errors occur during processing
+- **Safe Callback Execution**: New `invoke_callback_safely()` helper with exception handling and logging for robust callback invocation
+- **StreamingError Exception**: New exception class for streaming-specific errors with context preservation
+
+### Changed
+
+- **Streaming Architecture**: Callbacks enable real-time integration with external systems (UI updates, logging, analytics)
+- **Error Handling**: Callback errors are logged but don't halt pipeline execution for graceful degradation
+
 ## [1.8.0] - 2025-12-22
 
 ### Added

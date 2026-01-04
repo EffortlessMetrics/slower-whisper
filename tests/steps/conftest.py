@@ -5,15 +5,18 @@ This module provides fixtures and configuration specific to pytest-bdd tests.
 All BDD tests are marked as integration tests by default.
 """
 
+from __future__ import annotations
+
 import pytest
+from pytest import Config, Item
 
 
-def pytest_configure(config):
+def pytest_configure(config: Config) -> None:
     """Register custom markers for BDD tests."""
     config.addinivalue_line("markers", "bdd: mark test as a BDD scenario")
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config: Config, items: list[Item]) -> None:
     """
     Automatically mark BDD tests with appropriate markers.
 
