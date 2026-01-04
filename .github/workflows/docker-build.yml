@@ -36,10 +36,10 @@ jobs:
       fail-fast: false
       matrix:
         variant:
-          - { dockerfile: Dockerfile, target: runtime, mode: base, tag-suffix: cpu-base }
-          - { dockerfile: Dockerfile, target: runtime, mode: full, tag-suffix: cpu }
-          - { dockerfile: Dockerfile.gpu, target: runtime, mode: base, tag-suffix: gpu-base }
-          - { dockerfile: Dockerfile.gpu, target: runtime, mode: full, tag-suffix: gpu }
+          - { dockerfile: config/Dockerfile, target: runtime, mode: base, tag-suffix: cpu-base }
+          - { dockerfile: config/Dockerfile, target: runtime, mode: full, tag-suffix: cpu }
+          - { dockerfile: config/Dockerfile.gpu, target: runtime, mode: base, tag-suffix: gpu-base }
+          - { dockerfile: config/Dockerfile.gpu, target: runtime, mode: full, tag-suffix: gpu }
 
     steps:
       - name: Checkout repository
