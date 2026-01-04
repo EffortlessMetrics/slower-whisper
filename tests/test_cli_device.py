@@ -82,10 +82,10 @@ class TestPreflightBanner:
 
         main(["transcribe", "--device", "auto"])
 
-        # Check banner was printed
+        # Check banner was printed to stderr (keeps stdout clean for structured output)
         captured = capsys.readouterr()
-        assert "[Device] CPU (fallback from auto)" in captured.out
-        assert "No CUDA devices found by CTranslate2" in captured.out
+        assert "[Device] CPU (fallback from auto)" in captured.err
+        assert "No CUDA devices found by CTranslate2" in captured.err
 
     @patch("transcription.cli.resolve_device")
     @patch("transcription.pipeline.run_pipeline")
@@ -123,8 +123,8 @@ class TestPreflightBanner:
 
         main(["transcribe", "--device", "auto"])
 
-        # Check banner was printed with CUDA
+        # Check banner was printed to stderr with CUDA
         captured = capsys.readouterr()
-        assert "[Device] CUDA" in captured.out
-        assert "compute_type=float16" in captured.out
-        assert "fallback" not in captured.out.lower()
+        assert "[Device] CUDA" in captured.err
+        assert "compute_type=float16" in captured.err
+        assert "fallback" not in captured.err.lower()

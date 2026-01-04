@@ -58,11 +58,19 @@ def _detect_ctranslate2_cuda() -> tuple[bool, int, str | None]:
 
     Returns:
         Tuple of (cuda_available, device_count, error_reason)
-    """
-    try:
-        import ctranslate2
 
-        device_count = ctranslate2.get_cuda_device_count()
+    Note:
+        Uses dynamic import via importlib to avoid mypy errors from untyped
+        ctranslate2 package. This also gracefully handles missing installs.
+    """
+    import importlib
+
+    try:
+        ct2 = importlib.import_module("ctranslate2")
+        get_count = getattr(ct2, "get_cuda_device_count", None)
+        if get_count is None:
+            return False, 0, "CTranslate2 missing get_cuda_device_count"
+        device_count = int(get_count())
         if device_count > 0:
             return True, device_count, None
         else:

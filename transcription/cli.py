@@ -784,9 +784,9 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     if cfg.compute_type is None:
         cfg.compute_type = resolved.compute_type
 
-    # Print preflight banner
+    # Print preflight banner to stderr (keeps stdout clean for structured output)
     banner = format_preflight_banner(resolved, cfg.model)
-    print(f"\n{banner}\n")
+    print(f"\n{banner}\n", file=sys.stderr)
 
     # Check for experimental diarization flag (v1.1 experimental)
     if cfg.enable_diarization:
@@ -859,6 +859,17 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
         enrich_cfg = _config_from_enrich_args(args)
     except (OSError, ValueError) as e:
         raise ConfigurationError(f"Invalid enrichment configuration: {e}") from e
+
+    # Resolve "auto" device for emotion inference (uses torch, not ctranslate2)
+    if enrich_cfg.device in (None, "auto"):
+        resolved = resolve_device("auto", backend="torch")
+        enrich_cfg.device = resolved.device
+        if resolved.is_fallback:
+            print(
+                f"[Device] {resolved.device.upper()} for enrichment "
+                f"(reason: {resolved.fallback_reason})",
+                file=sys.stderr,
+            )
 
     # Configure progress logging based on --progress flag
     _setup_progress_logging(args.progress)
