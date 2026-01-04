@@ -25,6 +25,7 @@ from .config import (
     Paths,
     TranscriptionConfig,
 )
+from .device import DeviceChoice, format_preflight_banner, resolve_device
 from .exceptions import ConfigurationError, SlowerWhisperError
 from .exporters import SUPPORTED_EXPORT_FORMATS, export_transcript
 from .models import Transcript
@@ -102,8 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_trans.add_argument(
         "--device",
         default=None,
-        choices=["cuda", "cpu"],
-        help="Device for ASR (Whisper) inference (default: cuda if available).",
+        choices=["auto", "cuda", "cpu"],
+        help="Device for ASR (Whisper) inference. 'auto' detects CUDA availability (default: auto).",
     )
     p_trans.add_argument(
         "--compute-type",
@@ -310,8 +311,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_enrich.add_argument(
         "--device",
         default=None,
-        choices=["cpu", "cuda"],
-        help="Device for emotion model inference (default: cpu).",
+        choices=["auto", "cpu", "cuda"],
+        help="Device for emotion model inference. 'auto' detects CUDA availability (default: cpu).",
     )
     p_enrich.add_argument(
         "--pause-threshold",
@@ -769,10 +770,28 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     # Configure progress logging based on --progress flag
     _setup_progress_logging(args.progress)
 
+    # Resolve device with auto-detection and print preflight banner
+    # cfg.device is validated by CLI choices, so cast is safe
+    requested_device: DeviceChoice = (
+        cfg.device  # type: ignore[assignment]
+        if cfg.device in ("auto", "cuda", "cpu")
+        else "auto"
+    )
+    resolved = resolve_device(requested_device, allow_fallback=True)
+
+    # Override config with resolved values
+    cfg.device = resolved.device
+    if cfg.compute_type is None:
+        cfg.compute_type = resolved.compute_type
+
+    # Print preflight banner
+    banner = format_preflight_banner(resolved, cfg.model)
+    print(f"\n{banner}\n")
+
     # Check for experimental diarization flag (v1.1 experimental)
     if cfg.enable_diarization:
         print(
-            "\n[INFO] Speaker diarization is EXPERIMENTAL in v1.1.\n"
+            "[INFO] Speaker diarization is EXPERIMENTAL in v1.1.\n"
             "Requires: uv sync --extra diarization\n"
             "Requires: HF_TOKEN environment variable (huggingface.co/settings/tokens)\n"
             "See docs/SPEAKER_DIARIZATION.md for details.\n",
