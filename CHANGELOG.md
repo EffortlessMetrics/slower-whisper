@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [1.9.1] - 2026-01-05
+
+### Changed
+
+- **GPU UX**: `--device auto` is now the default; preflight banner emits GPU/CPU status to stderr; compute_type fallback is safer on CPU-only systems
+- **Documentation**: New `docs/GPU_SETUP.md` guide for GPU configuration
+
+### Fixed
+
+- **CI caching**: Cache saves are now best-effort; removed `.venv` tar flake that caused spurious CI failures
+- **Docker attestations**: Fixed OIDC permissions for provenance attestation on tag builds (#113)
+
 ## [1.9.0] - 2025-12-31
 
 ### Added
