@@ -20,11 +20,26 @@
         # Runtime libs for Python wheels (numpy, torch, etc. need libstdc++)
         # Note: This breaks nix commands when run from within the devshell because
         # the nix binary was built against a different libstdc++ ABI. Use the
-        # 'nix-clean' wrapper function defined in shellHook to run nix commands.
+        # 'nix-clean' wrapper to run nix commands.
         runtimeLibPath = pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ];
 
+        # Wrapper to run nix commands without dynamic-linker contamination
+        # (the devshell's libstdc++ breaks nix due to ABI mismatch)
+        # This is a real binary on PATH, so it works with direnv (not just interactive shells)
+        nix-clean = pkgs.writeShellScriptBin "nix-clean" ''
+          exec env \
+            -u LD_LIBRARY_PATH \
+            -u LD_PRELOAD \
+            -u NIX_LD \
+            -u NIX_LD_LIBRARY_PATH \
+            nix "$@"
+        '';
+
         # System dependencies needed by slower-whisper
-        systemDeps = with pkgs; [
+        systemDeps = [
+          # nix-clean wrapper (defined above, not from pkgs)
+          nix-clean
+        ] ++ (with pkgs; [
           # Python
           python312
           uv  # 0.5.x+ from nixos-24.11
@@ -50,7 +65,7 @@
           # SSL/compression
           openssl
           zlib
-        ];
+        ]);
 
         # Common shell environment
         commonShellHook = ''
@@ -66,12 +81,6 @@
           export PYTHONPATH="$PWD/.venv/lib/python3.12/site-packages:$PWD:''${PYTHONPATH:-}"
           # Make sure Python wheels (numpy/torch/ffmpeg) find runtime libs
           export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
-
-          # Wrapper to run nix commands without dynamic-linker contamination
-          # (the devshell's libstdc++ breaks nix due to ABI mismatch)
-          nix-clean() {
-            env -u LD_LIBRARY_PATH -u LD_PRELOAD -u NIX_LD -u NIX_LD_LIBRARY_PATH nix "$@"
-          }
         '';
 
       in {
