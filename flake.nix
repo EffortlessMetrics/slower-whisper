@@ -17,6 +17,10 @@
           assert (pkg.version == "0.14.9"); pkg;
 
         runtimeBinPath = pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ];
+        # Runtime libs for Python wheels (numpy, torch, etc. need libstdc++)
+        # Note: This breaks nix commands when run from within the devshell because
+        # the nix binary was built against a different libstdc++ ABI. Use the
+        # 'nix-clean' wrapper function defined in shellHook to run nix commands.
         runtimeLibPath = pkgs.lib.makeLibraryPath [ pkgs.ffmpeg pkgs.zlib pkgs.stdenv.cc.cc ];
 
         # System dependencies needed by slower-whisper
@@ -62,6 +66,12 @@
           export PYTHONPATH="$PWD/.venv/lib/python3.12/site-packages:$PWD:''${PYTHONPATH:-}"
           # Make sure Python wheels (numpy/torch/ffmpeg) find runtime libs
           export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
+
+          # Wrapper to run nix commands without dynamic-linker contamination
+          # (the devshell's libstdc++ breaks nix due to ABI mismatch)
+          nix-clean() {
+            env -u LD_LIBRARY_PATH -u LD_PRELOAD -u NIX_LD -u NIX_LD_LIBRARY_PATH nix "$@"
+          }
         '';
 
       in {
@@ -77,15 +87,17 @@
             echo "  uv sync --extra full --extra diarization --extra dev"
             echo ""
             echo "Run local CI:"
-            echo "  nix run .#ci           # full test suite"
-            echo "  nix run .#ci -- fast   # quick checks only"
+            echo "  ./scripts/ci-local.sh        # canonical gate (or: nix-clean run .#ci)"
+            echo "  ./scripts/ci-local.sh fast   # quick checks only"
             echo ""
             echo "Pure checks (offline):"
-            echo "  nix flake check        # lint + format only"
+            echo "  nix-clean flake check        # lint + format only"
             echo ""
             echo "Dogfooding & verification:"
-            echo "  nix run .#dogfood -- --sample synthetic --skip-llm"
-            echo "  nix run .#verify -- --quick"
+            echo "  nix-clean run .#dogfood -- --sample synthetic --skip-llm"
+            echo "  nix-clean run .#verify -- --quick"
+            echo ""
+            echo "Note: Use 'nix-clean' instead of 'nix' to avoid libstdc++ ABI conflicts."
             echo ""
           '';
         };
