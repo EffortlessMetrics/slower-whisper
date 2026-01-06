@@ -54,15 +54,15 @@ Exceptions:
     - ConfigurationError: Raised when configuration is invalid
 """
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from typing import Any
 
 # Version of the transcription pipeline; included in JSON metadata.
 # Single-sourced from pyproject.toml via importlib.metadata
 try:
-    from importlib.metadata import version
-
-    __version__ = version("slower-whisper")
-except Exception:
+    __version__ = _pkg_version("slower-whisper")
+except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
 # Configure global cache environment for all model downloads
@@ -120,7 +120,7 @@ from .models import (
 )
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
 from .speaker_id import get_speaker_id, get_speaker_label_or_id
-from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamEventType, StreamingSession
+from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamingSession
 
 # v1.9.0 streaming callbacks
 from .streaming_callbacks import StreamCallbacks, StreamingError
