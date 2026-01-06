@@ -57,8 +57,13 @@ Exceptions:
 from typing import Any
 
 # Version of the transcription pipeline; included in JSON metadata.
-# Must be defined before other imports to avoid circular imports
-__version__ = "1.9.2"
+# Single-sourced from pyproject.toml via importlib.metadata
+try:
+    from importlib.metadata import version
+
+    __version__ = version("slower-whisper")
+except Exception:
+    __version__ = "0.0.0-dev"
 
 # Configure global cache environment for all model downloads
 # This ensures all HF/torch models are cached under SLOWER_WHISPER_CACHE_ROOT
