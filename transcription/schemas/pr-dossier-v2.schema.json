@@ -224,6 +224,62 @@
             "invalidation_reason": {"type": ["string", "null"]},
             "correction_link": {"type": ["string", "null"]}
           }
+        },
+        "temporal": {
+          "type": "object",
+          "description": "Temporal topology analysis of PR evolution",
+          "properties": {
+            "convergence_type": {
+              "type": "string",
+              "enum": ["linear", "cyclical", "chaotic"],
+              "description": "Overall convergence pattern"
+            },
+            "phases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "enum": ["exploration", "oscillation", "lock-in"]
+                  },
+                  "start_commit": {"type": "string"},
+                  "end_commit": {"type": "string"},
+                  "evidence": {"type": "string"}
+                }
+              }
+            },
+            "hotspots": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "file": {"type": "string"},
+                  "touch_count": {"type": "integer"},
+                  "churn_sum": {"type": "integer"},
+                  "is_oscillating": {"type": "boolean"}
+                }
+              }
+            },
+            "oscillations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {"type": "string"},
+                  "files": {"type": "array", "items": {"type": "string"}},
+                  "commits": {"type": "array", "items": {"type": "string"}}
+                }
+              }
+            },
+            "inflection_point": {
+              "type": ["object", "null"],
+              "properties": {
+                "commit": {"type": "string"},
+                "rationale": {"type": "string"}
+              }
+            }
+          }
         }
       }
     },

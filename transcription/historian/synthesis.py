@@ -196,8 +196,58 @@ def _merge_docs_schema(dossier: dict[str, Any], output: dict[str, Any]) -> None:
             )
 
 
+def _merge_temporal(dossier: dict[str, Any], output: dict[str, Any]) -> None:
+    """Merge TemporalAnalyzer output into dossier."""
+    if output.get("skipped"):
+        return
+
+    temporal = {
+        "convergence_type": output.get("convergence_type"),
+        "phases": [
+            {
+                "name": p.get("name"),
+                "start_commit": p.get("start_commit"),
+                "end_commit": p.get("end_commit"),
+                "evidence": p.get("evidence"),
+            }
+            for p in output.get("phases", [])
+        ],
+        "hotspots": [
+            {
+                "file": h.get("path"),  # Analyzer outputs "path", schema uses "file"
+                "touch_count": h.get("touch_count"),
+                "churn_sum": h.get("churn_sum"),
+                "is_oscillating": h.get("is_oscillating"),
+            }
+            for h in output.get("hotspots", [])
+        ],
+        "oscillations": [
+            {
+                "type": o.get("type"),
+                "files": o.get("files", []),
+                "commits": o.get("commits", []),
+            }
+            for o in output.get("oscillations", [])
+        ],
+        "inflection_point": (
+            {
+                "commit": output["inflection_point"].get("commit_sha"),  # Analyzer uses commit_sha
+                "rationale": output["inflection_point"].get("rationale"),
+            }
+            if output.get("inflection_point")
+            else None
+        ),
+    }
+
+    dossier.setdefault("process", {})["temporal"] = temporal
+
+
 def _merge_decision_extractor(dossier: dict[str, Any], output: dict[str, Any]) -> None:
-    """Merge DecisionExtractor output into dossier."""
+    """Merge DecisionExtractor output into dossier.
+
+    Note: This function only merges raw decision events. Cost computation
+    (control-plane DevLT) is handled by finalize_costs() after all merges complete.
+    """
     if output.get("skipped"):
         return
 
@@ -216,15 +266,37 @@ def _merge_decision_extractor(dossier: dict[str, Any], output: dict[str, Any]) -
         for decision in decisions
     ]
 
-    # Compute control-plane DevLT from decision events
-    if decisions:
+    # Store analysis metadata
+    if output.get("notes"):
+        dossier.setdefault("_analysis", {})["decision_notes"] = output["notes"]
+    if output.get("evidence_quality"):
+        dossier.setdefault("_analysis", {})["decision_evidence_quality"] = output[
+            "evidence_quality"
+        ]
+
+
+def finalize_costs(dossier: dict[str, Any]) -> None:
+    """Finalize all derived cost metrics in the dossier.
+
+    This is the ONLY place that computes derived cost metrics. It should be
+    called after all merge functions complete but before validation.
+
+    Currently handles:
+    - control_plane DevLT: Computed from decision_events if present
+
+    Args:
+        dossier: The dossier dict to update in place
+    """
+    decision_events = dossier.get("decision_events", [])
+
+    if decision_events:
         from transcription.historian.estimation import (
             DecisionEvent,
             compute_control_plane_devlt,
         )
 
         # Convert to DecisionEvent objects
-        decision_events = [
+        events = [
             DecisionEvent(
                 type=d.get("type", "unknown"),
                 description=d.get("description", ""),
@@ -233,25 +305,17 @@ def _merge_decision_extractor(dossier: dict[str, Any], output: dict[str, Any]) -
                 minutes_lb=d.get("minutes_lb", 0),
                 minutes_ub=d.get("minutes_ub", 0),
             )
-            for d in decisions
+            for d in decision_events
         ]
 
         # Compute control-plane DevLT (coverage is github_only by default)
         coverage = dossier.get("inputs", {}).get("coverage", "github_only")
-        control_plane = compute_control_plane_devlt(decision_events, coverage)
+        control_plane = compute_control_plane_devlt(events, coverage)
 
         # Update cost.devlt.control_plane
         dossier.setdefault("cost", {}).setdefault("devlt", {})["control_plane"] = (
             control_plane.to_dict()
         )
-
-    # Store analysis metadata
-    if output.get("notes"):
-        dossier.setdefault("_analysis", {})["decision_notes"] = output["notes"]
-    if output.get("evidence_quality"):
-        dossier.setdefault("_analysis", {})["decision_evidence_quality"] = output[
-            "evidence_quality"
-        ]
 
 
 async def run_all_analyzers(
@@ -323,6 +387,8 @@ def synthesize_dossier(
         _merge_docs_schema(dossier, outputs["DocsSchemaAuditor"])
     if "DecisionExtractor" in outputs:
         _merge_decision_extractor(dossier, outputs["DecisionExtractor"])
+    if "Temporal" in outputs:
+        _merge_temporal(dossier, outputs["Temporal"])
 
     # Fill in defaults for required fields
     dossier.setdefault("intent", {}).setdefault("goal", bundle.metadata.title)
@@ -350,6 +416,9 @@ def synthesize_dossier(
     dossier.setdefault("followups", [])
     dossier.setdefault("decision_events", [])
     dossier.setdefault("inputs", {"coverage": "github_only", "missing_sources": []})
+
+    # Finalize all derived cost metrics (after merges, before validation)
+    finalize_costs(dossier)
 
     # Validate
     valid, errors = validate_dossier(dossier)

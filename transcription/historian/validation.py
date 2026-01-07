@@ -5,6 +5,7 @@ Dossier validation - schema and semantic validation.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,35 @@ from typing import Any
 def _get_schema_path() -> Path:
     """Get path to the dossier schema file."""
     return Path(__file__).parent.parent / "schemas" / "pr-dossier-v2.schema.json"
+
+
+def schema_exists() -> bool:
+    """
+    Check if the schema file exists.
+
+    Returns:
+        True if schema file exists, False otherwise
+    """
+    return _get_schema_path().exists()
+
+
+def require_schema(mode: str = "warn") -> None:
+    """
+    Require the schema file to exist.
+
+    Args:
+        mode: "strict" to raise an error, "warn" to print warning to stderr
+
+    Raises:
+        FileNotFoundError: If mode is "strict" and schema file doesn't exist
+    """
+    schema_path = _get_schema_path()
+    if not schema_path.exists():
+        msg = f"Schema file not found: {schema_path}. Cannot perform schema validation."
+        if mode == "strict":
+            raise FileNotFoundError(msg)
+        else:
+            print(f"Warning: {msg}", file=sys.stderr)
 
 
 def validate_dossier_schema(dossier: dict[str, Any]) -> list[str]:
@@ -23,6 +53,10 @@ def validate_dossier_schema(dossier: dict[str, Any]) -> list[str]:
 
     Returns:
         List of validation errors (empty if valid)
+
+    Note:
+        If the schema file does not exist, this returns a hard error.
+        Schema validation cannot proceed without the schema file.
     """
     errors = []
 
@@ -36,11 +70,10 @@ def validate_dossier_schema(dossier: dict[str, Any]) -> list[str]:
             validator = jsonschema.Draft7Validator(schema)
             errors.extend([f"Schema: {e.message}" for e in validator.iter_errors(dossier)])
         else:
-            # No schema file, do basic validation
-            if "schema_version" not in dossier:
-                errors.append("Schema: missing required field 'schema_version'")
-            if "pr_number" not in dossier:
-                errors.append("Schema: missing required field 'pr_number'")
+            # Schema file missing - this is a hard error
+            errors.append(
+                f"Schema file not found: {schema_path}. Cannot perform schema validation."
+            )
 
     except ImportError:
         # jsonschema not available, skip schema validation
@@ -117,6 +150,12 @@ def validate_dossier(dossier: dict[str, Any]) -> tuple[bool, list[str]]:
 
     Returns:
         (is_valid, list_of_errors)
+
+    Note:
+        Schema validation requires the schema file to exist. If the schema file
+        is missing, validation will fail with an error indicating the missing file.
+        Use schema_exists() to check availability, or require_schema() to enforce
+        presence before calling this function.
     """
     errors = []
 

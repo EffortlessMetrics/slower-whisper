@@ -1,0 +1,47 @@
+[
+  {
+    "pr_number": 1,
+    "human_reported_minutes": null,
+    "estimated_lb": 15,
+    "estimated_ub": 45,
+    "source": "unknown",
+    "recorded_at": "2026-01-07",
+    "notes": "Placeholder sample - fill with actual PR data"
+  },
+  {
+    "pr_number": 2,
+    "human_reported_minutes": null,
+    "estimated_lb": 30,
+    "estimated_ub": 75,
+    "source": "unknown",
+    "recorded_at": "2026-01-07",
+    "notes": "Placeholder sample - fill with actual PR data"
+  },
+  {
+    "pr_number": 3,
+    "human_reported_minutes": null,
+    "estimated_lb": 10,
+    "estimated_ub": 30,
+    "source": "unknown",
+    "recorded_at": "2026-01-07",
+    "notes": "Placeholder sample - fill with actual PR data"
+  },
+  {
+    "pr_number": 4,
+    "human_reported_minutes": null,
+    "estimated_lb": 45,
+    "estimated_ub": 120,
+    "source": "unknown",
+    "recorded_at": "2026-01-07",
+    "notes": "Placeholder sample - fill with actual PR data"
+  },
+  {
+    "pr_number": 5,
+    "human_reported_minutes": null,
+    "estimated_lb": 20,
+    "estimated_ub": 50,
+    "source": "unknown",
+    "recorded_at": "2026-01-07",
+    "notes": "Placeholder sample - fill with actual PR data"
+  }
+]

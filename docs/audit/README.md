@@ -21,6 +21,7 @@ The audit infrastructure supports **traceable wrongness** and **mechanized preve
 | [PR_LEDGER_TEMPLATE.md](PR_LEDGER_TEMPLATE.md) | Markdown template for PR initial comments |
 | [PR_ANALYSIS_WORKFLOW.md](PR_ANALYSIS_WORKFLOW.md) | How to use Claude Code to analyze PRs |
 | [pr/](pr/) | Directory for per-PR dossier JSON files |
+| [calibration/](calibration/) | DevLT estimation calibration infrastructure |
 
 ---
 
