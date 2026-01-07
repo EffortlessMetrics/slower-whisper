@@ -1,47 +1,175 @@
 [
   {
-    "pr_number": 1,
-    "human_reported_minutes": null,
-    "estimated_lb": 15,
-    "estimated_ub": 45,
-    "source": "unknown",
+    "pr_number": 129,
+    "title": "ci(nix): avoid libstdc++/nix ABI collisions; add local CI gate",
+    "human_reported": {
+      "lb_minutes": 35,
+      "ub_minutes": 55,
+      "point_estimate_minutes": 45,
+      "confidence": "med",
+      "source": "reconstructed"
+    },
+    "estimated": {
+      "lb_minutes": 32,
+      "ub_minutes": 78,
+      "method": "decision-weighted-v1",
+      "coverage": "github_only",
+      "decision_count": 6
+    },
+    "decisions_summary": [
+      {"type": "debug", "description": "Diagnose ABI collision between pip wheels (numpy/torch) and nix binary"},
+      {"type": "design", "description": "Create nix-clean wrapper pattern for clean nix execution"},
+      {"type": "design", "description": "Implement use_flake_clean direnv hook"},
+      {"type": "quality", "description": "Add ci-local.sh as canonical local gate"},
+      {"type": "debug", "description": "Multiple fix iterations on dynamic-linker contamination"},
+      {"type": "publish", "description": "Document the wrapper in PR body and verify flake check"}
+    ],
     "recorded_at": "2026-01-07",
-    "notes": "Placeholder sample - fill with actual PR data"
+    "notes": "Multi-session PR with 5 commits over ~10 hours wall time. Significant debugging of ABI issues. Commits show oscillation pattern (fix, improve, implement differently)."
   },
   {
-    "pr_number": 2,
-    "human_reported_minutes": null,
-    "estimated_lb": 30,
-    "estimated_ub": 75,
-    "source": "unknown",
+    "pr_number": 128,
+    "title": "chore(version): single-source __version__ + guardrail test",
+    "human_reported": {
+      "lb_minutes": 12,
+      "ub_minutes": 20,
+      "point_estimate_minutes": 15,
+      "confidence": "high",
+      "source": "reconstructed"
+    },
+    "estimated": {
+      "lb_minutes": 14,
+      "ub_minutes": 35,
+      "method": "decision-weighted-v1",
+      "coverage": "github_only",
+      "decision_count": 3
+    },
+    "decisions_summary": [
+      {"type": "quality", "description": "Tighten exception handling from generic Exception to PackageNotFoundError"},
+      {"type": "quality", "description": "Add test_versioning.py guardrail to prevent version drift"},
+      {"type": "design", "description": "Use importlib.metadata for single-source versioning"}
+    ],
     "recorded_at": "2026-01-07",
-    "notes": "Placeholder sample - fill with actual PR data"
+    "notes": "Small focused PR. Single commit, 2 files changed. Clear scope from start."
   },
   {
-    "pr_number": 3,
-    "human_reported_minutes": null,
-    "estimated_lb": 10,
-    "estimated_ub": 30,
-    "source": "unknown",
+    "pr_number": 130,
+    "title": "fix(nix): source package version from pyproject.toml",
+    "human_reported": {
+      "lb_minutes": 8,
+      "ub_minutes": 15,
+      "point_estimate_minutes": 10,
+      "confidence": "high",
+      "source": "reconstructed"
+    },
+    "estimated": {
+      "lb_minutes": 11,
+      "ub_minutes": 28,
+      "method": "decision-weighted-v1",
+      "coverage": "github_only",
+      "decision_count": 2
+    },
+    "decisions_summary": [
+      {"type": "design", "description": "Use builtins.fromTOML to extract version dynamically"},
+      {"type": "quality", "description": "Verify with nix eval that version syncs correctly"}
+    ],
     "recorded_at": "2026-01-07",
-    "notes": "Placeholder sample - fill with actual PR data"
+    "notes": "Very small PR - 1 file, 5 additions, 1 deletion. Single commit. Fixes #79."
   },
   {
-    "pr_number": 4,
-    "human_reported_minutes": null,
-    "estimated_lb": 45,
-    "estimated_ub": 120,
-    "source": "unknown",
+    "pr_number": 127,
+    "title": "chore(release): v1.9.2",
+    "human_reported": {
+      "lb_minutes": 5,
+      "ub_minutes": 10,
+      "point_estimate_minutes": 7,
+      "confidence": "high",
+      "source": "reconstructed"
+    },
+    "estimated": {
+      "lb_minutes": 6,
+      "ub_minutes": 15,
+      "method": "decision-weighted-v1",
+      "coverage": "github_only",
+      "decision_count": 2
+    },
+    "decisions_summary": [
+      {"type": "publish", "description": "Bump version to 1.9.2"},
+      {"type": "publish", "description": "Update changelog"}
+    ],
     "recorded_at": "2026-01-07",
-    "notes": "Placeholder sample - fill with actual PR data"
+    "notes": "Standard release PR - version bump + changelog. Mechanical work."
   },
   {
-    "pr_number": 5,
-    "human_reported_minutes": null,
-    "estimated_lb": 20,
-    "estimated_ub": 50,
-    "source": "unknown",
+    "pr_number": 131,
+    "title": "deps: rollup safe dependency updates",
+    "human_reported": {
+      "lb_minutes": 10,
+      "ub_minutes": 18,
+      "point_estimate_minutes": 12,
+      "confidence": "med",
+      "source": "reconstructed"
+    },
+    "estimated": {
+      "lb_minutes": 9,
+      "ub_minutes": 24,
+      "method": "decision-weighted-v1",
+      "coverage": "github_only",
+      "decision_count": 3
+    },
+    "decisions_summary": [
+      {"type": "scope", "description": "Group multiple dependabot PRs into single rollup"},
+      {"type": "quality", "description": "Verify combined updates don't break build"},
+      {"type": "publish", "description": "Write consolidated PR description listing superseded PRs"}
+    ],
     "recorded_at": "2026-01-07",
-    "notes": "Placeholder sample - fill with actual PR data"
+    "notes": "Rollup of 7 dependabot PRs. Low decision overhead but some coordination work."
+  },
+  {
+    "pr_number": 115,
+    "title": "chore(release): v1.9.1",
+    "human_reported": {
+      "lb_minutes": 5,
+      "ub_minutes": 10,
+      "point_estimate_minutes": 6,
+      "confidence": "high",
+      "source": "reconstructed"
+    },
+    "estimated": {
+      "lb_minutes": 6,
+      "ub_minutes": 15,
+      "method": "decision-weighted-v1",
+      "coverage": "github_only",
+      "decision_count": 2
+    },
+    "decisions_summary": [
+      {"type": "publish", "description": "Bump version to 1.9.1"},
+      {"type": "publish", "description": "Update changelog"}
+    ],
+    "recorded_at": "2026-01-07",
+    "notes": "Standard release PR - version bump + changelog."
+  },
+  {
+    "pr_number": 116,
+    "title": "ci(deps): bump actions/cache from 4 to 5",
+    "human_reported": {
+      "lb_minutes": 3,
+      "ub_minutes": 8,
+      "point_estimate_minutes": 5,
+      "confidence": "high",
+      "source": "reconstructed"
+    },
+    "estimated": {
+      "lb_minutes": 5,
+      "ub_minutes": 12,
+      "method": "decision-weighted-v1",
+      "coverage": "github_only",
+      "decision_count": 1
+    },
+    "decisions_summary": [
+      {"type": "quality", "description": "Accept major version bump after review"}
+    ],
+    "recorded_at": "2026-01-07",
+    "notes": "Dependabot PR - minimal human intervention, just merge decision."
   }
 ]

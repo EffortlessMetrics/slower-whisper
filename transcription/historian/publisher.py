@@ -326,6 +326,8 @@ def publish_dossier(
     update_pr: bool = False,
     update_exhibits: bool = True,
     dry_run: bool = False,
+    *,
+    strict: bool = True,
 ) -> PublishResult:
     """
     Publish a dossier to the repository.
@@ -337,22 +339,39 @@ def publish_dossier(
         update_pr: Whether to update the PR description via gh
         update_exhibits: Whether to update EXHIBITS.md
         dry_run: If True, don't write files
+        strict: If True (default), missing schema raises SchemaNotFoundError.
+                Publishing an unvalidated dossier is dangerous - use strict=False
+                only for debugging.
 
     Returns:
         PublishResult with status and paths
+
+    Raises:
+        SchemaNotFoundError: If strict=True and schema file doesn't exist
     """
-    from transcription.historian.validation import validate_dossier
+    from transcription.historian.validation import require_schema, validate_dossier
 
     repo_root = repo_root or Path.cwd()
-    errors = []
-    notes = []
+    errors: list[str] = []
+    notes: list[str] = []
 
-    # Validate first
-    valid, validation_errors = validate_dossier(dossier)
+    # Fail fast if schema is missing - don't publish unvalidated dossiers
+    require_schema(strict=strict)
+
+    # Validate dossier
+    valid, validation_errors = validate_dossier(dossier, strict=strict)
     if not valid:
-        # Continue with warnings, don't block
-        errors.extend(validation_errors)
-        notes.append("Dossier has validation warnings")
+        if strict:
+            # In strict mode, validation errors are fatal
+            errors.extend(validation_errors)
+            notes.append(
+                f"Dossier failed validation with {len(validation_errors)} error(s) - not publishing"
+            )
+            return PublishResult(success=False, errors=errors, notes=notes)
+        else:
+            # Non-strict: continue with warnings
+            errors.extend(validation_errors)
+            notes.append("Dossier has validation warnings (strict=False, continuing)")
 
     # Paths
     dossier_dir = repo_root / "docs" / "audit" / "pr"

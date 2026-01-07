@@ -275,18 +275,156 @@ def _merge_decision_extractor(dossier: dict[str, Any], output: dict[str, Any]) -
         ]
 
 
-def finalize_costs(dossier: dict[str, Any]) -> None:
-    """Finalize all derived cost metrics in the dossier.
+def _compute_evidence_completeness(dossier: dict[str, Any]) -> str:
+    """Compute evidence completeness score from dossier evidence fields.
 
-    This is the ONLY place that computes derived cost metrics. It should be
+    Returns:
+        "high", "medium", or "low" based on evidence availability
+    """
+    evidence = dossier.get("evidence", {})
+    score = 0
+    max_score = 0
+
+    # Local gate (weight: 2)
+    max_score += 2
+    local_gate = evidence.get("local_gate", {})
+    if local_gate.get("passed"):
+        score += 2
+    elif local_gate.get("receipt_path"):
+        score += 1
+
+    # Tests (weight: 2)
+    max_score += 2
+    tests = evidence.get("tests", {})
+    if tests.get("added", 0) > 0 or tests.get("modified", 0) > 0:
+        score += 2
+    elif tests.get("path"):
+        score += 1
+
+    # Typing (weight: 2)
+    max_score += 2
+    typing = evidence.get("typing", {})
+    if typing.get("mypy_passed") and typing.get("ruff_passed"):
+        score += 2
+    elif typing.get("mypy_passed") or typing.get("ruff_passed"):
+        score += 1
+
+    # Benchmarks (weight: 1)
+    max_score += 1
+    benchmarks = evidence.get("benchmarks", {})
+    if benchmarks.get("metrics") or benchmarks.get("results_path"):
+        score += 1
+
+    # Docs (weight: 1)
+    max_score += 1
+    if evidence.get("docs_updated"):
+        score += 1
+
+    # Schema validation (weight: 1)
+    max_score += 1
+    schema_validated = evidence.get("schema_validated")
+    if schema_validated is True or schema_validated == "passed":
+        score += 1
+
+    # Compute ratio and return band
+    if max_score == 0:
+        return "low"
+
+    ratio = score / max_score
+    if ratio >= 0.7:
+        return "high"
+    elif ratio >= 0.4:
+        return "medium"
+    else:
+        return "low"
+
+
+def _compute_exhibit_score(dossier: dict[str, Any]) -> dict[str, Any]:
+    """Compute exhibit score summarizing dossier quality metrics.
+
+    Returns:
+        Dict with score breakdown and overall rating
+    """
+    scores = {
+        "evidence": 0,
+        "decision_coverage": 0,
+        "temporal_analysis": 0,
+        "findings_anchored": 0,
+    }
+
+    # Evidence completeness (0-25 points)
+    completeness = _compute_evidence_completeness(dossier)
+    if completeness == "high":
+        scores["evidence"] = 25
+    elif completeness == "medium":
+        scores["evidence"] = 15
+    else:
+        scores["evidence"] = 5
+
+    # Decision coverage (0-25 points)
+    decision_events = dossier.get("decision_events", [])
+    if len(decision_events) >= 8:
+        scores["decision_coverage"] = 25
+    elif len(decision_events) >= 5:
+        scores["decision_coverage"] = 20
+    elif len(decision_events) >= 3:
+        scores["decision_coverage"] = 15
+    elif len(decision_events) >= 1:
+        scores["decision_coverage"] = 10
+    else:
+        scores["decision_coverage"] = 0
+
+    # Temporal analysis presence (0-25 points)
+    temporal = dossier.get("process", {}).get("temporal", {})
+    if temporal.get("convergence_type") and temporal.get("phases"):
+        scores["temporal_analysis"] = 25
+    elif temporal.get("convergence_type") or temporal.get("hotspots"):
+        scores["temporal_analysis"] = 15
+    else:
+        scores["temporal_analysis"] = 5
+
+    # Findings anchored (0-25 points)
+    findings = dossier.get("findings", [])
+    if not findings:
+        scores["findings_anchored"] = 25  # No findings = nothing to anchor
+    else:
+        anchored = sum(1 for f in findings if f.get("commit") or f.get("detected_by"))
+        ratio = anchored / len(findings) if findings else 1
+        scores["findings_anchored"] = int(ratio * 25)
+
+    total = sum(scores.values())
+
+    if total >= 80:
+        rating = "A"
+    elif total >= 60:
+        rating = "B"
+    elif total >= 40:
+        rating = "C"
+    else:
+        rating = "D"
+
+    return {
+        "total": total,
+        "rating": rating,
+        "breakdown": scores,
+    }
+
+
+def finalize_costs(dossier: dict[str, Any]) -> None:
+    """Finalize all derived cost and quality metrics in the dossier.
+
+    This is the ONLY place that computes derived metrics. It should be
     called after all merge functions complete but before validation.
 
-    Currently handles:
-    - control_plane DevLT: Computed from decision_events if present
+    Handles:
+    - control_plane DevLT: Computed from decision_events
+    - evidence_completeness: Computed from evidence fields
+    - exhibit_score: Quality metric for the dossier itself
 
     Args:
         dossier: The dossier dict to update in place
     """
+    # --- Control-plane DevLT from decision events ---
     decision_events = dossier.get("decision_events", [])
 
     if decision_events:
@@ -317,6 +455,28 @@ def finalize_costs(dossier: dict[str, Any]) -> None:
             control_plane.to_dict()
         )
 
+    # --- Evidence completeness ---
+    evidence_completeness = _compute_evidence_completeness(dossier)
+    dossier.setdefault("_analysis", {})["evidence_completeness"] = evidence_completeness
+
+    # --- Exhibit score (dossier quality metric) ---
+    exhibit_score = _compute_exhibit_score(dossier)
+    dossier.setdefault("_analysis", {})["exhibit_score"] = exhibit_score
+
+    # --- Ensure cost structure consistency ---
+    # If devlt exists but control_plane wasn't computed, note why
+    cost = dossier.get("cost", {})
+    devlt = cost.get("devlt", {})
+    if devlt and "control_plane" not in devlt and not decision_events:
+        devlt["control_plane"] = {
+            "lb_minutes": 0,
+            "ub_minutes": 0,
+            "band": "0-10m",
+            "method": "no-decision-events",
+            "coverage": dossier.get("inputs", {}).get("coverage", "github_only"),
+            "decision_count": 0,
+        }
+
 
 async def run_all_analyzers(
     bundle: FactBundle,
@@ -346,6 +506,8 @@ async def run_all_analyzers(
 def synthesize_dossier(
     bundle: FactBundle,
     analyzer_results: list[SubagentResult],
+    *,
+    strict: bool = True,
 ) -> SynthesisResult:
     """
     Synthesize analyzer outputs into a dossier.
@@ -353,11 +515,19 @@ def synthesize_dossier(
     Args:
         bundle: The original fact bundle
         analyzer_results: Results from all analyzers
+        strict: If True (default), missing schema raises SchemaNotFoundError.
+                This is the recommended setting for analyze/publish pipelines.
 
     Returns:
         SynthesisResult with the dossier and metadata
+
+    Raises:
+        SchemaNotFoundError: If strict=True and schema file doesn't exist
     """
-    from transcription.historian.validation import validate_dossier
+    from transcription.historian.validation import require_schema, validate_dossier
+
+    # Fail fast if schema is missing - don't do work we can't validate
+    require_schema(strict=strict)
 
     # Build base dossier from bundle
     dossier = _build_base_dossier(bundle)
@@ -420,8 +590,8 @@ def synthesize_dossier(
     # Finalize all derived cost metrics (after merges, before validation)
     finalize_costs(dossier)
 
-    # Validate
-    valid, errors = validate_dossier(dossier)
+    # Validate with strict mode (schema already checked above, so this won't raise)
+    valid, errors = validate_dossier(dossier, strict=strict)
     if not valid:
         synthesis_notes.extend([f"Validation: {e}" for e in errors])
 

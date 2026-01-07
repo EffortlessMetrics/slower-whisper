@@ -227,57 +227,132 @@
         },
         "temporal": {
           "type": "object",
-          "description": "Temporal topology analysis of PR evolution",
+          "description": "Temporal topology analysis of PR evolution - tracks how the PR progressed through phases, identifies churn hotspots, and detects oscillation patterns that indicate uncertainty or rework",
           "properties": {
+            "method_id": {
+              "type": "string",
+              "description": "Algorithm version identifier for reproducibility (e.g., 'temporal-v1.1')"
+            },
+            "confidence": {
+              "type": "string",
+              "enum": ["high", "medium", "low"],
+              "description": "Overall confidence in the analysis based on data quality"
+            },
             "convergence_type": {
               "type": "string",
               "enum": ["linear", "cyclical", "chaotic"],
-              "description": "Overall convergence pattern"
+              "description": "Overall pattern of how the PR converged: linear (smooth progression), cyclical (oscillations but eventual convergence), chaotic (many phase transitions)"
             },
             "phases": {
               "type": "array",
+              "description": "Ordered sequence of development phases detected in the PR commit history",
               "items": {
                 "type": "object",
+                "required": ["name", "start_commit", "end_commit", "evidence", "session_type"],
                 "properties": {
                   "name": {
                     "type": "string",
-                    "enum": ["exploration", "oscillation", "lock-in"]
+                    "enum": ["exploration", "oscillation", "lock-in"],
+                    "description": "Phase type: exploration (initial work), oscillation (back-and-forth changes), lock-in (final convergence)"
                   },
-                  "start_commit": {"type": "string"},
-                  "end_commit": {"type": "string"},
-                  "evidence": {"type": "string"}
+                  "start_commit": {
+                    "type": "string",
+                    "description": "First commit SHA in this phase"
+                  },
+                  "end_commit": {
+                    "type": "string",
+                    "description": "Last commit SHA in this phase"
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "description": "Human-readable explanation of why this phase was detected"
+                  },
+                  "session_type": {
+                    "type": "string",
+                    "enum": ["build-loop", "publish-loop", "docs-loop"],
+                    "description": "Primary activity type: build-loop (implementation), publish-loop (release prep), docs-loop (documentation)"
+                  }
                 }
               }
             },
             "hotspots": {
               "type": "array",
+              "description": "Files with high churn that may indicate design uncertainty or complexity",
               "items": {
                 "type": "object",
+                "required": ["file", "touch_count", "churn_sum", "is_oscillating"],
                 "properties": {
-                  "file": {"type": "string"},
-                  "touch_count": {"type": "integer"},
-                  "churn_sum": {"type": "integer"},
-                  "is_oscillating": {"type": "boolean"}
+                  "file": {
+                    "type": "string",
+                    "description": "File path relative to repository root"
+                  },
+                  "touch_count": {
+                    "type": "integer",
+                    "description": "Number of commits that modified this file"
+                  },
+                  "churn_sum": {
+                    "type": "integer",
+                    "description": "Total lines added + deleted across all commits"
+                  },
+                  "is_oscillating": {
+                    "type": "boolean",
+                    "description": "True if file shows back-and-forth pattern (adds then reverts)"
+                  }
                 }
               }
             },
             "oscillations": {
               "type": "array",
+              "description": "Detected patterns of back-and-forth changes indicating uncertainty or exploration",
               "items": {
                 "type": "object",
+                "required": ["type", "files", "commits", "evidence", "keywords"],
                 "properties": {
-                  "type": {"type": "string"},
-                  "files": {"type": "array", "items": {"type": "string"}},
-                  "commits": {"type": "array", "items": {"type": "string"}}
+                  "type": {
+                    "type": "string",
+                    "enum": ["dependency_flip", "schema_rename", "approach_flip", "revert_pattern"],
+                    "description": "Oscillation category: dependency_flip (switching deps), schema_rename (naming changes), approach_flip (implementation changes), revert_pattern (explicit reverts)"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Files involved in this oscillation pattern"
+                  },
+                  "commits": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Commit SHAs involved in this oscillation pattern"
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "description": "Human-readable explanation of the oscillation pattern"
+                  },
+                  "keywords": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Keywords or identifiers that triggered detection (e.g., 'revert', 'refactor', 'schema')"
+                  }
                 }
               }
             },
             "inflection_point": {
               "type": ["object", "null"],
+              "description": "The commit where the PR shifted from exploration/oscillation to convergence (null if no clear inflection)",
               "properties": {
-                "commit": {"type": "string"},
-                "rationale": {"type": "string"}
-              }
+                "commit": {
+                  "type": "string",
+                  "description": "Commit SHA marking the inflection point"
+                },
+                "rationale": {
+                  "type": "string",
+                  "description": "Explanation of why this commit represents the inflection point"
+                }
+              },
+              "required": ["commit", "rationale"]
+            },
+            "notes": {
+              "type": "string",
+              "description": "Human-readable summary of the temporal analysis"
             }
           }
         }
