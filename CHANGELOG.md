@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Changed
+
+- **ROADMAP.md restructured**: Converted from release history to forward-looking execution plan
+  - Added "Now / Next / Later" structure for actionable planning
+  - Organized v2.0 into 4 dependency-ordered tracks (Benchmarks → Streaming → Semantics → Cleanup)
+  - Removed 400+ lines of shipped release narratives (now in CHANGELOG.md)
+  - Added dependency map showing track prerequisites
+  - Added "Missing Issues to Create" section for platform primitives (event envelope, receipt contract, etc.)
+  - Consolidated backlog with milestone link
 
 ## [1.9.2] - 2026-01-05
 

@@ -30,7 +30,7 @@ Key posture:
 - Backward compatibility for JSON schema is intentional.
 
 **Canonical docs (for details beyond this guide):**
-- `ROADMAP.md` — full planning, milestones, contribution opportunities
+- `ROADMAP.md` — Now/Next/Later execution plan + v2 track dependencies
 - `CHANGELOG.md` — what shipped when
 - `docs/STREAMING_ARCHITECTURE.md` — streaming model, events, callbacks
 - `docs/GPU_SETUP.md` — GPU and Docker guidance
