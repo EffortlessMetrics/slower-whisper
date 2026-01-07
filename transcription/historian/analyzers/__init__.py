@@ -11,6 +11,7 @@ Available analyzers:
 - DesignAlignmentAnalyzer: Detects design drift
 - PerfIntegrityAnalyzer: Validates benchmark measurements (conditional)
 - DocsSchemaAuditorAnalyzer: Checks doc/schema integrity
+- DecisionExtractorAnalyzer: Extracts material decisions with anchored evidence
 """
 
 from transcription.historian.analyzers.base import (
@@ -18,6 +19,7 @@ from transcription.historian.analyzers.base import (
     SubagentResult,
     SubagentSpec,
 )
+from transcription.historian.analyzers.decision_extractor import DecisionExtractorAnalyzer
 from transcription.historian.analyzers.design_alignment import DesignAlignmentAnalyzer
 from transcription.historian.analyzers.diff_scout import DiffScoutAnalyzer
 from transcription.historian.analyzers.docs_schema import DocsSchemaAuditorAnalyzer
@@ -33,6 +35,7 @@ ALL_ANALYZERS = [
     DesignAlignmentAnalyzer,
     PerfIntegrityAnalyzer,
     DocsSchemaAuditorAnalyzer,
+    DecisionExtractorAnalyzer,
 ]
 
 __all__ = [
@@ -47,6 +50,7 @@ __all__ = [
     "DesignAlignmentAnalyzer",
     "PerfIntegrityAnalyzer",
     "DocsSchemaAuditorAnalyzer",
+    "DecisionExtractorAnalyzer",
     # Collection
     "ALL_ANALYZERS",
 ]

@@ -26,6 +26,15 @@ ESTIMATION_CONSTANTS = {
     "gap_threshold_minutes": 45,  # Gap threshold for session detection
 }
 
+# Decision event weight constants (min, max minutes)
+DECISION_WEIGHTS = {
+    "scope": (2, 8),
+    "design": (6, 20),
+    "quality": (4, 15),
+    "debug": (8, 30),
+    "publish": (3, 12),
+}
+
 # DevLT bands
 DEVLT_BANDS = [
     (0, 10, "0-10m"),
@@ -53,6 +62,80 @@ def _minutes_to_band(minutes: int, bands: list[tuple[float, float, str]]) -> str
 
 
 @dataclass
+class DecisionEvent:
+    """A decision event that contributes to control-plane DevLT."""
+
+    type: str  # scope, design, quality, debug, publish
+    description: str
+    anchor: str  # commit SHA, comment URL, issue link
+    confidence: str  # high, med, low
+    minutes_lb: int
+    minutes_ub: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        return {
+            "type": self.type,
+            "description": self.description,
+            "anchor": self.anchor,
+            "confidence": self.confidence,
+            "minutes_lb": self.minutes_lb,
+            "minutes_ub": self.minutes_ub,
+        }
+
+
+@dataclass
+class ControlPlaneDevLT:
+    """Control-plane DevLT estimation based on decision events."""
+
+    lb_minutes: int
+    ub_minutes: int
+    band: str
+    method: str
+    coverage: str  # github_only | github_plus_claude
+    decision_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        return {
+            "lb_minutes": self.lb_minutes,
+            "ub_minutes": self.ub_minutes,
+            "band": self.band,
+            "method": self.method,
+            "coverage": self.coverage,
+            "decision_count": self.decision_count,
+        }
+
+
+def compute_control_plane_devlt(
+    decision_events: list[DecisionEvent],
+    coverage: str,
+) -> ControlPlaneDevLT:
+    """
+    Compute control-plane DevLT from decision events.
+
+    Args:
+        decision_events: List of decision events with time bounds
+        coverage: Coverage level (github_only | github_plus_claude)
+
+    Returns:
+        ControlPlaneDevLT with aggregated bounds and band
+    """
+    lb_total = sum(e.minutes_lb for e in decision_events)
+    ub_total = sum(e.minutes_ub for e in decision_events)
+    midpoint = (lb_total + ub_total) // 2
+
+    return ControlPlaneDevLT(
+        lb_minutes=lb_total,
+        ub_minutes=ub_total,
+        band=_minutes_to_band(midpoint, DEVLT_BANDS),
+        method="decision-weighted-v1",
+        coverage=coverage,
+        decision_count=len(decision_events),
+    )
+
+
+@dataclass
 class BoundedEstimation:
     """Bounded estimation results for a PR."""
 
@@ -62,50 +145,56 @@ class BoundedEstimation:
     created_at: datetime
     merged_at: datetime | None
 
-    # Active work (session-based)
-    active_work_lb_hours: float
-    active_work_ub_hours: float
-    active_work_method: str
+    # Active work (session-based proxy)
+    session_proxy_lb_hours: float
+    session_proxy_ub_hours: float
+    session_proxy_method: str
     session_count: int
 
-    # DevLT split
+    # DevLT split (session-based proxy)
     author_lb_minutes: int
     author_ub_minutes: int
     author_band: str
     review_lb_minutes: int
     review_ub_minutes: int
     review_band: str
-    devlt_method: str
+    session_proxy_devlt_method: str
+
+    # Control-plane DevLT (decision-weighted)
+    control_plane: ControlPlaneDevLT | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
-        return {
+        result: dict[str, Any] = {
             "wall_clock": {
                 "days": self.wall_clock_days,
                 "hours": self.wall_clock_hours,
                 "created_at": self.created_at.isoformat(),
                 "merged_at": self.merged_at.isoformat() if self.merged_at else None,
             },
-            "active_work": {
-                "lb_hours": self.active_work_lb_hours,
-                "ub_hours": self.active_work_ub_hours,
-                "method": self.active_work_method,
+            "session_proxy": {
+                "lb_hours": self.session_proxy_lb_hours,
+                "ub_hours": self.session_proxy_ub_hours,
+                "method": self.session_proxy_method,
                 "session_count": self.session_count,
-            },
-            "devlt": {
-                "author": {
-                    "lb_minutes": self.author_lb_minutes,
-                    "ub_minutes": self.author_ub_minutes,
-                    "band": self.author_band,
+                "devlt": {
+                    "author": {
+                        "lb_minutes": self.author_lb_minutes,
+                        "ub_minutes": self.author_ub_minutes,
+                        "band": self.author_band,
+                    },
+                    "review": {
+                        "lb_minutes": self.review_lb_minutes,
+                        "ub_minutes": self.review_ub_minutes,
+                        "band": self.review_band,
+                    },
+                    "method": self.session_proxy_devlt_method,
                 },
-                "review": {
-                    "lb_minutes": self.review_lb_minutes,
-                    "ub_minutes": self.review_ub_minutes,
-                    "band": self.review_band,
-                },
-                "method": self.devlt_method,
             },
         }
+        if self.control_plane is not None:
+            result["control_plane"] = self.control_plane.to_dict()
+        return result
 
 
 @dataclass
@@ -305,7 +394,11 @@ def compute_machine_time(
     )
 
 
-def compute_bounded_estimate(bundle: FactBundle) -> tuple[BoundedEstimation, MachineTimeEstimate]:
+def compute_bounded_estimate(
+    bundle: FactBundle,
+    decision_events: list[DecisionEvent] | None = None,
+    coverage: str | None = None,
+) -> tuple[BoundedEstimation, MachineTimeEstimate]:
     """
     Compute all bounded estimates for a PR bundle.
 
@@ -314,6 +407,8 @@ def compute_bounded_estimate(bundle: FactBundle) -> tuple[BoundedEstimation, Mac
 
     Args:
         bundle: The fact bundle to analyze
+        decision_events: Optional list of decision events for control-plane DevLT
+        coverage: Coverage level for control-plane (github_only | github_plus_claude)
 
     Returns:
         (BoundedEstimation, MachineTimeEstimate)
@@ -344,14 +439,19 @@ def compute_bounded_estimate(bundle: FactBundle) -> tuple[BoundedEstimation, Mac
     # Machine time
     machine_time = compute_machine_time(bundle.check_runs)
 
+    # Control-plane DevLT (decision-weighted)
+    control_plane: ControlPlaneDevLT | None = None
+    if decision_events and coverage:
+        control_plane = compute_control_plane_devlt(decision_events, coverage)
+
     estimation = BoundedEstimation(
         wall_clock_days=round(wall_clock_days, 2),
         wall_clock_hours=round(wall_clock_hours, 1),
         created_at=bundle.metadata.created_at,
         merged_at=bundle.metadata.merged_at,
-        active_work_lb_hours=round(total_lb / 60, 1),
-        active_work_ub_hours=round(total_ub / 60, 1),
-        active_work_method=f"bounded session estimation (gap ≤{ESTIMATION_CONSTANTS['gap_threshold_minutes']}min = same session)",
+        session_proxy_lb_hours=round(total_lb / 60, 1),
+        session_proxy_ub_hours=round(total_ub / 60, 1),
+        session_proxy_method=f"bounded session estimation (gap ≤{ESTIMATION_CONSTANTS['gap_threshold_minutes']}min = same session)",
         session_count=len(bundle.sessions),
         author_lb_minutes=devlt["author"]["lb_minutes"],
         author_ub_minutes=devlt["author"]["ub_minutes"],
@@ -359,7 +459,8 @@ def compute_bounded_estimate(bundle: FactBundle) -> tuple[BoundedEstimation, Mac
         review_lb_minutes=devlt["review"]["lb_minutes"],
         review_ub_minutes=devlt["review"]["ub_minutes"],
         review_band=devlt["review"]["band"],
-        devlt_method=devlt["method"],
+        session_proxy_devlt_method=devlt["method"],
+        control_plane=control_plane,
     )
 
     # Update bundle

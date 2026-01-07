@@ -144,9 +144,18 @@ class FactBundle:
     estimation: Any = None  # BoundedEstimation
     machine_time: Any = None  # MachineTimeEstimate
 
+    # Coverage tracking
+    coverage: str = "github_only"  # "github_only" | "github_plus_claude"
+    missing_sources: list[str] = field(default_factory=list)
+    decision_events: list[Any] = field(default_factory=list)  # DecisionEvent objects
+
     # Bundle metadata
     bundle_version: int = 1
     generated_at: datetime = field(default_factory=datetime.now)
+
+    def set_decision_events(self, events: list[Any]) -> None:
+        """Set decision events after analysis."""
+        self.decision_events = events
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
@@ -154,6 +163,10 @@ class FactBundle:
             "bundle_version": self.bundle_version,
             "generated_at": self.generated_at.isoformat(),
             "pr_number": self.pr_number,
+            "inputs": {
+                "coverage": self.coverage,
+                "missing_sources": self.missing_sources,
+            },
             "metadata": {
                 "number": self.metadata.number,
                 "title": self.metadata.title,
@@ -249,6 +262,9 @@ class FactBundle:
             "diff": self.diff,
             "estimation": self.estimation.to_dict() if self.estimation else None,
             "machine_time": self.machine_time.to_dict() if self.machine_time else None,
+            "decision_events": [
+                e.to_dict() if hasattr(e, "to_dict") else e for e in self.decision_events
+            ],
         }
 
 
@@ -740,4 +756,6 @@ def gather_pr_data(pr_number: int, include_diff: bool = True) -> FactBundle:
         check_runs=check_runs,
         receipt_paths=receipt_paths,
         diff=diff,
+        coverage="github_only",
+        missing_sources=["claude_session_log"],
     )

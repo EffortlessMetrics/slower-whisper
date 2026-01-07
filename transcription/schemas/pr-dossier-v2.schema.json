@@ -6,6 +6,58 @@
   "type": "object",
   "required": ["schema_version", "pr_number", "title", "url", "created_at"],
   "properties": {
+    "inputs": {
+      "type": "object",
+      "description": "Data sources available for analysis",
+      "properties": {
+        "coverage": {
+          "type": "string",
+          "enum": ["github_only", "github_plus_claude"],
+          "description": "What data sources were available for analysis"
+        },
+        "missing_sources": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Data sources that were not available (e.g., claude_session_log)"
+        }
+      }
+    },
+    "decision_events": {
+      "type": "array",
+      "description": "Control-plane decisions that drove the PR",
+      "items": {
+        "type": "object",
+        "required": ["type", "description", "anchor", "confidence", "minutes_lb", "minutes_ub"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["scope", "design", "quality", "debug", "publish"],
+            "description": "Decision category"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the decision was"
+          },
+          "anchor": {
+            "type": "string",
+            "description": "Evidence anchor (commit SHA, comment URL, issue link)"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "med", "low"],
+            "description": "Confidence in this inference"
+          },
+          "minutes_lb": {
+            "type": "integer",
+            "description": "Lower bound estimate in minutes"
+          },
+          "minutes_ub": {
+            "type": "integer",
+            "description": "Upper bound estimate in minutes"
+          }
+        }
+      }
+    },
     "schema_version": {
       "type": "integer",
       "const": 2,
@@ -187,8 +239,9 @@
             "merged_at": {"type": ["string", "null"]}
           }
         },
-        "active_work": {
+        "active_work_proxy": {
           "type": "object",
+          "description": "Legacy proxy metric - kept for reference but not the headline metric. See devlt.control_plane for AI-native model.",
           "properties": {
             "lb_hours": {"type": "number"},
             "ub_hours": {"type": "number"},
@@ -213,6 +266,18 @@
                 "lb_minutes": {"type": "integer"},
                 "ub_minutes": {"type": "integer"},
                 "band": {"type": "string"}
+              }
+            },
+            "control_plane": {
+              "type": "object",
+              "description": "Decision-weighted DevLT (AI-native model)",
+              "properties": {
+                "lb_minutes": {"type": "integer"},
+                "ub_minutes": {"type": "integer"},
+                "band": {"type": "string"},
+                "method": {"type": "string"},
+                "coverage": {"type": "string"},
+                "decision_count": {"type": "integer"}
               }
             },
             "method": {"type": "string"}
