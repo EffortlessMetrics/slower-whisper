@@ -17,7 +17,10 @@ The audit infrastructure supports **traceable wrongness** and **mechanized preve
 | [AUDIT_PATH.md](AUDIT_PATH.md) | 15-minute cold-reader validation checklist |
 | [EXHIBITS.md](EXHIBITS.md) | Annotated PRs demonstrating audit workflow |
 | [FAILURE_MODES.md](FAILURE_MODES.md) | Taxonomy of failure types and prevention patterns |
-| [PR_DOSSIER_SCHEMA.md](PR_DOSSIER_SCHEMA.md) | Schema for structured PR analysis |
+| [PR_DOSSIER_SCHEMA.md](PR_DOSSIER_SCHEMA.md) | Schema for structured PR analysis (v2) |
+| [PR_LEDGER_TEMPLATE.md](PR_LEDGER_TEMPLATE.md) | Markdown template for PR initial comments |
+| [PR_ANALYSIS_WORKFLOW.md](PR_ANALYSIS_WORKFLOW.md) | How to use Claude Code to analyze PRs |
+| [pr/](pr/) | Directory for per-PR dossier JSON files |
 
 ---
 
@@ -58,15 +61,35 @@ flowchart LR
 
 ## PR Dossiers
 
-For significant PRs, we may generate structured dossiers in `docs/audit/pr/`:
+For significant PRs, we generate structured dossiers in `docs/audit/pr/`:
 
 ```
 docs/audit/pr/
+  ├── README.md   # directory documentation
   ├── 123.json    # structured dossier for PR #123
   └── 456.json
 ```
 
-These are optional and generated when deep analysis is needed.
+### Generating Dossiers
+
+Use the helper script to bootstrap a dossier from GitHub data:
+
+```bash
+# Generate both JSON dossier and markdown ledger
+python scripts/generate-pr-ledger.py --pr 123
+
+# JSON only
+python scripts/generate-pr-ledger.py --pr 123 --format json --output docs/audit/pr/123.json
+
+# Markdown only (for PR description)
+python scripts/generate-pr-ledger.py --pr 123 --format markdown
+```
+
+The script:
+- Fetches PR metadata from GitHub (requires `gh` CLI)
+- Calculates wall-clock time and active work estimate
+- Identifies top directories and key files
+- Generates a template with TODO placeholders for manual fields
 
 ## Usage
 
