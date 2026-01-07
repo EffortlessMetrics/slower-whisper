@@ -164,7 +164,7 @@ class BoundedEstimation:
     control_plane: ControlPlaneDevLT | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to JSON-serializable dict."""
+        """Convert to JSON-serializable dict matching schema v2."""
         result: dict[str, Any] = {
             "wall_clock": {
                 "days": self.wall_clock_days,
@@ -172,28 +172,31 @@ class BoundedEstimation:
                 "created_at": self.created_at.isoformat(),
                 "merged_at": self.merged_at.isoformat() if self.merged_at else None,
             },
-            "session_proxy": {
+            # Schema v2: active_work_proxy (legacy metric, kept for reference)
+            "active_work_proxy": {
                 "lb_hours": self.session_proxy_lb_hours,
                 "ub_hours": self.session_proxy_ub_hours,
                 "method": self.session_proxy_method,
                 "session_count": self.session_count,
-                "devlt": {
-                    "author": {
-                        "lb_minutes": self.author_lb_minutes,
-                        "ub_minutes": self.author_ub_minutes,
-                        "band": self.author_band,
-                    },
-                    "review": {
-                        "lb_minutes": self.review_lb_minutes,
-                        "ub_minutes": self.review_ub_minutes,
-                        "band": self.review_band,
-                    },
-                    "method": self.session_proxy_devlt_method,
+            },
+            # Schema v2: devlt at root level (not nested in active_work_proxy)
+            "devlt": {
+                "author": {
+                    "lb_minutes": self.author_lb_minutes,
+                    "ub_minutes": self.author_ub_minutes,
+                    "band": self.author_band,
                 },
+                "review": {
+                    "lb_minutes": self.review_lb_minutes,
+                    "ub_minutes": self.review_ub_minutes,
+                    "band": self.review_band,
+                },
+                "method": self.session_proxy_devlt_method,
             },
         }
+        # Schema v2: control_plane goes inside devlt
         if self.control_plane is not None:
-            result["control_plane"] = self.control_plane.to_dict()
+            result["devlt"]["control_plane"] = self.control_plane.to_dict()
         return result
 
 
@@ -214,7 +217,7 @@ class MachineTimeEstimate:
     spend_notes: str
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to JSON-serializable dict."""
+        """Convert to JSON-serializable dict matching schema v2."""
         return {
             "check_runs": {
                 "wall_minutes": self.wall_minutes,
@@ -222,7 +225,8 @@ class MachineTimeEstimate:
                 "check_count": self.check_count,
                 "checks_with_timing": self.checks_with_timing,
             },
-            "spend": {
+            # Schema v2: machine_spend (not just "spend")
+            "machine_spend": {
                 "estimate_usd": self.spend_estimate_usd,
                 "band": self.spend_band,
                 "method": self.spend_method,

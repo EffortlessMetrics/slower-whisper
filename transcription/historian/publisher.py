@@ -57,7 +57,7 @@ def _render_ledger_markdown(dossier: dict[str, Any]) -> str:
     # Cost section
     cost = dossier.get("cost", {})
     wall_clock = cost.get("wall_clock", {})
-    active_work = cost.get("active_work", {})
+    active_work = cost.get("active_work_proxy", {})  # Schema v2: active_work_proxy
     devlt = cost.get("devlt", {})
 
     # Reflection
@@ -171,12 +171,21 @@ def _render_ledger_markdown(dossier: dict[str, Any]) -> str:
 
     # Handle nested devlt structure
     if isinstance(devlt, dict):
+        # Control-plane DevLT is the headline metric for AI-native repos
+        control_plane = devlt.get("control_plane", {})
+        if isinstance(control_plane, dict) and control_plane.get("lb_minutes") is not None:
+            lb = control_plane.get("lb_minutes", 0)
+            ub = control_plane.get("ub_minutes", lb)
+            coverage = control_plane.get("coverage", "github_only")
+            method = control_plane.get("method", "decision-weighted")[:25]
+            lines.append(f"| **DevLT (control-plane)** | **{lb}-{ub}m** | {method} ({coverage}) |")
+
         author = devlt.get("author", {})
         review = devlt.get("review", {})
         if isinstance(author, dict) and author.get("band"):
-            lines.append(f"| DevLT (author) | {author.get('band')} | bounded estimation |")
+            lines.append(f"| DevLT (author proxy) | {author.get('band')} | bounded estimation |")
         if isinstance(review, dict) and review.get("band"):
-            lines.append(f"| DevLT (review) | {review.get('band')} | bounded estimation |")
+            lines.append(f"| DevLT (review proxy) | {review.get('band')} | bounded estimation |")
 
     lines.extend(
         [
@@ -246,10 +255,13 @@ def _compute_exhibit_score(dossier: dict[str, Any]) -> int:
     if evidence.get("local_gate", {}).get("passed"):
         score += 1
 
-    # Has DevLT recorded (+1)
+    # Has DevLT recorded (+1, +2 for control_plane)
     devlt = dossier.get("cost", {}).get("devlt", {})
     if devlt:
         score += 1
+        # Control-plane DevLT is more valuable (+1 extra)
+        if devlt.get("control_plane", {}).get("decision_count", 0) > 0:
+            score += 1
 
     # Has follow-ups (+1)
     if dossier.get("followups"):

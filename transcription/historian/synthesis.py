@@ -196,6 +196,64 @@ def _merge_docs_schema(dossier: dict[str, Any], output: dict[str, Any]) -> None:
             )
 
 
+def _merge_decision_extractor(dossier: dict[str, Any], output: dict[str, Any]) -> None:
+    """Merge DecisionExtractor output into dossier."""
+    if output.get("skipped"):
+        return
+
+    decisions = output.get("decisions", [])
+
+    # Store decision events at top level (per schema v2)
+    dossier["decision_events"] = [
+        {
+            "type": decision.get("type"),
+            "description": decision.get("description"),
+            "anchor": decision.get("anchor"),
+            "confidence": decision.get("confidence"),
+            "minutes_lb": decision.get("minutes_lb"),
+            "minutes_ub": decision.get("minutes_ub"),
+        }
+        for decision in decisions
+    ]
+
+    # Compute control-plane DevLT from decision events
+    if decisions:
+        from transcription.historian.estimation import (
+            DecisionEvent,
+            compute_control_plane_devlt,
+        )
+
+        # Convert to DecisionEvent objects
+        decision_events = [
+            DecisionEvent(
+                type=d.get("type", "unknown"),
+                description=d.get("description", ""),
+                anchor=d.get("anchor", ""),
+                confidence=d.get("confidence", "low"),
+                minutes_lb=d.get("minutes_lb", 0),
+                minutes_ub=d.get("minutes_ub", 0),
+            )
+            for d in decisions
+        ]
+
+        # Compute control-plane DevLT (coverage is github_only by default)
+        coverage = dossier.get("inputs", {}).get("coverage", "github_only")
+        control_plane = compute_control_plane_devlt(decision_events, coverage)
+
+        # Update cost.devlt.control_plane
+        dossier.setdefault("cost", {}).setdefault("devlt", {})["control_plane"] = (
+            control_plane.to_dict()
+        )
+
+    # Store analysis metadata
+    if output.get("notes"):
+        dossier.setdefault("_analysis", {})["decision_notes"] = output["notes"]
+    if output.get("evidence_quality"):
+        dossier.setdefault("_analysis", {})["decision_evidence_quality"] = output[
+            "evidence_quality"
+        ]
+
+
 async def run_all_analyzers(
     bundle: FactBundle,
     llm_provider: LLMProvider,
@@ -263,6 +321,8 @@ def synthesize_dossier(
         _merge_perf_integrity(dossier, outputs["PerfIntegrity"])
     if "DocsSchemaAuditor" in outputs:
         _merge_docs_schema(dossier, outputs["DocsSchemaAuditor"])
+    if "DecisionExtractor" in outputs:
+        _merge_decision_extractor(dossier, outputs["DecisionExtractor"])
 
     # Fill in defaults for required fields
     dossier.setdefault("intent", {}).setdefault("goal", bundle.metadata.title)
@@ -288,6 +348,8 @@ def synthesize_dossier(
         "factory_delta", {"gates_added": [], "contracts_added": [], "prevention_issues": []}
     )
     dossier.setdefault("followups", [])
+    dossier.setdefault("decision_events", [])
+    dossier.setdefault("inputs", {"coverage": "github_only", "missing_sources": []})
 
     # Validate
     valid, errors = validate_dossier(dossier)
