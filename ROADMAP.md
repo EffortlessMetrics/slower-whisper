@@ -233,26 +233,27 @@ v1.x JSON is forward-compatible with v2.x readers.
 
 ### Core Features
 
-#### 1. Event Callback API ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
+#### 1. Event Callback API ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44)) ✅
 
 ```python
-# Standardized callback interface
+# Standardized callback interface (streaming_callbacks.py)
 class StreamCallbacks(Protocol):
-    def on_segment_finalized(self, segment: Segment) -> None: ...
-    def on_speaker_turn(self, turn: Turn) -> None: ...
+    def on_segment_finalized(self, segment: StreamSegment) -> None: ...
+    def on_speaker_turn(self, turn: dict) -> None: ...
     def on_semantic_update(self, payload: SemanticUpdatePayload) -> None: ...
-    def on_error(self, error: Exception) -> None: ...
+    def on_error(self, error: StreamingError) -> None: ...
 
 # Usage
 session = StreamingEnrichmentSession(
+    wav_path="audio.wav",
     config=config,
-    callbacks=MyCallbacks()  # New parameter
+    callbacks=MyCallbacks()
 )
 ```
 
-- Async callback support (optional/stretch) for non-blocking downstream processing
-- Error handling and retry logic
-- Configurable event filtering
+- Safe invocation: `invoke_callback_safely()` catches exceptions and routes to `on_error`
+- Error isolation: callback failures never crash the pipeline
+- See `transcription/streaming_callbacks.py` for full protocol
 
 #### 2. Streaming Quality Improvements
 
@@ -271,15 +272,21 @@ session = StreamingEnrichmentSession(
 - [x] **Turn-Aware Chunking Enhancements** ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49)): Improved boundary handling in chunking module
 - [x] **test_pipeline.py Implementation** ([#58](https://github.com/EffortlessMetrics/slower-whisper/issues/58)): Deterministic fixtures and expanded integration tests
 
-### Acceptance Criteria
+### Shipped (v1.9.0-v1.9.2)
 
-- [ ] Callback API documented in `docs/STREAMING_ARCHITECTURE.md`
-- [ ] P95 latency < 250ms verified in benchmarks
-- [ ] All callback integration tests passing
+- [x] Event Callback API (`StreamCallbacks` protocol) with safe invocation
+- [x] `StreamingError` dataclass with context and recoverability
+- [x] `invoke_callback_safely()` for exception isolation
+- [x] Contract tests for callback behavior (`tests/test_streaming_callbacks.py`)
+- [x] > 90% coverage for streaming semantic module
+- [x] Turn-aware chunking with configurable affinity ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
+- [x] Complete test_pipeline.py implementation ([#58](https://github.com/EffortlessMetrics/slower-whisper/issues/58))
+
+### Deferred to v1.10+ or v2.0
+
+- [ ] Callback API documented in `docs/STREAMING_ARCHITECTURE.md` (currently in module docstrings)
 - [ ] Example callback integration in `examples/streaming/`
-- [x] > 90% coverage for streaming semantic module (achieved in PR #103)
-- [x] Turn-aware chunking with configurable affinity ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49)) ✅
-- [x] Complete test_pipeline.py implementation ([#58](https://github.com/EffortlessMetrics/slower-whisper/issues/58)) ✅
+- [ ] P95 latency < 250ms verified in benchmarks
 
 ---
 
@@ -558,16 +565,13 @@ slower-whisper benchmark --track streaming --duration 1h
 - [x] Add type annotations to test fixtures ([#52](https://github.com/EffortlessMetrics/slower-whisper/issues/52)) ✅
 - [x] Write BDD scenario for edge case: empty audio file handling ([#53](https://github.com/EffortlessMetrics/slower-whisper/issues/53)) ✅
 
-### v1.9.0 Contributions ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
+### v1.9.x Completed ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
 
-**Remaining work:**
-- [ ] Implement streaming callback interface ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
-- [ ] Add integration tests for event callbacks ([#44](https://github.com/EffortlessMetrics/slower-whisper/issues/44))
-
-**Completed in PR #103:**
-- [x] Write performance benchmarks for streaming enrichment ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45)) ✅
-- [x] Expand test coverage for `streaming_semantic.py` ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45)) ✅
-- [x] Implement turn-aware chunking enhancements ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49)) ✅
+- [x] Streaming callback interface (`StreamCallbacks` protocol)
+- [x] Contract tests for event callbacks (`test_streaming_callbacks.py`)
+- [x] Performance benchmarks for streaming enrichment ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45))
+- [x] Expand test coverage for `streaming_semantic.py` ([#45](https://github.com/EffortlessMetrics/slower-whisper/issues/45))
+- [x] Implement turn-aware chunking enhancements ([#49](https://github.com/EffortlessMetrics/slower-whisper/issues/49))
 
 ### v2.0.0 Contributions ([#46](https://github.com/EffortlessMetrics/slower-whisper/issues/46), [#47](https://github.com/EffortlessMetrics/slower-whisper/issues/47), [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48), [#54](https://github.com/EffortlessMetrics/slower-whisper/issues/54), [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55))
 
@@ -700,3 +704,7 @@ enabling truly multimodal understanding of human communication.
   - Updated test metrics: 1100 tests passing (~73% line coverage)
   - v1.9.0 scope reduced to #44 (Event Callback API) + optional #71 (word_timestamps REST)
   - Marked completed items in Good First Issues, Testing & Quality, v1.9.0 sections
+- 2026-01-07: v1.9.2 shipped reality sync:
+  - Fixed callback type signatures to match implementation (StreamSegment, dict, StreamingError)
+  - Marked v1.9.x callback API as shipped with contract tests
+  - Moved deferred items (docs, examples, benchmarks) to separate section

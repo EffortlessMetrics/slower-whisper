@@ -13,7 +13,8 @@ If this doc disagrees with the code, the doc is wrong — update it.
 ## Snapshot
 
 **Current series:** v1.9.x (shipped streaming callbacks + hardening)
-**Current package version:** read from `pyproject.toml`
+**Current package version:** 1.9.2 (read from `pyproject.toml`)
+**Last updated:** 2026-01-07
 **Runtime version:** `transcription.__version__` is single-sourced from package metadata (guardrail test enforces this)
 
 slower-whisper produces a **rich, versioned JSON transcript** capturing:
@@ -27,6 +28,13 @@ Key posture:
 - Local-first, reproducible, modular.
 - Optional dependencies must degrade gracefully.
 - Backward compatibility for JSON schema is intentional.
+
+**Canonical docs (for details beyond this guide):**
+- `ROADMAP.md` — full planning, milestones, contribution opportunities
+- `CHANGELOG.md` — what shipped when
+- `docs/STREAMING_ARCHITECTURE.md` — streaming model, events, callbacks
+- `docs/GPU_SETUP.md` — GPU and Docker guidance
+- `docs/TYPING_POLICY.md` — type system standards
 
 ---
 
@@ -314,7 +322,7 @@ The project is architected around a **strict separation** between transcription 
 ```json
 {
   "schema_version": 2,
-  "file_name": "audio.wav",
+  "file": "audio.wav",
   "language": "en",
   "meta": {
     "generated_at": "2025-11-15T...",
@@ -325,6 +333,8 @@ The project is architected around a **strict separation** between transcription 
   "segments": [ /* array of Segment objects */ ]
 }
 ```
+
+> **Note:** The dataclass field is `Transcript.file_name` but serializes to `"file"` in JSON.
 
 **Segment with audio_state:**
 ```json
@@ -362,10 +372,13 @@ The project is architected around a **strict separation** between transcription 
 - New optional fields (`audio_state`) don't break v1 consumers
 
 **Stability Contract:**
-- Core fields (`file_name`, `language`, `segments`, `id`, `start`, `end`, `text`) are stable within v2
+
+- Core fields (`file`, `language`, `segments`, `id`, `start`, `end`, `text`) are stable within v2
 - Optional fields (`speaker`, `tone`, `audio_state`) may be `null`
 - Adding new optional fields does NOT bump schema version
 - Breaking changes (removing/renaming core fields) require version bump (v3)
+
+> **Source of truth:** `transcription/writers.py` (serialization) and `transcription/models.py` (dataclasses).
 
 ---
 
