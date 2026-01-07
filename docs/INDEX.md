@@ -126,6 +126,14 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [BDD_IAC_PYTHON_CLI.md](BDD_IAC_PYTHON_CLI.md) | Python CLI verification tooling | Cross-platform verification, testing infrastructure |
 | [API_BDD_CONTRACT.md](API_BDD_CONTRACT.md) | FastAPI service behavioral contract | REST API BDD scenarios, black-box testing, smoke and functional tests |
 
+### Audit & Process (docs/audit/)
+
+| Document | Description |
+|----------|-------------|
+| [audit/README.md](audit/README.md) | Audit infrastructure overview |
+| [audit/FAILURE_MODES.md](audit/FAILURE_MODES.md) | Taxonomy of failure modes and prevention patterns |
+| [audit/PR_DOSSIER_SCHEMA.md](audit/PR_DOSSIER_SCHEMA.md) | Schema for structured PR analysis |
+
 ---
 
 ## Examples Documentation (examples/)
@@ -224,6 +232,7 @@ These documents are historical artifacts from the development process and transf
 2. [CLAUDE.md](../CLAUDE.md) - Codebase guidance
 3. [Architecture](ARCHITECTURE.md) - System design
 4. [BDD/IaC Contracts](BDD_IAC_LOCKDOWN.md) - Testing and deployment standards
+5. [Audit Infrastructure](audit/README.md) - DevLT, receipts, failure modes
 
 ### "I want to understand the system design"
 1. [Architecture](ARCHITECTURE.md) - Complete architecture overview
@@ -305,6 +314,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2025-11-17
+**Last Updated:** 2026-01-07
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.

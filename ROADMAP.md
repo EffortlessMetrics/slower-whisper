@@ -2,11 +2,45 @@
 
 **Current Version:** v1.9.2
 **Last Updated:** 2026-01-07 (restructured Now/Next sequencing)
-<!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri -->
+<!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
 Roadmap = forward-looking execution plan.
 History lives in [CHANGELOG.md](CHANGELOG.md).
 Vision and strategic positioning live in [VISION.md](VISION.md).
+
+---
+
+## Roadmap Execution Standards
+
+**Primary metric:** DevLT (human attention minutes per trusted change).
+**Quality goals:** PR relevancy + design alignment + proof completeness.
+
+### What "Done" Means
+
+- **Implementation** — code merged with tests passing
+- **Artifact** — output exists (JSON schema, receipt, baseline file, etc.)
+- **Local validation** — command that proves it works (`./scripts/ci-local.sh`)
+- **Boundaries** — explicit out-of-scope documented
+
+### When Something Is Wrong
+
+If an item was wrong (measurement drift, doc drift, invalid claim), we:
+
+1. Mark it wrong explicitly
+2. Link the fix (PR/commit)
+3. Add prevention work (gate/contract) when appropriate
+
+### CI Posture
+
+CI may be rate-limited or off. **Local gate is canonical:**
+
+```bash
+./scripts/ci-local.sh        # full gate
+./scripts/ci-local.sh fast   # quick check
+nix-clean flake check        # Nix checks (use nix-clean wrapper inside devshell)
+```
+
+PRs must include receipt output or link to passing local gate.
 
 ---
 
@@ -61,7 +95,7 @@ Before v2 work begins, reconcile the tracker:
 
 ### D) Create Infrastructure Issues
 
-These become Track 1 prerequisites once created:
+These are Track 1 prerequisites. Create if they don't exist yet:
 
 | Issue | Title | Why |
 |-------|-------|-----|
@@ -69,7 +103,7 @@ These become Track 1 prerequisites once created:
 | #136 | Stable run/event IDs | Streaming needs correlation IDs for debugging |
 | #137 | Baseline file format | Regression detection needs a schema |
 
-Create these before starting Track 1. Numbers are placeholders — assign real issue numbers.
+**Action:** Verify these issues exist in the tracker. If missing, create them with DoD from the spec blocks below.
 
 <details>
 <summary><strong>Receipt Contract Specification (for #135)</strong></summary>
@@ -112,8 +146,18 @@ Every transcript and benchmark artifact includes `meta.receipt`:
 
 1. API polish PR merged with receipts
 2. Issue tracker reflects reality (done = closed, partial = rewritten DoD)
-3. Infrastructure issues (#135, #136, #137) exist with clear DoD
+3. Infrastructure issues (#133–#137) exist with clear DoD from contract specs
 4. [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) unblocked (latency harness is its deliverable)
+
+### Now → Next Handoff Checklist
+
+Before starting v2 work:
+
+- [ ] Track 1 contracts exist (dataset manifest, result schema, baseline format)
+- [ ] Receipt/run_id infrastructure issues created (#135, #136, #137)
+- [ ] Streaming contract issues created (#133, #134)
+- [ ] API polish bundle merged
+- [ ] Issue truth pass complete (done=closed, partial=rewritten)
 
 ### Execution Paths
 
@@ -157,7 +201,130 @@ Supporting issues:
 | [#94](https://github.com/EffortlessMetrics/slower-whisper/issues/94) | Dataset manifest format + smoke set in-repo |
 | [#57](https://github.com/EffortlessMetrics/slower-whisper/issues/57) | CLI: `slower-whisper benchmark --track asr\|diarization\|streaming` |
 
-**Done when:** `slower-whisper benchmark --track asr` outputs reproducible JSON + baseline comparison.
+**Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline compare JSON; report-only comparator implemented.
+
+<details>
+<summary><strong>Dataset Manifest Contract (for #94)</strong></summary>
+
+#### Manifest File Location
+
+`benchmarks/datasets/<track>/<dataset>/manifest.json`
+
+#### Required Fields
+
+```json
+{
+  "schema_version": 1,
+  "id": "librispeech-test-clean",
+  "track": "asr",
+  "split": "test",
+  "samples": [
+    {
+      "id": "sample-001",
+      "audio": "audio/sample-001.wav",
+      "sha256": "abc123...",
+      "duration_s": 12.5,
+      "language": "en",
+      "reference_transcript": "the quick brown fox",
+      "license": "CC-BY-4.0",
+      "source": "librispeech"
+    }
+  ],
+  "meta": {
+    "created_at": "2026-01-07T12:00:00Z",
+    "total_duration_s": 3600,
+    "sample_count": 100
+  }
+}
+```
+
+#### Field Definitions
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | yes | Unique dataset identifier |
+| `track` | string | yes | Benchmark track (asr, diarization, streaming) |
+| `split` | string | yes | Dataset split (train, dev, test, smoke) |
+| `samples[].audio` | string | yes | Relative path or URL to audio |
+| `samples[].sha256` | string | yes | SHA256 hash of audio file |
+| `samples[].reference_transcript` | string | ASR | Ground truth text (ASR track) |
+| `samples[].reference_rttm` | string | Diarization | Path to RTTM file (diarization track) |
+| `license` | string | yes | License identifier |
+| `source` | string | yes | Data provenance |
+
+#### Staging Policy
+
+- **Smoke sets:** Committed to repo (small, fast, always available)
+- **Full sets:** Downloaded via script with hash verification
+- **Invalid provenance:** Explicitly rejected (no unverified datasets)
+
+#### Local Validation
+
+```bash
+slower-whisper benchmark --track asr --dataset smoke --limit 10 --dry-run
+```
+
+</details>
+
+<details>
+<summary><strong>Benchmark Result Contract (for #95/#96/#97/#98)</strong></summary>
+
+#### Result File Location
+
+`benchmarks/results/<track>/<dataset>-<run_id>.json`
+
+#### Required Schema
+
+```json
+{
+  "schema_version": 1,
+  "track": "asr",
+  "dataset": "librispeech-test-clean",
+  "created_at": "2026-01-07T12:00:00Z",
+  "run_id": "run-20260107-143022-xyz",
+  "metrics": {
+    "wer": {"value": 0.045, "unit": "ratio"},
+    "cer": {"value": 0.012, "unit": "ratio"},
+    "rtf": {"value": 0.15, "unit": "ratio"}
+  },
+  "receipt": {
+    "tool_version": "1.9.2",
+    "model": "large-v3",
+    "device": "cuda",
+    "compute_type": "float16",
+    "config_hash": "sha256:abc123...",
+    "git_commit": "abc1234",
+    "dataset_manifest_sha256": "def456..."
+  },
+  "valid": true,
+  "samples": []
+}
+```
+
+#### Track-Specific Required Metrics
+
+| Track | Required Metrics |
+|-------|------------------|
+| ASR | `wer`, `cer` |
+| Diarization | `der`, `jer`, `speaker_count_accuracy` |
+| Streaming | `p50_ms`, `p95_ms`, `p99_ms`, `first_token_ms`, `rtf` |
+
+#### Measurement Invalidation
+
+If semantics drift is discovered after the fact:
+
+```json
+{
+  "valid": false,
+  "invalid_reason": "Baseline used different normalization; see #142",
+  "invalidated_at": "2026-01-15T10:00:00Z",
+  "superseded_by": "run-20260115-093000-abc"
+}
+```
+
+This is a first-class state transition, not social drama.
+
+</details>
 
 <details>
 <summary><strong>Track 1 Design Notes: Baselines & Regression Policy</strong></summary>
@@ -212,9 +379,9 @@ Depends on: Track 1 (latency measurement must exist)
 5. [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55): **Streaming API docs** — update once endpoint is real
 6. [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86): **Incremental diarization hook** — integration point (full impl is v2.1+)
 
-> **#133, #134** are placeholder numbers — create these issues before starting Track 2.
+**Action:** Create #133 and #134 if they don't exist yet, using the contract spec below.
 
-**Done when:** Python client connects via WebSocket, receives `PARTIAL` and `FINALIZED` events, latency is measured.
+**Done when:** Reference client passes contract tests against WS server (ordering + backpressure behavior verified).
 
 <details>
 <summary><strong>Track 2 Design Notes: Event Envelope Specification</strong></summary>
@@ -227,6 +394,7 @@ All streaming events share this envelope:
 {
   "event_id": 42,
   "stream_id": "str-abc123",
+  "segment_id": "seg-007",
   "type": "FINALIZED",
   "ts_server": "2026-01-07T12:00:00.123Z",
   "ts_audio_start": 10.5,
@@ -234,6 +402,14 @@ All streaming events share this envelope:
   "payload": { /* type-specific */ }
 }
 ```
+
+#### ID Contracts
+
+| ID | Format | Scope | Guarantees |
+|----|--------|-------|------------|
+| `stream_id` | `str-{uuid4}` | per connection | Unique across all streams |
+| `event_id` | monotonic int | per stream | Never reused within stream |
+| `segment_id` | `seg-{seq}` | per stream | Stable reference for partials → finalized |
 
 #### Event Types
 
@@ -248,16 +424,36 @@ All streaming events share this envelope:
 #### Ordering Guarantees
 
 1. `event_id` is monotonically increasing per stream
-2. `FINALIZED` for a segment arrives after all its `PARTIAL` events
-3. `SPEAKER_TURN` arrives after the `FINALIZED` that closed the turn
-4. `ts_audio_start` of `FINALIZED` events is monotonically increasing
+2. `PARTIAL` for a segment arrives before its `FINALIZED`
+3. `FINALIZED` events are monotonic in `ts_audio_start`
+4. `SPEAKER_TURN` arrives after the `FINALIZED` that closed the turn
+5. No event arrives with `event_id` < previously received `event_id`
 
-#### Backpressure (v1)
+#### Backpressure Contract
 
-- Server buffers up to N events (default: 100)
-- When buffer full: drop `PARTIAL` events first
-- `FINALIZED` events are never dropped (blocks producer if necessary)
-- Client acks are optional in v1 (mandatory in v2.1+)
+| Parameter | Default | Configurable | Description |
+|-----------|---------|--------------|-------------|
+| `buffer_size` | 100 | yes | Max events buffered before drop policy |
+| `drop_policy` | `partial_first` | yes | What to drop when full |
+| `finalized_drop` | `never` | no | FINALIZED events block producer, never dropped |
+
+**Drop priority (when buffer full):**
+1. Drop oldest `PARTIAL` events first
+2. Drop oldest `SEMANTIC_UPDATE` events second
+3. `FINALIZED` and `ERROR` are never dropped
+
+#### Resume Contract (v2.0 — best effort)
+
+- Client sends `last_event_id` on reconnect
+- Server replays from buffer if `last_event_id` is in buffer
+- If `last_event_id` not in buffer: server sends `RESUME_GAP` error with `{missing_from, missing_to}`
+- Client must handle gaps gracefully (re-request audio window or accept loss)
+
+#### Security Posture (v2.0)
+
+- No authentication in v2.0 skeleton
+- Future: Bearer token header or WS subprotocol auth
+- Rate limiting: 10 streams/IP default (configurable)
 
 </details>
 
@@ -270,13 +466,77 @@ Depends on: Stable Turn/Chunk model from Track 2
 1. [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88): **LLM annotation schema** — schema slot + versioning
 2. [#90](https://github.com/EffortlessMetrics/slower-whisper/issues/90): **Cloud LLM interface** — one provider first (OpenAI or Anthropic)
 3. [#91](https://github.com/EffortlessMetrics/slower-whisper/issues/91): **Guardrails** — rate limits, cost controls, PII warnings
-4. [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92): **Tests/fixtures/goldens** — contract tests for "missing deps never break"
+4. [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92): **Tests/fixtures/golden files** — contract tests for "missing deps never break"
 5. [#89](https://github.com/EffortlessMetrics/slower-whisper/issues/89): **Local LLM backend** — qwen2.5-7b or smollm (after interface is stable)
 6. [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98): **Semantic quality benchmark** — Topic F1 measurement
 
-> **Why this order:** Without schema + interface + guardrails + goldens first, semantics becomes "LLM integration sprawl."
+> **Why this order:** Without schema + interface + guardrails + golden files first, semantics becomes "LLM integration sprawl."
 
-**Done when:** `--enable-semantics` with `backend=local` populates `annotations.semantic` using local model.
+**Done when:** Schema + interface + guardrails + golden files land before any backend; local backend populates deterministic fields.
+
+<details>
+<summary><strong>Track 3 Design Notes: Semantics Contract</strong></summary>
+
+#### Annotation Schema v0
+
+```json
+{
+  "annotations": {
+    "semantic": {
+      "schema_version": "0.1.0",
+      "provider": "local",
+      "model": "qwen2.5-7b",
+      "raw_model_output": { /* provider-specific */ },
+      "normalized": {
+        "topics": ["pricing", "contract_terms"],
+        "intent": "objection",
+        "sentiment": "negative",
+        "action_items": [],
+        "risk_tags": ["churn_risk"]
+      },
+      "confidence": 0.85,
+      "latency_ms": 420
+    }
+  }
+}
+```
+
+#### Provider Interface Contract
+
+```python
+class SemanticProvider(Protocol):
+    """All semantic backends implement this interface."""
+
+    def annotate_chunk(
+        self,
+        text: str,
+        context: ChunkContext
+    ) -> SemanticAnnotation:
+        """Annotate a single chunk (60-120s of conversation)."""
+        ...
+
+    def health_check(self) -> ProviderHealth:
+        """Return provider status and quota remaining."""
+        ...
+```
+
+#### Guardrails Contract
+
+| Guardrail | Default | Configurable | Description |
+|-----------|---------|--------------|-------------|
+| `rate_limit_rpm` | 60 | yes | Requests per minute |
+| `cost_budget_usd` | 1.00 | yes | Max spend per session |
+| `pii_warning` | true | yes | Warn if PII detected in chunk |
+| `timeout_ms` | 30000 | yes | Per-request timeout |
+
+#### Golden Files Contract
+
+- Location: `tests/fixtures/semantic_golden/`
+- Each golden file: input chunk + expected normalized output
+- Tests verify: missing provider → graceful skip (not crash)
+- Tests verify: deterministic fields match golden output
+
+</details>
 
 ### Track 4: v2.0 Cleanup
 
@@ -347,16 +607,19 @@ Intentionally brief — these are placeholders, not commitments.
 
 ---
 
-## Missing Issues to Create
+## Issues to Verify/Create
 
-Create before starting the relevant track:
+Before starting a track, verify these issues exist. If missing, create them:
 
-| Title | Track | Description |
+| Issue | Track | Description |
 |-------|-------|-------------|
-| `streaming: Event envelope specification` | 2 | IDs, ordering, partial/final semantics, backpressure |
-| `streaming: Reference Python client` | 2 | Working client + contract test |
+| #133 | 2 | Event envelope specification (IDs, ordering, backpressure) |
+| #134 | 2 | Reference Python client + contract tests |
+| #135 | 1 | Receipt contract specification |
+| #136 | 2 | Stable run/event ID format |
+| #137 | 1 | Baseline file format specification |
 
-> **Note:** Infrastructure issues (#135, #136, #137) are listed in [Now § D](#d-create-infrastructure-issues).
+Use the `<details>` contract specs in each track section as the issue DoD.
 
 ---
 

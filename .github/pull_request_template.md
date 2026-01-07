@@ -41,11 +41,35 @@ Closes #
 # e.g., uv run pytest tests/test_xxx.py -v
 ```
 
+## Local Gate Receipts
+
+<!-- REQUIRED: Paste output or link to receipt file -->
+
+```bash
+./scripts/ci-local.sh fast
+# Paste output here or link to receipt
+```
+
+## Cost & Attention
+
+<!-- Optional but encouraged: helps us understand true cost of trusted changes -->
+
+- DevLT: author ~_m, review ~_m (estimate)
+- Machine spend: ~$_ (if using AI tools; "unknown" is acceptable)
+
+## What Was Wrong / Surprises
+
+<!-- Optional: Document anything that was broken, unexpected, or that you had to fix along the way -->
+
+- None
+<!-- or: -->
+<!-- - [description] → [disposition: fixed here | fixed in #X | still open] -->
+
 ## Checklist
 
 <!-- Complete before requesting review -->
 
-- [ ] I have run `uv run slower-whisper-verify --quick` and all checks pass locally
+- [ ] I have run `./scripts/ci-local.sh fast` and all checks pass locally
 - [ ] My code follows the project's style guidelines (ruff)
 - [ ] I have added tests that prove my fix/feature works
 - [ ] New and existing unit tests pass locally
@@ -59,4 +83,4 @@ Closes #
 
 ## Notes for Reviewers
 
-<!-- Any additional context or notes for reviewers -->
+<!-- Any additional context, review guidance, or notes for reviewers -->

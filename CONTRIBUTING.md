@@ -98,6 +98,55 @@ See [VISION.md](VISION.md) for detailed positioning.
 
 ---
 
+## Execution Standards
+
+### Receipts Required
+
+PRs must include **local gate receipts** — proof that the change works:
+
+```bash
+./scripts/ci-local.sh        # full gate
+./scripts/ci-local.sh fast   # quick check (minimum before pushing)
+nix-clean flake check        # Nix checks (use nix-clean wrapper inside devshell)
+```
+
+Paste the gate output in your PR body or link to a receipt file.
+
+### DevLT and Cost Tracking
+
+We track **DevLT** (human attention minutes) and **machine cost** to understand the true cost of trusted changes. In your PR:
+
+```markdown
+### Cost & attention (this PR)
+- DevLT: author ~Xm, review ~Ym (estimate)
+- Machine spend: ~$Z (if using AI tools; "unknown" is acceptable)
+```
+
+This isn't gatekeeping — it's data collection to improve the development process.
+
+### When Something Is Wrong
+
+If you discover something wrong (measurement drift, doc drift, invalid claims):
+
+1. **Fix now** — correct it in your PR and note it
+2. **Mark invalid** — for perf numbers: mark `"valid": false` + link correction
+3. **Defer explicitly** — create an issue with reason and blocker
+
+Add a section to your PR:
+
+```markdown
+### What was wrong / surprises
+- [description] → [disposition: fixed here | fixed in #X | still open]
+```
+
+This makes wrongness traceable and converts it into prevention work.
+
+### CI Posture
+
+CI may be rate-limited or off. **Local gate is canonical.** CI is additive validation, not the source of truth.
+
+---
+
 ## Quick Start for Contributors
 
 ### Recommended: Use Nix for reproducible development
@@ -120,8 +169,8 @@ nix develop
 # 5. Install Python dependencies
 uv sync --extra full --extra diarization --extra dev
 
-# 6. Run local CI checks (same as GitHub Actions)
-nix flake check
+# 6. Run local CI checks
+nix-clean flake check        # use nix-clean wrapper inside devshell
 
 # 7. Start developing!
 ```
@@ -189,8 +238,8 @@ bash scripts/setup-env.sh
 5. **Verify setup**:
 
    ```bash
-   # Run local CI checks (same as GitHub Actions)
-   nix flake check
+   # Run local CI checks
+   nix-clean flake check   # use nix-clean wrapper inside devshell
    ```
 
 **Benefits:**
