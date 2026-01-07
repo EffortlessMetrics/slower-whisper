@@ -35,6 +35,23 @@ DECISION_WEIGHTS = {
     "publish": (3, 12),
 }
 
+# Fallback decision candidate weights (more conservative ranges)
+# Used when LLM extraction fails or is skipped
+FALLBACK_WEIGHTS = {
+    # Base context load by blast radius
+    "context_low": (5, 10),
+    "context_medium": (10, 25),
+    "context_high": (20, 45),
+    # Per-oscillation cluster
+    "oscillation": (6, 20),
+    # Per-check failure category
+    "check_failure": (4, 12),
+    # Contract/doc/schema touch
+    "contract_touch": (3, 10),
+    # Fix-loop (consecutive fix commits)
+    "fix_loop": (5, 15),
+}
+
 # DevLT bands
 DEVLT_BANDS = [
     (0, 10, "0-10m"),
@@ -133,6 +150,184 @@ def compute_control_plane_devlt(
         coverage=coverage,
         decision_count=len(decision_events),
     )
+
+
+def generate_fallback_decision_candidates(
+    bundle: FactBundle,
+    temporal_output: dict[str, Any] | None = None,
+) -> list[DecisionEvent]:
+    """
+    Generate deterministic decision candidates when LLM extraction fails.
+
+    This is the fallback hierarchy for DevLT estimation:
+    1. LLM extracted decision events (preferred)
+    2. Deterministic decision candidates (this function)
+    3. Never "unknown" - always produce bounded estimates
+
+    Decision candidates are generated from observable signals:
+    - Blast radius → base context load
+    - Temporal oscillations → debug/design decisions
+    - Check failures → quality decisions
+    - Contract/doc/schema touches → publish/design decisions
+    - Fix-loop patterns → debug decisions
+
+    Args:
+        bundle: The fact bundle with commits, check runs, scope
+        temporal_output: Optional temporal analyzer output for oscillation data
+
+    Returns:
+        List of DecisionEvent candidates with conservative time bounds
+    """
+    candidates: list[DecisionEvent] = []
+
+    # 1. Base context load by blast radius
+    blast_radius = bundle.scope.blast_radius
+    if blast_radius == "high":
+        lb, ub = FALLBACK_WEIGHTS["context_high"]
+        candidates.append(
+            DecisionEvent(
+                type="scope",
+                description="High blast radius requires significant context load",
+                anchor=f"scope: {bundle.scope.files_changed} files, {bundle.scope.insertions}+ {bundle.scope.deletions}-",
+                confidence="medium",
+                minutes_lb=lb,
+                minutes_ub=ub,
+            )
+        )
+    elif blast_radius == "medium":
+        lb, ub = FALLBACK_WEIGHTS["context_medium"]
+        candidates.append(
+            DecisionEvent(
+                type="scope",
+                description="Medium blast radius requires moderate context load",
+                anchor=f"scope: {bundle.scope.files_changed} files",
+                confidence="medium",
+                minutes_lb=lb,
+                minutes_ub=ub,
+            )
+        )
+    else:  # low
+        lb, ub = FALLBACK_WEIGHTS["context_low"]
+        candidates.append(
+            DecisionEvent(
+                type="scope",
+                description="Low blast radius - focused change",
+                anchor=f"scope: {bundle.scope.files_changed} files",
+                confidence="medium",
+                minutes_lb=lb,
+                minutes_ub=ub,
+            )
+        )
+
+    # 2. Oscillation clusters from temporal analysis
+    if temporal_output:
+        oscillations = temporal_output.get("oscillations", [])
+        for osc in oscillations:
+            osc_type = osc.get("type", "unknown")
+            files = osc.get("files", [])
+            lb, ub = FALLBACK_WEIGHTS["oscillation"]
+            candidates.append(
+                DecisionEvent(
+                    type="debug" if osc_type in ("revert_pattern", "approach_flip") else "design",
+                    description=f"Oscillation pattern: {osc_type}",
+                    anchor=f"temporal: {', '.join(files[:3])}{'...' if len(files) > 3 else ''}",
+                    confidence="low",
+                    minutes_lb=lb,
+                    minutes_ub=ub,
+                )
+            )
+
+    # 3. Check failures indicate quality/debug decisions
+    failure_categories: set[str] = set()
+    for check in bundle.check_runs:
+        if check.conclusion in ("failure", "timed_out", "cancelled"):
+            # Categorize by check name patterns
+            name_lower = check.name.lower()
+            if "lint" in name_lower or "format" in name_lower or "ruff" in name_lower:
+                failure_categories.add("lint")
+            elif "test" in name_lower or "pytest" in name_lower:
+                failure_categories.add("test")
+            elif "type" in name_lower or "mypy" in name_lower:
+                failure_categories.add("type")
+            elif "build" in name_lower or "compile" in name_lower:
+                failure_categories.add("build")
+            else:
+                failure_categories.add("other")
+
+    for category in failure_categories:
+        lb, ub = FALLBACK_WEIGHTS["check_failure"]
+        candidates.append(
+            DecisionEvent(
+                type="quality" if category in ("lint", "type") else "debug",
+                description=f"Check failure: {category} category",
+                anchor=f"check: {category} failures detected",
+                confidence="medium",
+                minutes_lb=lb,
+                minutes_ub=ub,
+            )
+        )
+
+    # 4. Contract/doc/schema touches indicate publish/design decisions
+    contract_files = []
+    for kf in bundle.scope.key_files:
+        path = kf["path"].lower()
+        if any(
+            indicator in path
+            for indicator in [
+                "schema",
+                "changelog",
+                "readme",
+                "api",
+                "interface",
+                ".d.ts",
+                "types",
+                "openapi",
+                "swagger",
+            ]
+        ):
+            contract_files.append(kf["path"])
+
+    if contract_files:
+        lb, ub = FALLBACK_WEIGHTS["contract_touch"]
+        candidates.append(
+            DecisionEvent(
+                type="publish"
+                if any("changelog" in f.lower() for f in contract_files)
+                else "design",
+                description=f"Contract/schema files touched: {len(contract_files)}",
+                anchor=f"files: {', '.join(contract_files[:3])}{'...' if len(contract_files) > 3 else ''}",
+                confidence="medium",
+                minutes_lb=lb,
+                minutes_ub=ub,
+            )
+        )
+
+    # 5. Fix-loop patterns from commit sequence
+    consecutive_fixes = 0
+    max_fix_streak = 0
+    for commit in bundle.commits:
+        if commit.is_fix:
+            consecutive_fixes += 1
+            max_fix_streak = max(max_fix_streak, consecutive_fixes)
+        else:
+            consecutive_fixes = 0
+
+    if max_fix_streak >= 2:
+        lb, ub = FALLBACK_WEIGHTS["fix_loop"]
+        # Scale by streak length
+        multiplier = min(max_fix_streak - 1, 3)  # Cap at 3x
+        candidates.append(
+            DecisionEvent(
+                type="debug",
+                description=f"Fix-loop pattern: {max_fix_streak} consecutive fix commits",
+                anchor=f"commits: {max_fix_streak} fix streak",
+                confidence="medium",
+                minutes_lb=lb * multiplier,
+                minutes_ub=ub * multiplier,
+            )
+        )
+
+    return candidates
 
 
 @dataclass

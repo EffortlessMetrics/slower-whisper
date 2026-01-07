@@ -28,7 +28,7 @@ class PublishResult:
 
 def _render_ledger_markdown(dossier: dict[str, Any]) -> str:
     """Render a dossier to PR ledger markdown format."""
-    pr_num = dossier.get("pr_number", "?")
+    # Note: pr_number is available via dossier.get("pr_number") if needed in ledger
     today = datetime.now().strftime("%Y-%m-%d")
 
     # Intent section

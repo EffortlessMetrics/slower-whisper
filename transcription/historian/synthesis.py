@@ -14,6 +14,53 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class AnalyzerStatus:
+    """Status of a single analyzer in the pipeline."""
+
+    name: str
+    attempted: bool
+    succeeded: bool
+    merged: bool
+    skip_reason: str | None = None
+    duration_ms: int | None = None
+    error: str | None = None
+
+
+@dataclass
+class PipelineReport:
+    """Report of analyzer pipeline execution for auditing."""
+
+    analyzers: list[AnalyzerStatus]
+    total_attempted: int
+    total_succeeded: int
+    total_merged: int
+    coverage: str  # "full", "partial", "minimal"
+    notes: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        return {
+            "analyzers": [
+                {
+                    "name": a.name,
+                    "attempted": a.attempted,
+                    "succeeded": a.succeeded,
+                    "merged": a.merged,
+                    "skip_reason": a.skip_reason,
+                    "duration_ms": a.duration_ms,
+                    "error": a.error,
+                }
+                for a in self.analyzers
+            ],
+            "total_attempted": self.total_attempted,
+            "total_succeeded": self.total_succeeded,
+            "total_merged": self.total_merged,
+            "coverage": self.coverage,
+            "notes": self.notes,
+        }
+
+
+@dataclass
 class SynthesisResult:
     """Result of dossier synthesis."""
 
@@ -21,6 +68,7 @@ class SynthesisResult:
     validation_errors: list[str]
     analyzer_results: dict[str, Any]
     synthesis_notes: list[str]
+    pipeline_report: PipelineReport | None = None
 
 
 def _build_base_dossier(bundle: FactBundle) -> dict[str, Any]:
@@ -524,6 +572,10 @@ def synthesize_dossier(
     Raises:
         SchemaNotFoundError: If strict=True and schema file doesn't exist
     """
+    from transcription.historian.estimation import (
+        compute_control_plane_devlt,
+        generate_fallback_decision_candidates,
+    )
     from transcription.historian.validation import require_schema, validate_dossier
 
     # Fail fast if schema is missing - don't do work we can't validate
@@ -532,33 +584,96 @@ def synthesize_dossier(
     # Build base dossier from bundle
     dossier = _build_base_dossier(bundle)
 
-    # Collect results by name
+    # Collect results by name and build pipeline report
     outputs: dict[str, dict[str, Any]] = {}
     synthesis_notes: list[str] = []
+    analyzer_statuses: list[AnalyzerStatus] = []
 
-    for result in analyzer_results:
-        if result.success and result.output:
+    # Expected analyzers for tracking
+    expected_analyzers = [
+        "Temporal",
+        "DiffScout",
+        "EvidenceAuditor",
+        "FrictionMiner",
+        "DesignAlignment",
+        "PerfIntegrity",
+        "DocsSchemaAuditor",
+        "DecisionExtractor",
+    ]
+
+    # Track which analyzers were in results
+    result_by_name = {r.name: r for r in analyzer_results}
+
+    for name in expected_analyzers:
+        result = result_by_name.get(name)
+        if result is None:
+            # Analyzer wasn't even attempted
+            analyzer_statuses.append(
+                AnalyzerStatus(
+                    name=name,
+                    attempted=False,
+                    succeeded=False,
+                    merged=False,
+                    skip_reason="not_in_pipeline",
+                )
+            )
+        elif result.success and result.output:
             outputs[result.name] = result.output
-        elif not result.success:
-            synthesis_notes.append(f"{result.name} failed: {', '.join(result.errors)}")
+            analyzer_statuses.append(
+                AnalyzerStatus(
+                    name=name,
+                    attempted=True,
+                    succeeded=True,
+                    merged=True,  # Will be set to True after merge
+                    duration_ms=result.duration_ms,
+                )
+            )
+        else:
+            # Analyzer failed
+            analyzer_statuses.append(
+                AnalyzerStatus(
+                    name=name,
+                    attempted=True,
+                    succeeded=False,
+                    merged=False,
+                    error=", ".join(result.errors) if result.errors else "unknown error",
+                    duration_ms=result.duration_ms,
+                )
+            )
+            synthesis_notes.append(f"{name} failed: {', '.join(result.errors)}")
 
-    # Merge each analyzer's output
+    # Merge each analyzer's output and track merges
+    merged_analyzers: set[str] = set()
+
     if "DiffScout" in outputs:
         _merge_diff_scout(dossier, outputs["DiffScout"])
+        merged_analyzers.add("DiffScout")
     if "EvidenceAuditor" in outputs:
         _merge_evidence_auditor(dossier, outputs["EvidenceAuditor"])
+        merged_analyzers.add("EvidenceAuditor")
     if "FrictionMiner" in outputs:
         _merge_friction_miner(dossier, outputs["FrictionMiner"])
+        merged_analyzers.add("FrictionMiner")
     if "DesignAlignment" in outputs:
         _merge_design_alignment(dossier, outputs["DesignAlignment"])
+        merged_analyzers.add("DesignAlignment")
     if "PerfIntegrity" in outputs:
         _merge_perf_integrity(dossier, outputs["PerfIntegrity"])
+        merged_analyzers.add("PerfIntegrity")
     if "DocsSchemaAuditor" in outputs:
         _merge_docs_schema(dossier, outputs["DocsSchemaAuditor"])
+        merged_analyzers.add("DocsSchemaAuditor")
     if "DecisionExtractor" in outputs:
         _merge_decision_extractor(dossier, outputs["DecisionExtractor"])
+        merged_analyzers.add("DecisionExtractor")
     if "Temporal" in outputs:
         _merge_temporal(dossier, outputs["Temporal"])
+        merged_analyzers.add("Temporal")
+
+    # Update merged status in analyzer_statuses
+    for status in analyzer_statuses:
+        if status.name in merged_analyzers:
+            status.merged = True
 
     # Fill in defaults for required fields
     dossier.setdefault("intent", {}).setdefault("goal", bundle.metadata.title)
@@ -587,8 +702,84 @@ def synthesize_dossier(
     dossier.setdefault("decision_events", [])
     dossier.setdefault("inputs", {"coverage": "github_only", "missing_sources": []})
 
+    # --- Fallback decision candidates when DecisionExtractor fails ---
+    # This ensures DevLT is never "unknown" when we have data
+    decision_events = dossier.get("decision_events", [])
+    used_fallback = False
+
+    if not decision_events:
+        # DecisionExtractor failed or returned no events - use fallback
+        temporal_output = outputs.get("Temporal")
+        fallback_candidates = generate_fallback_decision_candidates(bundle, temporal_output)
+
+        if fallback_candidates:
+            # Convert to dict format for dossier
+            dossier["decision_events"] = [
+                {
+                    "type": e.type,
+                    "description": e.description,
+                    "anchor": e.anchor,
+                    "confidence": e.confidence,
+                    "minutes_lb": e.minutes_lb,
+                    "minutes_ub": e.minutes_ub,
+                }
+                for e in fallback_candidates
+            ]
+            used_fallback = True
+            synthesis_notes.append(
+                f"Using fallback decision candidates ({len(fallback_candidates)} events) - DecisionExtractor returned no events"
+            )
+
+            # Compute control-plane DevLT from fallback candidates
+            coverage = dossier.get("inputs", {}).get("coverage", "github_only")
+            control_plane = compute_control_plane_devlt(fallback_candidates, coverage)
+            # Override method to indicate fallback was used
+            dossier.setdefault("cost", {}).setdefault("devlt", {})["control_plane"] = {
+                "lb_minutes": control_plane.lb_minutes,
+                "ub_minutes": control_plane.ub_minutes,
+                "band": control_plane.band,
+                "method": "fallback-deterministic-v1",
+                "coverage": coverage,
+                "decision_count": len(fallback_candidates),
+            }
+
     # Finalize all derived cost metrics (after merges, before validation)
-    finalize_costs(dossier)
+    # Skip if we already computed control_plane from fallback
+    if not used_fallback:
+        finalize_costs(dossier)
+
+    # Build pipeline report
+    total_attempted = sum(1 for s in analyzer_statuses if s.attempted)
+    total_succeeded = sum(1 for s in analyzer_statuses if s.succeeded)
+    total_merged = sum(1 for s in analyzer_statuses if s.merged)
+
+    # Determine coverage level
+    if total_merged == len(expected_analyzers):
+        coverage = "full"
+    elif total_merged >= len(expected_analyzers) // 2:
+        coverage = "partial"
+    else:
+        coverage = "minimal"
+
+    pipeline_notes: list[str] = []
+    if used_fallback:
+        pipeline_notes.append("Used fallback decision candidates for DevLT estimation")
+    if total_merged < total_succeeded:
+        pipeline_notes.append(
+            f"Warning: {total_succeeded - total_merged} succeeded analyzer(s) not merged"
+        )
+
+    pipeline_report = PipelineReport(
+        analyzers=analyzer_statuses,
+        total_attempted=total_attempted,
+        total_succeeded=total_succeeded,
+        total_merged=total_merged,
+        coverage=coverage,
+        notes=pipeline_notes,
+    )
+
+    # Add pipeline report to dossier's _analysis block
+    dossier.setdefault("_analysis", {})["pipeline"] = pipeline_report.to_dict()
 
     # Validate with strict mode (schema already checked above, so this won't raise)
     valid, errors = validate_dossier(dossier, strict=strict)
@@ -600,4 +791,5 @@ def synthesize_dossier(
         validation_errors=errors,
         analyzer_results=outputs,
         synthesis_notes=synthesis_notes,
+        pipeline_report=pipeline_report,
     )

@@ -34,11 +34,18 @@ from transcription.historian.bundle import (
 )
 from transcription.historian.estimation import (
     BoundedEstimation,
+    DecisionEvent,
     MachineTimeEstimate,
     compute_bounded_estimate,
     compute_devlt_split,
     compute_machine_time,
     compute_session_bounds,
+    generate_fallback_decision_candidates,
+)
+from transcription.historian.synthesis import (
+    AnalyzerStatus,
+    PipelineReport,
+    SynthesisResult,
 )
 
 __all__ = [
@@ -56,8 +63,14 @@ __all__ = [
     # Estimation
     "BoundedEstimation",
     "MachineTimeEstimate",
+    "DecisionEvent",
     "compute_bounded_estimate",
     "compute_session_bounds",
     "compute_devlt_split",
     "compute_machine_time",
+    "generate_fallback_decision_candidates",
+    # Synthesis
+    "AnalyzerStatus",
+    "PipelineReport",
+    "SynthesisResult",
 ]
