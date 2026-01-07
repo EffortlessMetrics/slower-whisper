@@ -81,7 +81,7 @@ This guide shows how to:
 
 ```json
 {
-  "file_name": "support_call_001.wav",
+  "file": "support_call_001.wav",
   "language": "en",
   "speakers": [
     {"id": "spk_0", "total_speech_time": 45.3, "num_segments": 12},

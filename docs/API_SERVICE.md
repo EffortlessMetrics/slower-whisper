@@ -101,7 +101,7 @@ curl -X POST -F "audio=@meeting.wav" \
 ```json
 {
   "schema_version": 2,
-  "file_name": "uploaded_audio.mp3",
+  "file": "uploaded_audio.mp3",
   "language": "en",
   "meta": {
     "generated_at": "2025-11-15T12:34:56Z",
@@ -156,7 +156,7 @@ curl -X POST \
 ```json
 {
   "schema_version": 2,
-  "file_name": "audio.wav",
+  "file": "audio.wav",
   "language": "en",
   "segments": [
     {

@@ -380,7 +380,7 @@ The core JSON schema version remains **v2** with backward compatibility:
 ```json
 {
   "schema_version": 2,
-  "file_name": "audio.wav",
+  "file": "audio.wav",
   "language": "en",
   "meta": { ... },
   "segments": [ ... ]
