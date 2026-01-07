@@ -1,0 +1,277 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/EffortlessMetrics/slower-whisper/schemas/pr-dossier-v2.schema.json",
+  "title": "PR Dossier Schema v2",
+  "description": "Schema for structured PR analysis dossiers",
+  "type": "object",
+  "required": ["schema_version", "pr_number", "title", "url", "created_at"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Schema version (must be 2)"
+    },
+    "pr_number": {
+      "type": "integer",
+      "description": "GitHub PR number"
+    },
+    "title": {
+      "type": "string",
+      "description": "PR title"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "PR URL"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "PR creation timestamp"
+    },
+    "merged_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "PR merge timestamp (null if not merged)"
+    },
+    "intent": {
+      "type": "object",
+      "properties": {
+        "goal": {
+          "type": "string",
+          "description": "1-2 sentence description of PR goal"
+        },
+        "issues": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Linked issue numbers"
+        },
+        "phase": {
+          "type": "string",
+          "description": "Roadmap phase (v1.9, v2.0-track1, etc.)"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["feature", "hardening", "mechanization", "perf/bench", "refactor", "unknown"],
+          "description": "PR type category"
+        },
+        "out_of_scope": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Explicit exclusions"
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "files_changed": {"type": "integer"},
+        "insertions": {"type": "integer"},
+        "deletions": {"type": "integer"},
+        "top_directories": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "key_files": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "blast_radius": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "description"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Failure mode type from FAILURE_MODES.md"
+          },
+          "description": {"type": "string"},
+          "detected_by": {
+            "type": "string",
+            "enum": ["gate", "review", "post-merge", "self", "DocsSchemaAuditor"]
+          },
+          "disposition": {"type": "string"},
+          "commit": {"type": ["string", "null"]},
+          "prevention_added": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "local_gate": {
+          "type": "object",
+          "properties": {
+            "passed": {"type": "boolean"},
+            "command": {"type": "string"},
+            "receipt_path": {"type": ["string", "null"]}
+          }
+        },
+        "tests": {
+          "type": "object",
+          "properties": {
+            "added": {"type": "integer"},
+            "modified": {"type": "integer"},
+            "path": {"type": ["string", "null"]},
+            "coverage_delta": {"type": ["number", "null"]}
+          }
+        },
+        "typing": {
+          "type": "object",
+          "properties": {
+            "mypy_passed": {"type": "boolean"},
+            "ruff_passed": {"type": "boolean"}
+          }
+        },
+        "benchmarks": {
+          "type": "object",
+          "properties": {
+            "results_path": {"type": ["string", "null"]},
+            "metrics": {"type": "object"},
+            "baseline_commit": {"type": ["string", "null"]},
+            "semantics_unchanged": {"type": ["boolean", "string"]}
+          }
+        },
+        "docs_updated": {"type": "boolean"},
+        "schema_validated": {"type": ["boolean", "string"]}
+      }
+    },
+    "process": {
+      "type": "object",
+      "properties": {
+        "friction_events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event": {"type": "string"},
+              "detected_by": {"type": "string"},
+              "disposition": {"type": "string"},
+              "prevention": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "design_alignment": {
+          "type": "object",
+          "properties": {
+            "drifted": {"type": "boolean"},
+            "notes": {"type": ["string", "null"]}
+          }
+        },
+        "measurement_integrity": {
+          "type": "object",
+          "properties": {
+            "valid": {"type": ["boolean", "string"]},
+            "invalidation_reason": {"type": ["string", "null"]},
+            "correction_link": {"type": ["string", "null"]}
+          }
+        }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "properties": {
+        "wall_clock": {
+          "type": "object",
+          "properties": {
+            "days": {"type": "number"},
+            "hours": {"type": "number"},
+            "created_at": {"type": "string"},
+            "merged_at": {"type": ["string", "null"]}
+          }
+        },
+        "active_work": {
+          "type": "object",
+          "properties": {
+            "lb_hours": {"type": "number"},
+            "ub_hours": {"type": "number"},
+            "method": {"type": "string"},
+            "session_count": {"type": "integer"}
+          }
+        },
+        "devlt": {
+          "type": "object",
+          "properties": {
+            "author": {
+              "type": "object",
+              "properties": {
+                "lb_minutes": {"type": "integer"},
+                "ub_minutes": {"type": "integer"},
+                "band": {"type": "string"}
+              }
+            },
+            "review": {
+              "type": "object",
+              "properties": {
+                "lb_minutes": {"type": "integer"},
+                "ub_minutes": {"type": "integer"},
+                "band": {"type": "string"}
+              }
+            },
+            "method": {"type": "string"}
+          }
+        },
+        "machine_spend": {
+          "type": "object",
+          "properties": {
+            "estimate_usd": {"type": ["number", "null"]},
+            "band": {"type": "string"},
+            "method": {"type": "string"},
+            "notes": {"type": "string"}
+          }
+        }
+      }
+    },
+    "reflection": {
+      "type": "object",
+      "properties": {
+        "went_well": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "could_be_better": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["shipped", "deferred", "rejected", "invalid_measurement", "pending"]
+    },
+    "factory_delta": {
+      "type": "object",
+      "properties": {
+        "gates_added": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "contracts_added": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "prevention_issues": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "followups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "issue": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      }
+    }
+  }
+}

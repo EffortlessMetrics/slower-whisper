@@ -2,40 +2,322 @@
 """
 Generate PR ledger and dossier with LLM analysis.
 
-This script gathers comprehensive PR data from GitHub and outputs it in a format
-suitable for LLM analysis. The LLM then analyzes the data to produce:
-- Goal and intent
-- Findings and friction events
-- DevLT estimates
-- Reflection (what went well / could be better)
+This script provides a multi-stage pipeline for PR analysis:
 
-Usage:
-    # Gather data for LLM analysis (outputs analysis prompt)
-    python scripts/generate-pr-ledger.py --pr 123 --analyze
+Stage 1 - Fact Bundle (deterministic, no LLM):
+    python scripts/generate-pr-ledger.py --pr 123 --dump-bundle
+    # Output: docs/audit/pr/_bundles/123.json
 
-    # Output raw data as JSON (for inspection)
+Stage 2 - LLM Analysis:
+    python scripts/generate-pr-ledger.py --pr 123 --analyze --llm claude-code
+    # Output: dossier JSON to stdout
+
+Stage 3 - Full Publish:
+    python scripts/generate-pr-ledger.py --pr 123 --publish --llm claude-code
+    # Output: docs/audit/pr/123.json + optionally updates PR body
+
+Legacy modes (still supported):
     python scripts/generate-pr-ledger.py --pr 123 --raw
-
-    # Generate dossier template (with placeholders)
-    python scripts/generate-pr-ledger.py --pr 123 --format json
+    python scripts/generate-pr-ledger.py --pr 123  # Analysis prompt for manual LLM
 
 Requires:
     - gh CLI installed and authenticated
+    - claude-agent-sdk (for --llm mode)
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
-import re
-import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 
-def run_gh(args: list[str], check: bool = True) -> dict[str, Any] | list[Any] | str | None:
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate PR ledger and dossier with LLM analysis",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Stage 1: Dump fact bundle (no LLM)
+  %(prog)s --pr 123 --dump-bundle
+
+  # Stage 2: Analyze with LLM
+  %(prog)s --pr 123 --analyze --llm claude-code
+
+  # Stage 3: Full publish
+  %(prog)s --pr 123 --publish --llm claude-code --update-pr
+
+  # Legacy: Generate analysis prompt for manual LLM
+  %(prog)s --pr 123
+
+  # Legacy: Output raw data as JSON
+  %(prog)s --pr 123 --raw
+""",
+    )
+
+    # Required
+    parser.add_argument("--pr", "-p", type=int, required=True, help="PR number to analyze")
+
+    # Mode selection
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--dump-bundle",
+        action="store_true",
+        help="Output fact bundle JSON (deterministic, no LLM)",
+    )
+    mode_group.add_argument(
+        "--analyze",
+        "-a",
+        action="store_true",
+        help="Run LLM analysis and output dossier (requires --llm)",
+    )
+    mode_group.add_argument(
+        "--publish",
+        action="store_true",
+        help="Run full pipeline and publish dossier (requires --llm)",
+    )
+    mode_group.add_argument(
+        "--raw",
+        "-r",
+        action="store_true",
+        help="[Legacy] Output raw gathered data as JSON",
+    )
+
+    # LLM options
+    parser.add_argument(
+        "--llm",
+        type=str,
+        choices=["claude-code", "mock"],
+        help="LLM provider for analysis (required for --analyze/--publish)",
+    )
+
+    # Output options
+    parser.add_argument("--output", "-o", type=str, help="Output file path (default: stdout)")
+    parser.add_argument(
+        "--include-diff",
+        action="store_true",
+        help="Include full diff in bundle (can be large)",
+    )
+
+    # Publish options
+    parser.add_argument(
+        "--update-pr",
+        action="store_true",
+        help="Update PR description via gh (with --publish)",
+    )
+    parser.add_argument(
+        "--skip-exhibits",
+        action="store_true",
+        help="Skip auto-updating EXHIBITS.md (with --publish)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without writing files",
+    )
+
+    args = parser.parse_args()
+
+    # Validate LLM requirement
+    if (args.analyze or args.publish) and not args.llm:
+        parser.error("--llm is required for --analyze and --publish modes")
+
+    # Route to appropriate handler
+    if args.dump_bundle:
+        _handle_dump_bundle(args)
+    elif args.analyze:
+        _handle_analyze(args)
+    elif args.publish:
+        _handle_publish(args)
+    elif args.raw:
+        _handle_raw(args)
+    else:
+        # Default: generate analysis prompt (legacy mode)
+        _handle_legacy_prompt(args)
+
+
+def _handle_dump_bundle(args: argparse.Namespace) -> None:
+    """Handle --dump-bundle mode."""
+    from transcription.historian import gather_pr_data
+    from transcription.historian.estimation import compute_bounded_estimate
+
+    # Gather data
+    bundle = gather_pr_data(args.pr, include_diff=args.include_diff)
+
+    # Compute estimation
+    compute_bounded_estimate(bundle)
+
+    # Output
+    output = json.dumps(bundle.to_dict(), indent=2)
+
+    if args.output:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.output, "w") as f:
+            f.write(output)
+        print(f"Bundle written to: {args.output}", file=sys.stderr)
+    else:
+        # Default: write to bundles directory
+        bundles_dir = Path("docs/audit/pr/_bundles")
+        bundles_dir.mkdir(parents=True, exist_ok=True)
+        bundle_path = bundles_dir / f"{args.pr}.json"
+        with open(bundle_path, "w") as f:
+            f.write(output)
+        print(f"Bundle written to: {bundle_path}", file=sys.stderr)
+
+
+def _handle_analyze(args: argparse.Namespace) -> None:
+    """Handle --analyze mode."""
+    from transcription.historian import gather_pr_data
+    from transcription.historian.estimation import compute_bounded_estimate
+    from transcription.historian.llm_client import LLMConfig, create_llm_provider
+    from transcription.historian.synthesis import run_all_analyzers, synthesize_dossier
+
+    # Gather and estimate
+    print(f"Gathering data for PR #{args.pr}...", file=sys.stderr)
+    bundle = gather_pr_data(args.pr, include_diff=True)
+    compute_bounded_estimate(bundle)
+
+    # Create LLM provider
+    config = LLMConfig(provider=args.llm)
+    llm = create_llm_provider(config)
+
+    # Run analyzers
+    print("Running LLM analyzers...", file=sys.stderr)
+    results = asyncio.run(run_all_analyzers(bundle, llm))
+
+    # Report analyzer status
+    for result in results:
+        status = "ok" if result.success else "FAILED"
+        print(f"  {result.name}: {status} ({result.duration_ms}ms)", file=sys.stderr)
+        if result.errors:
+            for err in result.errors[:3]:
+                print(f"    - {err}", file=sys.stderr)
+
+    # Synthesize dossier
+    print("Synthesizing dossier...", file=sys.stderr)
+    synthesis = synthesize_dossier(bundle, results)
+
+    if synthesis.validation_errors:
+        print("Validation warnings:", file=sys.stderr)
+        for err in synthesis.validation_errors[:5]:
+            print(f"  - {err}", file=sys.stderr)
+
+    # Output
+    output = json.dumps(synthesis.dossier, indent=2)
+
+    if args.output:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.output, "w") as f:
+            f.write(output)
+        print(f"Dossier written to: {args.output}", file=sys.stderr)
+    else:
+        print(output)
+
+
+def _handle_publish(args: argparse.Namespace) -> None:
+    """Handle --publish mode."""
+    from transcription.historian import gather_pr_data
+    from transcription.historian.estimation import compute_bounded_estimate
+    from transcription.historian.llm_client import LLMConfig, create_llm_provider
+    from transcription.historian.publisher import publish_dossier
+    from transcription.historian.synthesis import run_all_analyzers, synthesize_dossier
+
+    # Gather and estimate
+    print(f"Gathering data for PR #{args.pr}...", file=sys.stderr)
+    bundle = gather_pr_data(args.pr, include_diff=True)
+    compute_bounded_estimate(bundle)
+
+    # Create LLM provider
+    config = LLMConfig(provider=args.llm)
+    llm = create_llm_provider(config)
+
+    # Run analyzers
+    print("Running LLM analyzers...", file=sys.stderr)
+    results = asyncio.run(run_all_analyzers(bundle, llm))
+
+    for result in results:
+        status = "ok" if result.success else "FAILED"
+        print(f"  {result.name}: {status}", file=sys.stderr)
+
+    # Synthesize
+    print("Synthesizing dossier...", file=sys.stderr)
+    synthesis = synthesize_dossier(bundle, results)
+
+    # Publish
+    print("Publishing...", file=sys.stderr)
+    result = publish_dossier(
+        dossier=synthesis.dossier,
+        pr_number=args.pr,
+        update_pr=args.update_pr,
+        update_exhibits=not args.skip_exhibits,
+        dry_run=args.dry_run,
+    )
+
+    # Report
+    if result.success:
+        print("Published successfully:", file=sys.stderr)
+        for note in result.notes:
+            print(f"  - {note}", file=sys.stderr)
+        if result.errors:
+            print("Warnings:", file=sys.stderr)
+            for err in result.errors:
+                print(f"  - {err}", file=sys.stderr)
+    else:
+        print("Publish failed:", file=sys.stderr)
+        for err in result.errors:
+            print(f"  - {err}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _handle_raw(args: argparse.Namespace) -> None:
+    """Handle --raw mode (legacy)."""
+    data = _legacy_gather_pr_data(args.pr)
+
+    if not args.include_diff:
+        diff_len = len(data.get("diff", ""))
+        data["diff"] = f"[diff omitted, {diff_len} chars, use --include-diff to include]"
+
+    output = json.dumps(data, indent=2)
+
+    if args.output:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.output, "w") as f:
+            f.write(output)
+        print(f"Output written to: {args.output}", file=sys.stderr)
+    else:
+        print(output)
+
+
+def _handle_legacy_prompt(args: argparse.Namespace) -> None:
+    """Handle legacy analysis prompt mode."""
+    data = _legacy_gather_pr_data(args.pr)
+
+    if not args.include_diff:
+        diff_len = len(data.get("diff", ""))
+        data["diff"] = f"[diff omitted, {diff_len} chars, use --include-diff to include]"
+
+    output = _generate_analysis_prompt(data)
+
+    if args.output:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.output, "w") as f:
+            f.write(output)
+        print(f"Output written to: {args.output}", file=sys.stderr)
+    else:
+        print(output)
+
+
+# --- Legacy functions (preserved for backward compatibility) ---
+
+import re
+import subprocess
+from datetime import datetime
+
+
+def _run_gh(args: list[str], check: bool = True) -> dict[str, Any] | list[Any] | str | None:
     """Run gh CLI command and return parsed JSON or raw output."""
     cmd = ["gh"] + args
     try:
@@ -55,8 +337,11 @@ def run_gh(args: list[str], check: bool = True) -> dict[str, Any] | list[Any] | 
         sys.exit(1)
 
 
-def get_pr_metadata(pr_number: int) -> dict[str, Any]:
-    """Fetch comprehensive PR metadata."""
+def _legacy_gather_pr_data(pr_number: int) -> dict[str, Any]:
+    """Gather all PR data for analysis (legacy format)."""
+    print(f"Gathering data for PR #{pr_number}...", file=sys.stderr)
+
+    # Fetch metadata
     fields = [
         "number",
         "title",
@@ -75,282 +360,55 @@ def get_pr_metadata(pr_number: int) -> dict[str, Any]:
         "baseRefName",
         "headRefName",
     ]
-    data = run_gh(["pr", "view", str(pr_number), "--json", ",".join(fields)])
-    return data if isinstance(data, dict) else {}
-
-
-def get_pr_files(pr_number: int) -> list[dict[str, Any]]:
-    """Fetch changed files with diff stats."""
-    data = run_gh(["pr", "view", str(pr_number), "--json", "files"])
-    if isinstance(data, dict) and "files" in data:
-        return data["files"]
-    return []
-
-
-def get_pr_commits(pr_number: int) -> list[dict[str, Any]]:
-    """Fetch commits with messages."""
-    data = run_gh(["pr", "view", str(pr_number), "--json", "commits"])
-    if isinstance(data, dict) and "commits" in data:
-        return data["commits"]
-    return []
-
-
-def get_pr_comments(pr_number: int) -> list[dict[str, Any]]:
-    """Fetch PR comments (review comments and issue comments)."""
-    data = run_gh(["pr", "view", str(pr_number), "--json", "comments,reviews"])
-    comments = []
-    if isinstance(data, dict):
-        if "comments" in data:
-            comments.extend(data["comments"])
-        if "reviews" in data:
-            for review in data["reviews"]:
-                if review.get("body"):
-                    comments.append(
-                        {
-                            "author": review.get("author", {}).get("login", "unknown"),
-                            "body": review.get("body"),
-                            "createdAt": review.get("submittedAt"),
-                            "type": "review",
-                            "state": review.get("state"),
-                        }
-                    )
-    return comments
-
-
-def get_pr_diff(pr_number: int) -> str:
-    """Fetch the PR diff."""
-    result = run_gh(["pr", "diff", str(pr_number)], check=False)
-    return result if isinstance(result, str) else ""
-
-
-def get_check_runs(pr_number: int) -> list[dict[str, Any]]:
-    """Fetch CI check runs and their status."""
-    data = run_gh(["pr", "view", str(pr_number), "--json", "statusCheckRollup"])
-    if isinstance(data, dict) and "statusCheckRollup" in data:
-        return data["statusCheckRollup"] or []
-    return []
-
-
-def estimate_active_work(commits: list[dict[str, Any]], gap_minutes: int = 45) -> dict[str, Any]:
-    """
-    Estimate active work using commit burst heuristic.
-    Returns hours and session details.
-    """
-    if not commits:
-        return {"hours": 0.5, "sessions": 1, "method": "minimum estimate (no commits)"}
-
-    timestamps = []
-    for commit in commits:
-        committed_date = commit.get("committedDate") or commit.get("commit", {}).get(
-            "committedDate"
-        )
-        if committed_date:
-            try:
-                dt = datetime.fromisoformat(committed_date.replace("Z", "+00:00"))
-                timestamps.append(dt)
-            except (ValueError, TypeError):
-                pass
-
-    if len(timestamps) < 2:
-        return {"hours": 0.5, "sessions": 1, "method": "minimum estimate (<2 commits)"}
-
-    timestamps.sort()
-
-    sessions = []
-    session_start = timestamps[0]
-    session_end = timestamps[0]
-
-    for ts in timestamps[1:]:
-        gap = (ts - session_end).total_seconds() / 60
-        if gap <= gap_minutes:
-            session_end = ts
-        else:
-            sessions.append((session_start, session_end))
-            session_start = ts
-            session_end = ts
-
-    sessions.append((session_start, session_end))
-
-    total_hours = sum((end - start).total_seconds() / 3600 for start, end in sessions)
-    total_hours += len(sessions) * 0.25  # Add minimum time per session
-
-    return {
-        "hours": round(total_hours, 1),
-        "sessions": len(sessions),
-        "method": f"commit bursts (gaps ≤{gap_minutes}min = same session)",
-    }
-
-
-def calculate_wall_clock(created_at: str | None, merged_at: str | None) -> dict[str, Any]:
-    """Calculate wall clock metrics."""
-    if not created_at:
-        return {"days": None, "hours": None}
-
-    try:
-        created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        if merged_at:
-            merged = datetime.fromisoformat(merged_at.replace("Z", "+00:00"))
-            delta = merged - created
-            return {
-                "days": round(delta.total_seconds() / 86400, 1),
-                "hours": round(delta.total_seconds() / 3600, 1),
-            }
-        else:
-            return {"days": None, "hours": None, "note": "PR not merged"}
-    except (ValueError, TypeError):
-        return {"days": None, "hours": None}
-
-
-def extract_issue_refs(text: str) -> list[str]:
-    """Extract issue references from text."""
-    if not text:
-        return []
-    pattern = r"#(\d+)|(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#?(\d+)"
-    matches = re.findall(pattern, text, re.IGNORECASE)
-    refs = set()
-    for m in matches:
-        for g in m:
-            if g:
-                refs.add(f"#{g}")
-    return sorted(refs)
-
-
-def analyze_commit_patterns(commits: list[dict[str, Any]]) -> dict[str, Any]:
-    """Analyze commit messages for patterns indicating friction/fixes."""
-    patterns = {
-        "fix_commits": [],
-        "refactor_commits": [],
-        "test_commits": [],
-        "doc_commits": [],
-        "revert_commits": [],
-        "wip_commits": [],
-    }
-
-    fix_patterns = [r"\bfix\b", r"\bbug\b", r"\bissue\b", r"\bcorrect\b", r"\bresolve\b"]
-    refactor_patterns = [r"\brefactor\b", r"\bclean\b", r"\brestructure\b"]
-    test_patterns = [r"\btest\b", r"\bspec\b", r"\bcoverage\b"]
-    doc_patterns = [r"\bdoc\b", r"\breadme\b", r"\bcomment\b"]
-    revert_patterns = [r"\brevert\b", r"\bundo\b", r"\brollback\b"]
-    wip_patterns = [r"\bwip\b", r"\bwork in progress\b", r"\bwip:\b"]
-
-    for commit in commits:
-        msg = commit.get("messageHeadline", "") or commit.get("commit", {}).get(
-            "messageHeadline", ""
-        )
-        msg_lower = msg.lower()
-        sha = commit.get("oid", "")[:7] or commit.get("commit", {}).get("oid", "")[:7]
-
-        entry = {"sha": sha, "message": msg}
-
-        if any(re.search(p, msg_lower) for p in fix_patterns):
-            patterns["fix_commits"].append(entry)
-        if any(re.search(p, msg_lower) for p in refactor_patterns):
-            patterns["refactor_commits"].append(entry)
-        if any(re.search(p, msg_lower) for p in test_patterns):
-            patterns["test_commits"].append(entry)
-        if any(re.search(p, msg_lower) for p in doc_patterns):
-            patterns["doc_commits"].append(entry)
-        if any(re.search(p, msg_lower) for p in revert_patterns):
-            patterns["revert_commits"].append(entry)
-        if any(re.search(p, msg_lower) for p in wip_patterns):
-            patterns["wip_commits"].append(entry)
-
-    return patterns
-
-
-def get_top_directories(files: list[dict[str, Any]], limit: int = 5) -> list[str]:
-    """Extract top directories from changed files."""
-    dir_counts: dict[str, int] = {}
-    for f in files:
-        path = f.get("path", "")
-        parts = path.split("/")
-        if len(parts) > 1:
-            dir_path = "/".join(parts[:-1]) + "/"
-            dir_counts[dir_path] = dir_counts.get(dir_path, 0) + 1
-
-    sorted_dirs = sorted(dir_counts.items(), key=lambda x: -x[1])
-    return [d for d, _ in sorted_dirs[:limit]]
-
-
-def get_key_files(files: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
-    """Extract key files with change stats."""
-    scored = []
-    for f in files:
-        path = f.get("path", "")
-        additions = f.get("additions", 0)
-        deletions = f.get("deletions", 0)
-        scored.append(
-            {
-                "path": path,
-                "additions": additions,
-                "deletions": deletions,
-                "total_changes": additions + deletions,
-            }
-        )
-
-    return sorted(scored, key=lambda x: -x["total_changes"])[:limit]
-
-
-def categorize_file_changes(files: list[dict[str, Any]]) -> dict[str, list[str]]:
-    """Categorize files by type."""
-    categories = {
-        "source": [],
-        "tests": [],
-        "docs": [],
-        "config": [],
-        "other": [],
-    }
-
-    for f in files:
-        path = f.get("path", "")
-        if "/test" in path or path.startswith("test") or "_test." in path or "test_" in path:
-            categories["tests"].append(path)
-        elif path.endswith((".md", ".rst", ".txt")) or "/docs/" in path or "/doc/" in path:
-            categories["docs"].append(path)
-        elif path.endswith((".toml", ".yaml", ".yml", ".json", ".cfg", ".ini", ".lock")):
-            categories["config"].append(path)
-        elif path.endswith((".py", ".rs", ".ts", ".tsx", ".js", ".jsx")):
-            categories["source"].append(path)
-        else:
-            categories["other"].append(path)
-
-    return categories
-
-
-def gather_pr_data(pr_number: int) -> dict[str, Any]:
-    """Gather all PR data for analysis."""
-    print(f"Gathering data for PR #{pr_number}...", file=sys.stderr)
-
-    metadata = get_pr_metadata(pr_number)
-    if not metadata:
+    metadata = _run_gh(["pr", "view", str(pr_number), "--json", ",".join(fields)])
+    if not isinstance(metadata, dict):
         print(f"Error: Could not fetch PR #{pr_number}", file=sys.stderr)
         sys.exit(1)
 
-    files = get_pr_files(pr_number)
-    commits = get_pr_commits(pr_number)
-    comments = get_pr_comments(pr_number)
-    checks = get_check_runs(pr_number)
+    # Files
+    files_data = _run_gh(["pr", "view", str(pr_number), "--json", "files"])
+    files = files_data.get("files", []) if isinstance(files_data, dict) else []
 
-    # Get diff (can be large, truncate if needed)
-    diff = get_pr_diff(pr_number)
+    # Commits
+    commits_data = _run_gh(["pr", "view", str(pr_number), "--json", "commits"])
+    commits = commits_data.get("commits", []) if isinstance(commits_data, dict) else []
+
+    # Comments and reviews
+    comments_data = _run_gh(["pr", "view", str(pr_number), "--json", "comments,reviews"])
+    comments = []
+    if isinstance(comments_data, dict):
+        comments.extend(comments_data.get("comments", []))
+        for review in comments_data.get("reviews", []):
+            if review.get("body"):
+                comments.append(
+                    {
+                        "author": review.get("author", {}).get("login", "unknown"),
+                        "body": review.get("body"),
+                        "createdAt": review.get("submittedAt"),
+                        "type": "review",
+                        "state": review.get("state"),
+                    }
+                )
+
+    # Check runs
+    checks_data = _run_gh(["pr", "view", str(pr_number), "--json", "statusCheckRollup"])
+    checks = checks_data.get("statusCheckRollup", []) if isinstance(checks_data, dict) else []
+
+    # Diff
+    diff = _run_gh(["pr", "diff", str(pr_number)], check=False)
+    diff = diff if isinstance(diff, str) else ""
     if len(diff) > 50000:
         diff = diff[:50000] + "\n\n[... diff truncated at 50k chars ...]"
 
     # Derived analysis
-    active_work = estimate_active_work(commits)
-    wall_clock = calculate_wall_clock(metadata.get("createdAt"), metadata.get("mergedAt"))
-    commit_patterns = analyze_commit_patterns(commits)
-    issue_refs = extract_issue_refs(metadata.get("body", ""))
-    file_categories = categorize_file_changes(files)
+    active_work = _estimate_active_work(commits)
+    wall_clock = _calculate_wall_clock(metadata.get("createdAt"), metadata.get("mergedAt"))
+    commit_patterns = _analyze_commit_patterns(commits)
+    issue_refs = _extract_issue_refs(metadata.get("body", ""))
+    file_categories = _categorize_files(files)
 
-    # Determine blast radius
     changed = metadata.get("changedFiles", 0)
-    if changed <= 5:
-        blast_radius = "low"
-    elif changed <= 20:
-        blast_radius = "medium"
-    else:
-        blast_radius = "high"
+    blast_radius = "low" if changed <= 5 else ("medium" if changed <= 20 else "high")
 
     return {
         "pr_number": pr_number,
@@ -370,12 +428,12 @@ def gather_pr_data(pr_number: int) -> dict[str, Any]:
         },
         "body": metadata.get("body", ""),
         "scope": {
-            "files_changed": metadata.get("changedFiles", 0),
+            "files_changed": changed,
             "insertions": metadata.get("additions", 0),
             "deletions": metadata.get("deletions", 0),
             "blast_radius": blast_radius,
-            "top_directories": get_top_directories(files),
-            "key_files": get_key_files(files),
+            "top_directories": _get_top_directories(files),
+            "key_files": _get_key_files(files),
             "file_categories": file_categories,
         },
         "commits": {
@@ -398,7 +456,7 @@ def gather_pr_data(pr_number: int) -> dict[str, Any]:
                     "author": c.get("author", {}).get("login")
                     if isinstance(c.get("author"), dict)
                     else c.get("author"),
-                    "body": c.get("body", "")[:1000],  # Truncate long comments
+                    "body": c.get("body", "")[:1000],
                     "type": c.get("type", "comment"),
                     "state": c.get("state"),
                 }
@@ -426,7 +484,140 @@ def gather_pr_data(pr_number: int) -> dict[str, Any]:
     }
 
 
-def generate_analysis_prompt(data: dict[str, Any]) -> str:
+def _estimate_active_work(commits: list[dict], gap_minutes: int = 45) -> dict[str, Any]:
+    if not commits:
+        return {"hours": 0.5, "sessions": 1, "method": "minimum estimate (no commits)"}
+
+    timestamps = []
+    for commit in commits:
+        date = commit.get("committedDate") or commit.get("commit", {}).get("committedDate")
+        if date:
+            try:
+                timestamps.append(datetime.fromisoformat(date.replace("Z", "+00:00")))
+            except (ValueError, TypeError):
+                pass
+
+    if len(timestamps) < 2:
+        return {"hours": 0.5, "sessions": 1, "method": "minimum estimate (<2 commits)"}
+
+    timestamps.sort()
+    sessions = []
+    start = end = timestamps[0]
+
+    for ts in timestamps[1:]:
+        if (ts - end).total_seconds() / 60 <= gap_minutes:
+            end = ts
+        else:
+            sessions.append((start, end))
+            start = end = ts
+    sessions.append((start, end))
+
+    total = sum((e - s).total_seconds() / 3600 for s, e in sessions) + len(sessions) * 0.25
+    return {
+        "hours": round(total, 1),
+        "sessions": len(sessions),
+        "method": f"commit bursts (gaps ≤{gap_minutes}min)",
+    }
+
+
+def _calculate_wall_clock(created: str | None, merged: str | None) -> dict[str, Any]:
+    if not created:
+        return {"days": None, "hours": None}
+    try:
+        c = datetime.fromisoformat(created.replace("Z", "+00:00"))
+        if merged:
+            m = datetime.fromisoformat(merged.replace("Z", "+00:00"))
+            delta = m - c
+            return {
+                "days": round(delta.total_seconds() / 86400, 1),
+                "hours": round(delta.total_seconds() / 3600, 1),
+            }
+        return {"days": None, "hours": None, "note": "PR not merged"}
+    except (ValueError, TypeError):
+        return {"days": None, "hours": None}
+
+
+def _extract_issue_refs(text: str) -> list[str]:
+    if not text:
+        return []
+    matches = re.findall(
+        r"#(\d+)|(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#?(\d+)", text, re.IGNORECASE
+    )
+    return sorted({f"#{g}" for m in matches for g in m if g})
+
+
+def _analyze_commit_patterns(commits: list[dict]) -> dict[str, list]:
+    patterns = {
+        "fix_commits": [],
+        "refactor_commits": [],
+        "test_commits": [],
+        "doc_commits": [],
+        "revert_commits": [],
+        "wip_commits": [],
+    }
+    p = {
+        "fix": [r"\bfix\b", r"\bbug\b", r"\bissue\b", r"\bcorrect\b", r"\bresolve\b"],
+        "refactor": [r"\brefactor\b", r"\bclean\b", r"\brestructure\b"],
+        "test": [r"\btest\b", r"\bspec\b", r"\bcoverage\b"],
+        "doc": [r"\bdoc\b", r"\breadme\b", r"\bcomment\b"],
+        "revert": [r"\brevert\b", r"\bundo\b", r"\brollback\b"],
+        "wip": [r"\bwip\b", r"\bwork in progress\b"],
+    }
+    for c in commits:
+        msg = (
+            c.get("messageHeadline", "") or c.get("commit", {}).get("messageHeadline", "")
+        ).lower()
+        sha = c.get("oid", "")[:7] or c.get("commit", {}).get("oid", "")[:7]
+        entry = {"sha": sha, "message": msg}
+        for key, regexes in p.items():
+            if any(re.search(r, msg) for r in regexes):
+                patterns[f"{key}_commits"].append(entry)
+    return patterns
+
+
+def _get_top_directories(files: list[dict], limit: int = 5) -> list[str]:
+    counts: dict[str, int] = {}
+    for f in files:
+        parts = f.get("path", "").split("/")
+        if len(parts) > 1:
+            d = "/".join(parts[:-1]) + "/"
+            counts[d] = counts.get(d, 0) + 1
+    return [d for d, _ in sorted(counts.items(), key=lambda x: -x[1])[:limit]]
+
+
+def _get_key_files(files: list[dict], limit: int = 10) -> list[dict]:
+    return sorted(
+        [
+            {
+                "path": f.get("path", ""),
+                "additions": f.get("additions", 0),
+                "deletions": f.get("deletions", 0),
+                "total_changes": f.get("additions", 0) + f.get("deletions", 0),
+            }
+            for f in files
+        ],
+        key=lambda x: -x["total_changes"],
+    )[:limit]
+
+
+def _categorize_files(files: list[dict]) -> dict[str, list[str]]:
+    cats = {"source": [], "tests": [], "docs": [], "config": [], "other": []}
+    for f in files:
+        p = f.get("path", "")
+        if any(x in p for x in ["/test", "test_", "_test."]) or p.startswith("test"):
+            cats["tests"].append(p)
+        elif p.endswith((".md", ".rst", ".txt")) or "/docs/" in p:
+            cats["docs"].append(p)
+        elif p.endswith((".toml", ".yaml", ".yml", ".json", ".cfg", ".ini", ".lock")):
+            cats["config"].append(p)
+        elif p.endswith((".py", ".rs", ".ts", ".tsx", ".js", ".jsx")):
+            cats["source"].append(p)
+        else:
+            cats["other"].append(p)
+    return cats
+
+
+def _generate_analysis_prompt(data: dict[str, Any]) -> str:
     """Generate a prompt for LLM analysis of the PR."""
     pr_num = data["pr_number"]
     meta = data["metadata"]
@@ -435,51 +626,33 @@ def generate_analysis_prompt(data: dict[str, Any]) -> str:
     comments = data["comments"]
     analysis = data["analysis"]
 
-    # Format commits
     commit_list = "\n".join(f"  - {c['sha']}: {c['message']}" for c in commits["messages"][:20])
-
-    # Format key files
     key_files_list = "\n".join(
         f"  - {f['path']} (+{f['additions']}/-{f['deletions']})" for f in scope["key_files"][:10]
     )
-
-    # Format comments
     comment_list = (
         "\n".join(
-            f"  - [{c.get('type', 'comment')}] {c.get('author', 'unknown')}: {c['body'][:200]}..."
-            if len(c.get("body", "")) > 200
-            else f"  - [{c.get('type', 'comment')}] {c.get('author', 'unknown')}: {c.get('body', '')}"
+            f"  - [{c.get('type', 'comment')}] {c.get('author', 'unknown')}: {c.get('body', '')[:200]}"
             for c in comments["items"][:10]
         )
-        if comments["items"]
-        else "  (no comments)"
+        or "  (no comments)"
     )
 
-    # Format commit patterns (friction signals)
     patterns = commits["patterns"]
-    friction_signals = []
+    friction = []
     if patterns["fix_commits"]:
-        friction_signals.append(
-            f"  - {len(patterns['fix_commits'])} fix commits: {[c['message'] for c in patterns['fix_commits'][:3]]}"
-        )
+        friction.append(f"  - {len(patterns['fix_commits'])} fix commits")
     if patterns["revert_commits"]:
-        friction_signals.append(
-            f"  - {len(patterns['revert_commits'])} revert commits: {[c['message'] for c in patterns['revert_commits']]}"
-        )
+        friction.append(f"  - {len(patterns['revert_commits'])} revert commits")
     if patterns["wip_commits"]:
-        friction_signals.append(f"  - {len(patterns['wip_commits'])} WIP commits")
-    friction_str = (
-        "\n".join(friction_signals) if friction_signals else "  (no obvious friction signals)"
-    )
+        friction.append(f"  - {len(patterns['wip_commits'])} WIP commits")
+    friction_str = "\n".join(friction) or "  (no obvious friction signals)"
 
-    # Format checks
     checks = data["checks"]["items"]
-    failed_checks = [c for c in checks if c.get("conclusion") in ("failure", "FAILURE")]
-    check_summary = (
-        f"{len(checks)} checks, {len(failed_checks)} failed" if checks else "no checks found"
-    )
+    failed = [c for c in checks if c.get("conclusion") in ("failure", "FAILURE")]
+    check_summary = f"{len(checks)} checks, {len(failed)} failed" if checks else "no checks"
 
-    prompt = f"""# PR Analysis Request
+    return f"""# PR Analysis Request
 
 Analyze PR #{pr_num} and generate a complete PR ledger dossier.
 
@@ -514,7 +687,7 @@ Analyze PR #{pr_num} and generate a complete PR ledger dossier.
 ## Commits ({commits["count"]} total)
 {commit_list}
 
-## Friction Signals (from commit patterns)
+## Friction Signals
 {friction_str}
 
 ## Comments/Reviews ({comments["count"]} total)
@@ -525,96 +698,25 @@ Analyze PR #{pr_num} and generate a complete PR ledger dossier.
 
 ## Computed Metrics
 - Wall-clock: {analysis["wall_clock"].get("days", "N/A")} days
-- Active work estimate: {analysis["active_work"]["hours"]}h ({analysis["active_work"]["sessions"]} sessions)
-- Linked issues: {", ".join(analysis["issue_refs"]) if analysis["issue_refs"] else "none detected"}
+- Active work: {analysis["active_work"]["hours"]}h ({analysis["active_work"]["sessions"]} sessions)
+- Linked issues: {", ".join(analysis["issue_refs"]) if analysis["issue_refs"] else "none"}
 
 ---
 
 ## Analysis Tasks
 
-Based on the above data, generate a complete PR dossier with:
+Generate a complete PR dossier following docs/audit/PR_DOSSIER_SCHEMA.md with:
 
-### 1. Intent
-- **Goal:** 1-2 sentence description of what this PR accomplishes
-- **Type:** feature | hardening | mechanization | perf/bench | refactor
-- **Phase:** infer from context (v1.x, v2.0-track1, etc.) or "unknown"
+1. **Intent**: goal, type (feature/hardening/mechanization/perf-bench/refactor), phase
+2. **Findings**: issues discovered, categorized by failure mode
+3. **Process/Friction**: what went wrong events
+4. **Evidence**: tests, docs, benchmarks assessment
+5. **DevLT**: author and reviewer attention bands
+6. **Reflection**: what went well / could be better
+7. **Factory Delta**: new gates, contracts, prevention
 
-### 2. Findings
-Identify any issues discovered during the PR:
-- Look for fix commits, reverts, review comments requesting changes
-- Categorize by failure mode type (measurement drift, doc drift, packaging drift, test flake, dependency hazard, process mismatch)
-- Note how each was detected (gate, review, post-merge) and disposition (fixed here, deferred)
-
-### 3. Process/Friction Events
-Extract "what went wrong" events:
-- Multiple fix commits on the same issue
-- Review comments pointing out problems
-- Reverts or significant rework
-- Any iteration patterns visible in commits
-
-### 4. Evidence Assessment
-Based on file changes, assess:
-- Were tests added/modified?
-- Were docs updated?
-- Any benchmark/perf files changed?
-
-### 5. DevLT Estimate
-Based on:
-- Active work time ({analysis["active_work"]["hours"]}h)
-- Number of commits ({commits["count"]})
-- Comment/review back-and-forth ({comments["count"]} comments)
-Estimate author and reviewer attention bands: 10-20m | 20-45m | 45-90m | >90m
-
-### 6. Reflection
-- What went well (2-5 bullets)
-- What could be better (2-5 actionable items)
-
-### 7. Factory Delta
-- Any new gates, contracts, or prevention mechanisms added?
-- Any prevention issues that should be filed?
-
----
-
-Output the analysis as a complete JSON dossier following the schema in docs/audit/PR_DOSSIER_SCHEMA.md
+Output as JSON.
 """
-
-    return prompt
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate PR ledger with LLM analysis")
-    parser.add_argument("--pr", "-p", type=int, required=True, help="PR number to analyze")
-    parser.add_argument(
-        "--analyze", "-a", action="store_true", help="Output analysis prompt for LLM (default mode)"
-    )
-    parser.add_argument("--raw", "-r", action="store_true", help="Output raw gathered data as JSON")
-    parser.add_argument("--output", "-o", type=str, help="Output file path (default: stdout)")
-    parser.add_argument(
-        "--include-diff", action="store_true", help="Include full diff in output (can be large)"
-    )
-
-    args = parser.parse_args()
-
-    # Gather data
-    data = gather_pr_data(args.pr)
-
-    # Remove diff if not requested (to reduce output size)
-    if not args.include_diff:
-        data["diff"] = f"[diff omitted, {len(data['diff'])} chars, use --include-diff to include]"
-
-    if args.raw:
-        output = json.dumps(data, indent=2)
-    else:
-        # Default: generate analysis prompt
-        output = generate_analysis_prompt(data)
-
-    if args.output:
-        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        with open(args.output, "w") as f:
-            f.write(output)
-        print(f"Output written to: {args.output}", file=sys.stderr)
-    else:
-        print(output)
 
 
 if __name__ == "__main__":

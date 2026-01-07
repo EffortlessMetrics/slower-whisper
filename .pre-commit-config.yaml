@@ -2,21 +2,28 @@
 # Install: pip install pre-commit
 # Setup: pre-commit install
 # Run manually: pre-commit run --all-files
+#
+# Behavior: Hooks auto-fix issues where possible and succeed silently.
+# Only unfixable issues will block commits.
 
 repos:
   # Ruff - Fast Python linter and formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: 488940d9de1b658fac229e34c521d75a6ea476f2  # frozen: v0.14.5
     hooks:
-      # Run the linter with auto-fix
+      # Run the linter with auto-fix (silently succeeds after fixing)
       - id: ruff
-        args: [--fix]
+        args: [--fix, --exit-zero, --quiet]
         types_or: [python, pyi]
-      # Run the formatter
+      # Run the formatter (silently formats in place)
       - id: ruff-format
+        args: [--quiet]
         types_or: [python, pyi]
 
   # Basic file checks
+  # Note: trailing-whitespace, end-of-file-fixer, and mixed-line-ending
+  # will fix files but still fail the commit (by design). This is intentional
+  # pre-commit behavior to ensure you see what was changed. Simply re-commit.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:

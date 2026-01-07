@@ -1,0 +1,52 @@
+"""
+Subagent analyzers for PR analysis.
+
+Each analyzer is a specialized LLM-powered module that analyzes a specific
+aspect of a PR and returns structured JSON output.
+
+Available analyzers:
+- DiffScoutAnalyzer: Maps change surface, key files, blast radius
+- EvidenceAuditorAnalyzer: Maps claims to artifacts, identifies missing receipts
+- FrictionMinerAnalyzer: Extracts friction events using FAILURE_MODES taxonomy
+- DesignAlignmentAnalyzer: Detects design drift
+- PerfIntegrityAnalyzer: Validates benchmark measurements (conditional)
+- DocsSchemaAuditorAnalyzer: Checks doc/schema integrity
+"""
+
+from transcription.historian.analyzers.base import (
+    BaseAnalyzer,
+    SubagentResult,
+    SubagentSpec,
+)
+from transcription.historian.analyzers.design_alignment import DesignAlignmentAnalyzer
+from transcription.historian.analyzers.diff_scout import DiffScoutAnalyzer
+from transcription.historian.analyzers.docs_schema import DocsSchemaAuditorAnalyzer
+from transcription.historian.analyzers.evidence_auditor import EvidenceAuditorAnalyzer
+from transcription.historian.analyzers.friction_miner import FrictionMinerAnalyzer
+from transcription.historian.analyzers.perf_integrity import PerfIntegrityAnalyzer
+
+# All available analyzers in execution order
+ALL_ANALYZERS = [
+    DiffScoutAnalyzer,
+    EvidenceAuditorAnalyzer,
+    FrictionMinerAnalyzer,
+    DesignAlignmentAnalyzer,
+    PerfIntegrityAnalyzer,
+    DocsSchemaAuditorAnalyzer,
+]
+
+__all__ = [
+    # Base classes
+    "SubagentSpec",
+    "SubagentResult",
+    "BaseAnalyzer",
+    # Analyzers
+    "DiffScoutAnalyzer",
+    "EvidenceAuditorAnalyzer",
+    "FrictionMinerAnalyzer",
+    "DesignAlignmentAnalyzer",
+    "PerfIntegrityAnalyzer",
+    "DocsSchemaAuditorAnalyzer",
+    # Collection
+    "ALL_ANALYZERS",
+]
