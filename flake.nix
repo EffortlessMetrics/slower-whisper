@@ -16,6 +16,10 @@
           let pkg = unstablePkgs.ruff; in
           assert (pkg.version == "0.14.9"); pkg;
 
+        # Extract version from pyproject.toml (single source of truth)
+        pyprojectToml = builtins.fromTOML (builtins.readFile ./pyproject.toml);
+        packageVersion = pyprojectToml.project.version;
+
         runtimeBinPath = pkgs.lib.makeBinPath [ pkgs.uv pkgs.ffmpeg ];
         # Runtime libs for Python wheels (numpy, torch, etc. need libstdc++)
         # Note: This breaks nix commands when run from within the devshell because
@@ -335,7 +339,7 @@
         # Default package (minimal, for nix build)
         packages.default = pkgs.python312Packages.buildPythonPackage {
           pname = "slower-whisper";
-          version = "1.3.0";
+          version = packageVersion;  # Sourced from pyproject.toml
           src = ./.;
 
           propagatedBuildInputs = systemDeps;
