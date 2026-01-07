@@ -62,6 +62,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 | Document | Description | Topics |
 |----------|-------------|--------|
+| [SCHEMA.md](SCHEMA.md) | Transcript JSON schema contract | Normative keys, stability tiers, validation |
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuration guide for all layers | Defaults, env vars, files, CLI flags, precedence, patterns |
 | [API_QUICK_REFERENCE.md](API_QUICK_REFERENCE.md) | Quick reference for Python API | Functions, configs, examples |
 | [CLI_REFERENCE.md](CLI_REFERENCE.md) | Command-line interface documentation | Commands, options, workflows |
@@ -130,7 +131,9 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 | Document | Description |
 |----------|-------------|
-| [audit/README.md](audit/README.md) | Audit infrastructure overview |
+| [audit/README.md](audit/README.md) | Audit infrastructure overview + trust loop diagram |
+| [audit/AUDIT_PATH.md](audit/AUDIT_PATH.md) | 15-minute cold-reader validation checklist |
+| [audit/EXHIBITS.md](audit/EXHIBITS.md) | Annotated PRs demonstrating audit workflow |
 | [audit/FAILURE_MODES.md](audit/FAILURE_MODES.md) | Taxonomy of failure modes and prevention patterns |
 | [audit/PR_DOSSIER_SCHEMA.md](audit/PR_DOSSIER_SCHEMA.md) | Schema for structured PR analysis |
 

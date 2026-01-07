@@ -14,8 +14,47 @@ The audit infrastructure supports **traceable wrongness** and **mechanized preve
 
 | File | Description |
 |------|-------------|
+| [AUDIT_PATH.md](AUDIT_PATH.md) | 15-minute cold-reader validation checklist |
+| [EXHIBITS.md](EXHIBITS.md) | Annotated PRs demonstrating audit workflow |
 | [FAILURE_MODES.md](FAILURE_MODES.md) | Taxonomy of failure types and prevention patterns |
 | [PR_DOSSIER_SCHEMA.md](PR_DOSSIER_SCHEMA.md) | Schema for structured PR analysis |
+
+---
+
+## Trust Loop
+
+```mermaid
+flowchart LR
+    subgraph Development
+        A[Change] --> B[Local Gate]
+        B --> C{Pass?}
+        C -->|No| A
+        C -->|Yes| D[Receipts]
+    end
+
+    subgraph Review
+        D --> E[PR + Receipts]
+        E --> F[Review]
+        F --> G{Issues?}
+        G -->|Yes| H[File Failure Mode]
+        H --> A
+        G -->|No| I[Merge]
+    end
+
+    subgraph Learn
+        I --> J[Monitor]
+        J --> K{Regression?}
+        K -->|Yes| L[Mark Invalid]
+        L --> H
+        K -->|No| M[Baseline Updated]
+    end
+```
+
+**Key properties:**
+- Local gate is the trust boundary (not CI)
+- Receipts travel with the change
+- Failures feed back into taxonomy, not just fixes
+- Regressions invalidate prior claims explicitly
 
 ## PR Dossiers
 
