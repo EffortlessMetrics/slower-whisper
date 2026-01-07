@@ -32,17 +32,17 @@ Full details: [CHANGELOG.md](CHANGELOG.md)
 
 Work that makes future development cheap and safe.
 
-### A) v1.9.x Deferred Items
+### A) v1.9.x Closeout
 
-Close out what v1.9 promised but deferred:
+What v1.9 promised. Two items shipped, one remains:
 
-- [ ] **Callback docs in STREAMING_ARCHITECTURE.md** ([deferred from v1.9])
-  - Document `StreamCallbacks` protocol with actual type signatures
-  - Include ordering guarantees + error isolation semantics
-- [ ] **Example callback integration** in `examples/streaming/`
-  - Demonstrate all four callbacks with a working script
+- [x] **Callback docs in STREAMING_ARCHITECTURE.md** — ✅ Shipped
+  - `StreamCallbacks` protocol with type signatures, ordering guarantees, error isolation
+  - See `docs/STREAMING_ARCHITECTURE.md` §StreamCallbacks Protocol
+- [x] **Example callback integration** — ✅ Shipped
+  - `examples/streaming/callback_demo.py` — 430-line working demo of all four callbacks
 - [ ] **P95 latency harness** (local measurement, not CI-gated yet)
-  - Script that prints enrichment latency stats + writes JSON artifact
+  - Script that prints enrichment latency stats + writes JSON artifact to `benchmarks/results/`
 
 ### B) API Polish (high-value v1.x)
 
@@ -53,11 +53,56 @@ Close out what v1.9 promised but deferred:
 
 ### C) Observability & Provenance (cheap now, priceless later)
 
-These are **missing issues to create**:
+These are **missing issues to create** — platform primitives that make benchmarks and debugging actionable:
 
 - [ ] **Receipt contract**: Standard `meta.receipt` fields (tool version, model id, device/compute_type, config hash, schema version)
 - [ ] **Stable run/event IDs**: Consistent identifiers for streaming + batch that enable log correlation
 - [ ] **Structured logging audit**: Ensure all modules use structured logging with stable event names
+
+<details>
+<summary><strong>Receipt Contract Specification</strong></summary>
+
+Every transcript and benchmark artifact includes `meta.receipt`:
+
+```json
+{
+  "meta": {
+    "receipt": {
+      "tool_version": "1.9.2",
+      "schema_version": 2,
+      "model": "large-v3",
+      "device": "cuda",
+      "compute_type": "float16",
+      "config_hash": "sha256:abc123...",
+      "run_id": "run-20260107-123456-xyz",
+      "created_at": "2026-01-07T12:00:00Z",
+      "git_commit": "abc1234"
+    }
+  }
+}
+```
+
+#### Field Definitions
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tool_version` | string | yes | Package version (from metadata) |
+| `schema_version` | int | yes | JSON schema version |
+| `model` | string | yes | Whisper model name |
+| `device` | string | yes | Resolved device (cuda/cpu) |
+| `compute_type` | string | yes | Resolved compute type |
+| `config_hash` | string | yes | SHA256 of serialized config |
+| `run_id` | string | yes | Unique run identifier |
+| `created_at` | string | yes | ISO 8601 timestamp (UTC) |
+| `git_commit` | string | no | Git HEAD when run from checkout |
+
+#### Run ID Format
+
+`run-{YYYYMMDD}-{HHMMSS}-{random6}`
+
+Example: `run-20260107-123456-a1b2c3`
+
+</details>
 
 ### D) Documentation Hygiene
 
@@ -87,6 +132,46 @@ Benchmarks must exist before streaming work can be measured.
 
 **Done when:** `slower-whisper benchmark --track asr` outputs reproducible JSON/Markdown + baseline file.
 
+<details>
+<summary><strong>Track 1 Design Notes: Baselines & Regression Policy</strong></summary>
+
+#### Baseline File Format
+
+Location: `benchmarks/baselines/<track>/<dataset>.json`
+
+```json
+{
+  "schema_version": 1,
+  "track": "asr",
+  "dataset": "librispeech-test-clean",
+  "created_at": "2026-01-07T12:00:00Z",
+  "metrics": {
+    "wer": {"value": 0.045, "unit": "ratio", "threshold": 0.05},
+    "cer": {"value": 0.012, "unit": "ratio", "threshold": null}
+  },
+  "receipt": {
+    "tool_version": "1.9.2",
+    "model": "large-v3",
+    "device": "cuda",
+    "compute_type": "float16"
+  }
+}
+```
+
+#### Regression Policy
+
+- **Phase 1 (now):** Report-only mode. Benchmark CLI prints comparison vs baseline but never fails.
+- **Phase 2 (when Actions return):** Gate mode. Fail if primary metric exceeds threshold.
+
+#### Comparison Rule
+
+```
+regression = (current_value - baseline_value) / baseline_value
+fail_if: regression > threshold_percent (default: 10%)
+```
+
+</details>
+
 ### Track 2: Streaming Skeleton
 
 Depends on: Track 1 (latency measurement must exist)
@@ -101,6 +186,51 @@ Depends on: Track 1 (latency measurement must exist)
 | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) | Incremental diarization hook | Integration point (full impl is v2.1+) |
 
 **Done when:** Python client connects via WebSocket, receives `PARTIAL` and `FINALIZED` events, latency is measured.
+
+<details>
+<summary><strong>Track 2 Design Notes: Event Envelope Specification</strong></summary>
+
+#### Event Envelope (v2 Stable Contract)
+
+All streaming events share this envelope:
+
+```json
+{
+  "event_id": 42,
+  "stream_id": "str-abc123",
+  "type": "FINALIZED",
+  "ts_server": "2026-01-07T12:00:00.123Z",
+  "ts_audio_start": 10.5,
+  "ts_audio_end": 14.2,
+  "payload": { /* type-specific */ }
+}
+```
+
+#### Event Types
+
+| Type | When Emitted | Payload |
+|------|--------------|---------|
+| `PARTIAL` | ASR partial result | `{text, confidence?}` |
+| `FINALIZED` | Segment finalized | `StreamSegment` |
+| `SPEAKER_TURN` | Turn boundary | `Turn` dict |
+| `SEMANTIC_UPDATE` | Semantic annotation | `SemanticUpdatePayload` |
+| `ERROR` | Recoverable error | `StreamingError` |
+
+#### Ordering Guarantees
+
+1. `event_id` is monotonically increasing per stream
+2. `FINALIZED` for a segment arrives after all its `PARTIAL` events
+3. `SPEAKER_TURN` arrives after the `FINALIZED` that closed the turn
+4. `ts_audio_start` of `FINALIZED` events is monotonically increasing
+
+#### Backpressure (v1)
+
+- Server buffers up to N events (default: 100)
+- When buffer full: drop `PARTIAL` events first
+- `FINALIZED` events are never dropped (blocks producer if necessary)
+- Client acks are optional in v1 (mandatory in v2.1+)
+
+</details>
 
 ### Track 3: Semantics Adapter Skeleton
 
