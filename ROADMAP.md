@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
-**Current Version:** v1.8.0 (Word-level timestamps and speaker alignment)
-**Last Updated:** 2025-12-31
+**Current Version:** v1.9.2 (Event Callback API and streaming quality)
+**Last Updated:** 2026-01-06
 <!-- cspell:ignore pyannote disfluency disfluencies langchain llamaindex Praat
 cuda qwen Qwen Smol Neur INTERSPEECH IEMOCAP multimodal mypy -->
 
@@ -226,9 +226,9 @@ v1.x JSON is forward-compatible with v2.x readers.
 
 ---
 
-## v1.9.0 — Streaming Quality & Event API (PLANNED 🚧)
+## v1.9.0 — Streaming Quality & Event API (SHIPPED ✅)
 
-**Target:** Q1 2026
+**Released:** 2025-12-31 (v1.9.2 patch: 2026-01-05)
 **Theme:** Production-ready streaming with robust event callbacks
 
 ### Core Features

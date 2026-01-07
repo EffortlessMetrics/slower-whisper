@@ -1,28 +1,249 @@
-# CLAUDE.md
+# CLAUDE.md — Repo/Agent Guide (slower-whisper)
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is the **single source of truth** for how to work in this repository:
+- what the project is (today),
+- how to run the canonical local gate (CI is currently off),
+- where the important surfaces are,
+- and what invariants we don't break.
 
-## Project Overview
+If this doc disagrees with the code, the doc is wrong — update it.
 
-**slower-whisper** is a **local-first conversation signal engine** that turns audio into **LLM-ready structured data**.
+---
 
-Unlike traditional transcription tools that output plain text, slower-whisper produces a rich, versioned JSON format capturing:
+## Snapshot
 
-- **What was said** (text, segment-level timestamps, word-level alignment v1.8+)
-- **Who said it** (speaker diarization, turn structure) — *v1.1 priority*
-- **How it was said** (prosody, emotion, interaction patterns)
-- **Semantic context** (chunk summaries, intent tags) — *v1.3 optional*
+**Current series:** v1.9.x (shipped streaming callbacks + hardening)
+**Current package version:** read from `pyproject.toml`
+**Runtime version:** `transcription.__version__` is single-sourced from package metadata (guardrail test enforces this)
 
-### Positioning
+slower-whisper produces a **rich, versioned JSON transcript** capturing:
 
-slower-whisper is **infrastructure, not a product**:
+- **What was said:** text + segment timestamps + optional word timestamps/alignment
+- **Who said it:** optional diarization → speakers + turns + speaker stats
+- **How it was said:** prosody + emotion + interaction patterns
+- **What it means (light):** keyword-based semantics today; deeper LLM semantics is v2+
 
-- **Not** "another transcription app" or meeting bot
-- **Not** a cloud API or SaaS platform
-- **Is** local-first, open-source conversation intelligence infrastructure
-- **Is** "OpenTelemetry for audio conversations"
+Key posture:
+- Local-first, reproducible, modular.
+- Optional dependencies must degrade gracefully.
+- Backward compatibility for JSON schema is intentional.
 
-See [VISION.md](VISION.md) for strategic positioning and [ROADMAP.md](ROADMAP.md) for development timeline.
+---
+
+## Repository posture (Actions are off)
+
+GitHub Actions may be disabled / rate-limited. Assume CI is unavailable.
+
+**Rule:** before merging anything, run the local gate and paste receipts in the PR.
+
+### Canonical local gate
+
+From repo root:
+
+```bash
+# In devshell
+./scripts/ci-local.sh        # full
+./scripts/ci-local.sh fast   # quick
+```
+
+What it does (high level):
+
+* `uv sync` (expected extras)
+* ruff + formatting
+* mypy
+* pytest (fast or full)
+* `slower-whisper-verify --quick`
+* Nix checks (via nix-clean) in full mode
+
+---
+
+## Environment
+
+### Nix + direnv
+
+This repo uses a Nix flake devshell, commonly loaded via direnv.
+
+**Important:** the devshell intentionally exports `LD_LIBRARY_PATH` for Python wheels
+(numpy/torch/ffmpeg). That breaks raw `nix` inside the shell due to libstdc++ ABI mismatch.
+
+Use **nix-clean** for all Nix invocations:
+
+```bash
+nix-clean flake check
+nix-clean run .#verify -- --quick
+nix-clean run .#ci -- fast
+```
+
+direnv entry is hardened via a "clean flake entry" wrapper to avoid poisoning
+direnv's internal `nix print-dev-env` call when re-entering a shell.
+
+### Python deps
+
+Use `uv` (lockfile is committed).
+
+Typical first-time setup:
+
+```bash
+uv sync --extra full --extra dev
+# optional extras:
+# uv sync --extra diarization
+# uv sync --extra integrations
+```
+
+---
+
+## Where things live
+
+### Core pipeline
+
+* `transcription/pipeline.py` — orchestration for batch runs
+* `transcription/asr_engine.py` — ASR engine plumbing (faster-whisper / CTranslate2)
+* `transcription/writers.py` — JSON + exports writer utilities
+* `transcription/validation.py` — schema validation and checks
+
+### Streaming
+
+* `transcription/streaming.py` — base streaming session + events
+* `transcription/streaming_enrich.py` — streaming enrichment session (user-facing)
+* `transcription/streaming_semantic.py` — live semantics (turn-aware)
+* `transcription/streaming_callbacks.py` — `StreamCallbacks` protocol + safe invocation
+
+Docs:
+
+* `docs/STREAMING_ARCHITECTURE.md` — authoritative streaming model + event flow
+
+### Device selection & GPU UX
+
+* `transcription/device.py` — device resolution + compute_type resolution + preflight banner
+* `docs/GPU_SETUP.md` — practical local + docker GPU guidance
+
+### Requirements generation
+
+* `uv.lock` — source of truth lock
+* `requirements*.txt` — generated artifacts for pip/Docker fallback
+* `scripts/regenerate-requirements.sh` — regenerate from `uv.lock`
+
+---
+
+## Behavioral invariants (don't break these)
+
+### 1) Device resolution is explicit and explainable
+
+* CLI supports `--device auto|cpu|cuda`
+* Auto detection for ASR uses **CTranslate2** CUDA availability (not torch)
+* Enrichment "auto" uses **torch** backend
+* A preflight banner prints to **stderr** to keep stdout clean for scripts
+
+### 2) compute_type follows the *resolved* device (unless user explicitly set it)
+
+If user didn't pass `--compute-type`, and we fall back from CUDA → CPU, then
+`compute_type` must be coerced to a valid CPU compute type (e.g., int8).
+
+### 3) Callbacks never crash the pipeline
+
+All callback invocations must be isolated:
+
+* exceptions are caught
+* errors are routed to `on_error` when possible
+* pipeline continues
+
+### 4) Streaming end-of-stream must finalize turns consistently
+
+Segments finalized via `end_of_stream()` must also be passed through the same
+turn tracking logic as segments finalized during `ingest_chunk()`.
+
+### 5) Versioning must not regress
+
+* `transcription.__version__` must equal `importlib.metadata.version("slower-whisper")` when installed
+* guardrail test exists (`tests/test_versioning.py`)
+
+### 6) Optional dependencies must degrade gracefully
+
+No hard requirement on:
+
+* diarization stack
+* emotion models
+* integrations (langchain/llamaindex)
+
+If missing, fail with actionable messages or skip relevant tests.
+
+---
+
+## Local validation recipes (copy/paste receipts)
+
+When posting PR receipts, prefer this format.
+
+```text
+Local receipts:
+
+./scripts/ci-local.sh fast
+./scripts/ci-local.sh
+nix-clean flake check
+nix-clean run .#verify -- --quick
+```
+
+If you only ran fast mode, say so explicitly.
+
+---
+
+## Issue / PR expectations (for humans + agents)
+
+### Issues
+
+Every issue should have:
+
+* **Problem**
+* **Definition of done** (testable)
+* **Files likely touched**
+* **Local validation command(s)**
+
+### PRs
+
+* Keep PRs coherent; stacking is fine when it doesn't increase review cost.
+* Include a "review map" when > ~5 files.
+* Paste local receipts in the PR body or a comment.
+* If a PR changes behavior, add or update tests.
+
+---
+
+## Release process (when you cut a tag)
+
+1. Ensure version bump is correct:
+
+* only bump `pyproject.toml` (runtime pulls from metadata)
+* update `CHANGELOG.md`
+
+2. Run gate:
+
+```bash
+./scripts/ci-local.sh
+```
+
+3. Tag and push:
+
+```bash
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+4. Optional verification:
+
+* confirm GHCR images build on tag (if Docker workflow enabled)
+* confirm provenance attestation succeeds (OIDC permissions required)
+
+---
+
+## Known sharp edges
+
+* Raw `nix ...` may fail inside devshell due to `LD_LIBRARY_PATH` being set for wheels.
+  Use `nix-clean`.
+* If you see `CXXABI_1.3.15 not found`, you ran `nix` unwrapped in the wheel-runtime env.
+* Some tests are intentionally skipped based on markers (gpu/diarization/heavy). That's OK.
+  The point is determinism and correct behavior when deps exist.
+
+---
+
+## Code Architecture
 
 ### Layered Architecture (L0-L4)
 
@@ -33,214 +254,6 @@ See [VISION.md](VISION.md) for strategic positioning and [ROADMAP.md](ROADMAP.md
 - **L4: Task Outputs** — meeting notes, QA, coaching (consumer applications)
 
 **Key principle**: Each layer adds value without blocking earlier layers. All layers independently cacheable and resumable.
-
-## Development Environment (Nix-First)
-
-**Recommended approach:** Use **Nix** for reproducible development and CI environments.
-
-### Nix Setup (Recommended)
-
-```bash
-# Enter Nix dev shell (provides ffmpeg, Python, system deps)
-nix develop
-
-# Install Python dependencies
-uv sync --extra full --extra diarization --extra dev
-
-# Run local CI checks (mirrors GitHub Actions)
-nix flake check
-```
-
-**Why Nix?**
-- ✅ **Reproducible builds** - Same environment on WSL, NixOS, macOS, CI
-- ✅ **Local CI** - `nix flake check` runs identical tests to GitHub Actions
-- ✅ **No "works on my machine"** - Isolated, versioned system dependencies
-- ✅ **Optional direnv** - Auto-activate shell on `cd` into repo
-
-See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for complete setup.
-
-### Fallback: Traditional Setup
-
-> ⚠️ **Only use this if Nix installation is blocked.** Traditional setup works but lacks reproducibility guarantees.
-
-Install system dependencies manually (ffmpeg, libsndfile) via apt/brew/choco, then use uv for Python packages.
-
-## Package Management
-
-This project uses **uv** (Astral's fast Python package manager) with `pyproject.toml`:
-
-```bash
-# Install base dependencies (transcription only)
-uv sync
-
-# Install with audio enrichment features
-uv sync --extra full
-
-# Install development dependencies (includes testing, linting, docs)
-uv sync --extra dev
-```
-
-**Dependency groups:**
-- **base** (default): faster-whisper only (~2.5GB)
-- **enrich-basic**: soundfile, numpy, librosa (~1GB additional)
-- **enrich-prosody**: adds praat-parselmouth for research-grade pitch analysis
-- **emotion**: torch, transformers for emotion recognition (~4GB additional)
-- **full**: all enrichment features (prosody + emotion)
-- **dev**: full + testing/linting/docs tools
-
-Alternative pip installation: `pip install -e ".[dev]"`
-
-## Development Priorities (v1.1 Focus)
-
-**Current Status**: v1.0.0 shipped (production-ready transcription + basic enrichment)
-
-**Next Milestone**: v1.1.0 — Speaker & Schema Lock-In (Q1 2026)
-
-### High-Priority Features
-
-1. **Speaker Diarization (L2)**
-   - Integrate WhisperX-style diarization (Whisper + pyannote.audio)
-   - Populate `segment.speaker = {id, confidence, alternatives}`
-   - Build global `speakers[]` table
-   - Module: `transcription/diarization.py`
-
-2. **Turn Structure (L2)**
-   - Group contiguous segments by speaker into `turns[]`
-   - Add turn-level metadata (question_count, interruptions)
-   - Module: `transcription/turns.py`
-
-3. **Speaker Stats (L2)**
-   - Per-speaker aggregates (talk_time, num_turns, interruptions)
-   - Sentiment summaries per speaker
-   - Module: extends `transcription/turns.py`
-
-4. **Schema v2 Finalization**
-   - Lock in core fields contract (no meaning changes within v2.x)
-   - Create JSON Schema (draft-07) validation file
-   - Document deprecation policy
-
-5. **Evaluation Harness**
-   - Build testbed with 50-200 labeled segments
-   - Task-level tests: speaker-aware summarization, action items, conflict detection
-   - LLM-as-judge scoring: text vs text+speaker vs text+speaker+stats
-   - Module: `benchmarks/eval_speakers.py`
-
-### Design Constraints
-
-**Schema Stability**:
-- Core fields (`audio`, `meta`, `speakers`, `segments`, `turns`) are **locked** in v2
-- Only add optional fields; never remove or rename core fields
-- Breaking changes require v3 and migration tooling
-
-**Modularity**:
-- L2 features are opt-in via config flags (`--enable-diarization`)
-- Never re-run ASR when enrichment changes
-- Each feature caches independently by hash
-
-**Local-First**:
-- No cloud dependencies at runtime
-- All models run locally (pyannote, wav2vec2, etc.)
-- Only model weights download (one-time, HuggingFace cache)
-
-### When Building v1.1 Features
-
-**DO**:
-- Add new optional fields to `Segment` or `Transcript` dataclasses
-- Write BDD scenarios for new behaviors
-- Update schema documentation
-- Provide LLM-friendly "views" (e.g., `to_turn_view()`)
-- Cache new passes separately by config hash
-
-**DON'T**:
-- Change meaning of existing fields
-- Remove or rename core schema fields
-- Add cloud API dependencies
-- Break backward compatibility with v1.0 JSON
-
-**Test Rigor**:
-- BDD scenario for correct speaker counts
-- Synthetic 2-speaker audio → validate diarization
-- Real-world confusion matrix (AMI Meeting Corpus subset)
-- LLM-as-judge sanity check (speaker labeling consistency)
-
-See [ROADMAP.md](ROADMAP.md) for complete v1.1 spec and deliverables.
-
-## Common Commands
-
-### Building and Running
-
-```bash
-# Run transcription pipeline
-uv run slower-whisper transcribe
-
-# Run with specific options
-uv run slower-whisper transcribe --model large-v3 --language en --device cuda
-
-# Run audio enrichment (Stage 2)
-uv run slower-whisper enrich
-
-# Legacy entry points (still work)
-uv run python transcribe_pipeline.py
-uv run python audio_enrich.py
-```
-
-### Testing
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=transcription --cov-report=term-missing
-
-# Run specific test categories
-uv run pytest -m "not slow"              # Skip slow tests
-uv run pytest -m "not requires_gpu"      # Skip GPU tests
-uv run pytest tests/test_prosody.py      # Run specific file
-
-# Run single test
-uv run pytest tests/test_models.py::test_segment_creation -v
-```
-
-### Code Quality
-
-```bash
-# Format code with ruff
-uv run ruff format transcription/ tests/
-
-# Lint with ruff
-uv run ruff check transcription/ tests/
-
-# Auto-fix linting issues
-uv run ruff check --fix transcription/ tests/
-
-# Type check with mypy
-uv run mypy transcription/
-
-# Run pre-commit hooks manually
-uv run pre-commit run --all-files
-```
-
-### Pre-commit Hooks
-
-Pre-commit hooks are configured in `.pre-commit-config.yaml`:
-
-```bash
-# Install pre-commit hooks
-uv run pre-commit install
-
-# Run manually on all files
-uv run pre-commit run --all-files
-```
-
-Hooks run automatically on `git commit`:
-- ruff (linter with auto-fix)
-- ruff-format (formatter)
-- trailing-whitespace, end-of-file-fixer
-- check-yaml, check-json, check-toml
-- mypy (type checking, non-blocking)
-
-## Code Architecture
 
 ### Two-Stage Pipeline Design
 
@@ -340,7 +353,7 @@ The project is architected around a **strict separation** between transcription 
 
 ### Schema Versioning and Compatibility
 
-**Forward Compatibility (v1 → v2):**
+**Forward Compatibility (v1 -> v2):**
 - v2 readers accept v1 transcripts (missing `audio_state` treated as `null`)
 - `load_transcript_from_json()` handles both versions transparently
 
@@ -354,19 +367,7 @@ The project is architected around a **strict separation** between transcription 
 - Adding new optional fields does NOT bump schema version
 - Breaking changes (removing/renaming core fields) require version bump (v3)
 
-### Directory Layout
-
-```
-project_root/
-  raw_audio/         # Original audio files (input)
-  input_audio/       # Normalized 16kHz mono WAV (generated)
-  transcripts/       # TXT and SRT outputs (generated)
-  whisper_json/      # JSON structured transcripts (generated)
-  transcription/     # Python package
-  tests/             # Test suite
-  examples/          # Example scripts
-  docs/              # Documentation
-```
+---
 
 ## Important Design Patterns
 
@@ -485,7 +486,9 @@ This pattern is used in:
 - `semantic.py`: `SemanticAnnotator` + `NoOpSemanticAnnotator`
 - `diarization.py`: Environment-based stub mode (`SLOWER_WHISPER_PYANNOTE_MODE=stub`)
 
-## Testing Philosophy
+---
+
+## Testing
 
 **Test organization:**
 - `tests/test_models.py`: Data model tests
@@ -494,6 +497,7 @@ This pattern is used in:
 - `tests/test_audio_enrichment.py`: Integration tests for enrichment
 - `tests/test_api_integration.py`: Public API integration tests
 - `tests/test_writers.py`: JSON I/O and schema validation
+- `tests/test_streaming*.py`: Streaming pipeline tests
 
 **Test markers (pytest):**
 - `@pytest.mark.slow`: Skip with `-m "not slow"`
@@ -511,48 +515,15 @@ uv run pytest -m "not slow and not requires_gpu"
 uv run pytest tests/test_models.py tests/test_prosody.py
 ```
 
-## Type System Baseline (v1.3.1+)
+---
+
+## Type System
 
 ### Coverage Summary
 
 - **Package modules**: 39/39 pass mypy (92.9% function-level coverage)
 - **Strategic tests**: 4 test modules configured for type checking
 - **PEP 561**: `py.typed` marker present for downstream consumers
-
-### Typed Modules (Full Coverage)
-
-All modules in `transcription/` pass mypy:
-- **Core**: `api.py`, `models.py`, `pipeline.py`, `writers.py`
-- **CLI**: `cli.py`, `audio_enrich_cli.py`, `service.py`
-- **Audio**: `audio_enrichment.py`, `prosody.py`, `emotion.py`, `diarization.py`
-- **LLM**: `llm_utils.py`, `semantic.py`, `chunking.py`
-- **Config**: `config.py`, `cache.py`
-- **Utils**: `turn_helpers.py`, `turns.py`, `exporters.py`, `validation.py`
-
-### Strategic Test Modules
-
-These test modules are also type-checked in CI:
-- `tests/test_llm_utils.py` (96.9% typed)
-- `tests/test_writers.py` (95.5% typed)
-- `tests/test_turn_helpers.py` (93.3% typed)
-- `tests/test_audio_state_schema.py` (fixtures mostly untyped by design)
-
-### Protocol Patterns
-
-For optional dependencies, use the protocol + factory pattern:
-
-```python
-# In transcription/emotion.py
-class EmotionRecognizerLike(Protocol):
-    def extract_emotion_dimensional(self, audio: NDArray, sr: int) -> dict: ...
-
-def get_emotion_recognizer() -> EmotionRecognizerLike:
-    if EMOTION_AVAILABLE:
-        return EmotionRecognizer()
-    return DummyEmotionRecognizer()
-```
-
-Similar patterns in: `asr_engine.py` (WhisperModelProtocol), `semantic.py` (SemanticAnnotator), `diarization.py` (stub mode).
 
 ### Type Checking Commands
 
@@ -574,88 +545,65 @@ uv run slower-whisper-verify --quick
 
 See `docs/TYPING_POLICY.md` for complete typing standards.
 
-## Code Style and Quality
+---
 
-**Tools configured:**
-- **ruff**: Fast linter and formatter (replaces black + isort + flake8)
-- **mypy**: Type checking (configured to warn but not fail in pre-commit)
-- **pytest**: Testing with coverage reporting
+## Common Commands
 
-**ruff configuration** (pyproject.toml):
-- Line length: 100 characters
-- Target: Python 3.11+
-- Enabled rules: pycodestyle, pyflakes, isort, flake8-bugbear, flake8-comprehensions, pyupgrade
-
-**mypy configuration**:
-- Type checking enabled for `transcription/` package
-- Third-party libraries (faster-whisper, librosa, transformers) ignored
-- Configured for gradual typing (not strict mode)
-
-## Key Files to Know
-
-**Entry points:**
-- `transcription/cli.py`: Main CLI with subcommands (recommended)
-- `transcription/api.py`: Public Python API
-- `transcribe_pipeline.py`: Legacy script entry point
-
-**Core implementation:**
-- `transcription/models.py`: Data models (Segment, Transcript)
-- `transcription/pipeline.py`: Stage 1 orchestration
-- `transcription/audio_enrichment.py`: Stage 2 orchestration
-- `transcription/writers.py`: JSON I/O with versioning
-
-**Configuration:**
-- `pyproject.toml`: Project metadata, dependencies, tool configs
-- `.pre-commit-config.yaml`: Pre-commit hooks
-- `uv.lock`: Locked dependency versions
-
-**Documentation:**
-- `README.md`: User-facing documentation
-- `docs/ARCHITECTURE.md`: Detailed implementation summary
-- `CHANGELOG.md`: Version history
-
-## Common Development Tasks
-
-### Adding a New Audio Feature
-
-1. Implement extractor in new or existing module (e.g., `transcription/voice_quality.py`)
-2. Follow pattern from `prosody.py` or `emotion.py`:
-   - Extract from audio segment (not text)
-   - Return structured dict with numeric values + categorized levels
-   - Handle errors gracefully (return None or partial data)
-3. Integrate in `audio_enrichment.py`:
-   - Add to `enrich_segment()` function
-   - Update `extraction_status` tracking
-   - Add config flag if optional
-4. Update `audio_rendering.py` to render new features as text
-5. Add tests in `tests/test_audio_enrichment.py`
-6. Update `AUDIO_STATE_VERSION` if structure changes
-
-### Modifying the JSON Schema
-
-**For backward-compatible changes** (adding optional fields):
-1. Add field to `Segment` or `Transcript` dataclass with default `None`
-2. Update `write_json()` in `writers.py` to serialize new field
-3. Update `load_transcript_from_json()` to handle missing field
-4. Add tests for forward/backward compatibility
-5. **Do not** bump `SCHEMA_VERSION`
-
-**For breaking changes** (removing/renaming core fields):
-1. Increment `SCHEMA_VERSION` in `models.py`
-2. Update all writers and readers
-3. Provide migration tool or compatibility layer
-4. Document migration path in CHANGELOG
-5. Support old version for at least one major release
-
-### Running Benchmarks
+### Building and Running
 
 ```bash
-# Run audio enrichment benchmark
-uv run python benchmarks/benchmark_audio_enrich.py
+# Run transcription pipeline
+uv run slower-whisper transcribe
 
-# View benchmark results
-cat benchmarks/results/benchmark_*.json
+# Run with specific options
+uv run slower-whisper transcribe --model large-v3 --language en --device cuda
+
+# Run audio enrichment (Stage 2)
+uv run slower-whisper enrich
+
+# Legacy entry points (still work)
+uv run python transcribe_pipeline.py
+uv run python audio_enrich.py
 ```
+
+### Testing
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=transcription --cov-report=term-missing
+
+# Run specific test categories
+uv run pytest -m "not slow"              # Skip slow tests
+uv run pytest -m "not requires_gpu"      # Skip GPU tests
+uv run pytest tests/test_prosody.py      # Run specific file
+
+# Run single test
+uv run pytest tests/test_models.py::test_segment_creation -v
+```
+
+### Code Quality
+
+```bash
+# Format code with ruff
+uv run ruff format transcription/ tests/
+
+# Lint with ruff
+uv run ruff check transcription/ tests/
+
+# Auto-fix linting issues
+uv run ruff check --fix transcription/ tests/
+
+# Type check with mypy
+uv run mypy transcription/
+
+# Run pre-commit hooks manually
+uv run pre-commit run --all-files
+```
+
+---
 
 ## External Dependencies
 
@@ -676,17 +624,7 @@ cat benchmarks/results/benchmark_*.json
 - `mypy`: Type checking
 - `pre-commit`: Git hooks
 
-## Model Downloads
-
-**Emotion recognition models** (downloaded on first use):
-- Dimensional: `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim`
-- Categorical: `ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition`
-
-Models cached in `~/.cache/huggingface/` (Linux/macOS) or `%USERPROFILE%\.cache\huggingface\` (Windows).
-
-**Whisper models** (downloaded on first use):
-- Model size determines download: base (~150MB), medium (~1.5GB), large-v3 (~3GB)
-- Cached by faster-whisper in `~/.cache/huggingface/hub/`
+---
 
 ## Troubleshooting
 
@@ -708,6 +646,8 @@ Models cached in `~/.cache/huggingface/` (Linux/macOS) or `%USERPROFILE%\.cache\
 - Run manually to see errors: `uv run pre-commit run --all-files`
 - Auto-fix with ruff: `uv run ruff check --fix .`
 - Format with ruff: `uv run ruff format .`
+
+---
 
 ## Privacy and Security
 
