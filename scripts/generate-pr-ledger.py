@@ -30,7 +30,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
+import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -311,10 +314,6 @@ def _handle_legacy_prompt(args: argparse.Namespace) -> None:
 
 
 # --- Legacy functions (preserved for backward compatibility) ---
-
-import re
-import subprocess
-from datetime import datetime
 
 
 def _run_gh(args: list[str], check: bool = True) -> dict[str, Any] | list[Any] | str | None:

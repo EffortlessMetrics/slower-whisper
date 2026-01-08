@@ -690,3 +690,626 @@ class TestIntegration:
             rationale="Test rationale",
         )
         assert inflection.commit == "abc123"
+
+
+# =============================================================================
+# Validation Tests
+# =============================================================================
+
+
+class TestValidation:
+    """Tests for dossier validation."""
+
+    def make_valid_dossier(self) -> dict[str, Any]:
+        """Create a minimal valid dossier for testing."""
+        return {
+            "schema_version": 2,
+            "pr_number": 138,
+            "title": "Test PR",
+            "url": "https://github.com/test/repo/pull/138",
+            "created_at": "2025-01-01T10:00:00Z",
+            "merged_at": "2025-01-01T13:00:00Z",
+            "intent": {
+                "goal": "Test goal",
+                "type": "feature",
+                "issues": [],
+                "phase": "unknown",
+                "out_of_scope": [],
+            },
+            "scope": {
+                "files_changed": 5,
+                "insertions": 100,
+                "deletions": 20,
+                "top_directories": ["src"],
+                "key_files": ["src/feature.py"],
+                "blast_radius": "medium",
+            },
+            "cost": {
+                "wall_clock": {"days": 0.125, "hours": 3.0},
+                "active_work_proxy": {"lb_hours": 1.0, "ub_hours": 2.0, "method": "test"},
+                "devlt": {
+                    "author": {"lb_minutes": 30, "ub_minutes": 60, "band": "20-45m"},
+                    "review": {"lb_minutes": 10, "ub_minutes": 20, "band": "10-20m"},
+                    "method": "test",
+                    "control_plane": {
+                        "lb_minutes": 20,
+                        "ub_minutes": 40,
+                        "band": "20-45m",
+                        "method": "decision-weighted-v1",
+                        "coverage": "github_only",
+                        "decision_count": 3,
+                    },
+                },
+            },
+            "evidence": {
+                "local_gate": {"passed": True, "command": "./scripts/ci-local.sh"},
+                "tests": {"added": 5, "modified": 2},
+                "typing": {"mypy_passed": True, "ruff_passed": True},
+                "docs_updated": False,
+                "schema_validated": True,
+            },
+            "process": {
+                "friction_events": [],
+                "design_alignment": {"drifted": False, "notes": None},
+                "measurement_integrity": {"valid": "unknown"},
+            },
+            "findings": [],
+            "decision_events": [
+                {
+                    "type": "design",
+                    "description": "Schema change",
+                    "anchor": "commit:abc1234",
+                    "confidence": "high",
+                    "minutes_lb": 6,
+                    "minutes_ub": 20,
+                }
+            ],
+            "reflection": {"went_well": [], "could_be_better": []},
+            "outcome": "shipped",
+            "factory_delta": {"gates_added": [], "contracts_added": [], "prevention_issues": []},
+            "followups": [],
+            "inputs": {"coverage": "github_only", "missing_sources": []},
+        }
+
+    def test_validate_dossier_valid(self) -> None:
+        """Test validation passes for valid dossier."""
+        from transcription.historian.validation import validate_dossier
+
+        dossier = self.make_valid_dossier()
+        valid, errors = validate_dossier(dossier, strict=True)
+
+        assert valid is True
+        assert errors == []
+
+    def test_validate_dossier_missing_required_field(self) -> None:
+        """Test validation fails for missing required field."""
+        from transcription.historian.validation import validate_dossier
+
+        dossier = self.make_valid_dossier()
+        del dossier["pr_number"]
+
+        valid, errors = validate_dossier(dossier, strict=True)
+
+        assert valid is False
+        assert any("pr_number" in e for e in errors)
+
+    def test_validate_dossier_wrong_schema_version(self) -> None:
+        """Test validation fails for wrong schema version."""
+        from transcription.historian.validation import validate_dossier
+
+        dossier = self.make_valid_dossier()
+        dossier["schema_version"] = 1  # Should be 2
+
+        valid, errors = validate_dossier(dossier, strict=True)
+
+        assert valid is False
+        assert any("schema_version" in e for e in errors)
+
+    def test_validate_dossier_invalid_decision_type(self) -> None:
+        """Test validation fails for invalid decision event type."""
+        from transcription.historian.validation import validate_dossier
+
+        dossier = self.make_valid_dossier()
+        dossier["decision_events"][0]["type"] = "invalid_type"
+
+        valid, errors = validate_dossier(dossier, strict=True)
+
+        assert valid is False
+        assert any("type" in e.lower() or "enum" in e.lower() for e in errors)
+
+    def test_validate_semantic_benchmarks_without_baseline(self) -> None:
+        """Test semantic validation catches benchmarks without baseline."""
+        from transcription.historian.validation import validate_dossier_semantic
+
+        dossier = self.make_valid_dossier()
+        dossier["evidence"]["benchmarks"] = {
+            "metrics": {"latency_p50_ms": 100},
+            # Missing baseline_commit
+        }
+
+        errors = validate_dossier_semantic(dossier)
+
+        assert len(errors) > 0
+        assert any("baseline" in e.lower() for e in errors)
+
+    def test_validate_semantic_findings_without_anchor(self) -> None:
+        """Test semantic validation catches findings without anchor."""
+        from transcription.historian.validation import validate_dossier_semantic
+
+        dossier = self.make_valid_dossier()
+        dossier["findings"] = [
+            {
+                "type": "test_flake",
+                "description": "Flaky test detected",
+                # Missing both commit and detected_by
+            }
+        ]
+
+        errors = validate_dossier_semantic(dossier)
+
+        assert len(errors) > 0
+        assert any("anchor" in e.lower() for e in errors)
+
+    def test_validate_semantic_invalid_outcome(self) -> None:
+        """Test semantic validation catches invalid outcome."""
+        from transcription.historian.validation import validate_dossier_semantic
+
+        dossier = self.make_valid_dossier()
+        dossier["outcome"] = "not_a_valid_outcome"
+
+        errors = validate_dossier_semantic(dossier)
+
+        assert len(errors) > 0
+        assert any("outcome" in e.lower() for e in errors)
+
+    def test_validate_semantic_invalid_intent_type(self) -> None:
+        """Test semantic validation catches invalid intent type."""
+        from transcription.historian.validation import validate_dossier_semantic
+
+        dossier = self.make_valid_dossier()
+        dossier["intent"]["type"] = "not_a_valid_type"
+
+        errors = validate_dossier_semantic(dossier)
+
+        assert len(errors) > 0
+        assert any("intent" in e.lower() for e in errors)
+
+    def test_validate_dossier_strict_raises(self) -> None:
+        """Test validate_dossier_strict raises on invalid dossier."""
+        from transcription.historian.validation import ValidationError, validate_dossier_strict
+
+        dossier = self.make_valid_dossier()
+        del dossier["pr_number"]
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_dossier_strict(dossier)
+
+        assert len(exc_info.value.errors) > 0
+
+    def test_schema_exists(self) -> None:
+        """Test schema_exists returns True when schema file exists."""
+        from transcription.historian.validation import schema_exists
+
+        assert schema_exists() is True
+
+    def test_require_schema_returns_path(self) -> None:
+        """Test require_schema returns path when schema exists."""
+        from transcription.historian.validation import require_schema
+
+        path = require_schema(strict=True)
+
+        assert path.exists()
+        assert "pr-dossier-v2.schema.json" in str(path)
+
+
+# =============================================================================
+# Publisher Tests
+# =============================================================================
+
+
+class TestPublisher:
+    """Tests for dossier publishing."""
+
+    def make_valid_dossier(self) -> dict[str, Any]:
+        """Create a minimal valid dossier for testing."""
+        return {
+            "schema_version": 2,
+            "pr_number": 138,
+            "title": "Test PR",
+            "url": "https://github.com/test/repo/pull/138",
+            "created_at": "2025-01-01T10:00:00Z",
+            "merged_at": "2025-01-01T13:00:00Z",
+            "intent": {
+                "goal": "Add new feature",
+                "type": "feature",
+                "issues": ["#100"],
+                "phase": "unknown",
+                "out_of_scope": ["Performance optimization"],
+            },
+            "scope": {
+                "files_changed": 10,
+                "insertions": 200,
+                "deletions": 50,
+                "top_directories": ["src", "tests"],
+                "key_files": ["src/feature.py", "tests/test_feature.py"],
+                "blast_radius": "medium",
+            },
+            "cost": {
+                "wall_clock": {"days": 0.125, "hours": 3.0},
+                "active_work_proxy": {
+                    "lb_hours": 1.5,
+                    "ub_hours": 2.5,
+                    "method": "bounded session estimation",
+                },
+                "devlt": {
+                    "author": {"lb_minutes": 45, "ub_minutes": 90, "band": "45-90m"},
+                    "review": {"lb_minutes": 15, "ub_minutes": 30, "band": "10-20m"},
+                    "method": "session proxy",
+                    "control_plane": {
+                        "lb_minutes": 30,
+                        "ub_minutes": 60,
+                        "band": "20-45m",
+                        "method": "decision-weighted-v1",
+                        "coverage": "github_only",
+                        "decision_count": 4,
+                    },
+                },
+            },
+            "evidence": {
+                "local_gate": {"passed": True, "command": "./scripts/ci-local.sh fast"},
+                "tests": {"added": 8, "modified": 3},
+                "typing": {"mypy_passed": True, "ruff_passed": True},
+                "benchmarks": {},
+                "docs_updated": True,
+                "schema_validated": True,
+            },
+            "process": {
+                "friction_events": [
+                    {
+                        "event": "Type error in module",
+                        "detected_by": "gate",
+                        "disposition": "fixed",
+                        "prevention": "Added type annotations",
+                    }
+                ],
+                "design_alignment": {"drifted": False, "notes": None},
+                "measurement_integrity": {"valid": "unknown"},
+            },
+            "findings": [
+                {
+                    "type": "implementation_error",
+                    "description": "Type error fixed",
+                    "detected_by": "gate",
+                    "disposition": "fixed",
+                    "commit": "abc1234",
+                    "prevention_added": "Type annotations",
+                }
+            ],
+            "decision_events": [
+                {
+                    "type": "design",
+                    "description": "Schema change",
+                    "anchor": "commit:abc1234",
+                    "confidence": "high",
+                    "minutes_lb": 10,
+                    "minutes_ub": 25,
+                },
+                {
+                    "type": "quality",
+                    "description": "Add tests",
+                    "anchor": "commit:def5678",
+                    "confidence": "med",
+                    "minutes_lb": 8,
+                    "minutes_ub": 20,
+                },
+            ],
+            "reflection": {
+                "went_well": ["Clean implementation", "Good test coverage"],
+                "could_be_better": ["Documentation could be more detailed"],
+            },
+            "outcome": "shipped",
+            "factory_delta": {
+                "gates_added": ["type_check"],
+                "contracts_added": [],
+                "prevention_issues": [],
+            },
+            "followups": [{"issue": "#101", "description": "Add more documentation"}],
+            "inputs": {"coverage": "github_only", "missing_sources": []},
+        }
+
+    def test_render_ledger_markdown_basic(self) -> None:
+        """Test ledger markdown rendering includes key sections."""
+        from transcription.historian.publisher import _render_ledger_markdown
+
+        dossier = self.make_valid_dossier()
+        md = _render_ledger_markdown(dossier)
+
+        # Check key sections are present
+        assert "## PR Ledger" in md
+        assert "### What this PR was" in md
+        assert "Add new feature" in md  # goal
+        assert "feature" in md  # type
+        assert "### What shipped" in md
+        assert "### Evidence (receipts)" in md
+        assert "Local gate" in md
+        assert "passed" in md
+        assert "### Process + friction" in md
+        assert "Type error in module" in md
+        assert "### Cost & time" in md
+        assert "DevLT (control-plane)" in md
+        assert "30-60m" in md  # control plane range
+        assert "### What went well" in md
+        assert "Clean implementation" in md
+        assert "### What could be better" in md
+        assert "### Follow-ups" in md
+        assert "#101" in md
+
+    def test_render_ledger_markdown_empty_sections(self) -> None:
+        """Test ledger markdown handles empty sections gracefully."""
+        from transcription.historian.publisher import _render_ledger_markdown
+
+        dossier = self.make_valid_dossier()
+        dossier["process"]["friction_events"] = []
+        dossier["reflection"]["went_well"] = []
+        dossier["followups"] = []
+
+        md = _render_ledger_markdown(dossier)
+
+        assert "no friction events" in md
+        assert "not recorded" in md
+        assert "(none)" in md
+
+    def test_compute_exhibit_score_high(self) -> None:
+        """Test exhibit score computation for high-quality dossier."""
+        from transcription.historian.publisher import _compute_exhibit_score
+
+        dossier = self.make_valid_dossier()
+        score = _compute_exhibit_score(dossier)
+
+        # Should have high score (friction + prevention + reflection + evidence + devlt + followups + scope)
+        assert score >= 7
+
+    def test_compute_exhibit_score_minimal(self) -> None:
+        """Test exhibit score computation for minimal dossier."""
+        from transcription.historian.publisher import _compute_exhibit_score
+
+        dossier = {
+            "process": {"friction_events": []},
+            "findings": [],
+            "reflection": {},
+            "evidence": {},
+            "cost": {"devlt": {}},
+            "followups": [],
+            "scope": {"files_changed": 1},
+        }
+
+        score = _compute_exhibit_score(dossier)
+
+        # Should have low score
+        assert score <= 3
+
+    def test_publish_dossier_dry_run(self) -> None:
+        """Test publish_dossier in dry run mode."""
+        from pathlib import Path
+
+        from transcription.historian.publisher import publish_dossier
+
+        dossier = self.make_valid_dossier()
+        result = publish_dossier(
+            dossier,
+            pr_number=138,
+            repo_root=Path("/tmp"),
+            dry_run=True,
+            strict=True,
+        )
+
+        assert result.success is True
+        assert "Dry run" in " ".join(result.notes)
+        assert result.dossier_path is not None
+        assert "138.json" in result.dossier_path
+
+    def test_publish_dossier_validation_failure(self) -> None:
+        """Test publish_dossier fails on invalid dossier in strict mode."""
+        from pathlib import Path
+
+        from transcription.historian.publisher import publish_dossier
+
+        dossier = self.make_valid_dossier()
+        del dossier["pr_number"]  # Make invalid
+
+        result = publish_dossier(
+            dossier,
+            pr_number=138,
+            repo_root=Path("/tmp"),
+            dry_run=True,
+            strict=True,
+        )
+
+        assert result.success is False
+        assert len(result.errors) > 0
+
+
+# =============================================================================
+# Synthesize Dossier Integration Tests
+# =============================================================================
+
+
+class TestSynthesizeDossier:
+    """Integration tests for synthesize_dossier."""
+
+    def test_synthesize_dossier_with_all_analyzers_skipped(self) -> None:
+        """Test synthesize_dossier handles all analyzers skipped."""
+        from transcription.historian.analyzers.base import SubagentResult
+        from transcription.historian.synthesis import synthesize_dossier
+
+        bundle = make_bundle()
+
+        # All analyzers failed
+        analyzer_results = [
+            SubagentResult(
+                name="Temporal",
+                success=False,
+                output=None,
+                errors=["Temporal failed"],
+                duration_ms=10,
+            ),
+            SubagentResult(
+                name="DiffScout",
+                success=False,
+                output=None,
+                errors=["LLM error"],
+                duration_ms=100,
+            ),
+        ]
+
+        result = synthesize_dossier(bundle, analyzer_results, strict=True)
+
+        # Should still produce a dossier with defaults
+        assert result.dossier is not None
+        assert result.dossier["pr_number"] == 138
+        assert result.dossier["schema_version"] == 2
+
+        # Pipeline report should show failures
+        assert result.pipeline_report is not None
+        assert result.pipeline_report.coverage == "minimal"
+
+        # Should use fallback decision candidates
+        assert len(result.dossier.get("decision_events", [])) >= 1
+
+        # Should have synthesis notes about failures
+        assert any("failed" in note.lower() for note in result.synthesis_notes)
+
+    def test_synthesize_dossier_with_temporal_only(self) -> None:
+        """Test synthesize_dossier with only Temporal analyzer succeeding."""
+        from transcription.historian.analyzers.base import SubagentResult
+        from transcription.historian.synthesis import synthesize_dossier
+
+        commits = [
+            make_commit("c1", "feat: Start feature", offset_hours=0),
+            make_commit("c2", "fix: Fix issue", offset_hours=1, is_fix=True),
+            make_commit("c3", "test: Add tests", offset_hours=2, is_test=True),
+        ]
+        bundle = make_bundle(commits=commits)
+
+        # Only Temporal succeeded
+        analyzer_results = [
+            SubagentResult(
+                name="Temporal",
+                success=True,
+                output={
+                    "method_id": "temporal-v1.1",
+                    "confidence": "medium",
+                    "convergence_type": "linear",
+                    "phases": [
+                        {
+                            "name": "exploration",
+                            "start_commit": "c1",
+                            "end_commit": "c3",
+                            "evidence": "Test",
+                            "session_type": "build-loop",
+                        }
+                    ],
+                    "hotspots": [
+                        {
+                            "file": "src/feature.py",
+                            "touch_count": 3,
+                            "churn_sum": 120,
+                            "is_oscillating": False,
+                        }
+                    ],
+                    "oscillations": [],
+                    "inflection_point": {
+                        "commit": "c3",
+                        "rationale": "Last commit",
+                    },
+                    "notes": None,
+                },
+                errors=[],
+                duration_ms=50,
+            ),
+        ]
+
+        result = synthesize_dossier(bundle, analyzer_results, strict=True)
+
+        # Should have temporal data merged
+        assert "temporal" in result.dossier.get("process", {})
+        temporal = result.dossier["process"]["temporal"]
+        assert temporal["convergence_type"] == "linear"
+        assert len(temporal["phases"]) == 1
+
+        # Pipeline report should show partial coverage
+        assert result.pipeline_report is not None
+        # Only 1 of 8 expected analyzers ran
+
+    def test_synthesize_dossier_fallback_devlt(self) -> None:
+        """Test synthesize_dossier uses fallback DevLT when DecisionExtractor fails."""
+        from transcription.historian.analyzers.base import SubagentResult
+        from transcription.historian.synthesis import synthesize_dossier
+
+        bundle = make_bundle(blast_radius="high")
+
+        # DecisionExtractor failed, but Temporal succeeded
+        analyzer_results = [
+            SubagentResult(
+                name="Temporal",
+                success=True,
+                output={
+                    "method_id": "temporal-v1.1",
+                    "confidence": "medium",
+                    "convergence_type": "linear",
+                    "phases": [],
+                    "hotspots": [],
+                    "oscillations": [
+                        {
+                            "type": "approach_flip",
+                            "files": ["src/feature.py"],
+                            "commits": ["c1"],
+                            "evidence": "Refactor pattern",
+                            "keywords": ["refactor"],
+                        }
+                    ],
+                    "inflection_point": None,
+                    "notes": None,
+                },
+                errors=[],
+                duration_ms=50,
+            ),
+            SubagentResult(
+                name="DecisionExtractor",
+                success=False,
+                output=None,
+                errors=["LLM unavailable"],
+                duration_ms=100,
+            ),
+        ]
+
+        result = synthesize_dossier(bundle, analyzer_results, strict=True)
+
+        # Should have fallback decision candidates
+        assert len(result.dossier.get("decision_events", [])) >= 1
+
+        # Should have control-plane DevLT with fallback method
+        control_plane = result.dossier.get("cost", {}).get("devlt", {}).get("control_plane", {})
+        assert control_plane.get("method") == "fallback-deterministic-v1"
+        assert control_plane.get("lb_minutes", 0) > 0
+
+        # Pipeline notes should mention fallback
+        assert any("fallback" in note.lower() for note in result.synthesis_notes)
+
+    def test_synthesize_dossier_pipeline_report_stored(self) -> None:
+        """Test synthesize_dossier stores pipeline report in dossier._analysis."""
+        from transcription.historian.analyzers.base import SubagentResult
+        from transcription.historian.synthesis import synthesize_dossier
+
+        bundle = make_bundle()
+        analyzer_results: list[SubagentResult] = []
+
+        result = synthesize_dossier(bundle, analyzer_results, strict=True)
+
+        # Pipeline report should be stored in _analysis
+        assert "_analysis" in result.dossier
+        assert "pipeline" in result.dossier["_analysis"]
+        pipeline = result.dossier["_analysis"]["pipeline"]
+        assert "analyzers" in pipeline
+        assert "coverage" in pipeline
+        assert "total_attempted" in pipeline
