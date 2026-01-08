@@ -251,18 +251,21 @@ def _merge_temporal(dossier: dict[str, Any], output: dict[str, Any]) -> None:
 
     temporal = {
         "convergence_type": output.get("convergence_type"),
+        "method_id": output.get("method_id"),
+        "confidence": output.get("confidence"),
         "phases": [
             {
                 "name": p.get("name"),
                 "start_commit": p.get("start_commit"),
                 "end_commit": p.get("end_commit"),
                 "evidence": p.get("evidence"),
+                "session_type": p.get("session_type"),
             }
             for p in output.get("phases", [])
         ],
         "hotspots": [
             {
-                "file": h.get("path"),  # Analyzer outputs "path", schema uses "file"
+                "file": h.get("file"),  # TemporalAnalyzer outputs "file"
                 "touch_count": h.get("touch_count"),
                 "churn_sum": h.get("churn_sum"),
                 "is_oscillating": h.get("is_oscillating"),
@@ -274,17 +277,22 @@ def _merge_temporal(dossier: dict[str, Any], output: dict[str, Any]) -> None:
                 "type": o.get("type"),
                 "files": o.get("files", []),
                 "commits": o.get("commits", []),
+                "evidence": o.get("evidence"),
+                "keywords": o.get("keywords", []),
             }
             for o in output.get("oscillations", [])
         ],
         "inflection_point": (
             {
-                "commit": output["inflection_point"].get("commit_sha"),  # Analyzer uses commit_sha
+                "commit": output["inflection_point"].get(
+                    "commit"
+                ),  # TemporalAnalyzer outputs "commit"
                 "rationale": output["inflection_point"].get("rationale"),
             }
             if output.get("inflection_point")
             else None
         ),
+        "notes": output.get("notes"),
     }
 
     dossier.setdefault("process", {})["temporal"] = temporal
@@ -512,11 +520,9 @@ def finalize_costs(dossier: dict[str, Any]) -> None:
     dossier.setdefault("_analysis", {})["exhibit_score"] = exhibit_score
 
     # --- Ensure cost structure consistency ---
-    # If devlt exists but control_plane wasn't computed, note why
-    cost = dossier.get("cost", {})
-    devlt = cost.get("devlt", {})
-    if devlt and "control_plane" not in devlt and not decision_events:
-        devlt["control_plane"] = {
+    # If devlt exists but control_plane wasn't computed, add default
+    if not decision_events:
+        dossier.setdefault("cost", {}).setdefault("devlt", {})["control_plane"] = {
             "lb_minutes": 0,
             "ub_minutes": 0,
             "band": "0-10m",

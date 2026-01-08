@@ -32,7 +32,7 @@ from transcription.historian.analyzers.temporal import TemporalAnalyzer
 
 # All available analyzers in execution order
 # TemporalAnalyzer is first since it's deterministic and others may use its output
-ALL_ANALYZERS = [
+ALL_ANALYZERS: list[type[BaseAnalyzer]] = [
     TemporalAnalyzer,
     DiffScoutAnalyzer,
     EvidenceAuditorAnalyzer,

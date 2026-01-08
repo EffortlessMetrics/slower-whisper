@@ -279,7 +279,8 @@ def _run_gh(args: list[str], check: bool = True) -> dict[str, Any] | list[Any] |
         if result.returncode != 0:
             return None
         try:
-            return json.loads(result.stdout)
+            parsed: dict[str, Any] | list[Any] = json.loads(result.stdout)
+            return parsed
         except json.JSONDecodeError:
             return result.stdout.strip()
     except subprocess.CalledProcessError as e:
@@ -329,7 +330,8 @@ def _get_pr_files(pr_number: int) -> list[dict[str, Any]]:
     """Fetch changed files with diff stats."""
     data = _run_gh(["pr", "view", str(pr_number), "--json", "files"])
     if isinstance(data, dict) and "files" in data:
-        return data["files"]
+        files: list[dict[str, Any]] = data["files"]
+        return files
     return []
 
 
@@ -337,7 +339,8 @@ def _get_pr_commits(pr_number: int) -> list[dict[str, Any]]:
     """Fetch commits with messages."""
     data = _run_gh(["pr", "view", str(pr_number), "--json", "commits"])
     if isinstance(data, dict) and "commits" in data:
-        return data["commits"]
+        commits: list[dict[str, Any]] = data["commits"]
+        return commits
     return []
 
 
@@ -380,7 +383,8 @@ def _get_check_runs(pr_number: int) -> list[dict[str, Any]]:
             check=False,
         )
         if isinstance(detailed, dict) and "check_runs" in detailed:
-            return detailed["check_runs"]
+            check_runs: list[dict[str, Any]] = detailed["check_runs"]
+            return check_runs
 
     # Fallback to rollup (less detailed)
     return rollup

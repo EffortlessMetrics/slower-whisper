@@ -7,6 +7,7 @@ has explicit lower and upper bounds, along with the method used to compute them.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -70,7 +71,7 @@ MACHINE_SPEND_BANDS = [
 ]
 
 
-def _minutes_to_band(minutes: int, bands: list[tuple[float, float, str]]) -> str:
+def _minutes_to_band(minutes: int, bands: Sequence[tuple[float, float, str]]) -> str:
     """Convert minutes to a band string."""
     for low, high, label in bands:
         if low <= minutes < high:
