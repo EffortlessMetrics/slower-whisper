@@ -1,8 +1,11 @@
-blank_issues_enabled: false
+blank_issues_enabled: true
 contact_links:
-  - name: Documentation
+  - name: Audit path (15 minutes)
+    url: https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/audit/AUDIT_PATH.md
+    about: Validate claims quickly or attach strong receipts to your report.
+  - name: Documentation index
+    url: https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/INDEX.md
+    about: Start here for docs, references, and contracts.
+  - name: README
     url: https://github.com/EffortlessMetrics/slower-whisper#readme
-    about: Check the README for usage instructions
-  - name: Ask a Question or Start a Discussion
-    url: https://github.com/EffortlessMetrics/slower-whisper/issues/new/choose
-    about: For questions and general discussion, please use an issue template.
+    about: Project overview and quick start.

@@ -113,6 +113,8 @@ dev = [
     "slower-whisper[full]",
     "slower-whisper[integrations]",
     "slower-whisper[api]",
+    # Historian pipeline (PR analysis)
+    "claude-agent-sdk>=0.1.0",
     # Testing
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
@@ -182,7 +184,7 @@ Repository = "https://github.com/EffortlessMetrics/slower-whisper"
 Issues = "https://github.com/EffortlessMetrics/slower-whisper/issues"
 
 [tool.setuptools]
-packages = ["transcription", "scripts", "integrations"]
+packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "scripts", "integrations"]
 
 [tool.setuptools.package-data]
 transcription = ["py.typed"]
@@ -240,6 +242,7 @@ module = [
     "fastapi.*",
     "uvicorn.*",
     "pyannote.*",
+    "claude_agent_sdk.*",
 ]
 ignore_missing_imports = true
 

@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/EffortlessMetrics/slower-whisper/schemas/calibration.schema.json",
+  "title": "DevLT Calibration Sample Schema",
+  "description": "Schema for calibration samples used to validate DevLT estimation accuracy",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["pr_number", "human_reported", "estimated"],
+    "properties": {
+      "pr_number": {
+        "type": "integer",
+        "description": "GitHub PR number"
+      },
+      "title": {
+        "type": "string",
+        "description": "PR title for reference"
+      },
+      "human_reported": {
+        "type": "object",
+        "description": "Human-reported DevLT estimate",
+        "required": [],
+        "anyOf": [
+          {"required": ["lb_minutes", "ub_minutes"]},
+          {"required": ["point_estimate_minutes"]}
+        ],
+        "properties": {
+          "lb_minutes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Lower bound of human estimate in minutes"
+          },
+          "ub_minutes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Upper bound of human estimate in minutes"
+          },
+          "point_estimate_minutes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Single best estimate if range not given"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "med", "low"],
+            "description": "Confidence level in the human estimate"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["author", "reviewer", "both", "reconstructed", "unknown"],
+            "description": "Who provided the estimate"
+          }
+        }
+      },
+      "estimated": {
+        "type": "object",
+        "description": "Model-estimated DevLT bounds",
+        "required": ["lb_minutes", "ub_minutes"],
+        "properties": {
+          "lb_minutes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Lower bound from estimation model"
+          },
+          "ub_minutes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Upper bound from estimation model"
+          },
+          "method": {
+            "type": "string",
+            "enum": ["decision-weighted-v1", "session-proxy", "manual"],
+            "description": "Estimation method used"
+          },
+          "coverage": {
+            "type": "string",
+            "enum": ["github_only", "github_plus_agent_logs"],
+            "description": "Data sources available for estimation"
+          },
+          "decision_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of decisions extracted (for decision-weighted method)"
+          }
+        }
+      },
+      "decisions_summary": {
+        "type": "array",
+        "description": "Summary of key decisions for reference",
+        "items": {
+          "type": "object",
+          "required": ["type", "description"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["scope", "design", "quality", "debug", "publish", "unknown"],
+              "description": "Decision category"
+            },
+            "description": {
+              "type": "string",
+              "description": "Brief description of the decision"
+            }
+          }
+        }
+      },
+      "recorded_at": {
+        "type": "string",
+        "format": "date",
+        "description": "ISO date when this sample was recorded"
+      },
+      "notes": {
+        "type": "string",
+        "description": "Additional context, friction points, special circumstances"
+      }
+    }
+  }
+}

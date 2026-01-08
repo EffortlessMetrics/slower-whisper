@@ -62,6 +62,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 | Document | Description | Topics |
 |----------|-------------|--------|
+| [SCHEMA.md](SCHEMA.md) | Transcript JSON schema contract | Normative keys, stability tiers, validation |
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuration guide for all layers | Defaults, env vars, files, CLI flags, precedence, patterns |
 | [API_QUICK_REFERENCE.md](API_QUICK_REFERENCE.md) | Quick reference for Python API | Functions, configs, examples |
 | [CLI_REFERENCE.md](CLI_REFERENCE.md) | Command-line interface documentation | Commands, options, workflows |
@@ -125,6 +126,16 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [BDD_IAC_IMPLEMENTATION_SUMMARY.md](BDD_IAC_IMPLEMENTATION_SUMMARY.md) | Implementation summary and usage guide | Status, scripts, next steps |
 | [BDD_IAC_PYTHON_CLI.md](BDD_IAC_PYTHON_CLI.md) | Python CLI verification tooling | Cross-platform verification, testing infrastructure |
 | [API_BDD_CONTRACT.md](API_BDD_CONTRACT.md) | FastAPI service behavioral contract | REST API BDD scenarios, black-box testing, smoke and functional tests |
+
+### Audit & Process (docs/audit/)
+
+| Document | Description |
+|----------|-------------|
+| [audit/README.md](audit/README.md) | Audit infrastructure overview + trust loop diagram |
+| [audit/AUDIT_PATH.md](audit/AUDIT_PATH.md) | 15-minute cold-reader validation checklist |
+| [audit/EXHIBITS.md](audit/EXHIBITS.md) | Annotated PRs demonstrating audit workflow |
+| [audit/FAILURE_MODES.md](audit/FAILURE_MODES.md) | Taxonomy of failure modes and prevention patterns |
+| [audit/PR_DOSSIER_SCHEMA.md](audit/PR_DOSSIER_SCHEMA.md) | Schema for structured PR analysis |
 
 ---
 
@@ -224,6 +235,7 @@ These documents are historical artifacts from the development process and transf
 2. [CLAUDE.md](../CLAUDE.md) - Codebase guidance
 3. [Architecture](ARCHITECTURE.md) - System design
 4. [BDD/IaC Contracts](BDD_IAC_LOCKDOWN.md) - Testing and deployment standards
+5. [Audit Infrastructure](audit/README.md) - DevLT, receipts, failure modes
 
 ### "I want to understand the system design"
 1. [Architecture](ARCHITECTURE.md) - Complete architecture overview
@@ -305,6 +317,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2025-11-17
+**Last Updated:** 2026-01-07
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.

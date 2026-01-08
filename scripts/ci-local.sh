@@ -59,6 +59,77 @@ else
 fi
 echo ""
 
+# Check 0: Docs sanity (fast, runs early)
+docs_sanity_check() {
+    local errors=0
+
+    # 1. Check for broken internal links in critical control surface docs only
+    # These are the docs that users hit first and must stay accurate
+    echo "  Checking internal markdown links in critical docs..."
+    local key_docs=(
+        "README.md"
+        "CLAUDE.md"
+        "docs/INDEX.md"
+        "docs/SCHEMA.md"
+        "docs/audit/README.md"
+        "docs/audit/AUDIT_PATH.md"
+    )
+
+    for file in "${key_docs[@]}"; do
+        [[ ! -f "$file" ]] && continue
+        while IFS= read -r link; do
+            # Skip external links, anchors-only, and empty
+            [[ -z "$link" ]] && continue
+            [[ "$link" =~ ^https?:// ]] && continue
+            [[ "$link" =~ ^# ]] && continue
+            [[ "$link" =~ ^mailto: ]] && continue
+
+            # Strip anchor from link
+            link_path="${link%%#*}"
+            [[ -z "$link_path" ]] && continue
+
+            # Resolve relative to file's directory
+            file_dir=$(dirname "$file")
+            resolved="$file_dir/$link_path"
+
+            if [[ ! -e "$resolved" ]]; then
+                echo -e "    ${RED}Broken link in $file: $link${NC}"
+                ((errors++))
+            fi
+        done < <(grep -oP '\]\(\K[^)]+' "$file" 2>/dev/null || true)
+    done
+
+    # 2. Check for forbidden JSON keys in snippets (file_name should be file in JSON output)
+    # Only check _snippets dir which should have correct schema keys
+    echo "  Checking for forbidden keys in snippets..."
+    if grep -rn '"file_name"' docs/_snippets/ 2>/dev/null; then
+        echo -e "    ${RED}Found '\"file_name\"' in snippets (should be '\"file\"')${NC}"
+        ((errors++))
+    fi
+
+    # 3. Verify generated snippets exist
+    echo "  Checking generated snippets..."
+    local expected_snippets=(
+        "docs/_snippets/schema_example.json"
+        "docs/_snippets/schema_full_example.json"
+    )
+    for snippet in "${expected_snippets[@]}"; do
+        if [[ ! -f "$snippet" ]]; then
+            echo -e "    ${RED}Missing snippet: $snippet${NC}"
+            ((errors++))
+        fi
+    done
+
+    if [[ $errors -gt 0 ]]; then
+        echo -e "  ${RED}Found $errors doc issue(s)${NC}"
+        return 1
+    fi
+    echo "  All docs checks passed"
+    return 0
+}
+
+run_check "Docs sanity" docs_sanity_check
+
 # Check 1: Pre-commit hooks (includes ruff lint + format)
 run_check "Pre-commit hooks" \
     uv run pre-commit run --all-files

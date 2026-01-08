@@ -4,6 +4,59 @@
 
 Successfully implemented a complete Stage 2B Audio Feature Enrichment system for the slower-whisper transcription pipeline. The system extracts prosodic and acoustic features from audio that text-only models cannot infer from transcripts alone.
 
+## Pipeline Layers (L0–L4)
+
+The transcription pipeline is organized into five conceptual layers, each building on the outputs of the previous:
+
+```mermaid
+flowchart TD
+    subgraph L0["L0: ASR"]
+        A[Audio Input] --> B[faster-whisper]
+        B --> C[Segments with text + timestamps]
+    end
+
+    subgraph L1["L1: Diarization"]
+        C --> D[pyannote.audio]
+        D --> E[Speaker labels per segment]
+    end
+
+    subgraph L2["L2: Audio Enrichment"]
+        C --> F[Prosody extraction]
+        C --> G[Emotion recognition]
+        F --> H[audio_state per segment]
+        G --> H
+    end
+
+    subgraph L3["L3: Turn Aggregation"]
+        E --> I[Group segments by speaker]
+        H --> I
+        I --> J[Turns with metadata]
+    end
+
+    subgraph L4["L4: Analytics"]
+        J --> K[Speaker statistics]
+        J --> L[Semantic annotations]
+        K --> M[Final Transcript JSON]
+        L --> M
+    end
+
+    style L0 fill:#e1f5fe
+    style L1 fill:#f3e5f5
+    style L2 fill:#fff3e0
+    style L3 fill:#e8f5e9
+    style L4 fill:#fce4ec
+```
+
+| Layer | Name | Input | Output |
+|-------|------|-------|--------|
+| **L0** | ASR | Raw audio | Segments with text, timestamps |
+| **L1** | Diarization | Segments + audio | Speaker labels per segment |
+| **L2** | Audio Enrichment | Segments + audio | Prosody & emotion features (`audio_state`) |
+| **L3** | Turn Aggregation | Labeled segments | Speaker turns with turn-level metadata |
+| **L4** | Analytics | Turns | Per-speaker stats, semantic annotations |
+
+Each layer is optional and degrades gracefully. L0 is required; L1–L4 are enabled via configuration flags.
+
 ## System Architecture
 
 ### Core Goal
@@ -42,7 +95,7 @@ The current schema (v2) has the following stable structure:
 ```json
 {
   "schema_version": 2,
-  "file_name": "audio.wav",
+  "file": "audio.wav",
   "language": "en",
   "meta": { /* metadata object */ },
   "segments": [ /* array of Segment objects */ ],
@@ -78,7 +131,7 @@ The current schema (v2) has the following stable structure:
 - v1 consumers can ignore extra fields
 
 **Stability Contract:**
-- Core fields (`file_name`, `language`, `segments`) will not change type or meaning within schema v2
+- Core fields (`file`, `language`, `segments`) will not change type or meaning within schema v2
 - Core segment fields (`id`, `start`, `end`, `text`) are stable
 - Optional fields (`speaker`, `tone`, `audio_state`, `speakers`, `turns`) may be `null` or missing
 - Adding new optional fields does NOT increment schema version

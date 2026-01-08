@@ -1,40 +1,55 @@
-name: Feature Request
-description: Suggest a new feature or enhancement
-title: "[Feature]: "
-labels: ["enhancement", "needs-triage"]
+name: Feature request
+description: A new capability or contract change.
+labels: ["enhancement"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for suggesting a feature! Please describe your idea below.
-
   - type: textarea
     id: problem
     attributes:
-      label: Problem Statement
-      description: What problem does this feature solve? Is it related to a frustration?
-      placeholder: "I'm always frustrated when..."
+      label: Problem
+      description: What user pain are we solving?
+      placeholder: "Example: Need in-memory transcription for API workloads to avoid temp files."
     validations:
       required: true
 
   - type: textarea
-    id: solution
+    id: proposal
     attributes:
-      label: Proposed Solution
-      description: Describe the solution you'd like. Be as specific as possible.
+      label: Proposed change
+      description: What do you want added/changed? Keep it concrete.
     validations:
       required: true
 
   - type: textarea
-    id: alternatives
+    id: constraints
     attributes:
-      label: Alternatives Considered
-      description: Any alternative solutions or workarounds you've considered.
+      label: Constraints / non-goals
+      description: What must remain true? What is explicitly out of scope?
+      placeholder: |
+        Constraints:
+        - …
+        Non-goals:
+        - …
+    validations:
+      required: false
+
+  - type: textarea
+    id: dod
+    attributes:
+      label: Definition of done (testable)
+      description: Acceptance criteria and how we'll validate it.
+      placeholder: |
+        DoD:
+        - …
+        Local validation:
+        - ./scripts/ci-local.sh fast
+        - …
+    validations:
+      required: false
 
   - type: dropdown
     id: area
     attributes:
-      label: Feature Area
+      label: Feature area
       description: Which area does this feature relate to?
       options:
         - Transcription (ASR)
@@ -45,16 +60,19 @@ body:
         - CLI
         - API
         - Export/Output Formats
+        - Benchmarks
         - Documentation
         - Other
     validations:
       required: true
 
   - type: textarea
-    id: context
+    id: surfaces
     attributes:
-      label: Additional Context
-      description: Add any other context, screenshots, or examples.
+      label: Likely surfaces touched (optional)
+      description: Files/modules/CLI/API surfaces you expect to change.
+    validations:
+      required: false
 
   - type: checkboxes
     id: contribution
