@@ -36,7 +36,7 @@ Create a pull request from the current branch, crafting a narrative that helps r
 
 ### 1. Understand the change
 
-Use the **Explore** agent to map what changed:
+Launch multiple **Explore** agents in parallel to map the change surface:
 
 - **Semantic hotspots**: Where does behavior change? (vs mechanical: formatting, imports, renames)
 - **Interface touchpoints**: Public API, CLI flags, config options, JSON schema fields

@@ -34,9 +34,11 @@ Make this branch PR-ready through a quality-focused cleanup pass: identify issue
 
 ## Process
 
-### 1. Explore the change surface
+### 1+2. Explore and gate (parallel batch)
 
-Use the **Explore** agent to understand what this branch touches:
+Launch these concurrently:
+
+**Explore agents** — understand what this branch touches:
 
 - **Changed files**: Group by transcription core, CLI, tests, docs
 - **Semantic vs mechanical**: What changes behavior vs formatting/imports
@@ -53,9 +55,7 @@ Reference the repo invariants (from CLAUDE.md):
 
 Save findings to `<receipts>/explore.md`.
 
-### 2. Run the gate (identify issues)
-
-Execute the local CI gate:
+**Gate** — run the local CI gate:
 
 ```bash
 ./scripts/ci-local.sh 2>&1 | tee <receipts>/gate_initial.log
@@ -73,7 +73,7 @@ Capture failures for targeted fixes.
 
 ### 3. Plan fixes
 
-Use the **Plan** agent to prioritize:
+Use the **Plan** agent to prioritize based on exploration and gate findings:
 
 **Quick wins** (apply now):
 - Format/lint issues (auto-fixable)
