@@ -327,6 +327,58 @@ def _indent_stderr(stderr: str, indent: str = "    ") -> str:
     return "\n".join(f"{indent}{line}" for line in lines)
 
 
+def normalize_single(src: Path, dst: Path) -> None:
+    """
+    Normalize a single audio file to 16kHz mono WAV using ffmpeg.
+
+    Args:
+        src: Source audio file (any format supported by ffmpeg)
+        dst: Destination path for the normalized WAV file
+
+    Raises:
+        FFmpegNotFoundError: If ffmpeg is not installed or not on PATH.
+        FFmpegError: If ffmpeg fails to process the file.
+        FileNotFoundError: If the source file does not exist.
+    """
+    if not src.exists():
+        raise FileNotFoundError(f"Source audio file not found: {src}")
+
+    check_ffmpeg_installation()
+
+    src_str = str(src)
+    dst_str = str(dst)
+
+    cmd = [
+        "ffmpeg",
+        "-y",  # overwrite
+        "-i",
+        src_str,
+        "-ac",
+        "1",  # mono
+        "-ar",
+        "16000",  # 16 kHz
+        dst_str,
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr_output = result.stderr.strip() if result.stderr else ""
+            # Clean up partial/corrupt output file on failure
+            if dst.exists():
+                try:
+                    dst.unlink()
+                except OSError:
+                    pass
+            raise FFmpegError(
+                f"Failed to normalize audio file: {src.name}",
+                returncode=result.returncode,
+                stderr=stderr_output,
+            )
+    except FileNotFoundError as e:
+        raise FFmpegNotFoundError() from e
+
+
 def normalize_all(paths: Paths) -> None:
     """
     Convert all files in raw_dir to 16 kHz mono WAV in norm_dir using ffmpeg.

@@ -881,6 +881,13 @@ async def transcribe_audio(
             examples=[0.3],
         ),
     ] = None,
+    word_timestamps: Annotated[
+        bool,
+        Query(
+            description="Enable word-level timestamps in the response",
+            examples=[False, True],
+        ),
+    ] = False,
 ) -> JSONResponse:
     """
     Transcribe an uploaded audio file using faster-whisper.
@@ -903,6 +910,7 @@ async def transcribe_audio(
         min_speakers: Minimum expected speaker count hint
         max_speakers: Maximum expected speaker count hint
         overlap_threshold: Minimum overlap ratio required to assign a speaker
+        word_timestamps: Enable word-level timestamps in the response
 
     Returns:
         JSON response containing the Transcript object with segments and metadata
@@ -1018,6 +1026,7 @@ async def transcribe_audio(
                 diarization_device=diarization_device,
                 min_speakers=min_speakers,
                 max_speakers=max_speakers,
+                word_timestamps=word_timestamps,
                 **extra_kwargs,
             )
         except (ValueError, TypeError) as e:

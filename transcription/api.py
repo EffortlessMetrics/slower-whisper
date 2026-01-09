@@ -609,6 +609,183 @@ def transcribe_file(
     return transcript
 
 
+def transcribe_bytes(
+    audio_data: bytes,
+    config: TranscriptionConfig,
+    format: str = "wav",
+) -> Transcript:
+    """
+    Transcribe audio from raw bytes without requiring a persistent file.
+
+    This function accepts audio data as bytes and transcribes it using the
+    same engine as transcribe_file(). The audio is written to a temporary
+    file for processing (since faster-whisper requires a file path) and
+    cleaned up automatically after transcription.
+
+    Args:
+        audio_data: Raw audio bytes (WAV, MP3, FLAC, OGG, or other ffmpeg-supported format)
+        config: Transcription configuration
+        format: Audio format hint for the temporary file extension.
+                Supported values: "wav", "mp3", "flac", "ogg", "m4a", "webm", "opus"
+                Default is "wav". This helps ffmpeg identify the codec.
+
+    Returns:
+        Transcript object with segments and metadata
+
+    Raises:
+        TranscriptionError: If audio data is empty, format is unsupported,
+                           or transcription fails
+
+    Example:
+        >>> from transcription import transcribe_bytes, TranscriptionConfig
+        >>>
+        >>> # Read audio file into memory
+        >>> with open("interview.wav", "rb") as f:
+        ...     audio_data = f.read()
+        >>>
+        >>> # Transcribe from bytes
+        >>> config = TranscriptionConfig(model="large-v3", language="en")
+        >>> transcript = transcribe_bytes(audio_data, config, format="wav")
+        >>> print(transcript.segments[0].text)
+
+        >>> # Works with audio from APIs, streams, or in-memory processing
+        >>> response = requests.get("https://example.com/audio.mp3")
+        >>> transcript = transcribe_bytes(response.content, config, format="mp3")
+    """
+    import tempfile
+
+    from .asr_engine import TranscriptionEngine
+
+    # Validate input
+    if not audio_data:
+        raise TranscriptionError(
+            "Audio data is empty. Provide non-empty audio bytes for transcription."
+        )
+
+    # Validate and normalize format
+    supported_formats = {"wav", "mp3", "flac", "ogg", "m4a", "webm", "opus", "aac", "wma"}
+    format_lower = format.lower().lstrip(".")
+    if format_lower not in supported_formats:
+        raise TranscriptionError(
+            f"Unsupported audio format: '{format}'. "
+            f"Supported formats: {', '.join(sorted(supported_formats))}. "
+            f"If your format is supported by ffmpeg, try using transcribe_file() instead."
+        )
+
+    validate_diarization_settings(
+        config.min_speakers,
+        config.max_speakers,
+        config.overlap_threshold,
+    )
+
+    # Create ASR configuration
+    asr_cfg = AsrConfig(
+        model_name=config.model,
+        device=config.device,
+        compute_type=config.compute_type,
+        vad_min_silence_ms=config.vad_min_silence_ms,
+        beam_size=config.beam_size,
+        language=config.language,
+        task=config.task,
+        word_timestamps=config.word_timestamps,
+    )
+
+    # Write bytes to a temporary file for faster-whisper
+    # Using delete=False so we can pass the path to ffmpeg/faster-whisper
+    # and clean up manually after transcription
+    temp_file = None
+    norm_temp = None
+    try:
+        # Create temp file with appropriate extension for format detection
+        temp_file = tempfile.NamedTemporaryFile(
+            suffix=f".{format_lower}",
+            delete=False,
+        )
+        temp_path = Path(temp_file.name)
+        temp_file.write(audio_data)
+        temp_file.close()
+
+        # Normalize audio to WAV format for consistent processing
+        # Create a second temp file for the normalized WAV
+        norm_temp = tempfile.NamedTemporaryFile(
+            suffix=".wav",
+            delete=False,
+        )
+        norm_path = Path(norm_temp.name)
+        norm_temp.close()
+
+        from .audio_io import normalize_single
+
+        try:
+            normalize_single(temp_path, norm_path)
+        except Exception as e:
+            raise TranscriptionError(
+                f"Failed to normalize audio: {e}. "
+                f"Ensure ffmpeg is installed and the audio data is valid {format_lower.upper()} format."
+            ) from e
+
+        if not norm_path.exists():
+            raise TranscriptionError(
+                "Audio normalization failed: normalized file not created. "
+                "Ensure ffmpeg is installed and the audio data is valid."
+            )
+
+        duration_sec = _get_wav_duration_seconds(norm_path)
+
+        # Transcribe
+        engine = TranscriptionEngine(asr_cfg)
+        transcript = engine.transcribe_file(norm_path)
+
+        # Update filename to indicate bytes source
+        transcript.file_name = f"<bytes:{format_lower}>"
+
+        # Run diarization if enabled
+        transcript = _maybe_run_diarization(
+            transcript=transcript,
+            wav_path=norm_path,
+            config=config,
+        )
+        transcript = _maybe_build_chunks(transcript, config)
+
+        # Build metadata
+        from . import __version__
+
+        engine_cfg = getattr(engine, "cfg", None)
+        engine_device = getattr(engine_cfg, "device", None) if engine_cfg else None
+        engine_compute_type = getattr(engine_cfg, "compute_type", None) if engine_cfg else None
+
+        transcript.meta = build_generation_metadata(
+            transcript,
+            duration_sec=duration_sec,
+            model_name=config.model,
+            config_device=config.device,
+            config_compute_type=config.compute_type,
+            beam_size=config.beam_size,
+            vad_min_silence_ms=config.vad_min_silence_ms,
+            language_hint=config.language,
+            task=config.task,
+            pipeline_version=__version__,
+            root="<in-memory>",  # No root directory for bytes-based transcription
+            runtime_device_candidates=(engine_device,),
+            runtime_compute_candidates=(engine_compute_type,),
+        )
+
+        return transcript
+
+    finally:
+        # Clean up temporary files
+        if temp_file is not None:
+            try:
+                Path(temp_file.name).unlink(missing_ok=True)
+            except Exception:
+                pass
+        if norm_temp is not None:
+            try:
+                Path(norm_temp.name).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
 def enrich_directory(
     root: str | Path,
     config: EnrichmentConfig,

@@ -7,6 +7,7 @@ from transcription import (
     # Core Functions
     transcribe_directory,
     transcribe_file,
+    transcribe_bytes,  # v1.9+ in-memory transcription
     enrich_directory,
     enrich_transcript,
     load_transcript,
@@ -83,6 +84,44 @@ for segment in transcript.segments:
         for word in segment.words:
             print(f"{word.word}: {word.start:.2f}s - {word.end:.2f}s (prob: {word.probability:.2f})")
 ```
+
+### Transcribe from Bytes (v1.9+)
+
+Transcribe audio directly from bytes without requiring a file on disk. Useful for API integrations, stream processing, or in-memory workflows.
+
+```python
+from transcription import transcribe_bytes, TranscriptionConfig
+
+# Read audio into memory
+with open("interview.wav", "rb") as f:
+    audio_data = f.read()
+
+# Transcribe from bytes
+config = TranscriptionConfig(model="large-v3", language="en")
+transcript = transcribe_bytes(audio_data, config, format="wav")
+print(transcript.segments[0].text)
+
+# Works with audio from HTTP responses
+import requests
+response = requests.get("https://example.com/audio.mp3")
+transcript = transcribe_bytes(response.content, config, format="mp3")
+```
+
+**Signature:**
+
+```python
+transcribe_bytes(
+    audio_data: bytes,           # Raw audio bytes
+    config: TranscriptionConfig, # Transcription settings
+    format: str = "wav",         # Audio format hint: wav, mp3, flac, ogg, m4a, webm, opus
+) -> Transcript
+```
+
+**Notes:**
+- Audio is written to a temporary file internally (faster-whisper requires file paths)
+- Temporary files are automatically cleaned up after transcription
+- Supports all formats that ffmpeg can decode
+- The resulting transcript has `file_name` set to `<bytes:format>` (e.g., `<bytes:mp3>`)
 
 ## Enrichment
 
@@ -1081,6 +1120,47 @@ transcript.language     # str
 transcript.segments     # list[Segment]
 transcript.meta         # dict | None
 ```
+
+### Transcript Convenience Methods (v1.9+)
+
+The `Transcript` class provides convenience methods for common queries:
+
+```python
+transcript = load_transcript("meeting.json")
+
+# Get total duration in seconds
+duration = transcript.duration()  # -> float (e.g., 325.7)
+
+# Count total words across all segments
+words = transcript.word_count()  # -> int (e.g., 1250)
+
+# List unique speaker IDs
+speakers = transcript.speaker_ids()  # -> list[str] (e.g., ["spk_0", "spk_1"])
+
+# Check if audio enrichment has been applied
+if transcript.is_enriched():
+    print("Transcript has audio features")
+
+# Filter segments by speaker
+agent_segments = transcript.segments_by_speaker("spk_0")
+for seg in agent_segments:
+    print(f"[{seg.start:.1f}s] {seg.text}")
+
+# Get segments in a time range (overlapping)
+first_minute = transcript.segments_in_range(0.0, 60.0)
+print(f"Found {len(first_minute)} segments in first minute")
+```
+
+**Method Reference:**
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `duration()` | `float` | Total duration in seconds (end time of last segment) |
+| `word_count()` | `int` | Total word count across all segments |
+| `speaker_ids()` | `list[str]` | Sorted list of unique speaker IDs |
+| `is_enriched()` | `bool` | True if any segment has `audio_state` |
+| `segments_by_speaker(id)` | `list[Segment]` | Segments matching the given speaker ID |
+| `segments_in_range(start, end)` | `list[Segment]` | Segments overlapping the time range |
 
 ### Segment Structure
 

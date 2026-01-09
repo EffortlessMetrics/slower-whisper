@@ -4,6 +4,7 @@ Local transcription pipeline package.
 Public API:
     - transcribe_directory: Transcribe all audio in a project
     - transcribe_file: Transcribe a single file
+    - transcribe_bytes: Transcribe audio from in-memory bytes
     - enrich_directory: Enrich all transcripts with audio features
     - enrich_transcript: Enrich a single transcript
     - load_transcript: Load transcript from JSON
@@ -79,6 +80,7 @@ from .api import (
     enrich_transcript,
     load_transcript,
     save_transcript,
+    transcribe_bytes,
     transcribe_directory,
     transcribe_file,
 )
@@ -146,6 +148,7 @@ __all__ = [
     # Public API functions
     "transcribe_directory",
     "transcribe_file",
+    "transcribe_bytes",
     "enrich_directory",
     "enrich_transcript",
     "load_transcript",

@@ -77,6 +77,8 @@ Upload an audio file and receive a transcription in JSON format.
   - Options: `float16`, `float32`, `int8`
 - `task` (query, optional): Task type (default: `transcribe`)
   - Options: `transcribe`, `translate` (to English)
+- `word_timestamps` (query, optional): Enable word-level timestamps (default: `false`)
+  - When `true`, each segment includes a `words` array with per-word timing
 - `enable_diarization` (query, optional): Run speaker diarization (default: `false`)
 - `diarization_device` (query, optional): Device for diarization (default: `auto`)
   - Options: `cpu`, `cuda`, `auto`
@@ -91,6 +93,10 @@ Upload an audio file and receive a transcription in JSON format.
 ```bash
 curl -X POST -F "audio=@interview.mp3" \
   "http://localhost:8000/transcribe?model=large-v3&language=en&device=cpu"
+
+# With word-level timestamps
+curl -X POST -F "audio=@interview.mp3" \
+  "http://localhost:8000/transcribe?model=large-v3&word_timestamps=true"
 
 # With diarization enabled
 curl -X POST -F "audio=@meeting.wav" \
@@ -124,6 +130,31 @@ curl -X POST -F "audio=@meeting.wav" \
       "speaker": null,
       "tone": null,
       "audio_state": null
+    }
+  ]
+}
+```
+
+**Response with word_timestamps=true:**
+```json
+{
+  "schema_version": 2,
+  "file": "uploaded_audio.mp3",
+  "language": "en",
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 4.2,
+      "text": "Hello, this is a transcription example.",
+      "words": [
+        {"word": "Hello,", "start": 0.0, "end": 0.5, "probability": 0.98},
+        {"word": "this", "start": 0.5, "end": 0.7, "probability": 0.99},
+        {"word": "is", "start": 0.7, "end": 0.9, "probability": 0.97},
+        {"word": "a", "start": 0.9, "end": 1.0, "probability": 0.95},
+        {"word": "transcription", "start": 1.0, "end": 1.8, "probability": 0.92},
+        {"word": "example.", "start": 1.8, "end": 2.3, "probability": 0.96}
+      ]
     }
   ]
 }
