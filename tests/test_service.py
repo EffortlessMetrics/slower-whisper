@@ -36,9 +36,11 @@ pytest.importorskip("uvicorn")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from transcription.models import Segment, Transcript  # noqa: E402
+from transcription.models import Segment, Transcript, Word  # noqa: E402
 from transcription.service import (  # noqa: E402
+    _segment_to_dict,
     _transcript_to_dict,
+    _word_to_dict,
     app,
     create_error_response,
     validate_file_size,
@@ -829,6 +831,136 @@ class TestTranscriptToDict:
 
         assert result["segments"][0]["audio_state"] is not None
         assert result["segments"][0]["audio_state"]["prosody"]["pitch"]["level"] == "high"
+
+    def test_words_excluded_by_default(self) -> None:
+        """Test that words are excluded from segments by default."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(
+                    id=0,
+                    start=0.0,
+                    end=1.0,
+                    text="Hello world",
+                    words=[
+                        Word(word="Hello", start=0.0, end=0.4, probability=0.95),
+                        Word(word="world", start=0.5, end=1.0, probability=0.92),
+                    ],
+                )
+            ],
+        )
+
+        result = _transcript_to_dict(transcript)
+
+        # Words should NOT be in output by default
+        assert "words" not in result["segments"][0]
+
+    def test_words_included_when_requested(self) -> None:
+        """Test that words are included when include_words=True."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(
+                    id=0,
+                    start=0.0,
+                    end=1.0,
+                    text="Hello world",
+                    words=[
+                        Word(word="Hello", start=0.0, end=0.4, probability=0.95),
+                        Word(word="world", start=0.5, end=1.0, probability=0.92),
+                    ],
+                )
+            ],
+        )
+
+        result = _transcript_to_dict(transcript, include_words=True)
+
+        # Words should be included
+        assert "words" in result["segments"][0]
+        assert len(result["segments"][0]["words"]) == 2
+        assert result["segments"][0]["words"][0]["word"] == "Hello"
+        assert result["segments"][0]["words"][0]["probability"] == 0.95
+        assert result["segments"][0]["words"][1]["word"] == "world"
+
+    def test_words_not_included_when_segment_has_none(self) -> None:
+        """Test that words field is absent when segment.words is None."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[Segment(id=0, start=0.0, end=1.0, text="Hello", words=None)],
+        )
+
+        result = _transcript_to_dict(transcript, include_words=True)
+
+        # No words field should be present
+        assert "words" not in result["segments"][0]
+
+
+# =============================================================================
+# Test Word Serialization Helpers
+# =============================================================================
+
+
+class TestWordSerialization:
+    """Tests for word serialization helper functions."""
+
+    def test_word_to_dict_from_dataclass(self) -> None:
+        """Test _word_to_dict with Word dataclass."""
+        word = Word(word="hello", start=0.0, end=0.5, probability=0.95)
+        result = _word_to_dict(word)
+
+        assert result["word"] == "hello"
+        assert result["start"] == 0.0
+        assert result["end"] == 0.5
+        assert result["probability"] == 0.95
+        assert "speaker" not in result  # Not included when None
+
+    def test_word_to_dict_with_speaker(self) -> None:
+        """Test _word_to_dict includes speaker when present."""
+        word = Word(word="hello", start=0.0, end=0.5, probability=0.95, speaker="spk_0")
+        result = _word_to_dict(word)
+
+        assert result["speaker"] == "spk_0"
+
+    def test_word_to_dict_from_dict(self) -> None:
+        """Test _word_to_dict with dict input."""
+        word_dict = {"word": "test", "start": 1.0, "end": 1.5, "probability": 0.8}
+        result = _word_to_dict(word_dict)
+
+        assert result == word_dict
+
+    def test_segment_to_dict_without_words(self) -> None:
+        """Test _segment_to_dict excludes words when include_words=False."""
+        seg = Segment(
+            id=0,
+            start=0.0,
+            end=1.0,
+            text="Hello",
+            words=[Word(word="Hello", start=0.0, end=1.0, probability=0.9)],
+        )
+        result = _segment_to_dict(seg, include_words=False)
+
+        assert "words" not in result
+        assert result["text"] == "Hello"
+
+    def test_segment_to_dict_with_words(self) -> None:
+        """Test _segment_to_dict includes words when include_words=True."""
+        seg = Segment(
+            id=0,
+            start=0.0,
+            end=1.0,
+            text="Hello world",
+            words=[
+                Word(word="Hello", start=0.0, end=0.4, probability=0.95),
+                Word(word="world", start=0.5, end=1.0, probability=0.92),
+            ],
+        )
+        result = _segment_to_dict(seg, include_words=True)
+
+        assert "words" in result
+        assert len(result["words"]) == 2
 
 
 # =============================================================================

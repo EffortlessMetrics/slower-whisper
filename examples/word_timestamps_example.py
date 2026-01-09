@@ -5,7 +5,7 @@ Word-level timestamps example.
 Demonstrates how to extract word-level timing information from transcripts,
 useful for subtitle generation, forced alignment, and word-level search.
 
-Word timestamps are available since v1.8.0 via the `word_timestamps` config option.
+This example demonstrates the `word_timestamps` config option (v1.8.0+).
 When enabled, each segment includes a list of Word objects with precise timing
 for every word, plus confidence scores from the ASR model.
 
@@ -17,11 +17,9 @@ Use cases:
 - Speaker attribution at word level (with diarization)
 
 Usage:
-    python examples/word_timestamps_example.py <audio_file> [output_dir]
+    python examples/word_timestamps_example.py <audio_file> [output_dir] [options]
 
-Example:
-    python examples/word_timestamps_example.py interview.wav ./output
-    python examples/word_timestamps_example.py podcast.mp3 ./output --device cpu
+Run with --help to see all options.
 """
 
 import sys
@@ -257,62 +255,66 @@ def main():
     """
     Main entry point demonstrating word-level timestamp features.
     """
-    # Parse arguments
-    if len(sys.argv) < 2:
-        print("Usage: python word_timestamps_example.py <audio_file> [output_dir] [options]")
-        print("\nOptions:")
-        print("  --model <name>       Whisper model (default: base)")
-        print("  --device <cuda|cpu>  Device to use (default: cuda)")
-        print("  --language <code>    Language code (default: auto-detect)")
-        print("  --search <term>      Word to search for in demo 4")
-        print("\nExamples:")
-        print("  python word_timestamps_example.py interview.wav")
-        print("  python word_timestamps_example.py podcast.mp3 ./output --device cpu")
-        print("  python word_timestamps_example.py speech.wav ./out --search hello")
-        sys.exit(1)
+    import argparse
 
-    audio_path = Path(sys.argv[1])
-    output_dir = (
-        Path(sys.argv[2]) if len(sys.argv) > 2 and not sys.argv[2].startswith("--") else None
+    parser = argparse.ArgumentParser(
+        description="Demonstrate word-level timestamp features (v1.8.0+)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python word_timestamps_example.py interview.wav
+  python word_timestamps_example.py podcast.mp3 ./output --device cpu
+  python word_timestamps_example.py speech.wav ./out --search hello
+        """,
+    )
+    parser.add_argument(
+        "audio_file",
+        type=Path,
+        help="Audio file to transcribe (any format supported by ffmpeg)",
+    )
+    parser.add_argument(
+        "output_dir",
+        type=Path,
+        nargs="?",
+        default=Path("./word_timestamps_output"),
+        help="Output directory (default: ./word_timestamps_output)",
+    )
+    parser.add_argument(
+        "--model",
+        default="base",
+        help="Whisper model to use (default: base)",
+    )
+    parser.add_argument(
+        "--device",
+        choices=["cuda", "cpu"],
+        default="cuda",
+        help="Device for inference (default: cuda)",
+    )
+    parser.add_argument(
+        "--language",
+        default=None,
+        help="Language code for transcription (default: auto-detect)",
+    )
+    parser.add_argument(
+        "--search",
+        dest="search_term",
+        default="the",
+        help="Word to search for in demo 4 (default: the)",
     )
 
-    # Parse optional arguments
-    model = "base"  # Use smaller model for faster demo
-    device = "cuda"
-    language = None
-    search_term = "the"  # Default search term
+    args = parser.parse_args()
 
-    i = 2 if output_dir is None else 3
-    while i < len(sys.argv):
-        if sys.argv[i] == "--model" and i + 1 < len(sys.argv):
-            model = sys.argv[i + 1]
-            i += 2
-        elif sys.argv[i] == "--device" and i + 1 < len(sys.argv):
-            device = sys.argv[i + 1]
-            i += 2
-        elif sys.argv[i] == "--language" and i + 1 < len(sys.argv):
-            language = sys.argv[i + 1]
-            i += 2
-        elif sys.argv[i] == "--search" and i + 1 < len(sys.argv):
-            search_term = sys.argv[i + 1]
-            i += 2
-        elif not sys.argv[i].startswith("--"):
-            # This might be output_dir if not already set
-            if output_dir is None:
-                output_dir = Path(sys.argv[i])
-            i += 1
-        else:
-            print(f"Unknown option: {sys.argv[i]}")
-            sys.exit(1)
+    audio_path: Path = args.audio_file
+    output_dir: Path = args.output_dir
+    model: str = args.model
+    device: str = args.device
+    language: str | None = args.language
+    search_term: str = args.search_term
 
     # Validate audio file
     if not audio_path.exists():
         print(f"Error: Audio file not found: {audio_path}")
         sys.exit(1)
-
-    # Set default output directory if not provided
-    if output_dir is None:
-        output_dir = Path("./word_timestamps_output")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 

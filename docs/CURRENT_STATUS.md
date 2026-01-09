@@ -7,6 +7,8 @@
 
 This is a facts-only status page. Plan and strategy live in [ROADMAP.md](../ROADMAP.md).
 
+> **Note:** Issue status reflects GitHub at generation time. Issues may remain Open while a PR that closes them is pending review.
+
 ---
 
 ## Issue Tracker Summary

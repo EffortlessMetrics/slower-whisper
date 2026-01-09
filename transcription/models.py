@@ -594,15 +594,36 @@ class Transcript:
         return max(seg.end for seg in self.segments)
 
     def word_count(self) -> int:
-        """Total word count across all segments."""
-        return sum(len(seg.text.split()) for seg in self.segments if seg.text)
+        """Total word count across all segments.
+
+        Uses word-level timestamps (seg.words) when available for accurate
+        counts. Falls back to text.split() when words are not present.
+        """
+        total = 0
+        for seg in self.segments:
+            words = getattr(seg, "words", None)
+            if words:
+                total += len(words)
+            elif seg.text:
+                total += len(seg.text.split())
+        return total
 
     def speaker_ids(self) -> list[str]:
-        """List of unique speaker IDs found in segments."""
-        ids = set()
+        """List of unique speaker IDs found in segments.
+
+        Handles multiple speaker representations:
+        - dict with "id" key: {"id": "spk_0", "confidence": 0.9}
+        - plain string: "spk_0"
+        """
+        from .speaker_id import get_speaker_id
+
+        ids: set[str] = set()
         for seg in self.segments:
-            if seg.speaker and isinstance(seg.speaker, dict) and "id" in seg.speaker:
-                ids.add(seg.speaker["id"])
+            speaker = getattr(seg, "speaker", None)
+            if speaker is not None:
+                sid = get_speaker_id(speaker)
+                if sid:
+                    ids.add(sid)
         return sorted(ids)
 
     def is_enriched(self) -> bool:
@@ -610,11 +631,18 @@ class Transcript:
         return any(seg.audio_state is not None for seg in self.segments)
 
     def segments_by_speaker(self, speaker_id: str) -> list[Segment]:
-        """Filter segments by speaker ID."""
+        """Filter segments by speaker ID.
+
+        Handles multiple speaker representations:
+        - dict with "id" key: {"id": "spk_0", "confidence": 0.9}
+        - plain string: "spk_0"
+        """
+        from .speaker_id import get_speaker_id
+
         return [
             seg
             for seg in self.segments
-            if seg.speaker and isinstance(seg.speaker, dict) and seg.speaker.get("id") == speaker_id
+            if get_speaker_id(getattr(seg, "speaker", None)) == speaker_id
         ]
 
     def segments_in_range(self, start: float, end: float) -> list[Segment]:

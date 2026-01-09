@@ -623,17 +623,18 @@ def transcribe_bytes(
     cleaned up automatically after transcription.
 
     Args:
-        audio_data: Raw audio bytes (WAV, MP3, FLAC, OGG, or other ffmpeg-supported format)
+        audio_data: Raw audio bytes in any format supported by ffmpeg
         config: Transcription configuration
         format: Audio format hint for the temporary file extension.
-                Supported values: "wav", "mp3", "flac", "ogg", "m4a", "webm", "opus"
-                Default is "wav". This helps ffmpeg identify the codec.
+                This helps ffmpeg identify the codec. Common values:
+                "wav", "mp3", "flac", "ogg", "m4a", "webm", "opus"
+                Default is "wav". Any ffmpeg-supported format works.
 
     Returns:
         Transcript object with segments and metadata
 
     Raises:
-        TranscriptionError: If audio data is empty, format is unsupported,
+        TranscriptionError: If audio data is empty, format hint is invalid,
                            or transcription fails
 
     Example:
@@ -652,6 +653,7 @@ def transcribe_bytes(
         >>> response = requests.get("https://example.com/audio.mp3")
         >>> transcript = transcribe_bytes(response.content, config, format="mp3")
     """
+    import re
     import tempfile
 
     from .asr_engine import TranscriptionEngine
@@ -662,14 +664,13 @@ def transcribe_bytes(
             "Audio data is empty. Provide non-empty audio bytes for transcription."
         )
 
-    # Validate and normalize format
-    supported_formats = {"wav", "mp3", "flac", "ogg", "m4a", "webm", "opus", "aac", "wma"}
+    # Validate format is a safe extension token (prevent path injection)
+    # Allow alphanumeric plus common extension chars (+.-), max 16 chars
     format_lower = format.lower().lstrip(".")
-    if format_lower not in supported_formats:
+    if not re.fullmatch(r"[a-z0-9][a-z0-9+.-]{0,15}", format_lower):
         raise TranscriptionError(
-            f"Unsupported audio format: '{format}'. "
-            f"Supported formats: {', '.join(sorted(supported_formats))}. "
-            f"If your format is supported by ffmpeg, try using transcribe_file() instead."
+            f"Invalid audio format hint: '{format}'. "
+            f"Format must be a simple extension like 'wav', 'mp3', or 'flac'."
         )
 
     validate_diarization_settings(
@@ -777,13 +778,15 @@ def transcribe_bytes(
         if temp_file is not None:
             try:
                 Path(temp_file.name).unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as cleanup_exc:
+                logger.debug("Failed to clean up temp file %s: %s", temp_file.name, cleanup_exc)
         if norm_temp is not None:
             try:
                 Path(norm_temp.name).unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as cleanup_exc:
+                logger.debug(
+                    "Failed to clean up normalized temp file %s: %s", norm_temp.name, cleanup_exc
+                )
 
 
 def enrich_directory(
