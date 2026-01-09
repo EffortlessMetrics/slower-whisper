@@ -1,141 +1,202 @@
 ---
-description: Create a PR from the current branch (narrative + modern quality signals; agents in waves; purposeful receipts; creates PR)
-argument-hint: [optional: context/intent e.g. "Issue #218", "ready", "draft", "base=main", "no-ci", "local-gate-canonical"]
+description: Create a PR from the current branch with narrative summary, quality signals, and verification receipts
+argument-hint: [optional: "Issue #N", "draft", "ready", "base=main"]
 allowed-tools: >
   Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git remote:*),
   Bash(git merge-base:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*),
   Bash(ls:*), Bash(find:*), Bash(rg:*), Bash(sed:*), Bash(awk:*), Bash(wc:*),
   Bash(mkdir:*), Bash(cat:*), Bash(tee:*), Bash(date:*),
   Bash(gh:*),
-  Bash(make:*), Bash(just:*), Bash(nix:*),
-  Bash(cargo:*), Bash(cargo-*:*) , Bash(pytest:*), Bash(ruff:*), Bash(mypy:*), Bash(pyright:*),
-  Bash(node:*), Bash(npm:*), Bash(pnpm:*), Bash(yarn:*),
-  Bash(tokei:*), Bash(scc:*), Bash(lizard:*), Bash(radon:*),
-  Bash(lychee:*),
-  Bash(pip-audit:*), Bash(pip:*), Bash(uv:*), Bash(poetry:*)
+  Bash(pytest:*), Bash(ruff:*), Bash(mypy:*),
+  Bash(uv:*), Bash(pip-audit:*),
+  Bash(./scripts/*:*)
 ---
 
-# Create PR (current branch)
+# Create PR
 
-Create a pull request from the **CURRENT WORKING TREE state** of this branch.
+Create a pull request from the current branch, crafting a narrative that helps reviewers understand intent, changes, and evidence.
 
-Write the PR like maintainer notes: narrative is welcome. Center it on modern review signals:
-- **Interface integrity** (public API / contracts / schemas / CLI/config surface)
-- **Risk surface delta** (unsafe, concurrency, IO/networking/serialization, deps)
-- **Verification depth** (what evidence exists and how to reproduce it)
-- **Future change-cost** (hotspots, modularity, complexity proxies, doc rot prevention)
-
-We can store artifacts when we're purposeful with them: keep a **purposeful receipt bundle you will actually cite or reuse** (diff anatomy, tool outputs you reference, reproduction commands, etc.).
-
-Use any extra context I provide: **$ARGUMENTS**
+**User context:** $ARGUMENTS
 
 ## Context (auto-collected)
 
 - Branch: !`git branch --show-current`
 - Status: !`git status --porcelain=v1 -b`
+- Base branch: !`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo main`
 
-- Default branch (best effort): !`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo main`
-
-- Receipts dir (created now):
+- Receipts directory:
   !`BR=$(git branch --show-current | tr '/ ' '__'); TS=$(date +"%Y%m%d-%H%M%S"); DIR="target/pr-create/${TS}-${BR}"; mkdir -p "$DIR"; echo "$DIR" | tee target/pr-create/LAST_DIR`
 
-- Baseline snapshot saved (no large diff output printed):
-  !`DIR=$(cat target/pr-create/LAST_DIR); BASE=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo main); MB=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE); echo "base=$BASE" > "$DIR/base_branch.txt"; echo "$MB" > "$DIR/merge_base_sha.txt"; git diff --name-only $MB..HEAD > "$DIR/files.txt"; git diff --numstat $MB..HEAD > "$DIR/diff_numstat.txt"; git diff --stat $MB..HEAD > "$DIR/diff_stat.txt"; git diff --name-status $MB..HEAD > "$DIR/name_status.txt"; git log --oneline $MB..HEAD > "$DIR/commits_range.txt"; awk '{add=$1; del=$2; if(add=="-"||del=="-"){next} A+=add; D+=del} END{printf "files=%d insertions=%d deletions=%d\n", NR, A, D}' "$DIR/diff_numstat.txt" > "$DIR/summary.txt"; echo "Saved baseline to $DIR (files/diff/commits/name-status + summary)"`
+- Change summary:
+  !`DIR=$(cat target/pr-create/LAST_DIR); BASE=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo main); MB=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE); git diff --name-only $MB..HEAD > "$DIR/files.txt"; git diff --numstat $MB..HEAD > "$DIR/diff_numstat.txt"; git log --oneline $MB..HEAD > "$DIR/commits.txt"; awk '{add=$1; del=$2; if(add=="-"||del=="-"){next} A+=add; D+=del} END{printf "%d files | +%d -%d\n", NR, A, D}' "$DIR/diff_numstat.txt"`
 
-- Quick summary:
-  !`cat "$(cat target/pr-create/LAST_DIR)/summary.txt"`
+---
 
-- Tooling hints:
-  !`DIR=$(cat target/pr-create/LAST_DIR); find . -maxdepth 3 -type f \( -name Cargo.toml -o -name pyproject.toml -o -name package.json -o -name Makefile -o -name justfile -o -name flake.nix -o -name scripts/ci.sh -o -name scripts/gate.sh \) 2>/dev/null | sed 's@^\./@@' > "$DIR/tooling_hints.txt"; (wc -l "$DIR/tooling_hints.txt" | awk '{print "tooling_hints_count="$1}') && (head -50 "$DIR/tooling_hints.txt")`
+## Process
 
-## How to work (agents in waves)
+### 1. Understand the change
 
-### Wave 1 — Explore (map the change)
-Invoke the **Explore** subagent to:
-- map where behavior changed (review map + semantic hotspots)
-- separate mechanical vs semantic changes
-- identify interface/contract touchpoints (API/schema/CLI/config)
-- flag risk surface deltas (unsafe/concurrency/IO/deps)
-- identify the repo’s likely “gate” command(s)
+Use the **Explore** agent to map what changed:
 
-Explore should use git + repo inspection directly (or read the receipts files under the receipts dir) and report back with anchors (paths, commits, commands).
+- **Semantic hotspots**: Where does behavior change? (vs mechanical: formatting, imports, renames)
+- **Interface touchpoints**: Public API, CLI flags, config options, JSON schema fields
+- **Risk patterns**: Device resolution, callback handling, streaming state, optional dependency paths
+- **Key invariants to verify** (from CLAUDE.md):
+  - Device resolution remains explicit (`--device auto|cpu|cuda`)
+  - compute_type follows resolved device
+  - Callbacks handle exceptions gracefully
+  - Streaming `end_of_stream()` finalizes turns correctly
+  - Version string matches package metadata
 
-### Wave 2 — Plan (compose the story + evidence plan)
-Invoke the **Plan** subagent to:
-- propose a coherent PR narrative arc (intent → design → review path → risk/evidence)
-- produce a crisp **Interface & compatibility verdict** (and how it is supported)
-- recommend which tools are worth running here to support claims (best available, not exhaustive)
-- surface key decision points that affect maintainability (boundaries, invariants, compatibility intent)
+Save findings to `<receipts>/explore_findings.md`.
 
-### Wave 3 — Improve (tighten the PR content)
-Invoke specialist subagents (or general-purpose helpers) to refine:
-- Diff Scout / Maintainability: review map + future change-cost interpretation (hotspots, modularity, complexity proxies)
-- Evidence / Verification: what was actually validated, reproduction path, what remains unverified
-- Docs Verifier (if docs touched): drift/executable example issues
-- Risk Surface: unsafe/concurrency/IO/deps delta + rollback story
-- Complexity Analyst: tool-backed if available; otherwise defensible proxies with interpretation
+### 2. Run verification
 
-### Wave 4 — Create the PR (gh)
-Once `pr_title.txt` + `pr_body.md` exist, create the PR with `gh pr create`.
+Execute the local gate and capture results:
 
-Default: create as **draft**, unless `$ARGUMENTS` clearly indicates “ready”.
+```bash
+# Full gate (preferred)
+./scripts/ci-local.sh 2>&1 | tee <receipts>/gate.log
 
-## Useful tools (guidance)
+# Or fast mode if full already passed
+./scripts/ci-local.sh fast 2>&1 | tee <receipts>/gate_fast.log
+```
 
-Use what fits the repo and what supports the claims you plan to make:
-- Rust: `cargo fmt`, `cargo clippy`, `cargo test`/`cargo nextest`, `cargo semver-checks`/`cargo-semver-checks`, `cargo-audit`, `cargo-deny`, `cargo-geiger`, `cargo llvm-lines`, `tokei`
-- Python: `ruff`, `mypy`/`pyright`, `pytest`, `pip-audit`, `radon`
-- JS/TS: `eslint`, `tsc`, `jest`, `npm audit`
-- Docs: doctests, link checks (`lychee`)
+The gate covers:
+- Docs sanity (internal links, snippets)
+- Pre-commit (ruff lint + format)
+- Type checking (mypy on transcription/ + strategic test files)
+- Fast tests (pytest -m "not slow and not heavy")
+- Verification suite (slower-whisper-verify --quick)
+- Nix checks (full mode only)
 
-Save outputs you cite into the receipts dir (e.g., `gate.log`, `clippy.log`, `tests.log`, `audit.log`, `complexity.txt`).
+If tests fail, understand and fix before proceeding.
 
-## Deliverables (write these files, then create PR)
+### 3. Compose the PR
 
-1) Write PR title to: `<receipts>/pr_title.txt`
-2) Write PR body (Markdown) to: `<receipts>/pr_body.md`
-3) Write an index you can reuse to: `<receipts>/index.md` (what you ran, what you saved, key anchors)
-4) Create PR:
-   - Save the exact command you ran to: `<receipts>/pr_create_cmd.txt`
-   - Save the PR URL (or failure details) to: `<receipts>/pr_url.txt`
+Write `<receipts>/pr_title.txt` and `<receipts>/pr_body.md`:
 
-### PR body format (narrative + modern signals)
+**Title**: Concise, imperative (e.g., "feat: add streaming callback for segment events")
 
-Use these sections:
+**Body structure**:
 
+```markdown
 ## Summary
-1–3 paragraphs: what changed + why, trade-offs, what should be true after merge.
 
-## Interface & compatibility verdict
-Crisp top-line statements (supported by tools or concrete deltas):
-- Public API: unchanged | additive | breaking | not measured
-- Schemas/contracts: unchanged | updated | breaking | not measured
-- CLI/config surface: unchanged | changed | not measured
+1-3 paragraphs: what changed, why, and what should be true after merge.
+Reference issues with "Closes #N" or "Relates to #N".
 
-## Design & maintainability notes
-Boundaries, modularity, and what changed future change-cost.
+## What changed
 
-## What changed (narrative)
-System-level explanation (not a file dump).
+Narrative explanation at system level. Group by:
+- Core behavior changes
+- API/CLI surface changes
+- Test/docs updates
 
-## How to review (fast path)
-A practical map: key dirs/files + semantic hotspots.
+Avoid file-by-file lists; focus on conceptual changes.
 
-## Evidence & verification
-What you ran, what it proves, and how to reproduce.
-If something wasn’t run, say so.
+## Interface impact
 
-## Complexity (future change-cost)
-Tool-backed if available; otherwise proxies (hotspots/churn, module splits, API delta, unsafe delta, deps delta).
-Interpret implications rather than scoring.
+- **Public API**: unchanged | additive | breaking
+- **CLI surface**: unchanged | new flags | changed behavior
+- **JSON schema**: unchanged | new fields | changed semantics
+- **Config options**: unchanged | new | changed
 
-## Risk & rollback
-Blast radius, failure modes, rollback/recovery.
+## How to review
 
-## Known limits / follow-ups
-Explicit deferrals and next steps.
+Suggest a review path:
+1. Start with X to understand the core change
+2. Then look at Y for the interface contract
+3. Z contains the tests that verify the behavior
 
-## Retrospective (earnest)
-Surprises, corrections, and what to mechanize next time (new gate/receipt/invariant).
+Highlight the semantic hotspots vs mechanical changes.
 
-Now: run the wave process, generate the PR title/body, save purposeful receipts, and create the PR with `gh`.
+## Evidence
+
+What verification ran and what it proves:
+- Gate: `./scripts/ci-local.sh` ✓ (see gate.log)
+- Tests: N tests passed, M skipped (markers: heavy, requires_gpu)
+- Coverage: unchanged | +X% on touched files
+
+Reproduction command for reviewers:
+```
+uv run pytest tests/test_<specific>.py -v
+```
+
+## Risk assessment
+
+- Blast radius: what could break
+- Rollback: how to revert if needed
+- Monitoring: what to watch post-merge
+
+## Follow-ups
+
+Explicit deferrals or future work this enables.
+```
+
+### 4. Create the PR
+
+```bash
+# Default: draft PR
+gh pr create --draft --title "$(cat <receipts>/pr_title.txt)" --body-file <receipts>/pr_body.md
+
+# If user specified "ready": create as ready for review
+gh pr create --title "$(cat <receipts>/pr_title.txt)" --body-file <receipts>/pr_body.md
+```
+
+Save the command to `<receipts>/pr_cmd.txt` and the resulting URL to `<receipts>/pr_url.txt`.
+
+---
+
+## Quality signals to highlight
+
+When composing the PR, emphasize these signals reviewers care about:
+
+| Signal | What to show |
+|--------|--------------|
+| Interface stability | API/CLI/schema changes with before/after |
+| Verification depth | Gate results, test coverage on changed code |
+| Risk surface | Device/concurrency/IO/deps changes |
+| Maintainability | Boundary clarity, complexity changes |
+
+---
+
+## Example PR body (abbreviated)
+
+```markdown
+## Summary
+
+Adds `on_segment` callback to streaming transcription, enabling real-time segment
+notifications without polling. Closes #42.
+
+The callback receives finalized segments only (after VAD confirms end-of-speech),
+maintaining the invariant that streaming `end_of_stream()` handles turn finalization.
+
+## What changed
+
+- **StreamingTranscriber**: New `on_segment: Callable[[Segment], None]` parameter
+- **Callback safety**: Exceptions caught and routed to `on_error`, pipeline continues
+- **Tests**: 3 new tests covering callback invocation, error handling, async context
+
+## Interface impact
+
+- **Public API**: additive (new optional parameter)
+- **CLI surface**: unchanged (callback is programmatic only)
+- **JSON schema**: unchanged
+
+## How to review
+
+1. `streaming_transcriber.py:45-78` - callback integration point
+2. `tests/test_streaming_callbacks.py` - behavior specification
+3. `docs/STREAMING_ARCHITECTURE.md` - updated sequence diagram
+
+## Evidence
+
+- Gate: `./scripts/ci-local.sh` ✓
+- Tests: 142 passed, 8 skipped (heavy)
+- Callback error path verified with fault injection test
+```
+
+---
+
+Now: explore the change, run verification, compose the PR narrative, and create it.
