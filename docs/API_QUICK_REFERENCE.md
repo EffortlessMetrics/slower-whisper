@@ -113,7 +113,7 @@ transcript = transcribe_bytes(response.content, config, format="mp3")
 transcribe_bytes(
     audio_data: bytes,           # Raw audio bytes
     config: TranscriptionConfig, # Transcription settings
-    format: str = "wav",         # Audio format hint: wav, mp3, flac, ogg, m4a, webm, opus
+    format: str = "wav",         # Audio format hint (file extension, e.g., wav, mp3, flac)
 ) -> Transcript
 ```
 
