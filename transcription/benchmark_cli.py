@@ -19,11 +19,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .benchmarks import (
     EvalSample,
@@ -33,6 +34,7 @@ from .benchmarks import (
     iter_librispeech,
     list_available_benchmarks,
 )
+from .semantic import KeywordSemanticAnnotator
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +105,12 @@ class BenchmarkMetric:
     """A single evaluation metric."""
 
     name: str
-    value: float
+    value: float | None
     unit: str = ""
     description: str = ""
+    measured_count: int | None = None
+    total_count: int | None = None
+    reason: str | None = None  # Why metric is None (e.g., "missing_api_key")
 
 
 @dataclass
@@ -395,61 +400,377 @@ class StreamingBenchmarkRunner(BenchmarkRunner):
         return metrics
 
 
+# Type alias for semantic evaluation mode
+SemanticMode = Literal["tags", "summary", "both"]
+
+
 class SemanticBenchmarkRunner(BenchmarkRunner):
     """Benchmark runner for semantic annotation evaluation.
 
-    This is scaffolding - full implementation would:
-    1. Generate summaries/annotations using LLM
-    2. Compare with reference using Claude-as-judge
-    3. Return quality scores
+    Evaluates semantic tagging (deterministic, CI-friendly) and/or
+    LLM-based summary quality (requires ANTHROPIC_API_KEY).
+
+    Args:
+        track: Benchmark track name
+        dataset: Dataset to evaluate on
+        split: Dataset split (train/dev/test)
+        mode: Evaluation mode - "tags" (deterministic), "summary" (LLM), or "both"
     """
+
+    def __init__(
+        self,
+        track: str,
+        dataset: str,
+        split: str = "test",
+        mode: SemanticMode = "tags",
+    ):
+        super().__init__(track, dataset, split)
+        self.mode = mode
+        self._annotator = KeywordSemanticAnnotator()
+        self._gold_dir = get_benchmarks_root() / "gold" / "semantic"
 
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
         if self.dataset == "ami":
             return list(iter_ami_meetings(split=self.split, limit=limit, require_summary=True))
         raise ValueError(f"Dataset {self.dataset} not supported for semantic track")
 
-    def evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
-        # TODO: Implement actual semantic evaluation
-        # 1. Generate summary from transcript
-        # 2. Compare with sample.reference_summary
-        # 3. Return quality scores
-        logger.debug(f"Semantic evaluation for {sample.id} (not implemented)")
-        return {
-            "id": sample.id,
-            "faithfulness": 0.0,
-            "coverage": 0.0,
-            "clarity": 0.0,
+    def _load_gold_labels(self, meeting_id: str) -> dict[str, Any] | None:
+        """Load gold labels from benchmarks/gold/semantic/{meeting_id}.json if exists."""
+        gold_path = self._gold_dir / f"{meeting_id}.json"
+        if gold_path.exists():
+            try:
+                with open(gold_path) as f:
+                    data: dict[str, Any] = json.load(f)
+                    return data
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(f"Failed to load gold labels from {gold_path}: {e}")
+        return None
+
+    def _evaluate_tags(self, sample: EvalSample, gold: dict[str, Any] | None) -> dict[str, Any]:
+        """Evaluate semantic tagging against gold labels.
+
+        Returns metrics dict with topic_precision, topic_recall, topic_f1,
+        risk_precision, risk_recall, risk_f1, action_precision, action_recall, action_f1.
+        All values are None if no gold labels exist.
+        """
+        if gold is None:
+            return {
+                "topic_precision": None,
+                "topic_recall": None,
+                "topic_f1": None,
+                "risk_precision": None,
+                "risk_recall": None,
+                "risk_f1": None,
+                "action_precision": None,
+                "action_recall": None,
+                "action_f1": None,
+                "tags_reason": "no_gold_labels",
+            }
+
+        # Load transcript and run annotator
+        from .models import Transcript
+
+        # Create a minimal transcript from the sample's reference transcript
+        # In a full implementation, we'd load the actual JSON transcript
+        transcript_text = sample.reference_transcript or ""
+        if not transcript_text:
+            return {
+                "topic_precision": None,
+                "topic_recall": None,
+                "topic_f1": None,
+                "risk_precision": None,
+                "risk_recall": None,
+                "risk_f1": None,
+                "action_precision": None,
+                "action_recall": None,
+                "action_f1": None,
+                "tags_reason": "no_transcript",
+            }
+
+        # Build a simple transcript with one segment
+        from .models import Segment
+
+        segments = [Segment(id=0, start=0.0, end=1.0, text=transcript_text)]
+        transcript = Transcript(
+            file_name=f"{sample.id}.json",
+            language="en",
+            segments=segments,
+        )
+
+        # Run annotator
+        annotated = self._annotator.annotate(transcript)
+        semantic = (annotated.annotations or {}).get("semantic", {})
+
+        # Extract predicted values
+        pred_keywords = set(semantic.get("keywords", []))
+        pred_risk_tags = set(semantic.get("risk_tags", []))
+        pred_actions = semantic.get("actions", [])
+        pred_action_texts = {
+            a.get("text", "").lower().strip() for a in pred_actions if a.get("text")
         }
 
+        # Extract gold values
+        gold_keywords = set(gold.get("keywords", []))
+        gold_risk_tags = set(gold.get("risk_tags", []))
+        gold_actions = gold.get("actions", [])
+        gold_action_texts = {
+            a.get("text", "").lower().strip() for a in gold_actions if a.get("text")
+        }
+
+        # Compute precision/recall/f1 for each category
+        def compute_prf(
+            pred: set[str], gold_set: set[str]
+        ) -> tuple[float | None, float | None, float | None]:
+            if not gold_set and not pred:
+                return 1.0, 1.0, 1.0  # Both empty = perfect match
+            if not gold_set:
+                return 0.0 if pred else 1.0, None, None  # No gold to compare
+            if not pred:
+                return None, 0.0, None  # Predicted nothing
+
+            tp = len(pred & gold_set)
+            precision = tp / len(pred) if pred else 0.0
+            recall = tp / len(gold_set) if gold_set else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+            return precision, recall, f1
+
+        topic_p, topic_r, topic_f1 = compute_prf(pred_keywords, gold_keywords)
+        risk_p, risk_r, risk_f1 = compute_prf(pred_risk_tags, gold_risk_tags)
+        action_p, action_r, action_f1 = compute_prf(pred_action_texts, gold_action_texts)
+
+        return {
+            "topic_precision": topic_p,
+            "topic_recall": topic_r,
+            "topic_f1": topic_f1,
+            "risk_precision": risk_p,
+            "risk_recall": risk_r,
+            "risk_f1": risk_f1,
+            "action_precision": action_p,
+            "action_recall": action_r,
+            "action_f1": action_f1,
+        }
+
+    def _evaluate_summary(self, sample: EvalSample) -> dict[str, Any]:
+        """Evaluate summary generation using Claude-as-judge.
+
+        Returns metrics dict with faithfulness, coverage, clarity (0-10 scale).
+        All values are None if API key is missing or evaluation fails.
+        """
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            return {
+                "faithfulness": None,
+                "coverage": None,
+                "clarity": None,
+                "summary_reason": "missing_api_key",
+            }
+
+        if not sample.reference_summary:
+            return {
+                "faithfulness": None,
+                "coverage": None,
+                "clarity": None,
+                "summary_reason": "no_reference_summary",
+            }
+
+        try:
+            from anthropic import Anthropic
+        except ImportError:
+            return {
+                "faithfulness": None,
+                "coverage": None,
+                "clarity": None,
+                "summary_reason": "anthropic_not_installed",
+            }
+
+        # Get transcript context
+        transcript_text = sample.reference_transcript or ""
+        if not transcript_text:
+            return {
+                "faithfulness": None,
+                "coverage": None,
+                "clarity": None,
+                "summary_reason": "no_transcript",
+            }
+
+        try:
+            client = Anthropic(api_key=api_key)
+
+            # Generate summary
+            gen_prompt = f"""You are analyzing a meeting transcript. Generate a concise summary that captures:
+- Main topics discussed
+- Key decisions made
+- Action items (if any)
+- Important outcomes
+
+Keep the summary focused and factual. Use 3-5 bullet points.
+
+Transcript:
+{transcript_text[:8000]}
+
+Summary:"""
+
+            gen_response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=500,
+                messages=[{"role": "user", "content": gen_prompt}],
+            )
+            candidate_summary = gen_response.content[0].text
+
+            # Judge summary
+            judge_prompt = f"""You are evaluating a meeting summary against a reference summary.
+
+Reference summary (ground truth):
+---
+{sample.reference_summary}
+---
+
+Candidate summary (to evaluate):
+---
+{candidate_summary}
+---
+
+Score the candidate on three dimensions (0-10 scale):
+
+1. **Faithfulness** (0-10): Does the candidate avoid hallucinations? Does it only include information that's actually in the meeting?
+   - 10 = completely faithful, no false information
+   - 5 = some minor inaccuracies
+   - 0 = major hallucinations or fabrications
+
+2. **Coverage** (0-10): Does the candidate capture the main points from the reference?
+   - 10 = covers all important points
+   - 5 = misses about half the key information
+   - 0 = misses most/all key information
+
+3. **Clarity** (0-10): Is the candidate well-structured and easy to understand?
+   - 10 = excellent organization and readability
+   - 5 = acceptable but could be clearer
+   - 0 = confusing or poorly structured
+
+Respond in JSON format:
+{{"faithfulness": <score 0-10>, "coverage": <score 0-10>, "clarity": <score 0-10>, "comments": "<1-2 sentence analysis>"}}"""
+
+            judge_response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=300,
+                messages=[{"role": "user", "content": judge_prompt}],
+            )
+
+            result = json.loads(judge_response.content[0].text)
+            return {
+                "faithfulness": result.get("faithfulness"),
+                "coverage": result.get("coverage"),
+                "clarity": result.get("clarity"),
+                "summary_comments": result.get("comments", ""),
+                "candidate_summary": candidate_summary,
+            }
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse judge response: {e}")
+            return {
+                "faithfulness": None,
+                "coverage": None,
+                "clarity": None,
+                "summary_reason": "json_parse_error",
+            }
+        except Exception as e:
+            logger.warning(f"Summary evaluation failed: {e}")
+            return {
+                "faithfulness": None,
+                "coverage": None,
+                "clarity": None,
+                "summary_reason": f"error: {str(e)[:100]}",
+            }
+
+    def evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
+        """Evaluate a single sample based on the configured mode."""
+        result: dict[str, Any] = {"id": sample.id}
+
+        if self.mode in ("tags", "both"):
+            gold = self._load_gold_labels(sample.id)
+            tags_metrics = self._evaluate_tags(sample, gold)
+            result.update(tags_metrics)
+
+        if self.mode in ("summary", "both"):
+            summary_metrics = self._evaluate_summary(sample)
+            result.update(summary_metrics)
+
+        return result
+
     def aggregate_metrics(self, sample_results: list[dict[str, Any]]) -> list[BenchmarkMetric]:
+        """Aggregate per-sample metrics, handling None values properly."""
         if not sample_results:
             return []
 
-        avg_faith = sum(r["faithfulness"] for r in sample_results) / len(sample_results)
-        avg_cov = sum(r["coverage"] for r in sample_results) / len(sample_results)
-        avg_clar = sum(r["clarity"] for r in sample_results) / len(sample_results)
+        metrics: list[BenchmarkMetric] = []
+        total_count = len(sample_results)
 
-        return [
-            BenchmarkMetric(
-                name="faithfulness",
-                value=avg_faith,
-                unit="/10",
-                description="Factual accuracy of generated content",
-            ),
-            BenchmarkMetric(
-                name="coverage",
-                value=avg_cov,
-                unit="/10",
-                description="Completeness of key information",
-            ),
-            BenchmarkMetric(
-                name="clarity",
-                value=avg_clar,
-                unit="/10",
-                description="Readability and coherence",
-            ),
-        ]
+        def aggregate_metric(key: str, unit: str, description: str) -> BenchmarkMetric | None:
+            """Compute average for a metric, excluding None values."""
+            values = [r[key] for r in sample_results if r.get(key) is not None]
+            measured_count = len(values)
+
+            if measured_count == 0:
+                # Find reason if available
+                reasons = [
+                    r.get(f"{key.split('_')[0]}_reason")
+                    or r.get("tags_reason")
+                    or r.get("summary_reason")
+                    for r in sample_results
+                    if r.get(key) is None
+                ]
+                reason = reasons[0] if reasons else "not_measured"
+                return BenchmarkMetric(
+                    name=key,
+                    value=None,
+                    unit=unit,
+                    description=description,
+                    measured_count=0,
+                    total_count=total_count,
+                    reason=reason,
+                )
+
+            avg_value = sum(values) / measured_count
+            return BenchmarkMetric(
+                name=key,
+                value=avg_value,
+                unit=unit,
+                description=description,
+                measured_count=measured_count,
+                total_count=total_count,
+            )
+
+        # Tags metrics (if mode includes tags)
+        if self.mode in ("tags", "both"):
+            tag_metrics = [
+                ("topic_precision", "", "Precision of keyword/topic detection"),
+                ("topic_recall", "", "Recall of keyword/topic detection"),
+                ("topic_f1", "", "F1 score for keyword/topic detection"),
+                ("risk_precision", "", "Precision of risk tag detection"),
+                ("risk_recall", "", "Recall of risk tag detection"),
+                ("risk_f1", "", "F1 score for risk tag detection"),
+                ("action_precision", "", "Precision of action item detection"),
+                ("action_recall", "", "Recall of action item detection"),
+                ("action_f1", "", "F1 score for action item detection"),
+            ]
+            for key, unit, desc in tag_metrics:
+                m = aggregate_metric(key, unit, desc)
+                if m is not None:
+                    metrics.append(m)
+
+        # Summary metrics (if mode includes summary)
+        if self.mode in ("summary", "both"):
+            summary_metrics_defs = [
+                ("faithfulness", "/10", "Factual accuracy of generated summary"),
+                ("coverage", "/10", "Completeness of key information in summary"),
+                ("clarity", "/10", "Readability and coherence of summary"),
+            ]
+            for key, unit, desc in summary_metrics_defs:
+                m = aggregate_metric(key, unit, desc)
+                if m is not None:
+                    metrics.append(m)
+
+        return metrics
 
 
 class EmotionBenchmarkRunner(BenchmarkRunner):
@@ -502,20 +823,40 @@ class EmotionBenchmarkRunner(BenchmarkRunner):
 # =============================================================================
 
 
-def get_benchmark_runner(track: str, dataset: str, split: str = "test") -> BenchmarkRunner:
-    """Get the appropriate benchmark runner for a track."""
-    runners = {
-        "asr": ASRBenchmarkRunner,
-        "diarization": DiarizationBenchmarkRunner,
-        "streaming": StreamingBenchmarkRunner,
-        "semantic": SemanticBenchmarkRunner,
-        "emotion": EmotionBenchmarkRunner,
-    }
+def get_benchmark_runner(
+    track: str,
+    dataset: str,
+    split: str = "test",
+    mode: SemanticMode | None = None,
+) -> BenchmarkRunner:
+    """Get the appropriate benchmark runner for a track.
 
-    if track not in runners:
-        raise ValueError(f"Unknown track: {track}. Available: {list(runners.keys())}")
+    Args:
+        track: Benchmark track name (asr, diarization, streaming, semantic, emotion)
+        dataset: Dataset to evaluate on
+        split: Dataset split (train/dev/test)
+        mode: Semantic evaluation mode (only used for semantic track)
 
-    return runners[track](track=track, dataset=dataset, split=split)
+    Returns:
+        Configured benchmark runner instance
+    """
+    if track not in BENCHMARK_TRACKS:
+        raise ValueError(f"Unknown track: {track}. Available: {list(BENCHMARK_TRACKS.keys())}")
+
+    if track == "asr":
+        return ASRBenchmarkRunner(track=track, dataset=dataset, split=split)
+    elif track == "diarization":
+        return DiarizationBenchmarkRunner(track=track, dataset=dataset, split=split)
+    elif track == "streaming":
+        return StreamingBenchmarkRunner(track=track, dataset=dataset, split=split)
+    elif track == "semantic":
+        return SemanticBenchmarkRunner(
+            track=track, dataset=dataset, split=split, mode=mode or "tags"
+        )
+    elif track == "emotion":
+        return EmotionBenchmarkRunner(track=track, dataset=dataset, split=split)
+    else:
+        raise ValueError(f"Unknown track: {track}")
 
 
 # =============================================================================
@@ -561,6 +902,7 @@ def handle_benchmark_run(
     limit: int | None,
     output: Path | None,
     verbose: bool,
+    mode: SemanticMode | None = None,
 ) -> int:
     """Handle 'benchmark run' command - run a specific benchmark."""
     # Validate track
@@ -598,10 +940,12 @@ def handle_benchmark_run(
     print(f"  Split: {split}")
     if limit:
         print(f"  Limit: {limit} samples")
+    if track == "semantic" and mode:
+        print(f"  Mode: {mode}")
     print()
 
     try:
-        runner = get_benchmark_runner(track, dataset, split)
+        runner = get_benchmark_runner(track, dataset, split, mode=mode)
         result = runner.run(limit=limit, verbose=verbose)
 
         # Display results
@@ -615,7 +959,14 @@ def handle_benchmark_run(
 
         print("\nMetrics:")
         for metric in result.metrics:
-            print(f"  {metric.name}: {metric.value:.4f}{metric.unit}")
+            if metric.value is not None:
+                coverage_info = ""
+                if metric.measured_count is not None and metric.total_count is not None:
+                    coverage_info = f" [{metric.measured_count}/{metric.total_count} measured]"
+                print(f"  {metric.name}: {metric.value:.4f}{metric.unit}{coverage_info}")
+            else:
+                reason_info = f" (reason: {metric.reason})" if metric.reason else ""
+                print(f"  {metric.name}: None{reason_info}")
             if metric.description:
                 print(f"    ({metric.description})")
 
@@ -766,6 +1117,19 @@ def build_benchmark_parser(
         help="Show detailed progress.",
     )
 
+    p_run.add_argument(
+        "--mode",
+        "-m",
+        choices=["tags", "summary", "both"],
+        default="tags",
+        help=(
+            "Semantic evaluation mode (only for --track semantic). "
+            "'tags' = deterministic keyword/risk/action detection (CI-friendly), "
+            "'summary' = LLM-based summary evaluation (requires ANTHROPIC_API_KEY), "
+            "'both' = run both evaluations. Default: tags"
+        ),
+    )
+
     # Default action if no subcommand given - show help
     p_benchmark.set_defaults(benchmark_action=None)
 
@@ -795,6 +1159,7 @@ def handle_benchmark_command(args: argparse.Namespace) -> int:
             limit=args.limit,
             output=args.output,
             verbose=args.verbose,
+            mode=getattr(args, "mode", None),
         )
 
     # Unknown action

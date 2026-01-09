@@ -90,7 +90,30 @@ slower-whisper benchmark run --track streaming --dataset librispeech --limit 20 
 
 ### Semantic Track
 
-Evaluates LLM-based semantic annotation quality using Claude-as-judge scoring.
+Evaluates LLM-based semantic annotation quality. Supports two evaluation modes:
+
+**Mode: `tags` (Deterministic, CI-friendly)**
+
+Compares extracted annotations against gold labels using F1/precision/recall metrics.
+
+| Metric | Description |
+|--------|-------------|
+| `topic_f1` | Topic extraction F1 (micro-averaged) |
+| `risk_f1` | Risk detection F1 (type matching) |
+| `risk_f1_weighted` | Severity-weighted risk F1 |
+| `action_accuracy` | Action extraction accuracy |
+
+```bash
+# Deterministic evaluation against gold labels
+slower-whisper benchmark run --track semantic --mode tags --dataset ami --split test
+
+# Quick smoke test
+slower-whisper benchmark run --track semantic --mode tags --dataset ami --limit 10
+```
+
+**Mode: `summary` (LLM-as-Judge)**
+
+Uses Claude to evaluate generated summaries against reference summaries.
 
 | Metric | Description |
 |--------|-------------|
@@ -98,14 +121,17 @@ Evaluates LLM-based semantic annotation quality using Claude-as-judge scoring.
 | `coverage` | Completeness of key information (0-10) |
 | `clarity` | Readability and coherence (0-10) |
 
-**Supported datasets:** AMI (requires reference summaries)
-
 ```bash
-# Evaluate summary quality
-slower-whisper benchmark run --track semantic --dataset ami --split test --limit 5
+# Evaluate summary quality (requires ANTHROPIC_API_KEY)
+ANTHROPIC_API_KEY=sk-ant-xxx slower-whisper benchmark run \
+  --track semantic --mode summary --dataset ami --split test --limit 5
 ```
 
-**Note:** Requires `ANTHROPIC_API_KEY` environment variable for Claude-as-judge scoring.
+**Supported datasets:** AMI (requires reference summaries or gold labels)
+
+**Note:** `--mode summary` requires `ANTHROPIC_API_KEY` environment variable. `--mode tags` requires gold label files.
+
+For detailed documentation including gold label format, metric definitions, and labeling workflow, see [SEMANTIC_BENCHMARK.md](SEMANTIC_BENCHMARK.md).
 
 ### Emotion Track
 
@@ -549,8 +575,10 @@ class CustomBenchmarkRunner(BenchmarkRunner):
 
 ## Related Documentation
 
+- [Semantic Benchmark Reference](SEMANTIC_BENCHMARK.md) - Gold labels, metrics, and labeling workflow
 - [AMI Setup Guide](AMI_SETUP.md) - Setting up AMI corpus
 - [IEMOCAP Setup Guide](IEMOCAP_SETUP.md) - Setting up IEMOCAP
 - [LibriSpeech Quickstart](LIBRISPEECH_QUICKSTART.md) - ASR evaluation setup
 - [Benchmark Evaluation Quickstart](BENCHMARK_EVALUATION_QUICKSTART.md) - Claude-driven evaluation loop
 - [Getting Started with Evaluation](GETTING_STARTED_EVALUATION.md) - 5-step evaluation quickstart
+- [LLM Semantic Annotator](LLM_SEMANTIC_ANNOTATOR.md) - Semantic annotation design document

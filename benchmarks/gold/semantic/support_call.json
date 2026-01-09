@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "meeting_id": "support_call",
+  "topics": [
+    {"label": "support", "segment_ids": [0]},
+    {"label": "billing", "segment_ids": [1, 2, 3, 4, 5, 6]}
+  ],
+  "risks": [
+    {"type": "escalation", "severity": "medium", "segment_id": 1, "evidence": "I'm really frustrated. I was double charged this month."},
+    {"type": "churn", "severity": "low", "segment_id": 1, "evidence": "I'm really frustrated."}
+  ],
+  "actions": [
+    {"text": "Reverse the duplicate charge", "speaker_id": "spk_agent", "segment_ids": [4]},
+    {"text": "Email confirmation to customer", "speaker_id": "spk_agent", "segment_ids": [6]}
+  ],
+  "summary": "Customer reports a double charge on their account. Agent verifies account details, confirms the duplicate invoice, and commits to reversing the charge and sending email confirmation within an hour."
+}

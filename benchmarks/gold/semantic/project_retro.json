@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "meeting_id": "project_retro",
+  "topics": [
+    {"label": "project", "segment_ids": [0, 1, 2]},
+    {"label": "process", "segment_ids": [3, 4, 5]},
+    {"label": "technical", "segment_ids": [1, 5]}
+  ],
+  "risks": [
+    {"type": "escalation", "severity": "low", "segment_id": 0, "evidence": "Release slipped by a week."}
+  ],
+  "actions": [
+    {"text": "Create checklist for feature flag migrations", "speaker_id": "spk_engineer", "segment_ids": [3]},
+    {"text": "Add build cutoff dates to release calendar and enforce them", "speaker_id": "spk_manager", "segment_ids": [4]},
+    {"text": "Automate smoke tests to catch regressions earlier", "speaker_id": "spk_qa", "segment_ids": [5]}
+  ],
+  "summary": "Release retrospective addressing one-week slip caused by rushed feature flag migration and late staging builds. Team commits to flag checklist, enforced build cutoffs, and automated smoke tests."
+}

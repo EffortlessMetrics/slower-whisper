@@ -52,7 +52,7 @@ repos:
         types: [python]
         files: ^transcription/
         pass_filenames: false
-        verbose: true
+        verbose: false
 
 # Configuration
 default_language_version:

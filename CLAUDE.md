@@ -79,3 +79,5 @@ nix-clean run .#verify -- --quick
 | GPU setup | [docs/GPU_SETUP.md](docs/GPU_SETUP.md) |
 | Type policy | [docs/TYPING_POLICY.md](docs/TYPING_POLICY.md) |
 | Configuration | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
+| Benchmarks | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) |
+| Semantic benchmark | [docs/SEMANTIC_BENCHMARK.md](docs/SEMANTIC_BENCHMARK.md) |
