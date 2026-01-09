@@ -502,6 +502,182 @@ class TestTranscriptConvenienceMethods:
         segs = transcript.segments_by_speaker("unknown_speaker")
         assert segs == []
 
+    # duration() tests
+
+    def test_duration_empty_segments(self) -> None:
+        """Test duration() returns 0.0 for empty segments."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[],
+        )
+
+        assert transcript.duration() == 0.0
+
+    def test_duration_multiple_segments(self) -> None:
+        """Test duration() returns max end time across segments."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=5.0, text="First"),
+                Segment(id=1, start=5.0, end=10.0, text="Second"),
+                Segment(id=2, start=10.0, end=15.5, text="Third"),  # max end
+            ],
+        )
+
+        assert transcript.duration() == 15.5
+
+    def test_duration_non_sequential_segments(self) -> None:
+        """Test duration() handles non-sequential segments (max end wins)."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=20.0, text="Long segment"),
+                Segment(id=1, start=5.0, end=8.0, text="Short overlap"),
+            ],
+        )
+
+        assert transcript.duration() == 20.0
+
+    # is_enriched() tests
+
+    def test_is_enriched_false_all_none(self) -> None:
+        """Test is_enriched() returns False when all audio_state is None."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello", audio_state=None),
+                Segment(id=1, start=1.0, end=2.0, text="World", audio_state=None),
+            ],
+        )
+
+        assert transcript.is_enriched() is False
+
+    def test_is_enriched_false_empty_segments(self) -> None:
+        """Test is_enriched() returns False for empty segments."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[],
+        )
+
+        assert transcript.is_enriched() is False
+
+    def test_is_enriched_true_any_set(self) -> None:
+        """Test is_enriched() returns True when any audio_state is set."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello", audio_state=None),
+                Segment(
+                    id=1,
+                    start=1.0,
+                    end=2.0,
+                    text="World",
+                    audio_state={"prosody": {}, "rendering": "neutral"},
+                ),
+            ],
+        )
+
+        assert transcript.is_enriched() is True
+
+    def test_is_enriched_true_all_set(self) -> None:
+        """Test is_enriched() returns True when all audio_state is set."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(
+                    id=0,
+                    start=0.0,
+                    end=1.0,
+                    text="Hello",
+                    audio_state={"prosody": {}, "rendering": "loud"},
+                ),
+                Segment(
+                    id=1,
+                    start=1.0,
+                    end=2.0,
+                    text="World",
+                    audio_state={"prosody": {}, "rendering": "quiet"},
+                ),
+            ],
+        )
+
+        assert transcript.is_enriched() is True
+
+    # segments_in_range() tests
+
+    def test_segments_in_range_basic_overlap(self) -> None:
+        """Test segments_in_range() returns segments overlapping the range."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=5.0, text="First"),
+                Segment(id=1, start=5.0, end=10.0, text="Second"),
+                Segment(id=2, start=10.0, end=15.0, text="Third"),
+                Segment(id=3, start=15.0, end=20.0, text="Fourth"),
+            ],
+        )
+
+        # Range 4.0-11.0 should overlap with segments 0, 1, and 2
+        segs = transcript.segments_in_range(4.0, 11.0)
+        assert len(segs) == 3
+        assert [s.id for s in segs] == [0, 1, 2]
+
+    def test_segments_in_range_exact_boundary_excluded(self) -> None:
+        """Test segments_in_range() excludes segments that only touch boundary."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=5.0, text="First"),
+                Segment(id=1, start=5.0, end=10.0, text="Second"),
+                Segment(id=2, start=10.0, end=15.0, text="Third"),
+            ],
+        )
+
+        # Range 5.0-10.0 should only include segment 1
+        # Segment 0 ends at 5.0 (not > 5.0), segment 2 starts at 10.0 (not < 10.0)
+        segs = transcript.segments_in_range(5.0, 10.0)
+        assert len(segs) == 1
+        assert segs[0].id == 1
+
+    def test_segments_in_range_empty_result(self) -> None:
+        """Test segments_in_range() returns empty list for non-overlapping range."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=5.0, text="First"),
+                Segment(id=1, start=5.0, end=10.0, text="Second"),
+            ],
+        )
+
+        # Range 20.0-30.0 doesn't overlap any segment
+        segs = transcript.segments_in_range(20.0, 30.0)
+        assert segs == []
+
+    def test_segments_in_range_partial_overlap(self) -> None:
+        """Test segments_in_range() includes segments with partial overlap."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=10.0, text="Long segment"),
+            ],
+        )
+
+        # Small range in middle of segment
+        segs = transcript.segments_in_range(3.0, 4.0)
+        assert len(segs) == 1
+        assert segs[0].id == 0
+
 
 # ============================================================================
 # DiarizationMeta Tests

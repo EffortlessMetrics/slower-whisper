@@ -369,6 +369,7 @@ def normalize_single(src: Path, dst: Path) -> None:
                 try:
                     dst.unlink()
                 except OSError:
+                    # Best-effort cleanup; failure here should not mask the ffmpeg error above.
                     pass
             raise FFmpegError(
                 f"Failed to normalize audio file: {src.name}",
@@ -504,6 +505,7 @@ def normalize_all(paths: Paths) -> None:
                 try:
                     dst.unlink()
                 except OSError:
+                    # Best-effort cleanup; failure here should not mask the OSError above.
                     pass
             continue
 

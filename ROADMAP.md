@@ -15,7 +15,7 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 | Track | Status | Next Action |
 |-------|--------|-------------|
 | v1.9.x Closeout | ✅ Complete | — |
-| API Polish Bundle | 📋 Ready to Start | Begin #70 |
+| API Polish Bundle | 🟡 In Review | PR #158 |
 | Track 1: Benchmarks | 📋 Ready to Start | Begin #95 |
 | Track 2: Streaming | 📋 Ready to Start | Begin #133 |
 | Track 3: Semantics | 📋 Ready to Start | Begin #88 |
@@ -70,16 +70,16 @@ All v1.9.x deliverables shipped:
 
 P95 latency harness moves to Track 1 ([#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97)).
 
-### B) API Polish Bundle — 🔄 In Progress
+### B) API Polish Bundle — 🟡 In review (PR #158)
 
 Ship as **one coherent PR** (high adoption value, low risk):
 
 | Issue | Feature | Status |
 |-------|---------|--------|
-| [#70](https://github.com/EffortlessMetrics/slower-whisper/issues/70) | `transcribe_bytes()` API | ⬜ |
-| [#71](https://github.com/EffortlessMetrics/slower-whisper/issues/71) | `word_timestamps` REST parameter | ⬜ |
-| [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72) | Word-level timestamps example | ⬜ |
-| [#78](https://github.com/EffortlessMetrics/slower-whisper/issues/78) | `Transcript` convenience methods | ⬜ |
+| [#70](https://github.com/EffortlessMetrics/slower-whisper/issues/70) | `transcribe_bytes()` API | 🟡 PR #158 |
+| [#71](https://github.com/EffortlessMetrics/slower-whisper/issues/71) | `word_timestamps` REST parameter | 🟡 PR #158 |
+| [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72) | Word-level timestamps example | 🟡 PR #158 |
+| [#78](https://github.com/EffortlessMetrics/slower-whisper/issues/78) | `Transcript` convenience methods | 🟡 PR #158 |
 
 **DoD:** CLI + API + REST + example all consistent. Local gate passes.
 
