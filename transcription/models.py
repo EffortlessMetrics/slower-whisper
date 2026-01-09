@@ -586,3 +586,65 @@ class Transcript:
     turns: list[Turn | dict[str, Any]] | None = None
     speaker_stats: list[SpeakerStats | dict[str, Any]] | None = None
     chunks: list[Chunk | dict[str, Any]] | None = None
+
+    def duration(self) -> float:
+        """Total duration in seconds (end time of last segment)."""
+        if not self.segments:
+            return 0.0
+        return max(seg.end for seg in self.segments)
+
+    def word_count(self) -> int:
+        """Total word count across all segments.
+
+        Uses word-level timestamps (seg.words) when available for accurate
+        counts. Falls back to text.split() when words are not present.
+        """
+        total = 0
+        for seg in self.segments:
+            words = getattr(seg, "words", None)
+            if words:
+                total += len(words)
+            elif seg.text:
+                total += len(seg.text.split())
+        return total
+
+    def speaker_ids(self) -> list[str]:
+        """List of unique speaker IDs found in segments.
+
+        Handles multiple speaker representations:
+        - dict with "id" key: {"id": "spk_0", "confidence": 0.9}
+        - plain string: "spk_0"
+        """
+        from .speaker_id import get_speaker_id
+
+        ids: set[str] = set()
+        for seg in self.segments:
+            speaker = getattr(seg, "speaker", None)
+            if speaker is not None:
+                sid = get_speaker_id(speaker)
+                if sid:
+                    ids.add(sid)
+        return sorted(ids)
+
+    def is_enriched(self) -> bool:
+        """True if audio enrichment has been applied to any segment."""
+        return any(seg.audio_state is not None for seg in self.segments)
+
+    def segments_by_speaker(self, speaker_id: str) -> list[Segment]:
+        """Filter segments by speaker ID.
+
+        Handles multiple speaker representations:
+        - dict with "id" key: {"id": "spk_0", "confidence": 0.9}
+        - plain string: "spk_0"
+        """
+        from .speaker_id import get_speaker_id
+
+        return [
+            seg
+            for seg in self.segments
+            if get_speaker_id(getattr(seg, "speaker", None)) == speaker_id
+        ]
+
+    def segments_in_range(self, start: float, end: float) -> list[Segment]:
+        """Get segments that overlap with the given time range."""
+        return [seg for seg in self.segments if seg.end > start and seg.start < end]

@@ -96,6 +96,25 @@ Quick introduction to prosody features.
 ### 8. emotion_integration.py (201 lines)
 Shows how to enrich transcripts with emotion analysis.
 
+### 9. word_timestamps_example.py (v1.8.0+)
+**Purpose**: Demonstrates word-level timestamp extraction for precise timing
+
+**Key Features**:
+- Enable `word_timestamps=True` in TranscriptionConfig
+- Access per-word timing (start, end) and confidence scores
+- Generate word-level SRT subtitles (karaoke-style)
+- Filter low-confidence words for quality review
+- Search for specific words with timestamps
+- Analyze speaking rate and word duration statistics
+
+**Best For**: Subtitle generation, forced alignment, word-level search, quality assurance
+
+**Example Usage**:
+```bash
+python examples/word_timestamps_example.py interview.wav ./output
+python examples/word_timestamps_example.py podcast.mp3 --device cpu --search hello
+```
+
 ---
 
 ## Quick Navigation
@@ -147,6 +166,15 @@ python query_audio_features.py enriched.json --hesitant
 python query_audio_features.py enriched.json --summary
 ```
 
+**Get word-level timestamps**
+```bash
+# Transcribe with word timestamps enabled
+python word_timestamps_example.py audio.wav ./output
+
+# Generate word-level SRT for karaoke subtitles
+# (output saved to output/audio_word_level.srt)
+```
+
 ---
 
 ## File Organization
@@ -156,8 +184,9 @@ examples/
 ├── INDEX.md                          (this file)
 ├── README_EXAMPLES.md                (full documentation)
 ├── QUICK_START.md                    (quick reference)
-├── complete_workflow.py              (625 lines) NEW
-├── query_audio_features.py           (667 lines) NEW
+├── complete_workflow.py              (625 lines)
+├── query_audio_features.py           (667 lines)
+├── word_timestamps_example.py        (v1.8.0+ word-level timing)
 ├── prosody_demo.py                   (existing)
 ├── prosody_quickstart.py             (existing)
 ├── emotion_integration.py            (existing)

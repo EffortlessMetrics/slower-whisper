@@ -346,6 +346,164 @@ class TestTranscript:
 
 
 # ============================================================================
+# Transcript Convenience Methods Tests
+# ============================================================================
+
+
+class TestTranscriptConvenienceMethods:
+    """Tests for Transcript convenience methods (speaker_ids, segments_by_speaker, word_count)."""
+
+    def test_word_count_uses_words_when_present(self) -> None:
+        """Test that word_count uses seg.words when available."""
+        words = [
+            Word(word="Hello", start=0.0, end=0.3, probability=0.95),
+            Word(word="world", start=0.35, end=0.7, probability=0.92),
+        ]
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=0.7, text="Hello world", words=words),
+            ],
+        )
+
+        # Should return 2 (from words), not rely on text.split()
+        assert transcript.word_count() == 2
+
+    def test_word_count_falls_back_to_text_split(self) -> None:
+        """Test that word_count falls back to text.split() when words is None."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello world test"),
+            ],
+        )
+
+        # Should return 3 (from text.split())
+        assert transcript.word_count() == 3
+
+    def test_word_count_mixed_segments(self) -> None:
+        """Test word_count with mix of segments with and without words."""
+        words = [
+            Word(word="Hi", start=0.0, end=0.2, probability=0.9),
+        ]
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=0.2, text="Hi", words=words),  # 1 word
+                Segment(id=1, start=0.3, end=1.0, text="hello there friend"),  # 3 words
+            ],
+        )
+
+        # 1 (from words) + 3 (from text.split()) = 4
+        assert transcript.word_count() == 4
+
+    def test_speaker_ids_with_dict_speakers(self) -> None:
+        """Test speaker_ids handles dict speakers with 'id' key."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(
+                    id=0,
+                    start=0.0,
+                    end=1.0,
+                    text="Hello",
+                    speaker={"id": "spk_0", "confidence": 0.9},
+                ),
+                Segment(
+                    id=1, start=1.0, end=2.0, text="Hi", speaker={"id": "spk_1", "confidence": 0.8}
+                ),
+                Segment(
+                    id=2,
+                    start=2.0,
+                    end=3.0,
+                    text="Hey",
+                    speaker={"id": "spk_0", "confidence": 0.85},
+                ),
+            ],
+        )
+
+        ids = transcript.speaker_ids()
+        assert ids == ["spk_0", "spk_1"]
+
+    def test_speaker_ids_with_string_speakers(self) -> None:
+        """Test speaker_ids handles string speaker values."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello", speaker="spk_0"),  # type: ignore[arg-type]
+                Segment(id=1, start=1.0, end=2.0, text="Hi", speaker="spk_1"),  # type: ignore[arg-type]
+            ],
+        )
+
+        ids = transcript.speaker_ids()
+        assert ids == ["spk_0", "spk_1"]
+
+    def test_speaker_ids_with_none_speakers(self) -> None:
+        """Test speaker_ids handles None speakers."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello", speaker=None),
+                Segment(id=1, start=1.0, end=2.0, text="Hi", speaker={"id": "spk_0"}),
+            ],
+        )
+
+        ids = transcript.speaker_ids()
+        assert ids == ["spk_0"]
+
+    def test_segments_by_speaker_with_dict_speakers(self) -> None:
+        """Test segments_by_speaker handles dict speakers."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello", speaker={"id": "spk_0"}),
+                Segment(id=1, start=1.0, end=2.0, text="Hi", speaker={"id": "spk_1"}),
+                Segment(id=2, start=2.0, end=3.0, text="Hey", speaker={"id": "spk_0"}),
+            ],
+        )
+
+        segs = transcript.segments_by_speaker("spk_0")
+        assert len(segs) == 2
+        assert segs[0].id == 0
+        assert segs[1].id == 2
+
+    def test_segments_by_speaker_with_string_speakers(self) -> None:
+        """Test segments_by_speaker handles string speaker values."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello", speaker="spk_0"),  # type: ignore[arg-type]
+                Segment(id=1, start=1.0, end=2.0, text="Hi", speaker="spk_1"),  # type: ignore[arg-type]
+            ],
+        )
+
+        segs = transcript.segments_by_speaker("spk_0")
+        assert len(segs) == 1
+        assert segs[0].text == "Hello"
+
+    def test_segments_by_speaker_not_found(self) -> None:
+        """Test segments_by_speaker returns empty list for unknown speaker."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello", speaker={"id": "spk_0"}),
+            ],
+        )
+
+        segs = transcript.segments_by_speaker("unknown_speaker")
+        assert segs == []
+
+
+# ============================================================================
 # DiarizationMeta Tests
 # ============================================================================
 

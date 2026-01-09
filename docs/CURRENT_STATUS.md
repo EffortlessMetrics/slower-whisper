@@ -1,0 +1,97 @@
+# Current Status
+
+<!-- Manually maintained. Related: ./scripts/generate-roadmap-status.py updates ROADMAP.md Quick Status -->
+
+**Last generated:** See git commit timestamp
+**Version:** v1.9.2
+
+This is a facts-only status page. Plan and strategy live in [ROADMAP.md](../ROADMAP.md).
+
+> **Note:** Issue status reflects GitHub at generation time. Issues may remain Open while a PR that closes them is pending review.
+
+---
+
+## Issue Tracker Summary
+
+| Category | Open | Closed | Total |
+|----------|------|--------|-------|
+| [All Issues](https://github.com/EffortlessMetrics/slower-whisper/issues) | — | — | [View](https://github.com/EffortlessMetrics/slower-whisper/issues?q=is%3Aissue) |
+| [v2.0 Milestone](https://github.com/EffortlessMetrics/slower-whisper/issues?q=label%3Av2.0) | — | — | [View](https://github.com/EffortlessMetrics/slower-whisper/issues?q=label%3Av2.0) |
+| [High Priority](https://github.com/EffortlessMetrics/slower-whisper/issues?q=label%3Apriority%2Fhigh) | — | — | [View](https://github.com/EffortlessMetrics/slower-whisper/issues?q=label%3Apriority%2Fhigh) |
+
+> Note: Counts are live links to GitHub. Check the tracker for current numbers.
+
+---
+
+## Track Status
+
+### API Polish Bundle
+
+| Issue | Title | Status |
+|-------|-------|--------|
+| [#70](https://github.com/EffortlessMetrics/slower-whisper/issues/70) | `transcribe_bytes()` API | Open |
+| [#71](https://github.com/EffortlessMetrics/slower-whisper/issues/71) | `word_timestamps` REST parameter | Open |
+| [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72) | Word-level timestamps example | Open |
+| [#78](https://github.com/EffortlessMetrics/slower-whisper/issues/78) | `Transcript` convenience methods | Open |
+
+### Track 1: Benchmarks
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 1 | [#95](https://github.com/EffortlessMetrics/slower-whisper/issues/95) | ASR WER runner | Open |
+| 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format | Open |
+| 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency harness | Open |
+| 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner | Open |
+| 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration | Open |
+
+### Track 2: Streaming
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 1 | [#133](https://github.com/EffortlessMetrics/slower-whisper/issues/133) | Event envelope spec | Open |
+| 2 | [#134](https://github.com/EffortlessMetrics/slower-whisper/issues/134) | Reference Python client | Open |
+| 3 | [#84](https://github.com/EffortlessMetrics/slower-whisper/issues/84) | WebSocket endpoint | Open |
+| 4 | [#85](https://github.com/EffortlessMetrics/slower-whisper/issues/85) | REST streaming endpoints | Open |
+| 5 | [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55) | Streaming API docs | Open |
+| 6 | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) | Incremental diarization | Open |
+
+### Track 3: Semantics
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 1 | [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88) | LLM annotation schema | Open |
+| 2 | [#90](https://github.com/EffortlessMetrics/slower-whisper/issues/90) | Cloud LLM interface | Open |
+| 3 | [#91](https://github.com/EffortlessMetrics/slower-whisper/issues/91) | Guardrails | Open |
+| 4 | [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92) | Golden files + tests | Open |
+| 5 | [#89](https://github.com/EffortlessMetrics/slower-whisper/issues/89) | Local LLM backend | Open |
+| 6 | [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98) | Semantic quality benchmark | Open |
+
+---
+
+## Infrastructure Issues
+
+| Issue | Purpose | Status |
+|-------|---------|--------|
+| [#135](https://github.com/EffortlessMetrics/slower-whisper/issues/135) | Receipt contract | Open |
+| [#136](https://github.com/EffortlessMetrics/slower-whisper/issues/136) | Stable run/event IDs | Open |
+| [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format | Open |
+
+---
+
+## Regeneration
+
+```bash
+# Regenerate ROADMAP Quick Status from GitHub
+./scripts/generate-roadmap-status.py --write
+
+# Check if ROADMAP is stale (for CI)
+./scripts/generate-roadmap-status.py --check
+```
+
+---
+
+## Links
+
+- [ROADMAP.md](../ROADMAP.md) — Plan and strategy
+- [CHANGELOG.md](../CHANGELOG.md) — Release history
+- [GitHub Issues](https://github.com/EffortlessMetrics/slower-whisper/issues) — Full tracker

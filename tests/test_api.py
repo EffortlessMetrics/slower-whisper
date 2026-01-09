@@ -36,6 +36,7 @@ from transcription.api import (
     enrich_transcript,
     load_transcript,
     save_transcript,
+    transcribe_bytes,
     transcribe_directory,
     transcribe_file,
 )
@@ -1087,3 +1088,96 @@ class TestRoundTrip:
         save_transcript(simple_transcript, str(json_path_obj2))
         loaded2 = load_transcript(json_path_obj2)  # Load with Path
         assert loaded2.file_name == "test.wav"
+
+
+# ============================================================================
+# Tests for transcribe_bytes()
+# ============================================================================
+
+
+class TestTranscribeBytes:
+    """Tests for the transcribe_bytes public API function."""
+
+    def test_empty_bytes_raises_error(self) -> None:
+        """Test that empty audio data raises TranscriptionError."""
+        config = TranscriptionConfig()
+
+        with pytest.raises(TranscriptionError, match="Audio data is empty"):
+            transcribe_bytes(b"", config)
+
+    def test_invalid_format_hint_special_chars(self) -> None:
+        """Test that invalid format hints with special characters are rejected."""
+        config = TranscriptionConfig()
+
+        # Path injection attempt
+        with pytest.raises(TranscriptionError, match="Invalid audio format hint"):
+            transcribe_bytes(b"data", config, format="../../../etc/passwd")
+
+    def test_invalid_format_hint_too_long(self) -> None:
+        """Test that format hints longer than 16 chars are rejected."""
+        config = TranscriptionConfig()
+
+        with pytest.raises(TranscriptionError, match="Invalid audio format hint"):
+            transcribe_bytes(b"data", config, format="this_is_way_too_long_format")
+
+    def test_invalid_format_hint_empty(self) -> None:
+        """Test that empty format hint is rejected."""
+        config = TranscriptionConfig()
+
+        with pytest.raises(TranscriptionError, match="Invalid audio format hint"):
+            transcribe_bytes(b"data", config, format="")
+
+    def test_valid_format_hints(self) -> None:
+        """Test that common valid format hints pass validation.
+
+        This test only validates the format checking logic by checking
+        that TranscriptionError is raised for other reasons (like
+        failing to normalize the audio) rather than format validation.
+        """
+        config = TranscriptionConfig()
+        valid_formats = ["wav", "mp3", "flac", "ogg", "m4a", "webm", "opus", "aac"]
+
+        for fmt in valid_formats:
+            # Should not raise "Invalid audio format hint"
+            # Will fail later due to invalid audio data, but format is accepted
+            try:
+                transcribe_bytes(b"not-real-audio", config, format=fmt)
+            except TranscriptionError as e:
+                # Should NOT be a format validation error
+                assert "Invalid audio format hint" not in str(e)
+
+    def test_format_with_leading_dot(self) -> None:
+        """Test that format hint with leading dot is normalized."""
+        config = TranscriptionConfig()
+
+        # Leading dot should be stripped and accepted
+        try:
+            transcribe_bytes(b"not-real-audio", config, format=".wav")
+        except TranscriptionError as e:
+            # Should NOT be a format validation error
+            assert "Invalid audio format hint" not in str(e)
+
+    def test_format_case_insensitive(self) -> None:
+        """Test that format hint is case-insensitive."""
+        config = TranscriptionConfig()
+
+        # Upper case should be normalized to lowercase
+        try:
+            transcribe_bytes(b"not-real-audio", config, format="WAV")
+        except TranscriptionError as e:
+            # Should NOT be a format validation error
+            assert "Invalid audio format hint" not in str(e)
+
+    def test_unusual_but_valid_formats(self) -> None:
+        """Test that unusual but valid ffmpeg formats are accepted."""
+        config = TranscriptionConfig()
+
+        # These are real formats ffmpeg supports
+        unusual_formats = ["3gp", "amr", "au", "caf", "gsm"]
+
+        for fmt in unusual_formats:
+            try:
+                transcribe_bytes(b"not-real-audio", config, format=fmt)
+            except TranscriptionError as e:
+                # Should NOT be a format validation error
+                assert "Invalid audio format hint" not in str(e)

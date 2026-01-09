@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
 **Current Version:** v1.9.2
-**Last Updated:** 2026-01-07 (restructured Now/Next sequencing)
+**Last Updated:** 2026-01-08
 <!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
 Roadmap = forward-looking execution plan.
@@ -10,100 +10,94 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 
 ---
 
-## Roadmap Execution Standards
+## Quick Status
 
-**Primary metric:** DevLT (human attention minutes per trusted change).
-**Quality goals:** PR relevancy + design alignment + proof completeness.
+| Track | Status | Next Action |
+|-------|--------|-------------|
+| v1.9.x Closeout | ✅ Complete | — |
+| API Polish Bundle | 📋 Ready to Start | Begin #70 |
+| Track 1: Benchmarks | 📋 Ready to Start | Begin #95 |
+| Track 2: Streaming | 📋 Ready to Start | Begin #133 |
+| Track 3: Semantics | 📋 Ready to Start | Begin #88 |
 
-### What "Done" Means
+---
 
-- **Implementation** — code merged with tests passing
-- **Artifact** — output exists (JSON schema, receipt, baseline file, etc.)
-- **Local validation** — command that proves it works (`./scripts/ci-local.sh`)
-- **Boundaries** — explicit out-of-scope documented
+## Execution Standards
 
-### When Something Is Wrong
+**Quality bar:** Every PR must pass `./scripts/ci-local.sh` with receipts pasted.
 
-If an item was wrong (measurement drift, doc drift, invalid claim), we:
+### Definition of Done
 
-1. Mark it wrong explicitly
-2. Link the fix (PR/commit)
-3. Add prevention work (gate/contract) when appropriate
+- **Code** — merged with tests passing
+- **Artifacts** — outputs exist (schemas, baselines, receipts)
+- **Validation** — `./scripts/ci-local.sh` proves it works
+- **Scope** — explicit boundaries documented
 
-### CI Posture
-
-CI may be rate-limited or off. **Local gate is canonical:**
+### Local Gate (CI may be off)
 
 ```bash
 ./scripts/ci-local.sh        # full gate
 ./scripts/ci-local.sh fast   # quick check
-nix-clean flake check        # Nix checks (use nix-clean wrapper inside devshell)
+nix-clean flake check        # Nix checks
 ```
 
-PRs must include receipt output or link to passing local gate.
+---
+
+## Recently Shipped
+
+| Version | Highlights |
+|---------|------------|
+| **v1.9.2** | Version constant fix (`transcription.__version__` now correct) |
+| **v1.9.1** | GPU UX (`--device auto` default, preflight banner), CI caching fixes |
+| **v1.9.0** | Streaming callbacks (`StreamCallbacks` protocol), safe callback execution |
+| **v1.8.0** | Word-level timestamps, word-speaker alignment |
+| **v1.7.0** | Streaming enrichment, live semantics, `Config.from_sources()` |
+
+Full history: [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
-## Snapshot
+## Now: v1.x Polish + v2.0 Prerequisites
 
-- **Local-first conversation signal engine** producing structured transcripts + optional enrichment
-- **Optional dependencies degrade gracefully** — no hard requirement on diarization, emotion, or integrations
-- **CI may be off** — `./scripts/ci-local.sh` is the merge gate; paste receipts in PRs
+**Goal:** Clean up v1.x surface, then start v2.0 with solid contracts.
 
----
+### A) v1.9.x Closeout — ✅ Complete
 
-## Recently Shipped (highlights)
+All v1.9.x deliverables shipped:
+- ✅ Callback docs in STREAMING_ARCHITECTURE.md
+- ✅ Example callback integration (`examples/streaming/callback_demo.py`)
+- ✅ Version constant fix (v1.9.2)
 
-- **v1.9.x:** Streaming callbacks + contract tests, GPU UX (`--device auto` + preflight banner), Nix/direnv hardening
-- **v1.8.0:** Word-level timestamps and speaker alignment
-- **v1.7.0:** Streaming enrichment + live semantics + unified config API
+P95 latency harness moves to Track 1 ([#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97)).
 
-Full details: [CHANGELOG.md](CHANGELOG.md)
+### B) API Polish Bundle — 🔄 In Progress
 
----
+Ship as **one coherent PR** (high adoption value, low risk):
 
-## Now (1-4 weeks): v1.x Polish + v2.0 Prerequisites
+| Issue | Feature | Status |
+|-------|---------|--------|
+| [#70](https://github.com/EffortlessMetrics/slower-whisper/issues/70) | `transcribe_bytes()` API | ⬜ |
+| [#71](https://github.com/EffortlessMetrics/slower-whisper/issues/71) | `word_timestamps` REST parameter | ⬜ |
+| [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72) | Word-level timestamps example | ⬜ |
+| [#78](https://github.com/EffortlessMetrics/slower-whisper/issues/78) | `Transcript` convenience methods | ⬜ |
 
-Shrink the surface, then start v2 with clean contracts.
+**DoD:** CLI + API + REST + example all consistent. Local gate passes.
 
-### A) v1.9.x Closeout — Complete
+### C) Issue Cleanup
 
-v1.9 deliverables shipped:
+Reconcile tracker before v2 work:
+- [ ] Close completed issues (#66, #74, #132) with receipts
+- [ ] Rewrite partial issues with v2-style DoD (inputs → outputs → validation)
 
-- [x] Callback docs in STREAMING_ARCHITECTURE.md
-- [x] Example callback integration (`examples/streaming/callback_demo.py`)
+### D) Infrastructure Issues
 
-The P95 latency harness ships **as part of [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97)** (Track 1 streaming benchmark). No separate v1.9.x deliverable remains.
+Verify these exist (create if missing):
 
-### B) API Polish Bundle
-
-High adoption value, low risk. Ship as **one coherent PR** (multiple commits fine):
-
-- [ ] [#71](https://github.com/EffortlessMetrics/slower-whisper/issues/71): `word_timestamps` REST parameter
-- [ ] [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72): Word-level timestamps example
-- [ ] [#78](https://github.com/EffortlessMetrics/slower-whisper/issues/78): `Transcript` convenience methods (`duration`, `word_count`, `is_enriched`)
-- [ ] [#70](https://github.com/EffortlessMetrics/slower-whisper/issues/70): `transcribe_bytes()` API
-
-**DoD:** CLI + API + REST + example all agree. Paste `./scripts/ci-local.sh` receipts in PR body.
-
-### C) Issue Truth Pass (one-time cleanup)
-
-Before v2 work begins, reconcile the tracker:
-
-- [ ] **Close completed issues** (#66, #74, #132) with final "receipts" comment
-- [ ] **Rewrite partial issues** to have v2-style DoD: inputs → outputs → local validation
-
-### D) Create Infrastructure Issues
-
-These are Track 1 prerequisites. Create if they don't exist yet:
-
-| Issue | Title | Why |
-|-------|-------|-----|
-| #135 | Receipt contract | Benchmarks need provenance to be reproducible |
-| #136 | Stable run/event IDs | Streaming needs correlation IDs for debugging |
-| #137 | Baseline file format | Regression detection needs a schema |
-
-**Action:** Verify these issues exist in the tracker. If missing, create them with DoD from the spec blocks below.
+| Issue | Purpose |
+|-------|---------|
+| #135 | Receipt contract (benchmark provenance) |
+| #136 | Stable run/event IDs (streaming correlation) |
+| #137 | Baseline file format (regression detection) |
 
 <details>
 <summary><strong>Receipt Contract Specification (for #135)</strong></summary>
@@ -120,8 +114,8 @@ Every transcript and benchmark artifact includes `meta.receipt`:
       "device": "cuda",
       "compute_type": "float16",
       "config_hash": "sha256:abc123...",
-      "run_id": "run-20260107-123456-xyz",
-      "created_at": "2026-01-07T12:00:00Z",
+      "run_id": "run-20260108-123456-xyz",
+      "created_at": "2026-01-08T12:00:00Z",
       "git_commit": "abc1234"
     }
   }
@@ -142,66 +136,62 @@ Every transcript and benchmark artifact includes `meta.receipt`:
 
 </details>
 
-### Exit Criteria
+### Exit Criteria for "Now"
 
-1. API polish PR merged with receipts
-2. Issue tracker reflects reality (done = closed, partial = rewritten DoD)
-3. Infrastructure issues (#133–#137) exist with clear DoD from contract specs
-4. [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) unblocked (latency harness is its deliverable)
+| Criterion | Status |
+|-----------|--------|
+| API polish PR merged | ⬜ |
+| Issue tracker reconciled | ⬜ |
+| Infrastructure issues exist (#135–#137) | ⬜ |
+| Streaming contract issues exist (#133, #134) | ⬜ |
 
-### Now → Next Handoff Checklist
+### Recommended Execution Path
 
-Before starting v2 work:
+```
+API Polish Bundle (#70, #71, #72, #78)
+         │
+         ▼
+Track 1: Benchmarks (#95 → #137 → #97 → #96)
+         │
+         ▼
+Track 2: Streaming (#133 → #134 → #84)
+```
 
-- [ ] Track 1 contracts exist (dataset manifest, result schema, baseline format)
-- [ ] Receipt/run_id infrastructure issues created (#135, #136, #137)
-- [ ] Streaming contract issues created (#133, #134)
-- [ ] API polish bundle merged
-- [ ] Issue truth pass complete (done=closed, partial=rewritten)
-
-### Execution Paths
-
-Two coherent sequences after "Now" completes:
-
-| Goal | Sequence |
-|------|----------|
-| **Move v2 forward** | #97 + #137 → #95 WER → #133 envelope + #134 client → #84 WS skeleton |
-| **Improve adoption** | API polish bundle → then benchmarks |
-
-Either path is coherent; mixing both in the same sprint is where velocity dies.
+**Note:** Complete API polish before benchmarks. Don't mix adoption work and v2 infrastructure.
 
 ---
 
 ## Next (v2.0): Real-Time + Governance
 
-**Theme:** Streaming is the new mode. Benchmarks are the new gate. Semantics is an extension point.
+**Theme:** Streaming is the new mode. Benchmarks are the new gate.
 
 **Design principles:**
-- **Benchmarks are artifacts** — JSON schema, baseline schema, comparison rules (not just scripts)
-- **Streaming is a protocol** — envelope spec, ordering guarantees, backpressure story (not just endpoints)
+- **Benchmarks are artifacts** — JSON schemas with comparison rules, not just scripts
+- **Streaming is a protocol** — envelope spec with ordering guarantees and backpressure
 
 **Prerequisite order:** Benchmarks → Streaming → Semantics
 
-### Track 1: Benchmark Foundations (gate for everything else)
+---
+
+### Track 1: Benchmark Foundations
+
+**Status:** 📋 Ready to start (gates all other tracks)
 
 Benchmarks must exist before streaming work can be measured.
 
-**Execution order** (make one runner real end-to-end before replicating):
+| Order | Issue | Deliverable | Status |
+|-------|-------|-------------|--------|
+| 1 | [#95](https://github.com/EffortlessMetrics/slower-whisper/issues/95) | ASR WER runner (jiwer, smoke dataset) | ⬜ |
+| 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format + comparator | ⬜ |
+| 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency (P50/P95/P99, RTF) | ⬜ |
+| 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner (AMI subset) | ⬜ |
+| 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ⬜ |
 
-1. [#95](https://github.com/EffortlessMetrics/slower-whisper/issues/95): **ASR WER runner** — smoke dataset first, real WER/CER via jiwer
-2. [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137): **Baseline file format** — schema + local comparator (report-only)
-3. [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97): **Streaming latency benchmark** — P50/P95/P99, first-token latency, RTF
-4. [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96): **Diarization DER runner** — DER/JER on AMI subset (fiddlier, do last)
-5. [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99): **CI integration** — report-only in `ci-local.sh`; gating flips on when Actions return
+**Supporting:**
+- [#94](https://github.com/EffortlessMetrics/slower-whisper/issues/94): Dataset manifest format
+- [#57](https://github.com/EffortlessMetrics/slower-whisper/issues/57): CLI `slower-whisper benchmark --track asr|diarization|streaming`
 
-Supporting issues:
-
-| Issue | Description |
-|-------|-------------|
-| [#94](https://github.com/EffortlessMetrics/slower-whisper/issues/94) | Dataset manifest format + smoke set in-repo |
-| [#57](https://github.com/EffortlessMetrics/slower-whisper/issues/57) | CLI: `slower-whisper benchmark --track asr\|diarization\|streaming` |
-
-**Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline compare JSON; report-only comparator implemented.
+**Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline comparison.
 
 <details>
 <summary><strong>Dataset Manifest Contract (for #94)</strong></summary>
@@ -368,20 +358,22 @@ fail_if: regression > threshold_percent (default: 10%)
 
 ### Track 2: Streaming Skeleton
 
-Depends on: Track 1 (latency measurement must exist)
+**Status:** ⏳ Blocked on Track 1 (latency measurement must exist)
 
-**Protocol-first sequencing** (contract before implementation):
+**Approach:** Protocol-first — define contracts before implementation.
 
-1. **#133**: **Event envelope spec** — IDs, ordering guarantees, partial/final semantics, backpressure
-2. **#134**: **Reference Python client** — working client + contract tests for ordering/backpressure
-3. [#84](https://github.com/EffortlessMetrics/slower-whisper/issues/84): **WebSocket endpoint** — accept connection, emit partial/final events
-4. [#85](https://github.com/EffortlessMetrics/slower-whisper/issues/85): **REST streaming endpoints** — `/stream/start`, `/stream/audio`, `/stream/status`
-5. [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55): **Streaming API docs** — update once endpoint is real
-6. [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86): **Incremental diarization hook** — integration point (full impl is v2.1+)
+| Order | Issue | Deliverable | Status |
+|-------|-------|-------------|--------|
+| 1 | #133 | Event envelope spec (IDs, ordering, backpressure) | ⬜ |
+| 2 | #134 | Reference Python client + contract tests | ⬜ |
+| 3 | [#84](https://github.com/EffortlessMetrics/slower-whisper/issues/84) | WebSocket endpoint (partial/final events) | ⬜ |
+| 4 | [#85](https://github.com/EffortlessMetrics/slower-whisper/issues/85) | REST streaming endpoints | ⬜ |
+| 5 | [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55) | Streaming API docs | ⬜ |
+| 6 | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) | Incremental diarization hook | ⬜ |
 
-**Action:** Create #133 and #134 if they don't exist yet, using the contract spec below.
+**Prerequisite:** Create #133 and #134 if they don't exist.
 
-**Done when:** Reference client passes contract tests against WS server (ordering + backpressure behavior verified).
+**Done when:** Reference client passes contract tests against WS server.
 
 <details>
 <summary><strong>Track 2 Design Notes: Event Envelope Specification</strong></summary>
@@ -459,20 +451,22 @@ All streaming events share this envelope:
 
 ### Track 3: Semantics Adapter Skeleton
 
-Depends on: Stable Turn/Chunk model from Track 2
+**Status:** ⏳ Blocked on Track 2 (needs stable Turn/Chunk model)
 
-**Contract-first sequencing** (interfaces before backends):
+**Approach:** Contract-first — interfaces before backends.
 
-1. [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88): **LLM annotation schema** — schema slot + versioning
-2. [#90](https://github.com/EffortlessMetrics/slower-whisper/issues/90): **Cloud LLM interface** — one provider first (OpenAI or Anthropic)
-3. [#91](https://github.com/EffortlessMetrics/slower-whisper/issues/91): **Guardrails** — rate limits, cost controls, PII warnings
-4. [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92): **Tests/fixtures/golden files** — contract tests for "missing deps never break"
-5. [#89](https://github.com/EffortlessMetrics/slower-whisper/issues/89): **Local LLM backend** — qwen2.5-7b or smollm (after interface is stable)
-6. [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98): **Semantic quality benchmark** — Topic F1 measurement
+| Order | Issue | Deliverable | Status |
+|-------|-------|-------------|--------|
+| 1 | [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88) | LLM annotation schema + versioning | ⬜ |
+| 2 | [#90](https://github.com/EffortlessMetrics/slower-whisper/issues/90) | Cloud LLM interface (OpenAI/Anthropic) | ⬜ |
+| 3 | [#91](https://github.com/EffortlessMetrics/slower-whisper/issues/91) | Guardrails (rate limits, cost, PII) | ⬜ |
+| 4 | [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92) | Golden files + contract tests | ⬜ |
+| 5 | [#89](https://github.com/EffortlessMetrics/slower-whisper/issues/89) | Local LLM backend (qwen2.5-7b/smollm) | ⬜ |
+| 6 | [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98) | Semantic quality benchmark (Topic F1) | ⬜ |
 
-> **Why this order:** Without schema + interface + guardrails + golden files first, semantics becomes "LLM integration sprawl."
+**Why this order:** Schema + interface + guardrails + golden files must land before any backend to avoid "LLM integration sprawl."
 
-**Done when:** Schema + interface + guardrails + golden files land before any backend; local backend populates deterministic fields.
+**Done when:** Local backend populates deterministic fields; golden files enforce contracts.
 
 <details>
 <summary><strong>Track 3 Design Notes: Semantics Contract</strong></summary>
@@ -540,104 +534,125 @@ class SemanticProvider(Protocol):
 
 ### Track 4: v2.0 Cleanup
 
-| Issue | Description |
-|-------|-------------|
-| [#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59) | Remove deprecated APIs (`--enrich-config`, legacy scripts) |
-| [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) | Expanded benchmark datasets (AMI, CALLHOME, LibriSpeech) |
+| Issue | Deliverable | Status |
+|-------|-------------|--------|
+| [#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59) | Remove deprecated APIs (`--enrich-config`, legacy scripts) | ⬜ |
+| [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) | Expanded benchmark datasets (AMI, CALLHOME, LibriSpeech) | ⬜ |
+
+---
 
 ### v2.0 Performance Targets
 
-| Metric | Target | Measurement Source |
-|--------|--------|-------------------|
-| ASR WER (LibriSpeech) | < 5% | Track 1 benchmark |
-| Diarization DER (AMI) | < 15% | Track 1 benchmark |
-| Streaming P95 latency | < 500ms | Track 2 benchmark |
-| Semantic Topic F1 | > 0.8 | Track 3 benchmark |
-| Concurrent streams/GPU | > 10 | Track 2 stress test |
+| Metric | Target | Source |
+|--------|--------|--------|
+| ASR WER (LibriSpeech) | < 5% | Track 1 |
+| Diarization DER (AMI) | < 15% | Track 1 |
+| Streaming P95 latency | < 500ms | Track 2 |
+| Semantic Topic F1 | > 0.8 | Track 3 |
+| Concurrent streams/GPU | > 10 | Track 2 |
 
 ---
 
 ## Later (v2.1+ / v3)
 
-Intentionally brief — these are placeholders, not commitments.
+Placeholders, not commitments.
 
 ### v2.1+
 
-- Full incremental diarization for streaming ([#86])
-- Additional cloud LLM backends
-- Expanded domain-specific prompt templates
+| Feature | Issue |
+|---------|-------|
+| Full incremental diarization for streaming | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) |
+| Additional cloud LLM backends | — |
+| Domain-specific prompt templates | — |
 
 ### v3.0 (2027+)
 
-- [#60](https://github.com/EffortlessMetrics/slower-whisper/issues/60): Intent detection from prosody+text fusion
-- [#61](https://github.com/EffortlessMetrics/slower-whisper/issues/61): Domain pack — clinical speech analysis
-- [#62](https://github.com/EffortlessMetrics/slower-whisper/issues/62): Acoustic scene analysis + audio event detection
-- [#65](https://github.com/EffortlessMetrics/slower-whisper/issues/65): Discourse structure analysis with topic segmentation
-- Domain pack plugin architecture
+| Feature | Issue |
+|---------|-------|
+| Intent detection (prosody + text fusion) | [#60](https://github.com/EffortlessMetrics/slower-whisper/issues/60) |
+| Clinical speech domain pack | [#61](https://github.com/EffortlessMetrics/slower-whisper/issues/61) |
+| Acoustic scene analysis | [#62](https://github.com/EffortlessMetrics/slower-whisper/issues/62) |
+| Discourse structure analysis | [#65](https://github.com/EffortlessMetrics/slower-whisper/issues/65) |
+| Domain pack plugin architecture | — |
 
 ---
 
 ## Dependency Map
 
 ```
-               ┌─────────────────────────────────────┐
-               │  Track 1: Benchmarks (foundations)  │
-               └─────────────────┬───────────────────┘
-                                 │
-           ┌─────────────────────┼─────────────────────┐
-           ▼                     ▼                     ▼
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│ Track 2: Stream  │  │ Track 3: Semantic│  │ Track 4: Cleanup │
-│   (skeleton)     │  │   (adapter)      │  │   (deprecation)  │
-└────────┬─────────┘  └────────┬─────────┘  └──────────────────┘
-         │                     │
-         │   ┌─────────────────┘
-         ▼   ▼
-    ┌─────────────────────────┐
-    │ v2.0.0 Release          │
-    │ (real-time + governance)│
-    └─────────────────────────┘
+                    ┌─────────────────────┐
+                    │ API Polish Bundle   │
+                    │ (#70, #71, #72, #78)│
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │   Track 1:          │
+                    │   Benchmarks        │
+                    │ (#95 → #137 → #97)  │
+                    └──────────┬──────────┘
+                               │
+          ┌────────────────────┼────────────────────┐
+          │                    │                    │
+          ▼                    ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│  Track 2:       │  │  Track 3:       │  │  Track 4:       │
+│  Streaming      │  │  Semantics      │  │  Cleanup        │
+│ (#133 → #84)    │  │ (#88 → #89)     │  │ (#59, #48)      │
+└────────┬────────┘  └────────┬────────┘  └─────────────────┘
+         │                    │
+         └─────────┬──────────┘
+                   ▼
+          ┌─────────────────┐
+          │    v2.0.0       │
+          │    Release      │
+          └─────────────────┘
 ```
 
 **Key constraints:**
 - Benchmarks gate streaming (can't claim latency without measuring it)
-- Streaming endpoints depend on callback contracts (shipped in v1.9)
-- Semantics depends on stable Turn/Chunk model
-- v2.0 removes deprecated APIs only after docs point to replacements
+- Streaming depends on v1.9 callback contracts (✅ shipped)
+- Semantics depends on stable Turn/Chunk model from Track 2
+- Deprecated APIs removed only after docs point to replacements
 
 ---
 
-## Issues to Verify/Create
+## Issues to Create
 
-Before starting a track, verify these issues exist. If missing, create them:
+Before starting a track, ensure these issues exist:
 
-| Issue | Track | Description |
-|-------|-------|-------------|
-| #133 | 2 | Event envelope specification (IDs, ordering, backpressure) |
-| #134 | 2 | Reference Python client + contract tests |
-| #135 | 1 | Receipt contract specification |
-| #136 | 2 | Stable run/event ID format |
-| #137 | 1 | Baseline file format specification |
+| Issue | Track | Purpose |
+|-------|-------|---------|
+| #133 | 2 | Event envelope spec |
+| #134 | 2 | Reference Python client |
+| #135 | 1 | Receipt contract |
+| #136 | 2 | Stable run/event IDs |
+| #137 | 1 | Baseline file format |
 
-Use the `<details>` contract specs in each track section as the issue DoD.
+Use the contract specs in `<details>` sections above as issue DoD.
 
 ---
 
-## Backlog (Good Contribution Opportunities)
+## Backlog
 
-Items valuable but not scheduled. See [Backlog milestone](https://github.com/EffortlessMetrics/slower-whisper/milestone/4).
+Community contribution opportunities. See [Backlog milestone](https://github.com/EffortlessMetrics/slower-whisper/milestone/4).
 
-**High Priority:**
-- [#67](https://github.com/EffortlessMetrics/slower-whisper/issues/67): Security scanning workflow (pip-audit, bandit)
-- [#68](https://github.com/EffortlessMetrics/slower-whisper/issues/68): Docker vulnerability scanning (Trivy)
-- [#69](https://github.com/EffortlessMetrics/slower-whisper/issues/69): Parallelize segment processing in enrichment
-- [#73](https://github.com/EffortlessMetrics/slower-whisper/issues/73): Diarization standalone example
-- [#63](https://github.com/EffortlessMetrics/slower-whisper/issues/63): Enable GitHub Discussions
+### High Priority
 
-**Good First Issues:**
-- [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72): Word-level timestamps example
-- [#74](https://github.com/EffortlessMetrics/slower-whisper/issues/74): Export and validation example
-- [#75](https://github.com/EffortlessMetrics/slower-whisper/issues/75): `--dry-run` CLI option
+| Issue | Description |
+|-------|-------------|
+| [#67](https://github.com/EffortlessMetrics/slower-whisper/issues/67) | Security scanning (pip-audit, bandit) |
+| [#68](https://github.com/EffortlessMetrics/slower-whisper/issues/68) | Docker vulnerability scanning (Trivy) |
+| [#69](https://github.com/EffortlessMetrics/slower-whisper/issues/69) | Parallelize segment processing |
+| [#73](https://github.com/EffortlessMetrics/slower-whisper/issues/73) | Diarization standalone example |
+| [#63](https://github.com/EffortlessMetrics/slower-whisper/issues/63) | Enable GitHub Discussions |
+
+### Good First Issues
+
+| Issue | Description |
+|-------|-------------|
+| [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72) | Word-level timestamps example |
+| [#74](https://github.com/EffortlessMetrics/slower-whisper/issues/74) | Export and validation example |
+| [#75](https://github.com/EffortlessMetrics/slower-whisper/issues/75) | `--dry-run` CLI option |
 
 ---
 
@@ -645,68 +660,66 @@ Items valuable but not scheduled. See [Backlog milestone](https://github.com/Eff
 
 ### Issues
 
-Every issue should have:
-- **Problem**: What's broken or missing
-- **Definition of Done**: Testable acceptance criteria
-- **Files likely touched**: Help reviewers orient
-- **Local validation**: Commands to verify the fix
+Every issue needs:
+- **Problem** — what's broken or missing
+- **DoD** — testable acceptance criteria
+- **Files touched** — help reviewers orient
+- **Validation** — commands to verify
 
 ### PRs
 
-- Keep PRs coherent; stacking is fine when it doesn't increase review cost
-- Include a "review map" when > ~5 files
-- Paste local receipts in PR body:
-  ```
-  ./scripts/ci-local.sh fast
-  ./scripts/ci-local.sh
-  nix-clean flake check
-  ```
+- Keep PRs coherent; stacking is fine
+- Include "review map" when > 5 files
+- Paste receipts in PR body
 
-### Quality Gate (Actions off)
-
-Since Actions may be disabled, the local gate is canonical:
+### Quality Gate
 
 ```bash
 ./scripts/ci-local.sh        # full gate
 ./scripts/ci-local.sh fast   # quick check
-nix-clean run .#verify -- --quick
+nix-clean flake check        # Nix checks
 ```
 
 ---
 
-## Versioning Philosophy
+## Versioning
 
-- **v1.x** — Stabilize, enrich, polish (current)
-- **v2.x** — Real-time streaming + benchmarks + semantic adapters
-- **v3.x** — Semantic understanding + domain packs
+| Version | Theme |
+|---------|-------|
+| **v1.x** | Stabilize, enrich, polish (current) |
+| **v2.x** | Real-time streaming + benchmarks + semantic adapters |
+| **v3.x** | Semantic understanding + domain packs |
 
-**Principle:** Each major version adds **layers**, not rewrites.
-v1.x JSON is forward-compatible with v2.x readers.
+**Principle:** Each major version adds **layers**, not rewrites. v1.x JSON is forward-compatible with v2.x readers.
 
 ### Deprecation Policy
 
-- **Announcement**: At least 2 minor versions before removal
-- **Warning period**: Deprecation warnings logged during usage
-- **Removal**: Only in major version bumps (v2.0.0, v3.0.0)
+- Announced ≥2 minor versions before removal
+- Warnings logged during usage
+- Removed only in major versions
 
-Current deprecations (target removal: v2.0.0):
-- `--enrich-config` flag → use `--config`
-- `transcribe_pipeline.py` script → use `slower-whisper transcribe`
-- `audio_enrich.py` script → use `slower-whisper enrich`
+**Current deprecations (removal: v2.0.0):**
+- `--enrich-config` → `--config`
+- `transcribe_pipeline.py` → `slower-whisper transcribe`
+- `audio_enrich.py` → `slower-whisper enrich`
 
-### Backward Compatibility Guarantees
+### Stability Guarantees
 
-- **JSON Schema v2**: Forward-compatible through v2.x (new optional fields only)
-- **Python API**: `transcribe_directory()`, `enrich_directory()` signatures stable through v2.x
-- **CLI**: Core subcommands (`transcribe`, `enrich`, `export`, `validate`) stable through v2.x
+| Surface | Guarantee |
+|---------|-----------|
+| JSON Schema v2 | Forward-compatible through v2.x |
+| Python API | `transcribe_directory()`, `enrich_directory()` stable |
+| CLI | Core subcommands stable (`transcribe`, `enrich`, `export`, `validate`) |
 
 ---
 
 ## Links
 
-- [CHANGELOG.md](CHANGELOG.md) — what shipped when
-- [VISION.md](VISION.md) — long-term strategic positioning
-- [CLAUDE.md](CLAUDE.md) — repo guide + invariants
-- [docs/STREAMING_ARCHITECTURE.md](docs/STREAMING_ARCHITECTURE.md) — streaming model + events
-- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
-- [GitHub Issues](https://github.com/EffortlessMetrics/slower-whisper/issues) — feature requests and discussions
+| Document | Purpose |
+|----------|---------|
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [VISION.md](VISION.md) | Strategic positioning |
+| [CLAUDE.md](CLAUDE.md) | Repo guide + invariants |
+| [docs/STREAMING_ARCHITECTURE.md](docs/STREAMING_ARCHITECTURE.md) | Streaming model |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
+| [GitHub Issues](https://github.com/EffortlessMetrics/slower-whisper/issues) | Bug reports + features |
