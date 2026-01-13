@@ -26,6 +26,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from .benchmark.semantic_metrics import (
+    compute_action_metrics,
+    compute_risk_metrics,
+    compute_topic_f1,
+)
 from .benchmarks import (
     EvalSample,
     get_benchmarks_root,
@@ -446,109 +451,147 @@ class SemanticBenchmarkRunner(BenchmarkRunner):
                 logger.warning(f"Failed to load gold labels from {gold_path}: {e}")
         return None
 
+    def _not_measured_tags(self, reason: str) -> dict[str, Any]:
+        """Return a tags result dict with all metrics set to None."""
+        return {
+            "topic_precision": None,
+            "topic_recall": None,
+            "topic_f1": None,
+            "risk_precision": None,
+            "risk_recall": None,
+            "risk_f1": None,
+            "action_precision": None,
+            "action_recall": None,
+            "action_f1": None,
+            "tags_reason": reason,
+        }
+
     def _evaluate_tags(self, sample: EvalSample, gold: dict[str, Any] | None) -> dict[str, Any]:
         """Evaluate semantic tagging against gold labels.
 
         Returns metrics dict with topic_precision, topic_recall, topic_f1,
         risk_precision, risk_recall, risk_f1, action_precision, action_recall, action_f1.
         All values are None if no gold labels exist.
+
+        Uses semantic_metrics module for deterministic scoring against gold
+        schema fields (topics, risks, actions).
         """
         if gold is None:
-            return {
-                "topic_precision": None,
-                "topic_recall": None,
-                "topic_f1": None,
-                "risk_precision": None,
-                "risk_recall": None,
-                "risk_f1": None,
-                "action_precision": None,
-                "action_recall": None,
-                "action_f1": None,
-                "tags_reason": "no_gold_labels",
-            }
+            return self._not_measured_tags("no_gold_labels")
 
         # Load transcript and run annotator
-        from .models import Transcript
+        from .models import Segment, Transcript
 
         # Create a minimal transcript from the sample's reference transcript
-        # In a full implementation, we'd load the actual JSON transcript
+        # In a full implementation, we'd load the actual JSON transcript with real segments
         transcript_text = sample.reference_transcript or ""
         if not transcript_text:
-            return {
-                "topic_precision": None,
-                "topic_recall": None,
-                "topic_f1": None,
-                "risk_precision": None,
-                "risk_recall": None,
-                "risk_f1": None,
-                "action_precision": None,
-                "action_recall": None,
-                "action_f1": None,
-                "tags_reason": "no_transcript",
-            }
+            return self._not_measured_tags("no_transcript")
 
         # Build a simple transcript with one segment
-        from .models import Segment
-
+        # NOTE: This is a synthetic single-segment transcript. Gold labels with
+        # segment_id > 0 will not match predicted segment IDs.
         segments = [Segment(id=0, start=0.0, end=1.0, text=transcript_text)]
         transcript = Transcript(
             file_name=f"{sample.id}.json",
             language="en",
             segments=segments,
         )
+        synthetic_segments = True  # Flag for measurement integrity note
 
         # Run annotator
         annotated = self._annotator.annotate(transcript)
         semantic = (annotated.annotations or {}).get("semantic", {})
 
-        # Extract predicted values
-        pred_keywords = set(semantic.get("keywords", []))
-        pred_risk_tags = set(semantic.get("risk_tags", []))
-        pred_actions = semantic.get("actions", [])
-        pred_action_texts = {
-            a.get("text", "").lower().strip() for a in pred_actions if a.get("text")
+        # --- TOPICS ---
+        # Gold schema uses topics[].label; annotator produces keywords + risk_tags
+        gold_topics = [t.get("label") for t in (gold.get("topics") or []) if t.get("label")]
+
+        # Best available predicted topic proxy: risk_tags are closer to coarse topics
+        # than raw keywords, include both for broader vocabulary overlap
+        pred_topics = list(
+            dict.fromkeys((semantic.get("risk_tags") or []) + (semantic.get("keywords") or []))
+        )
+
+        topic_result = compute_topic_f1(pred_topics, gold_topics)
+        topic_precision = topic_result["precision"] if topic_result else None
+        topic_recall = topic_result["recall"] if topic_result else None
+        topic_f1_val = topic_result["f1"] if topic_result else None
+
+        topic_note = None
+        if gold_topics and pred_topics and set(gold_topics).isdisjoint(set(pred_topics)):
+            topic_note = "vocabulary_mismatch"
+
+        # --- RISKS ---
+        # Gold schema uses risks[].{type, severity, segment_id}
+        # Annotator produces matches[].{risk, keyword, segment_id} - no severity
+        gold_risks = gold.get("risks") or []
+
+        # Map risk type names (annotator uses "churn_risk", gold may use "churn")
+        risk_type_map = {"churn_risk": "churn", "escalation": "escalation", "pricing": "pricing"}
+
+        pred_risks = []
+        for m in semantic.get("matches") or []:
+            r = m.get("risk")
+            if not r:
+                continue
+            pred_risks.append(
+                {
+                    "type": risk_type_map.get(r, r),
+                    "segment_id": m.get("segment_id"),
+                    # No severity produced by KeywordSemanticAnnotator
+                }
+            )
+
+        risk_result = compute_risk_metrics(pred_risks, gold_risks)
+        risk_precision = risk_result["overall"]["precision"] if risk_result else None
+        risk_recall = risk_result["overall"]["recall"] if risk_result else None
+        risk_f1_val = risk_result["overall"]["f1"] if risk_result else None
+
+        risk_note = None
+        # If gold requires severity matching, note that we can't measure it
+        if any(r.get("severity") for r in gold_risks):
+            risk_note = "severity_not_measured"
+
+        # --- ACTIONS ---
+        # Gold schema uses actions[].{text, speaker_id?, segment_ids?}
+        # Annotator uses same format: actions[].{text, speaker_id, segment_ids}
+        gold_actions = gold.get("actions") or []
+        pred_actions = semantic.get("actions") or []
+
+        action_result = compute_action_metrics(pred_actions, gold_actions)
+        action_precision = action_result["precision"] if action_result else None
+        action_recall = action_result["recall"] if action_result else None
+        # compute_action_metrics uses accuracy as harmonic mean (same as F1)
+        action_f1_val = action_result["accuracy"] if action_result else None
+        action_matched = action_result.get("matched_count") if action_result else None
+        action_gold = action_result.get("gold_count") if action_result else None
+
+        out: dict[str, Any] = {
+            "topic_precision": topic_precision,
+            "topic_recall": topic_recall,
+            "topic_f1": topic_f1_val,
+            "risk_precision": risk_precision,
+            "risk_recall": risk_recall,
+            "risk_f1": risk_f1_val,
+            "action_precision": action_precision,
+            "action_recall": action_recall,
+            "action_f1": action_f1_val,
+            "tags_reason": None,
         }
 
-        # Extract gold values
-        gold_keywords = set(gold.get("keywords", []))
-        gold_risk_tags = set(gold.get("risk_tags", []))
-        gold_actions = gold.get("actions", [])
-        gold_action_texts = {
-            a.get("text", "").lower().strip() for a in gold_actions if a.get("text")
-        }
+        # Add optional notes for known measurement gaps
+        if synthetic_segments:
+            out["tags_note"] = "synthetic_transcript_segments"
+        if topic_note:
+            out["topic_note"] = topic_note
+        if risk_note:
+            out["risk_note"] = risk_note
+        if action_matched is not None:
+            out["action_matched"] = action_matched
+            out["action_gold"] = action_gold
 
-        # Compute precision/recall/f1 for each category
-        def compute_prf(
-            pred: set[str], gold_set: set[str]
-        ) -> tuple[float | None, float | None, float | None]:
-            if not gold_set and not pred:
-                return 1.0, 1.0, 1.0  # Both empty = perfect match
-            if not gold_set:
-                return 0.0 if pred else 1.0, None, None  # No gold to compare
-            if not pred:
-                return None, 0.0, None  # Predicted nothing
-
-            tp = len(pred & gold_set)
-            precision = tp / len(pred) if pred else 0.0
-            recall = tp / len(gold_set) if gold_set else 0.0
-            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-            return precision, recall, f1
-
-        topic_p, topic_r, topic_f1 = compute_prf(pred_keywords, gold_keywords)
-        risk_p, risk_r, risk_f1 = compute_prf(pred_risk_tags, gold_risk_tags)
-        action_p, action_r, action_f1 = compute_prf(pred_action_texts, gold_action_texts)
-
-        return {
-            "topic_precision": topic_p,
-            "topic_recall": topic_r,
-            "topic_f1": topic_f1,
-            "risk_precision": risk_p,
-            "risk_recall": risk_r,
-            "risk_f1": risk_f1,
-            "action_precision": action_p,
-            "action_recall": action_r,
-            "action_f1": action_f1,
-        }
+        return out
 
     def _evaluate_summary(self, sample: EvalSample) -> dict[str, Any]:
         """Evaluate summary generation using Claude-as-judge.

@@ -1,7 +1,9 @@
 # Semantic Benchmark Reference
 
-**Version:** v2.0.0 (Design)
-**Last Updated:** 2026-01-09
+**Status:** Design Draft (targeting v2.0)
+**Last Updated:** 2026-01-11
+
+> **Note:** This document describes a planned feature for v2.0. The semantic benchmark is currently in development. See [ROADMAP.md](../ROADMAP.md) for release timeline.
 
 This document describes the semantic quality benchmark for evaluating LLM-based annotation quality in slower-whisper.
 
@@ -61,49 +63,46 @@ ANTHROPIC_API_KEY=sk-ant-xxx slower-whisper benchmark run \
 
 ## Gold Label Format
 
-Gold labels are stored as JSON files alongside benchmark samples. Each gold label file contains human-annotated ground truth for topics, risks, and actions.
+Gold labels are stored as JSON files in the benchmark gold directory. Each gold label file contains human-annotated ground truth for topics, risks, and actions.
 
 ### File Location
 
+Gold label format is defined by `benchmarks/gold/semantic/schema.json`. Sample gold files are stored at:
+
 ```
-benchmarks/datasets/semantic/<dataset>/goldens/
-    <sample_id>_gold.json
+benchmarks/gold/semantic/<meeting_id>.json
 ```
+
+For example: `benchmarks/gold/semantic/design_review.json`
 
 ### Schema
 
 ```json
 {
   "schema_version": 1,
-  "sample_id": "ES2002a",
-  "dataset": "ami",
-  "annotator": "human",
-  "annotated_at": "2026-01-08T12:00:00Z",
+  "meeting_id": "design_review",
   "topics": [
     {
       "label": "pricing",
-      "span": [0, 15],
-      "confidence": 1.0,
-      "notes": "Customer explicitly discusses budget constraints"
+      "segment_ids": [0, 15]
     }
   ],
   "risks": [
     {
       "type": "escalation",
       "severity": "high",
-      "segment_ids": [3, 4],
-      "evidence": "I need to speak to a manager",
-      "notes": "Direct escalation request"
+      "segment_id": 3,
+      "evidence": "I need to speak to a manager"
     }
   ],
   "actions": [
     {
-      "description": "Send pricing proposal",
-      "assignee_role": "agent",
-      "segment_ids": [15],
-      "verbatim": "I'll send you the proposal by tomorrow"
+      "text": "Send pricing proposal",
+      "speaker_id": "spk_agent",
+      "segment_ids": [15]
     }
-  ]
+  ],
+  "summary": "Optional human-written summary for Track A evaluation"
 }
 ```
 
@@ -141,14 +140,13 @@ When evaluating, model outputs are normalized to this vocabulary before comparis
 
 ### Action Format
 
-Actions are evaluated with fuzzy text matching. Gold labels should include:
+Actions are evaluated with fuzzy text matching (similarity threshold 0.8). Gold labels should include:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `description` | Yes | Normalized action description |
-| `assignee_role` | No | `agent`, `customer`, `team`, or `unknown` |
+| `text` | Yes | Action description text |
+| `speaker_id` | No | Speaker ID who committed to the action |
 | `segment_ids` | No | Segments where action was mentioned |
-| `verbatim` | No | Exact quote from transcript |
 
 ---
 
@@ -171,6 +169,12 @@ Where:
 
 **Target:** F1 > 0.8 for production readiness.
 
+**Proxy Topic Evaluation (Tags Mode):**
+
+In `--mode tags`, Topic F1 is computed on `predicted_topics` derived from `{risk_tags + keywords}` against gold `topics[].label`. The current `KeywordSemanticAnnotator` does not produce true topic labels; it produces keyword/risk category terms. We treat these as a proxy for topic evaluation until an LLM-based annotator is available.
+
+Expect low scores unless your gold topic vocabulary overlaps these proxy terms. When the predicted and gold topic vocabularies are completely disjoint, a `topic_note: "vocabulary_mismatch"` field is included in the result.
+
 ### Risk Precision/Recall/F1
 
 Risk metrics are computed at two levels:
@@ -192,21 +196,21 @@ Weighted_TP = sum(severity_weight * TP) for each severity level
 
 ### Action Accuracy
 
-Actions are matched using fuzzy text similarity:
+Actions are matched using fuzzy text similarity with `difflib.SequenceMatcher`:
 
 ```python
 def action_match(predicted: str, gold: str, threshold: float = 0.8) -> bool:
-    """Match actions using normalized Levenshtein similarity."""
-    pred_norm = normalize_text(predicted)
+    """Match actions using normalized text similarity."""
+    pred_norm = normalize_text(predicted)  # casefold + strip punctuation + collapse whitespace
     gold_norm = normalize_text(gold)
-    similarity = 1 - (levenshtein_distance(pred_norm, gold_norm) / max(len(pred_norm), len(gold_norm)))
+    similarity = difflib.SequenceMatcher(None, pred_norm, gold_norm).ratio()
     return similarity >= threshold
 ```
 
 **Metrics:**
-- **Action Accuracy**: Fraction of gold actions matched by model
-- **Action Precision**: Fraction of model actions that match gold
-- **Action F1**: Harmonic mean of accuracy and precision
+- **Action Recall**: Fraction of gold actions matched by model (matched_count / gold_count)
+- **Action Precision**: Fraction of model actions that match gold (matched_count / pred_count)
+- **Action F1 (Accuracy)**: Harmonic mean of precision and recall
 
 ### Summary Metrics (LLM-as-Judge)
 
@@ -316,40 +320,43 @@ echo "Benchmark complete. Results in results/"
 
 ```bash
 # 1. Transcribe a sample
-slower-whisper transcribe audio/ES2002a.wav --enable-diarization -o whisper_json/
+slower-whisper transcribe audio/support_call.wav --enable-diarization -o whisper_json/
 
-# 2. Create gold label file
-cat > benchmarks/datasets/semantic/ami/goldens/ES2002a_gold.json << 'EOF'
+# 2. Create gold label file (must match meeting_id used in samples)
+cat > benchmarks/gold/semantic/support_call.json << 'EOF'
 {
   "schema_version": 1,
-  "sample_id": "ES2002a",
-  "dataset": "ami",
-  "annotator": "human",
-  "annotated_at": "2026-01-08T12:00:00Z",
+  "meeting_id": "support_call",
   "topics": [
-    {"label": "pricing", "span": [0, 15], "confidence": 1.0}
+    {"label": "pricing", "segment_ids": [0, 15]}
   ],
   "risks": [
-    {"type": "escalation", "severity": "high", "segment_ids": [3]}
+    {"type": "escalation", "severity": "high", "segment_id": 3}
   ],
   "actions": [
-    {"description": "Send pricing proposal", "assignee_role": "agent"}
+    {"text": "Send pricing proposal", "speaker_id": "spk_agent"}
   ]
 }
 EOF
 
-# 3. Validate the gold label
-slower-whisper benchmark validate-gold benchmarks/datasets/semantic/ami/goldens/ES2002a_gold.json
+# 3. Validate the gold label against schema
+python -c "import json; from jsonschema import validate; \
+  schema = json.load(open('benchmarks/gold/semantic/schema.json')); \
+  data = json.load(open('benchmarks/gold/semantic/support_call.json')); \
+  validate(data, schema); print('Valid!')"
 ```
 
 ### Validation Script
 
 ```bash
-# Validate all gold labels in a directory
-slower-whisper benchmark validate-gold benchmarks/datasets/semantic/ami/goldens/
-
-# Validate single file
-slower-whisper benchmark validate-gold benchmarks/datasets/semantic/ami/goldens/ES2002a_gold.json
+# Validate all gold labels against schema
+for f in benchmarks/gold/semantic/*.json; do
+  if [[ "$f" != *"schema.json" ]]; then
+    python -c "import json; from jsonschema import validate; \
+      schema = json.load(open('benchmarks/gold/semantic/schema.json')); \
+      data = json.load(open('$f')); validate(data, schema); print('$f: OK')"
+  fi
+done
 ```
 
 The validator checks:
@@ -434,6 +441,54 @@ If a result is later found to be invalid (e.g., gold label error discovered):
   "superseded_by": "run-20260115-semantic-001"
 }
 ```
+
+---
+
+## Known Limitations (Tags Mode)
+
+The following limitations apply to `--mode tags` evaluation:
+
+### Proxy Topic Vocabulary
+
+Topic F1 is computed using predicted terms from `{risk_tags + keywords}` compared against gold `topics[].label`. The `KeywordSemanticAnnotator` does not produce true topic labels—it extracts risk categories and keywords as proxies.
+
+**Impact:** Expect low topic scores unless gold topic vocabulary overlaps annotator output terms.
+
+### Synthetic Transcript Segments
+
+The current tags-mode runner constructs a single-segment transcript from the sample's reference text. This means:
+
+- All predicted annotations are associated with `segment_id=0`
+- Gold labels with `segment_id > 0` will not match predicted segment IDs
+- Risk metrics may be degraded when gold annotations are segment-specific
+
+**Output note:** When synthetic segments are used, results include `tags_note: "synthetic_transcript_segments"`.
+
+**Roadmap:** Loading real segments from AMI JSON transcripts is a follow-up improvement.
+
+### Severity Not Measured
+
+The `KeywordSemanticAnnotator` does not produce severity levels for detected risks. Risk matching is type-only (e.g., `escalation` matches `escalation` regardless of severity).
+
+**Output note:** When gold risks include severity, results include `risk_note: "severity_not_measured"`.
+
+---
+
+## Optional Output Fields
+
+Per-sample results may include these optional diagnostic fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tags_note` | string | General measurement note (e.g., `"synthetic_transcript_segments"`) |
+| `topic_note` | string | Topic-specific note (e.g., `"vocabulary_mismatch"` when gold/pred vocabularies are disjoint) |
+| `risk_note` | string | Risk-specific note (e.g., `"severity_not_measured"`) |
+| `action_matched` | int | Count of gold actions matched by predictions |
+| `action_gold` | int | Total count of gold actions |
+| `tags_reason` | string | Why metrics are `null` (e.g., `"no_gold_labels"`, `"no_transcript"`) |
+| `summary_reason` | string | Why summary metrics are `null` (e.g., `"missing_api_key"`) |
+
+These fields provide transparency about measurement integrity and help diagnose low scores.
 
 ---
 
