@@ -13,7 +13,7 @@ repos:
     hooks:
       # Run the linter with auto-fix (silently succeeds after fixing)
       - id: ruff
-        args: [--fix, --exit-zero, --quiet]
+        args: [--fix, --quiet]
         types_or: [python, pyi]
       # Run the formatter (silently formats in place)
       - id: ruff-format
@@ -28,17 +28,23 @@ repos:
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: trailing-whitespace
+        verbose: false
       - id: end-of-file-fixer
+        verbose: false
       - id: check-yaml
         exclude: ^k8s/(gpu-resource-quota|secret|service|pvc)\.yaml$
+        verbose: false
       - id: check-json
+        verbose: false
       - id: check-toml
+        verbose: false
       - id: check-added-large-files
         args: ['--maxkb=1000']
       - id: check-merge-conflict
       - id: debug-statements
       - id: mixed-line-ending
         args: ['--fix=lf']
+        verbose: false
 
   # Type checking with mypy (only on transcription package)
   # Note: Mypy is configured to warn but not fail pre-commit
@@ -47,7 +53,7 @@ repos:
     hooks:
       - id: mypy
         name: mypy (optional type checking)
-        entry: bash -c 'mypy transcription/ --ignore-missing-imports --show-error-codes --no-strict-optional --allow-untyped-defs --allow-incomplete-defs || true'
+        entry: bash -c 'mypy transcription/ --ignore-missing-imports --show-error-codes --no-strict-optional --allow-untyped-defs --allow-incomplete-defs'
         language: system
         types: [python]
         files: ^transcription/

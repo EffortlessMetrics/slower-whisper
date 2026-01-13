@@ -26,7 +26,7 @@ from .config import (
     TranscriptionConfig,
 )
 from .device import DeviceChoice, format_preflight_banner, resolve_device
-from .exceptions import ConfigurationError, SlowerWhisperError
+from .exceptions import ConfigurationError, EnrichmentError, SlowerWhisperError
 from .exporters import SUPPORTED_EXPORT_FORMATS, export_transcript
 from .models import Transcript
 from .validation import DEFAULT_SCHEMA_PATH, validate_many
@@ -881,14 +881,14 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
     audio_dir = paths.norm_dir
 
     if not json_dir.exists():
-        raise api_module.EnrichmentError(
+        raise EnrichmentError(
             f"JSON directory does not exist: {json_dir}. "
             f"Run transcription first using transcribe command."
         )
 
     json_files = sorted(json_dir.glob("*.json"))
     if not json_files:
-        raise api_module.EnrichmentError(
+        raise EnrichmentError(
             f"No JSON transcript files found in {json_dir}. "
             f"Run transcription first to generate transcript files."
         )

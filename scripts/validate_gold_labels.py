@@ -26,7 +26,6 @@ from typing import Any
 
 # Optional: use jsonschema if available, fall back to basic validation
 try:
-    import jsonschema
     from jsonschema import Draft202012Validator
 
     HAS_JSONSCHEMA = True
@@ -214,7 +213,7 @@ def sanity_checks(data: dict[str, Any], path: Path, *, strict: bool = False) -> 
 
     # Check for duplicate segment_ids in same risk type
     risk_segments: dict[str, set[int]] = {}
-    for i, risk in enumerate(risks):
+    for _i, risk in enumerate(risks):
         risk_type = risk.get("type", "")
         segment_id = risk.get("segment_id")
         if risk_type and segment_id is not None:

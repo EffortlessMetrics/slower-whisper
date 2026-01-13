@@ -168,7 +168,7 @@ def run_pipeline(
             if diarization_config and getattr(diarization_config, "enable_chunking", False):
                 try:
                     transcript = writers.load_transcript_from_json(json_path)
-                    from .api import _maybe_build_chunks
+                    from .transcription_helpers import _maybe_build_chunks
 
                     transcript = _maybe_build_chunks(transcript, diarization_config)
                     writers.write_json(transcript, json_path)
@@ -209,7 +209,7 @@ def run_pipeline(
 
                 logger.info("[diarize-existing] %s (reusing existing transcript)", wav.name)
                 try:
-                    from .api import _maybe_run_diarization
+                    from .diarization_orchestrator import _maybe_run_diarization
 
                     transcript = _maybe_run_diarization(
                         transcript=transcript,
@@ -285,7 +285,7 @@ def run_pipeline(
 
         # v1.1+: Run diarization (or record disabled state) if config provided
         if diarization_config:
-            from .api import _maybe_run_diarization
+            from .diarization_orchestrator import _maybe_run_diarization
 
             transcript = _maybe_run_diarization(
                 transcript=transcript,
@@ -293,7 +293,7 @@ def run_pipeline(
                 config=diarization_config,
             )
             if getattr(diarization_config, "enable_chunking", False):
-                from .api import _maybe_build_chunks
+                from .transcription_helpers import _maybe_build_chunks
 
                 transcript = _maybe_build_chunks(transcript, diarization_config)
 
