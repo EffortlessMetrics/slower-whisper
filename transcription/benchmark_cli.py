@@ -275,25 +275,81 @@ class DiarizationBenchmarkRunner(BenchmarkRunner):
     3. Calculate DER using pyannote.metrics
     """
 
+    def __init__(self, track: str, dataset: str, split: str = "test"):
+        super().__init__(track, dataset, split)
+        self._diarizer = None
+
+    @property
+    def diarizer(self):
+        if self._diarizer is None:
+            from transcription.diarization import Diarizer
+
+            self._diarizer = Diarizer()
+        return self._diarizer
+
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
         if self.dataset == "ami":
             return list(iter_ami_meetings(split=self.split, limit=limit))
         raise ValueError(f"Dataset {self.dataset} not supported for diarization track")
 
     def evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
-        # TODO: Implement actual diarization evaluation
-        # 1. Run diarization on sample.audio_path
-        # 2. Compare with sample.reference_speakers
-        # 3. Return DER metrics
-        logger.debug(f"Diarization evaluation for {sample.id} (not implemented)")
+        try:
+            from pyannote.core import Annotation, Segment
+            from pyannote.metrics.diarization import DiarizationErrorRate, JaccardErrorRate
+        except ImportError as e:
+            raise ImportError(
+                "pyannote.metrics is required for diarization benchmark. "
+                "Install it with: uv pip install pyannote.metrics"
+            ) from e
+
+        if not sample.reference_speakers:
+            # Cannot evaluate without reference
+            return {
+                "id": sample.id,
+                "der": 0.0,
+                "jer": 0.0,
+                "speaker_count_ref": 0,
+                "speaker_count_hyp": 0,
+                "error": "No reference speakers",
+            }
+
+        # 1. Run diarization
+        turns = self.diarizer.run(sample.audio_path)
+
+        # 2. Prepare reference annotation
+        ref = Annotation()
+        ref_speakers = set()
+        for s in sample.reference_speakers:
+            ref[Segment(s["start"], s["end"])] = s["speaker_id"]
+            ref_speakers.add(s["speaker_id"])
+
+        # 3. Prepare hypothesis annotation
+        hyp = Annotation()
+        hyp_speakers = set()
+        for turn in turns:
+            hyp[Segment(turn.start, turn.end)] = turn.speaker_id
+            hyp_speakers.add(turn.speaker_id)
+
+        # 4. Calculate metrics
+        der_metric = DiarizationErrorRate()
+        jer_metric = JaccardErrorRate()
+
+        # pyannote.metrics handles speaker permutation automatically
+        try:
+            der = der_metric(ref, hyp)
+            jer = jer_metric(ref, hyp)
+        except Exception as e:
+            logger.error(f"Error calculating metrics: {e}")
+            logger.error(f"Ref: {ref}")
+            logger.error(f"Hyp: {hyp}")
+            raise
+
         return {
             "id": sample.id,
-            "der": 0.0,  # Placeholder
-            "jer": 0.0,  # Placeholder (Jaccard Error Rate)
-            "speaker_count_ref": len(
-                {s.get("speaker_id") for s in (sample.reference_speakers or [])}
-            ),
-            "speaker_count_hyp": 0,
+            "der": der * 100.0,  # Convert to percentage
+            "jer": jer * 100.0,  # Convert to percentage
+            "speaker_count_ref": len(ref_speakers),
+            "speaker_count_hyp": len(hyp_speakers),
         }
 
     def aggregate_metrics(self, sample_results: list[dict[str, Any]]) -> list[BenchmarkMetric]:
