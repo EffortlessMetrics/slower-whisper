@@ -219,28 +219,106 @@ class BenchmarkRunner:
 class ASRBenchmarkRunner(BenchmarkRunner):
     """Benchmark runner for ASR (WER/CER) evaluation.
 
-    This is scaffolding - full implementation would:
-    1. Transcribe each sample using slower-whisper
+    Implements full ASR evaluation:
+    1. Transcribe each sample using slower-whisper (TranscriptionEngine)
     2. Compare with reference transcript
-    3. Calculate WER/CER using jiwer or similar
+    3. Calculate WER/CER using jiwer
     """
+
+    def __init__(self, track: str, dataset: str, split: str = "test"):
+        super().__init__(track, dataset, split)
+        try:
+            from .asr_engine import TranscriptionEngine
+            from .config import AsrConfig, TranscriptionConfig
+
+            # Load config from env (respects SLOWER_WHISPER_MODEL, etc.)
+            t_cfg = TranscriptionConfig.from_env()
+            self.config = AsrConfig(
+                model_name=t_cfg.model,
+                device=t_cfg.device,
+                compute_type=t_cfg.compute_type,
+                beam_size=t_cfg.beam_size,
+                # Ensure we get raw text for evaluation
+                task="transcribe",
+                language="en",  # LibriSpeech is English
+            )
+            self.engine = TranscriptionEngine(self.config)
+        except Exception as e:
+            logger.error(f"Failed to initialize ASR engine: {e}")
+            self.engine = None
+
+        try:
+            import jiwer
+
+            self.jiwer = jiwer
+        except ImportError:
+            self.jiwer = None
+            logger.warning("jiwer not installed. WER/CER calculation will fail.")
 
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
         if self.dataset == "librispeech":
             return list(iter_librispeech(split=self.split, limit=limit))
         raise ValueError(f"Dataset {self.dataset} not supported for ASR track")
 
+    def _normalize_text(self, text: str) -> str:
+        """Normalize text for ASR evaluation (lowercase, remove punctuation)."""
+        import re
+
+        if not text:
+            return ""
+        # Lowercase
+        text = text.lower()
+        # Remove punctuation (keep alphanumeric and spaces)
+        text = re.sub(r"[^\w\s]", "", text)
+        # Collapse whitespace
+        return " ".join(text.split())
+
     def evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
-        # TODO: Implement actual ASR evaluation
-        # 1. Transcribe sample.audio_path
-        # 2. Compare with sample.reference_transcript
-        # 3. Return WER/CER metrics
-        logger.debug(f"ASR evaluation for {sample.id} (not implemented)")
+        if not self.engine:
+            raise RuntimeError("ASR engine not initialized")
+
+        if not self.jiwer:
+            raise ImportError("jiwer package is required for ASR evaluation")
+
+        # 1. Transcribe
+        logger.debug(f"Transcribing {sample.id}...")
+        try:
+            transcript = self.engine.transcribe_file(sample.audio_path)
+        except Exception as e:
+            logger.error(f"Transcription failed for {sample.id}: {e}")
+            raise
+
+        # Join segments to get full hypothesis text
+        hypothesis = " ".join(seg.text for seg in transcript.segments)
+
+        # 2. Prepare texts
+        reference = sample.reference_transcript or ""
+
+        # Normalize both reference and hypothesis
+        ref_norm = self._normalize_text(reference)
+        hyp_norm = self._normalize_text(hypothesis)
+
+        # 3. Calculate metrics
+        wer = 0.0
+        cer = 0.0
+
+        if ref_norm:
+            wer = self.jiwer.wer(ref_norm, hyp_norm)
+            cer = self.jiwer.cer(ref_norm, hyp_norm)
+        elif hyp_norm:
+            # If reference is empty but hypothesis is not, error is 100% (or infinite?)
+            # Usually treat as insertion error = length of hypothesis
+            wer = 1.0
+            cer = 1.0
+
         return {
             "id": sample.id,
-            "wer": 0.0,  # Placeholder
-            "cer": 0.0,  # Placeholder
-            "reference_length": len(sample.reference_transcript or ""),
+            "wer": wer * 100,  # Convert to percentage
+            "cer": cer * 100,  # Convert to percentage
+            "reference_length": len(ref_norm),
+            "hypothesis_length": len(hyp_norm),
+            "reference": ref_norm,
+            "hypothesis": hyp_norm,
         }
 
     def aggregate_metrics(self, sample_results: list[dict[str, Any]]) -> list[BenchmarkMetric]:
