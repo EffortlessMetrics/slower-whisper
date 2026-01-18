@@ -14,6 +14,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from .color_utils import Colors
+
 if TYPE_CHECKING:
     pass
 
@@ -210,17 +212,32 @@ def format_preflight_banner(
 
     # Main status line
     device_display = resolved.device.upper()
-    if resolved.is_fallback:
-        status = f"[Device] {device_display} (fallback from {resolved.requested_device})"
-    else:
-        status = f"[Device] {device_display}"
 
-    main_line = f"{status} | compute_type={resolved.compute_type} | model={model_name}"
+    # Colorize device display
+    if resolved.device == "cuda":
+        device_display = Colors.success(device_display)
+    elif resolved.device == "cpu":
+        # CPU is warning color if fallback, else just bold/info
+        if resolved.is_fallback:
+            device_display = Colors.warning(device_display)
+        else:
+            device_display = Colors.info(device_display)
+
+    if resolved.is_fallback:
+        status = f"[{Colors.bold('Device')}] {device_display} ({Colors.warning('fallback')} from {resolved.requested_device})"
+    else:
+        status = f"[{Colors.bold('Device')}] {device_display}"
+
+    # Colorize metadata
+    ct_display = Colors.colorize(resolved.compute_type, Colors.CYAN)
+    model_display = Colors.colorize(model_name, Colors.CYAN)
+
+    main_line = f"{status} | compute_type={ct_display} | model={model_display}"
     lines.append(main_line)
 
     # Fallback reason if applicable
     if resolved.fallback_reason:
-        lines.append(f"         └─ Reason: {resolved.fallback_reason}")
+        lines.append(f"         └─ Reason: {Colors.warning(resolved.fallback_reason)}")
 
     # Verbose details
     if verbose:

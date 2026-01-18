@@ -20,6 +20,7 @@ from pathlib import Path
 from . import __version__
 from . import api as api_module
 from .benchmark_cli import build_benchmark_parser, handle_benchmark_command
+from .color_utils import Colors
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -822,26 +823,30 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     result = run_pipeline(app_cfg, diarization_config=cfg)
 
     # Display structured results
-    print("\n=== Transcription Summary ===")
+    print(f"\n{Colors.bold('=== Transcription Summary ===')}")
     print(f"Total files:      {result.total_files}")
     print(f"Processed:        {result.processed}")
     print(f"Skipped:          {result.skipped}")
     if result.diarized_only > 0:
         print(f"Diarized only:    {result.diarized_only}")
-    print(f"Failed:           {result.failed}")
+
+    failed_str = str(result.failed)
+    if result.failed > 0:
+        failed_str = Colors.failure(failed_str)
+    print(f"Failed:           {failed_str}")
 
     # Show RTF if available
     if result.total_audio_seconds > 0 and result.total_time_seconds > 0:
         rtf = result.overall_rtf
-        print("\nPerformance:")
+        print(f"\n{Colors.bold('Performance:')}")
         print(f"  Audio duration: {result.total_audio_seconds / 60:.1f} min")
         print(f"  Wall time:      {result.total_time_seconds / 60:.1f} min")
-        print(f"  RTF:            {rtf:.2f}x")
+        print(f"  RTF:            {Colors.bold(f'{rtf:.2f}x')}")
 
     # Show first 5 failures with error messages
     failures = [r for r in result.file_results if r.status == "error"]
     if failures:
-        print(f"\nFailures ({len(failures)}):")
+        print(f"\n{Colors.failure(f'Failures ({len(failures)}):')}")
         for fail in failures[:5]:
             error_msg = fail.error_message or "Unknown error"
             print(f"  - {fail.file_name}: {error_msg}")
@@ -937,16 +942,20 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
             failures.append((json_path.name, error_msg))
 
     # Display structured results
-    print("\n=== Enrichment Summary ===")
+    print(f"\n{Colors.bold('=== Enrichment Summary ===')}")
     print(f"Total files:      {total_files}")
     print(f"Enriched:         {enriched_count}")
     if skipped_count > 0:
         print(f"Skipped:          {skipped_count} (already enriched)")
-    print(f"Failed:           {failed_count}")
+
+    failed_str = str(failed_count)
+    if failed_count > 0:
+        failed_str = Colors.failure(failed_str)
+    print(f"Failed:           {failed_str}")
 
     # Show first 5 failures with error messages
     if failures:
-        print(f"\nFailures ({len(failures)}):")
+        print(f"\n{Colors.failure(f'Failures ({len(failures)}):')}")
         for file_name, error_msg in failures[:5]:
             print(f"  - {file_name}: {error_msg}")
         if len(failures) > 5:
@@ -961,12 +970,14 @@ def _handle_validate_command(args: argparse.Namespace) -> int:
     schema_path = args.schema or DEFAULT_SCHEMA_PATH
     failures = validate_many(args.transcripts, schema_path=schema_path)
     if failures:
-        print("Validation failed:")
+        print(Colors.failure("Validation failed:"))
         for err in failures:
             print(f"- {err}")
         return 1
 
-    print(f"[ok] {len(args.transcripts)} transcript(s) valid against {schema_path}")
+    print(
+        f"{Colors.success('[ok]')} {len(args.transcripts)} transcript(s) valid against {schema_path}"
+    )
     return 0
 
 
