@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -33,6 +34,7 @@ from .benchmarks import (
     iter_librispeech,
     list_available_benchmarks,
 )
+from .historian.llm_client import create_llm_provider, LLMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -398,37 +400,167 @@ class StreamingBenchmarkRunner(BenchmarkRunner):
 class SemanticBenchmarkRunner(BenchmarkRunner):
     """Benchmark runner for semantic annotation evaluation.
 
-    This is scaffolding - full implementation would:
-    1. Generate summaries/annotations using LLM
-    2. Compare with reference using Claude-as-judge
-    3. Return quality scores
+    Uses an LLM (Claude) to:
+    1. Generate a summary from the transcript
+    2. Compare the generated summary with the reference summary
+    3. Calculate quality metrics (faithfulness, coverage, clarity)
     """
+
+    def __init__(self, track: str, dataset: str, split: str = "test"):
+        super().__init__(track, dataset, split)
+        # Initialize LLM provider - defaults to anthropic for high quality
+        # Can be configured via env vars
+        try:
+            self.llm = create_llm_provider(LLMConfig(provider="anthropic"))
+        except (ValueError, ImportError):
+            logger.warning("Anthropic provider not available. Semantic evaluation will fail unless mocked.")
+            self.llm = None
 
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
         if self.dataset == "ami":
             return list(iter_ami_meetings(split=self.split, limit=limit, require_summary=True))
         raise ValueError(f"Dataset {self.dataset} not supported for semantic track")
 
+    def _generate_summary(self, transcript_text: str) -> str:
+        """Generate a summary of the transcript using the LLM."""
+        if not self.llm:
+            raise RuntimeError("LLM provider not initialized")
+
+        system_prompt = (
+            "You are an expert meeting summarizer. "
+            "Your task is to provide a concise, comprehensive summary of the meeting transcript provided. "
+            "Focus on key decisions, action items, and main discussion points. "
+            "Do not include meta-commentary."
+        )
+
+        response = self.llm.complete_sync(system_prompt, transcript_text)
+        return response.text
+
+    def _evaluate_summary(self, generated_summary: str, reference_summary: str) -> dict[str, float]:
+        """Evaluate the generated summary against the reference using LLM-as-a-judge."""
+        if not self.llm:
+            raise RuntimeError("LLM provider not initialized")
+
+        system_prompt = (
+            "You are an impartial judge evaluating the quality of an AI-generated meeting summary against a human-written reference summary. "
+            "Compare the two summaries and score the generated summary on the following criteria from 0.0 to 10.0:\n"
+            "1. Faithfulness: How factually accurate is the summary compared to the reference?\n"
+            "2. Coverage: How well does it capture the key points mentioned in the reference?\n"
+            "3. Clarity: How clear, coherent, and readable is the summary?\n\n"
+            "Output your evaluation strictly in JSON format with keys: 'faithfulness', 'coverage', 'clarity'. "
+            "Do not include any other text."
+        )
+
+        user_prompt = (
+            f"Reference Summary:\n{reference_summary}\n\n"
+            f"Generated Summary:\n{generated_summary}"
+        )
+
+        response = self.llm.complete_sync(system_prompt, user_prompt)
+
+        try:
+            # Clean up potential markdown code blocks
+            clean_text = response.text.strip()
+            if clean_text.startswith("```json"):
+                clean_text = clean_text[7:]
+            if clean_text.endswith("```"):
+                clean_text = clean_text[:-3]
+
+            # Simple fallback regex if JSON is embedded in text
+            if "{" in clean_text and "}" in clean_text:
+                match = re.search(r"\{.*\}", clean_text, re.DOTALL)
+                if match:
+                    clean_text = match.group(0)
+
+            scores = json.loads(clean_text)
+            return {
+                "faithfulness": float(scores.get("faithfulness", 0.0)),
+                "coverage": float(scores.get("coverage", 0.0)),
+                "clarity": float(scores.get("clarity", 0.0)),
+            }
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse evaluation scores: {e}. Response: {response.text}")
+            return {"faithfulness": 0.0, "coverage": 0.0, "clarity": 0.0}
+
     def evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
-        # TODO: Implement actual semantic evaluation
-        # 1. Generate summary from transcript
-        # 2. Compare with sample.reference_summary
-        # 3. Return quality scores
-        logger.debug(f"Semantic evaluation for {sample.id} (not implemented)")
-        return {
+        """
+        Evaluate semantic capabilities on a sample.
+
+        1. Transcribe audio (or use reference transcript if we want to isolate summarization).
+           For now, we use the reference transcript to focus on evaluating the summarization/enrichment *capability*,
+           isolating it from ASR errors. In a full system benchmark, we might want to do both.
+           Given the task description emphasizes "Evaluate semantic enrichment quality",
+           using the reference transcript seems like a valid starting point for this "Semantic" track,
+           whereas "ASR" track evaluates transcription.
+        2. Generate summary.
+        3. Evaluate summary.
+        """
+        if not self.llm:
+             return {
+                "id": sample.id,
+                "error": "LLM provider not configured",
+                "faithfulness": 0.0,
+                "coverage": 0.0,
+                "clarity": 0.0,
+            }
+
+        # For this implementation, we rely on the reference transcript to evaluate summarization quality
+        # independent of ASR quality.
+        # Ideally, we would support both modes (reference vs hypothesis transcript).
+        transcript_text = sample.reference_transcript
+
+        if not transcript_text:
+            # Fallback: if no reference transcript, we can't summarize without running ASR.
+            # Here we just fail for now as AMI samples should have transcripts.
+             return {
+                "id": sample.id,
+                "error": "No reference transcript available",
+                "faithfulness": 0.0,
+                "coverage": 0.0,
+                "clarity": 0.0,
+            }
+
+        # 1. Generate summary
+        try:
+            generated_summary = self._generate_summary(transcript_text)
+        except Exception as e:
+            logger.error(f"Summary generation failed for {sample.id}: {e}")
+            return {
+                "id": sample.id,
+                "error": str(e),
+                "faithfulness": 0.0,
+                "coverage": 0.0,
+                "clarity": 0.0,
+            }
+
+        # 2. Evaluate against reference summary
+        if not sample.reference_summary:
+             return {
+                "id": sample.id,
+                "error": "No reference summary available",
+                "faithfulness": 0.0,
+                "coverage": 0.0,
+                "clarity": 0.0,
+            }
+
+        scores = self._evaluate_summary(generated_summary, sample.reference_summary)
+
+        result = {
             "id": sample.id,
-            "faithfulness": 0.0,
-            "coverage": 0.0,
-            "clarity": 0.0,
+            "generated_summary": generated_summary, # Useful for debugging
+            **scores
         }
+        return result
 
     def aggregate_metrics(self, sample_results: list[dict[str, Any]]) -> list[BenchmarkMetric]:
         if not sample_results:
             return []
 
-        avg_faith = sum(r["faithfulness"] for r in sample_results) / len(sample_results)
-        avg_cov = sum(r["coverage"] for r in sample_results) / len(sample_results)
-        avg_clar = sum(r["clarity"] for r in sample_results) / len(sample_results)
+        # Filter out failed samples (those with 0.0 scores due to errors) if appropriate,
+        # or keep them to penalize failures. Here we include them.
+        avg_faith = sum(r.get("faithfulness", 0.0) for r in sample_results) / len(sample_results)
+        avg_cov = sum(r.get("coverage", 0.0) for r in sample_results) / len(sample_results)
+        avg_clar = sum(r.get("clarity", 0.0) for r in sample_results) / len(sample_results)
 
         return [
             BenchmarkMetric(

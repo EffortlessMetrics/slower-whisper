@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -120,6 +121,61 @@ class ClaudeCodeProvider(LLMProvider):
         )
 
 
+class AnthropicProvider(LLMProvider):
+    """
+    LLM provider using the official Anthropic Python client.
+    """
+
+    async def complete(self, system: str, user: str) -> LLMResponse:
+        """Send completion via Anthropic API."""
+        start_time = time.time()
+
+        try:
+            import anthropic
+        except ImportError as e:
+            raise ImportError(
+                "anthropic package not installed. Install with: pip install anthropic"
+            ) from e
+
+        # Resolve API key: config > env > error
+        api_key = self.config.api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "Anthropic API key not found. Set ANTHROPIC_API_KEY env var or pass in config."
+            )
+
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        model = self.config.model or "claude-3-5-sonnet-20241022"
+
+        try:
+            message = await client.messages.create(
+                model=model,
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+                system=system,
+                messages=[
+                    {"role": "user", "content": user}
+                ],
+            )
+        except Exception as e:
+            raise RuntimeError(f"Anthropic API call failed: {e}") from e
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Extract text content
+        response_text = ""
+        for block in message.content:
+            if block.type == "text":
+                response_text += block.text
+
+        return LLMResponse(
+            text=response_text,
+            tokens_used=message.usage.input_tokens + message.usage.output_tokens if message.usage else None,
+            duration_ms=duration_ms,
+            raw_response=message,
+        )
+
+
 class MockProvider(LLMProvider):
     """Mock provider for testing."""
 
@@ -158,9 +214,13 @@ def create_llm_provider(config: LLMConfig) -> LLMProvider:
     """
     if config.provider == "claude-code":
         return ClaudeCodeProvider(config)
+    elif config.provider == "anthropic":
+        return AnthropicProvider(config)
     elif config.provider == "mock":
         return MockProvider(config)
     else:
+        # Fallback to MockProvider with error if unknown, or raise?
+        # Raising is better to fail fast
         raise ValueError(f"Unknown LLM provider: {config.provider}")
 
 
@@ -170,6 +230,7 @@ async def llm_complete(
     user: str,
     provider: str = "claude-code",
     model: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """
     Convenience function for one-off LLM completions.
@@ -179,11 +240,12 @@ async def llm_complete(
         user: User prompt
         provider: Provider name
         model: Optional model override
+        api_key: Optional API key override
 
     Returns:
         Response text
     """
-    config = LLMConfig(provider=provider, model=model)
+    config = LLMConfig(provider=provider, model=model, api_key=api_key)
     llm = create_llm_provider(config)
     response = await llm.complete(system, user)
     return response.text

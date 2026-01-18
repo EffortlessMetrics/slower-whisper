@@ -39,7 +39,9 @@ classifiers = [
 
 # Minimum viable dependencies (Stage 1: Transcription only, ~2.5GB)
 dependencies = [
+    "anthropic>=0.76.0",
     "faster-whisper>=1.2.1,<2",
+    "soundfile>=0.13.1",
     "typing-extensions>=4.15.0",
 ]
 
@@ -325,3 +327,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # unused imports
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
