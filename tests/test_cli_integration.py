@@ -642,7 +642,7 @@ def test_main_transcribe_integration(mock_transcribe_directory, temp_project_roo
 
     # Check output shows summary
     captured = capsys.readouterr()
-    assert "=== Transcription Summary ===" in captured.out
+    assert "Transcription Summary" in captured.out
     assert "Total files:      3" in captured.out
     assert "Processed:        3" in captured.out
 
@@ -717,7 +717,7 @@ def test_main_enrich_integration(mock_enrich_directory, temp_project_root, capsy
 
     # Check output shows summary
     captured = capsys.readouterr()
-    assert "=== Enrichment Summary ===" in captured.out or "[1/1]" in captured.out
+    assert "Enrichment Summary" in captured.out or "[1/1]" in captured.out
 
 
 def test_main_no_args_shows_help(capsys):
@@ -831,7 +831,7 @@ def test_validate_cli_reports_failures(sample_transcript_file: Path, tmp_path: P
     fail_exit = main(["validate", str(invalid)])
     fail_output = capsys.readouterr()
     assert fail_exit == 1
-    assert "Validation failed" in fail_output.out
+    assert "Validation failed" in fail_output.err
     assert "text" in fail_output.out or "language" in fail_output.out
 
 
@@ -933,7 +933,7 @@ def test_transcribe_realistic_workflow(mock_transcribe_directory, temp_project_r
 
     # Check output
     captured = capsys.readouterr()
-    assert "=== Transcription Summary ===" in captured.out
+    assert "Transcription Summary" in captured.out
 
 
 def test_enrich_realistic_workflow(mock_enrich_directory, temp_project_root, capsys):
@@ -969,7 +969,7 @@ def test_sequential_transcribe_then_enrich(
     assert exit_code == 0
 
     transcribe_output = capsys.readouterr()
-    assert "=== Transcription Summary ===" in transcribe_output.out
+    assert "Transcription Summary" in transcribe_output.out
 
     # Step 2: Enrich would need JSON files, so we skip actual enrichment test
     # This test now just verifies transcribe completes
@@ -993,7 +993,7 @@ def test_transcribe_cpu_mode_for_compatibility(mock_transcribe_directory, capsys
     assert exit_code == 0
 
     captured = capsys.readouterr()
-    assert "=== Transcription Summary ===" in captured.out
+    assert "Transcription Summary" in captured.out
 
 
 def test_enrich_prosody_only(mock_enrich_directory, capsys):

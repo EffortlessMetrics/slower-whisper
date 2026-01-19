@@ -20,6 +20,13 @@ from pathlib import Path
 from . import __version__
 from . import api as api_module
 from .benchmark_cli import build_benchmark_parser, handle_benchmark_command
+from .color_utils import (
+    Colors,
+    print_error,
+    print_header,
+    print_success,
+    print_warning,
+)
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -603,22 +610,22 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
     samples_dir = get_samples_cache_dir()
 
     if args.show:
-        print("slower-whisper cache locations:")
-        print(f"  Root:         {paths.root}")
-        print(f"  HF_HOME:      {paths.hf_home} ({_format_size(_get_cache_size(paths.hf_home))})")
+        print_header("slower-whisper cache locations:")
+        print(f"  Root:         {Colors.cyan(str(paths.root))}")
+        print(f"  HF_HOME:      {Colors.cyan(str(paths.hf_home))} ({_format_size(_get_cache_size(paths.hf_home))})")
         print(
-            f"  TORCH_HOME:   {paths.torch_home} ({_format_size(_get_cache_size(paths.torch_home))})"
+            f"  TORCH_HOME:   {Colors.cyan(str(paths.torch_home))} ({_format_size(_get_cache_size(paths.torch_home))})"
         )
         print(
-            f"  Whisper:      {paths.whisper_root} ({_format_size(_get_cache_size(paths.whisper_root))})"
+            f"  Whisper:      {Colors.cyan(str(paths.whisper_root))} ({_format_size(_get_cache_size(paths.whisper_root))})"
         )
         print(
-            f"  Emotion:      {paths.emotion_root} ({_format_size(_get_cache_size(paths.emotion_root))})"
+            f"  Emotion:      {Colors.cyan(str(paths.emotion_root))} ({_format_size(_get_cache_size(paths.emotion_root))})"
         )
         print(
-            f"  Diarization:  {paths.diarization_root} ({_format_size(_get_cache_size(paths.diarization_root))})"
+            f"  Diarization:  {Colors.cyan(str(paths.diarization_root))} ({_format_size(_get_cache_size(paths.diarization_root))})"
         )
-        print(f"  Samples:      {samples_dir} ({_format_size(_get_cache_size(samples_dir))})")
+        print(f"  Samples:      {Colors.cyan(str(samples_dir))} ({_format_size(_get_cache_size(samples_dir))})")
         total = sum(
             [
                 _get_cache_size(paths.hf_home),
@@ -629,7 +636,7 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
                 _get_cache_size(samples_dir),
             ]
         )
-        print(f"\n  Total:        {_format_size(total)}")
+        print(f"\n  Total:        {Colors.bold(_format_size(total))}")
         return 0
 
     if args.clear:
@@ -659,7 +666,7 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
         for name, target in targets:
             if target.exists():
                 shutil.rmtree(target)
-                print(f"Cleared {name} cache: {target}")
+                print_success(f"Cleared {name} cache: {target}")
             target.mkdir(parents=True, exist_ok=True)
 
         return 0
@@ -756,7 +763,7 @@ def _handle_export_command(args: argparse.Namespace) -> int:
     transcript = api_module.load_transcript(args.transcript)
     output_path = args.output or _default_export_path(args.transcript, args.format)
     export_transcript(transcript, args.format, output_path, unit=args.unit)
-    print(f"[done] Wrote {args.format} to {output_path}")
+    print_success(f"[done] Wrote {args.format} to {output_path}")
     return 0
 
 
@@ -786,16 +793,15 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
 
     # Print preflight banner to stderr (keeps stdout clean for structured output)
     banner = format_preflight_banner(resolved, cfg.model)
-    print(f"\n{banner}\n", file=sys.stderr)
+    print(f"\n{Colors.cyan(banner)}\n", file=sys.stderr)
 
     # Check for experimental diarization flag (v1.1 experimental)
     if cfg.enable_diarization:
-        print(
-            "[INFO] Speaker diarization is EXPERIMENTAL in v1.1.\n"
+        print_warning(
+            "Speaker diarization is EXPERIMENTAL in v1.1.\n"
             "Requires: uv sync --extra diarization\n"
             "Requires: HF_TOKEN environment variable (huggingface.co/settings/tokens)\n"
-            "See docs/SPEAKER_DIARIZATION.md for details.\n",
-            file=sys.stderr,
+            "See docs/SPEAKER_DIARIZATION.md for details.\n"
         )
 
     # Call internal pipeline to get result with failure count
@@ -822,13 +828,17 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     result = run_pipeline(app_cfg, diarization_config=cfg)
 
     # Display structured results
-    print("\n=== Transcription Summary ===")
-    print(f"Total files:      {result.total_files}")
-    print(f"Processed:        {result.processed}")
-    print(f"Skipped:          {result.skipped}")
+    print_header("Transcription Summary")
+    print(f"Total files:      {Colors.bold(str(result.total_files))}")
+    print(f"Processed:        {Colors.green(str(result.processed))}")
+    print(f"Skipped:          {Colors.yellow(str(result.skipped))}")
     if result.diarized_only > 0:
-        print(f"Diarized only:    {result.diarized_only}")
-    print(f"Failed:           {result.failed}")
+        print(f"Diarized only:    {Colors.blue(str(result.diarized_only))}")
+
+    if result.failed > 0:
+        print(f"Failed:           {Colors.red(str(result.failed))}")
+    else:
+        print(f"Failed:           {result.failed}")
 
     # Show RTF if available
     if result.total_audio_seconds > 0 and result.total_time_seconds > 0:
@@ -841,10 +851,10 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     # Show first 5 failures with error messages
     failures = [r for r in result.file_results if r.status == "error"]
     if failures:
-        print(f"\nFailures ({len(failures)}):")
+        print(f"\n{Colors.red('Failures')} ({len(failures)}):")
         for fail in failures[:5]:
             error_msg = fail.error_message or "Unknown error"
-            print(f"  - {fail.file_name}: {error_msg}")
+            print(f"  - {Colors.bold(fail.file_name)}: {error_msg}")
         if len(failures) > 5:
             print(f"  ... and {len(failures) - 5} more")
 
@@ -937,18 +947,22 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
             failures.append((json_path.name, error_msg))
 
     # Display structured results
-    print("\n=== Enrichment Summary ===")
-    print(f"Total files:      {total_files}")
-    print(f"Enriched:         {enriched_count}")
+    print_header("Enrichment Summary")
+    print(f"Total files:      {Colors.bold(str(total_files))}")
+    print(f"Enriched:         {Colors.green(str(enriched_count))}")
     if skipped_count > 0:
-        print(f"Skipped:          {skipped_count} (already enriched)")
-    print(f"Failed:           {failed_count}")
+        print(f"Skipped:          {Colors.yellow(str(skipped_count))} (already enriched)")
+
+    if failed_count > 0:
+        print(f"Failed:           {Colors.red(str(failed_count))}")
+    else:
+        print(f"Failed:           {failed_count}")
 
     # Show first 5 failures with error messages
     if failures:
-        print(f"\nFailures ({len(failures)}):")
+        print(f"\n{Colors.red('Failures')} ({len(failures)}):")
         for file_name, error_msg in failures[:5]:
-            print(f"  - {file_name}: {error_msg}")
+            print(f"  - {Colors.bold(file_name)}: {error_msg}")
         if len(failures) > 5:
             print(f"  ... and {len(failures) - 5} more")
 
@@ -961,12 +975,12 @@ def _handle_validate_command(args: argparse.Namespace) -> int:
     schema_path = args.schema or DEFAULT_SCHEMA_PATH
     failures = validate_many(args.transcripts, schema_path=schema_path)
     if failures:
-        print("Validation failed:")
+        print_error("Validation failed:")
         for err in failures:
             print(f"- {err}")
         return 1
 
-    print(f"[ok] {len(args.transcripts)} transcript(s) valid against {schema_path}")
+    print_success(f"[ok] {len(args.transcripts)} transcript(s) valid against {schema_path}")
     return 0
 
 
@@ -1006,11 +1020,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(f"Unknown command: {args.command}")
 
     except SlowerWhisperError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print_error(str(e))
         return 1
 
     except Exception as e:
-        print(f"Unexpected error: {e}", file=sys.stderr)
+        print_error(f"Unexpected error: {e}")
         return 2
 
 
