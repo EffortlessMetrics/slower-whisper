@@ -133,3 +133,66 @@ class TestFFmpegErrorHandling:
 
         with pytest.raises(audio_io.FFmpegNotFoundError):
             audio_io.normalize_all(paths)
+
+
+class TestPathValidation:
+    """Tests for path safety validation."""
+
+    def test_validate_path_safety_rejects_forbidden_chars(self):
+        """Should raise ValueError if path contains shell metacharacters."""
+        unsafe_paths = [
+            "file|pipe.wav",
+            "file;cmd.wav",
+            "$(cmd).wav",
+            "file&.wav",
+            "`cmd`.wav",
+            "file>.wav",
+            "file<.wav",
+        ]
+        for p in unsafe_paths:
+            with pytest.raises(ValueError, match="Invalid characters in path"):
+                audio_io._validate_path_safety(p)
+
+    def test_validate_path_safety_rejects_leading_dash(self):
+        """Should raise ValueError if path starts with - (option injection)."""
+        with pytest.raises(ValueError, match="Path cannot start with '-'"):
+            audio_io._validate_path_safety("-input.wav")
+
+    def test_validate_path_safety_accepts_safe_paths(self):
+        """Should accept standard filenames and paths."""
+        safe_paths = [
+            "file.wav",
+            "/tmp/file.wav",
+            "dir/file-123.wav",
+            "file_name.wav",
+            "./-file.wav",  # prefixed is safe
+        ]
+        for p in safe_paths:
+            audio_io._validate_path_safety(p)
+
+    def test_normalize_single_validates_paths(self, tmp_path, monkeypatch):
+        """normalize_single should validate paths before running ffmpeg."""
+        src = tmp_path / "src.wav"
+        src.touch()
+        dst = tmp_path / "dst.wav"
+
+        monkeypatch.setattr(audio_io, "ffmpeg_available", lambda: True)
+
+        # Mock subprocess to avoid actual execution
+        monkeypatch.setattr(
+            audio_io.subprocess,
+            "run",
+            lambda *args, **kwargs: None,
+        )
+
+        # Unsafe source
+        with pytest.raises(ValueError, match="Invalid characters"):
+            audio_io.normalize_single(Path("src;rm.wav"), dst)
+
+        # Unsafe dest
+        with pytest.raises(ValueError, match="Invalid characters"):
+            audio_io.normalize_single(src, Path("dst|.wav"))
+
+        # Leading dash
+        with pytest.raises(ValueError, match="Path cannot start with '-'"):
+            audio_io.normalize_single(Path("-src.wav"), dst)
