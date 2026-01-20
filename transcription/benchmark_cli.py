@@ -819,11 +819,25 @@ Respond in JSON format:
 class EmotionBenchmarkRunner(BenchmarkRunner):
     """Benchmark runner for emotion recognition evaluation.
 
-    This is scaffolding - full implementation would:
-    1. Run emotion recognition on each sample
-    2. Compare with reference emotion labels
-    3. Calculate accuracy/F1 metrics
+    Evaluates categorical emotion classification on IEMOCAP dataset:
+    1. Runs emotion recognition using wav2vec2 model
+    2. Compares predicted labels with IEMOCAP ground truth
+    3. Calculates accuracy and weighted F1 metrics
+
+    Note:
+        The wav2vec2 categorical model uses different label vocabulary than IEMOCAP.
+        Labels are normalized for comparison (e.g., model's "fear" → IEMOCAP's "fearful").
+        Some IEMOCAP labels (excited, frustrated, other) have no direct model equivalent.
     """
+
+    # Map model output labels to IEMOCAP vocabulary
+    # Model labels: angry, disgust, fear, happy, neutral, sad, surprised, calm
+    # IEMOCAP labels: angry, happy, sad, neutral, excited, frustrated, fearful, surprised, disgusted, other
+    LABEL_MAP: dict[str, str] = {
+        "disgust": "disgusted",
+        "fear": "fearful",
+        "calm": "neutral",  # Best approximation
+    }
 
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
         if self.dataset == "iemocap":
@@ -831,10 +845,11 @@ class EmotionBenchmarkRunner(BenchmarkRunner):
         raise ValueError(f"Dataset {self.dataset} not supported for emotion track")
 
     def evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
-        from .emotion import get_emotion_recognizer
         import librosa
 
-        # Load audio
+        from .emotion import get_emotion_recognizer
+
+        # Load audio at 16kHz (wav2vec2 expected sample rate)
         try:
             audio, _ = librosa.load(sample.audio_path, sr=16000)
         except Exception as e:
@@ -845,28 +860,28 @@ class EmotionBenchmarkRunner(BenchmarkRunner):
         recognizer = get_emotion_recognizer()
         result = recognizer.extract_emotion_categorical(audio, sr=16000)
 
-        predicted = result["categorical"]["primary"]
+        predicted_raw = result["categorical"]["primary"]
 
-        # Reference is a list of strings
+        # Reference is a list of strings (IEMOCAP may have multiple annotators)
         reference_list = sample.reference_emotions or []
         reference = reference_list[0] if reference_list else None
 
         is_correct = False
+        predicted_normalized = None
 
-        if reference and predicted:
-            # Normalize labels for comparison
-            p = predicted.lower()
-            r = reference.lower()
+        if predicted_raw:
+            # Normalize predicted label to IEMOCAP vocabulary
+            p = predicted_raw.lower()
+            predicted_normalized = self.LABEL_MAP.get(p, p)
 
-            # Map model labels to IEMOCAP labels
-            if p == "disgust":
-                p = "disgusted"
-
-            is_correct = p == r
+            if reference:
+                r = reference.lower()
+                is_correct = predicted_normalized == r
 
         return {
             "id": sample.id,
-            "predicted": predicted,
+            "predicted": predicted_normalized,
+            "predicted_raw": predicted_raw,
             "reference": reference,
             "correct": is_correct,
             "confidence": result["categorical"]["confidence"],
@@ -881,7 +896,7 @@ class EmotionBenchmarkRunner(BenchmarkRunner):
         total = len(sample_results)
         accuracy = correct / total if total > 0 else 0.0
 
-        return [
+        metrics = [
             BenchmarkMetric(
                 name="accuracy",
                 value=accuracy * 100,
@@ -889,6 +904,30 @@ class EmotionBenchmarkRunner(BenchmarkRunner):
                 description="Classification accuracy",
             ),
         ]
+
+        # Compute weighted F1 if sklearn is available
+        try:
+            from sklearn.metrics import f1_score
+
+            # Extract predictions and references (skip samples with missing reference)
+            y_true = [r["reference"] for r in sample_results if r["reference"]]
+            y_pred = [r["predicted"] for r in sample_results if r["reference"]]
+
+            if y_true and y_pred:
+                # Use weighted average to account for class imbalance
+                f1_weighted = f1_score(y_true, y_pred, average="weighted", zero_division=0)
+                metrics.append(
+                    BenchmarkMetric(
+                        name="f1_weighted",
+                        value=f1_weighted * 100,
+                        unit="%",
+                        description="Weighted F1 score (accounts for class imbalance)",
+                    )
+                )
+        except ImportError:
+            logger.debug("sklearn not available; skipping F1 computation")
+
+        return metrics
 
 
 # =============================================================================
