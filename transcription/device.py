@@ -14,6 +14,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from .color_utils import Colors
+
 if TYPE_CHECKING:
     pass
 
@@ -211,16 +213,23 @@ def format_preflight_banner(
     # Main status line
     device_display = resolved.device.upper()
     if resolved.is_fallback:
-        status = f"[Device] {device_display} (fallback from {resolved.requested_device})"
+        status_text = f"[Device] {device_display} (fallback from {resolved.requested_device})"
+        status = Colors.yellow(status_text)
     else:
-        status = f"[Device] {device_display}"
+        # Highlight actual device (Cyan for CUDA/CPU)
+        status = f"{Colors.bold('[Device]')} {Colors.cyan(device_display)}"
 
-    main_line = f"{status} | compute_type={resolved.compute_type} | model={model_name}"
+    # Highlight key parameters
+    compute_str = f"compute_type={Colors.green(resolved.compute_type)}"
+    model_str = f"model={Colors.green(model_name)}"
+
+    main_line = f"{status} | {compute_str} | {model_str}"
     lines.append(main_line)
 
-    # Fallback reason if applicable
+    # Fallback reason if applicable (Red/Yellow for warnings)
     if resolved.fallback_reason:
-        lines.append(f"         └─ Reason: {resolved.fallback_reason}")
+        reason_color = Colors.red if resolved.is_fallback else Colors.yellow
+        lines.append(f"         └─ Reason: {reason_color(resolved.fallback_reason)}")
 
     # Verbose details
     if verbose:

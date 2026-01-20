@@ -20,6 +20,7 @@ from pathlib import Path
 from . import __version__
 from . import api as api_module
 from .benchmark_cli import build_benchmark_parser, handle_benchmark_command
+from .color_utils import Colors
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -822,29 +823,31 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     result = run_pipeline(app_cfg, diarization_config=cfg)
 
     # Display structured results
-    print("\n=== Transcription Summary ===")
+    print(f"\n{Colors.bold('=== Transcription Summary ===')}")
     print(f"Total files:      {result.total_files}")
-    print(f"Processed:        {result.processed}")
-    print(f"Skipped:          {result.skipped}")
+    print(f"Processed:        {Colors.green(str(result.processed))}")
+    print(f"Skipped:          {Colors.yellow(str(result.skipped))}")
     if result.diarized_only > 0:
-        print(f"Diarized only:    {result.diarized_only}")
-    print(f"Failed:           {result.failed}")
+        print(f"Diarized only:    {Colors.cyan(str(result.diarized_only))}")
+
+    failed_color = Colors.red if result.failed > 0 else str
+    print(f"Failed:           {failed_color(str(result.failed))}")
 
     # Show RTF if available
     if result.total_audio_seconds > 0 and result.total_time_seconds > 0:
         rtf = result.overall_rtf
-        print("\nPerformance:")
+        print(f"\n{Colors.bold('Performance:')}")
         print(f"  Audio duration: {result.total_audio_seconds / 60:.1f} min")
         print(f"  Wall time:      {result.total_time_seconds / 60:.1f} min")
-        print(f"  RTF:            {rtf:.2f}x")
+        print(f"  RTF:            {Colors.bold(f'{rtf:.2f}x')}")
 
     # Show first 5 failures with error messages
     failures = [r for r in result.file_results if r.status == "error"]
     if failures:
-        print(f"\nFailures ({len(failures)}):")
+        print(f"\n{Colors.red(f'Failures ({len(failures)}):')}")
         for fail in failures[:5]:
             error_msg = fail.error_message or "Unknown error"
-            print(f"  - {fail.file_name}: {error_msg}")
+            print(f"  - {Colors.bold(fail.file_name)}: {error_msg}")
         if len(failures) > 5:
             print(f"  ... and {len(failures) - 5} more")
 
@@ -937,18 +940,20 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
             failures.append((json_path.name, error_msg))
 
     # Display structured results
-    print("\n=== Enrichment Summary ===")
+    print(f"\n{Colors.bold('=== Enrichment Summary ===')}")
     print(f"Total files:      {total_files}")
-    print(f"Enriched:         {enriched_count}")
+    print(f"Enriched:         {Colors.green(str(enriched_count))}")
     if skipped_count > 0:
-        print(f"Skipped:          {skipped_count} (already enriched)")
-    print(f"Failed:           {failed_count}")
+        print(f"Skipped:          {Colors.yellow(str(skipped_count))} (already enriched)")
+
+    failed_color = Colors.red if failed_count > 0 else str
+    print(f"Failed:           {failed_color(str(failed_count))}")
 
     # Show first 5 failures with error messages
     if failures:
-        print(f"\nFailures ({len(failures)}):")
+        print(f"\n{Colors.red(f'Failures ({len(failures)}):')}")
         for file_name, error_msg in failures[:5]:
-            print(f"  - {file_name}: {error_msg}")
+            print(f"  - {Colors.bold(file_name)}: {error_msg}")
         if len(failures) > 5:
             print(f"  ... and {len(failures) - 5} more")
 
