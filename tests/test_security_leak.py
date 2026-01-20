@@ -202,4 +202,4 @@ class TestValidationErrorMessages:
         # Should show location info
         assert "line" in detail.lower() or "Invalid transcript" in detail
         # Should not leak the raw exception message with context
-        assert "INVALID" not in detail or "Expecting value" not in detail
+        assert "INVALID" not in detail and "Expecting value" not in detail
