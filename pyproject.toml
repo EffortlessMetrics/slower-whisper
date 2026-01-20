@@ -244,6 +244,7 @@ module = [
     "pyannote.*",
     "claude_agent_sdk.*",
     "anthropic.*",
+    "sklearn.*",
 ]
 ignore_missing_imports = true
 
