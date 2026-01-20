@@ -346,18 +346,84 @@ class StreamingBenchmarkRunner(BenchmarkRunner):
         raise ValueError(f"Dataset {self.dataset} not supported for streaming track")
 
     def evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
-        # TODO: Implement actual streaming evaluation
-        # 1. Run streaming transcription
-        # 2. Measure latencies
-        # 3. Return timing metrics
-        logger.debug(f"Streaming evaluation for {sample.id} (not implemented)")
-        return {
-            "id": sample.id,
-            "latency_first_token_ms": 0.0,
-            "latency_total_ms": 0.0,
-            "audio_duration_s": 0.0,
-            "rtf": 0.0,
-        }
+        import time
+
+        from .asr_engine import AsrConfig, TranscriptionEngine
+        from .streaming import StreamChunk
+        from .streaming_enrich import StreamingEnrichmentConfig, StreamingEnrichmentSession
+
+        logger.debug(f"Streaming evaluation for {sample.id}")
+
+        # Initialize ASR engine
+        # Note: In a real scenario we'd reuse the engine across samples,
+        # but the interface currently evaluates one sample at a time.
+        # Ideally, we should initialize the engine in __init__ or run().
+        if not hasattr(self, "_engine"):
+            # Use default config
+            asr_config = AsrConfig()
+            self._engine = TranscriptionEngine(asr_config)
+
+        # Initialize streaming enrichment session
+        # We disable enrichment features to focus on core streaming mechanics,
+        # but using the session ensures we exercise the streaming pipeline.
+        enrich_config = StreamingEnrichmentConfig(
+            enable_prosody=False,
+            enable_emotion=False,
+        )
+        session = StreamingEnrichmentSession(sample.audio_path, enrich_config)
+
+        # Measure timing
+        start_time = time.perf_counter()
+        first_token_time: float | None = None
+
+        try:
+            # Use internal _transcribe_with_model to get the segment generator
+            # This simulates receiving segments from a streaming ASR engine
+            raw_segments, info = self._engine._transcribe_with_model(sample.audio_path)
+
+            for segment in raw_segments:
+                if first_token_time is None:
+                    first_token_time = time.perf_counter()
+
+                # Feed to streaming session
+                chunk = StreamChunk(
+                    start=segment.start,
+                    end=segment.end,
+                    text=segment.text,
+                    speaker_id=None,
+                )
+                session.ingest_chunk(chunk)
+
+            # Finalize stream
+            session.end_of_stream()
+            end_time = time.perf_counter()
+
+            # Calculate metrics
+            total_latency_ms = (end_time - start_time) * 1000
+            latency_first_token_ms = (
+                (first_token_time - start_time) * 1000 if first_token_time else total_latency_ms
+            )
+
+            # Audio duration
+            # Try to get from session extractor, fallback to info.duration
+            try:
+                audio_duration_s = session._extractor.duration_seconds
+            except Exception:
+                audio_duration_s = getattr(info, "duration", 0.0)
+
+            rtf = (total_latency_ms / 1000) / audio_duration_s if audio_duration_s > 0 else 0.0
+
+            return {
+                "id": sample.id,
+                "latency_first_token_ms": latency_first_token_ms,
+                "latency_total_ms": total_latency_ms,
+                "audio_duration_s": audio_duration_s,
+                "rtf": rtf,
+            }
+
+        except Exception as e:
+            logger.error(f"Streaming evaluation failed for {sample.id}: {e}")
+            raise
 
     def aggregate_metrics(self, sample_results: list[dict[str, Any]]) -> list[BenchmarkMetric]:
         if not sample_results:
