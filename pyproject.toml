@@ -124,7 +124,6 @@ dev = [
     "pytest-bdd>=8.1.0",
     "httpx>=0.28.1",  # For API BDD tests
     "jiwer>=4.0.0",  # For WER computation in benchmarks
-    "pyannote.metrics>=3.2.0",  # For DER computation in benchmarks
     "jsonschema>=4.25.1",  # For schema validation CLI/tests
     # Code quality (ruff replaces black, isort, flake8)
     "mypy>=1.19.1",
