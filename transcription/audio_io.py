@@ -6,6 +6,7 @@ management. All audio is normalized to 16kHz mono WAV format for ASR processing.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
 import platform
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from secrets import token_hex
+from typing import NamedTuple
 
 from .config import Paths
 
@@ -355,6 +357,108 @@ def _validate_path_safety(path: Path | str) -> None:
         raise ValueError(f"Path cannot start with '-': {path_str}. Use ./{path_str} instead.")
 
 
+class _NormalizeResult(NamedTuple):
+    """Result of normalizing a single file."""
+
+    src: Path
+    success: bool
+    skipped: bool = False
+    error: Exception | None = None
+    abort: bool = False  # True if we should abort the entire run
+
+
+def _normalize_one_file(src: Path, dst: Path, paths: Paths) -> _NormalizeResult:
+    """
+    Process a single file for normalization (thread-safe).
+
+    Returns a result indicating success, skip, or error status.
+    Sets abort=True for FFmpegNotFoundError to signal run termination.
+    """
+    # Check if already up-to-date
+    if dst.exists():
+        try:
+            src_mtime = src.stat().st_mtime
+            dst_mtime = dst.stat().st_mtime
+            if dst_mtime >= src_mtime:
+                logger.info(
+                    "Skipping already normalized file (up to date)",
+                    extra={"file": src.name, "output": dst.name},
+                )
+                return _NormalizeResult(src=src, success=True, skipped=True)
+            logger.info(
+                "Re-normalizing file (source is newer)",
+                extra={"file": src.name, "output": dst.name},
+            )
+        except OSError as stat_err:
+            logger.warning(
+                "Could not compare timestamps for %s: %s; re-normalizing",
+                src.name,
+                stat_err,
+                extra={"file": src.name},
+            )
+
+    logger.info("Normalizing audio file", extra={"file": src.name, "output": dst.name})
+
+    try:
+        _validate_path_safety(src)
+        _validate_path_safety(dst)
+        ensure_within_dir(src, paths.raw_dir)
+        ensure_within_dir(dst, paths.norm_dir)
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(src),
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            str(dst),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr_output = result.stderr.strip() if result.stderr else ""
+            _log_ffmpeg_error(src.name, result.returncode, stderr_output)
+            if dst.exists():
+                try:
+                    dst.unlink()
+                    logger.debug("Removed partial output: %s", dst.name)
+                except OSError:
+                    pass
+            return _NormalizeResult(src=src, success=False)
+        return _NormalizeResult(src=src, success=True)
+
+    except FileNotFoundError:
+        # ffmpeg binary not found - signal abort
+        logger.error(
+            "ffmpeg executable not found while processing '%s'.",
+            src.name,
+            exc_info=True,
+            extra={"file": src.name},
+        )
+        return _NormalizeResult(src=src, success=False, error=FFmpegNotFoundError(), abort=True)
+
+    except ValueError as e:
+        logger.warning("Skipping '%s': %s", src.name, e, extra={"file": src.name})
+        return _NormalizeResult(src=src, success=False, error=e)
+
+    except OSError as e:
+        logger.error(
+            "Failed to run ffmpeg for '%s': %s.",
+            src.name,
+            e,
+            exc_info=True,
+            extra={"file": src.name},
+        )
+        if dst.exists():
+            try:
+                dst.unlink()
+            except OSError:
+                pass
+        return _NormalizeResult(src=src, success=False, error=e)
+
+
 def normalize_single(src: Path, dst: Path) -> None:
     """
     Normalize a single audio file to 16kHz mono WAV using ffmpeg.
@@ -416,6 +520,9 @@ def normalize_all(paths: Paths) -> None:
     """
     Convert all files in raw_dir to 16 kHz mono WAV in norm_dir using ffmpeg.
 
+    Processing is performed in parallel using a ThreadPoolExecutor for improved
+    throughput when normalizing multiple files.
+
     Existing normalized WAVs are skipped so the operation is idempotent.
     Failures for individual files are logged and do not abort the entire run.
 
@@ -424,122 +531,50 @@ def normalize_all(paths: Paths) -> None:
     """
     logger.info("Starting audio normalization with ffmpeg")
 
-    # Check ffmpeg installation with helpful error messages
+    # Check ffmpeg installation before spawning threads
     check_ffmpeg_installation()
 
-    any_src = False
+    # Collect files to process
+    files_to_process: list[tuple[Path, Path]] = []
     for src in sorted(paths.raw_dir.iterdir()):
-        if not src.is_file():
-            continue
+        if src.is_file():
+            dst = paths.norm_dir / f"{src.stem}.wav"
+            files_to_process.append((src, dst))
 
-        any_src = True
-        dst = paths.norm_dir / f"{src.stem}.wav"
+    if not files_to_process:
+        logger.info("No files found in raw_audio/ directory")
+        return
 
-        # If a normalized file already exists, skip only when it is up-to-date.
-        if dst.exists():
+    # Process files in parallel using ThreadPoolExecutor
+    # Default workers = min(32, os.cpu_count() + 4), good for I/O-bound ffmpeg calls
+    abort_error: FFmpegNotFoundError | None = None
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = {
+            executor.submit(_normalize_one_file, src, dst, paths): src
+            for src, dst in files_to_process
+        }
+
+        for future in concurrent.futures.as_completed(futures):
             try:
-                src_mtime = src.stat().st_mtime
-                dst_mtime = dst.stat().st_mtime
-                if dst_mtime >= src_mtime:
-                    logger.info(
-                        "Skipping already normalized file (up to date)",
-                        extra={"file": src.name, "output": dst.name},
-                    )
-                    continue
-                else:
-                    logger.info(
-                        "Re-normalizing file (source is newer)",
-                        extra={"file": src.name, "output": dst.name},
-                    )
-            except OSError as stat_err:
-                logger.warning(
-                    "Could not compare timestamps for %s: %s; re-normalizing",
+                result = future.result()
+                if result.abort and result.error is not None:
+                    # FFmpegNotFoundError - cancel remaining work and re-raise
+                    abort_error = result.error  # type: ignore[assignment]
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
+            except Exception as e:
+                # Unexpected exception from thread
+                src = futures[future]
+                logger.error(
+                    "Unexpected error processing '%s': %s",
                     src.name,
-                    stat_err,
+                    e,
+                    exc_info=True,
                     extra={"file": src.name},
                 )
 
-        logger.info("Normalizing audio file", extra={"file": src.name, "output": dst.name})
-        # Security fix: Use argument list instead of shell command to prevent command injection
-        # Validate file paths to ensure they don't contain malicious characters
-        try:
-            # Validate source file path
-            _validate_path_safety(src)
-            _validate_path_safety(dst)
+    if abort_error is not None:
+        raise abort_error
 
-            src_str = str(src)
-            dst_str = str(dst)
-
-            # Ensure paths are within expected directories (use is_relative_to for safety)
-            ensure_within_dir(src, paths.raw_dir)
-            ensure_within_dir(dst, paths.norm_dir)
-
-            # Use argument list to prevent shell injection
-            cmd = [
-                "ffmpeg",
-                "-y",  # overwrite
-                "-i",
-                src_str,
-                "-ac",
-                "1",  # mono
-                "-ar",
-                "16000",  # 16 kHz
-                dst_str,
-            ]
-            # Security fix: Use argument list without shell=True to prevent command injection
-            # The default is shell=False, so we don't need to specify it explicitly
-            # This ensures the command is executed as a list of arguments, not a shell string
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                stderr_output = result.stderr.strip() if result.stderr else ""
-                _log_ffmpeg_error(src.name, result.returncode, stderr_output)
-                # Clean up partial/corrupt output file on failure
-                if dst.exists():
-                    try:
-                        dst.unlink()
-                        logger.debug("Removed partial output: %s", dst.name)
-                    except OSError:
-                        pass  # Best effort cleanup
-                continue
-        except FileNotFoundError as e:
-            # ffmpeg binary not found (shouldn't happen after check, but defensive)
-            logger.error(
-                "ffmpeg executable not found while processing '%s'. "
-                "This is unexpected since we checked earlier. "
-                "Please verify ffmpeg is installed and on PATH.",
-                src.name,
-                exc_info=True,
-                extra={"file": src.name},
-            )
-            raise FFmpegNotFoundError() from e
-        except ValueError as e:
-            # Path validation failed (unsafe characters or option injection)
-            logger.warning(
-                "Skipping '%s': %s",
-                src.name,
-                e,
-                extra={"file": src.name},
-            )
-            continue
-        except OSError as e:
-            # Handle other subprocess launch failures
-            logger.error(
-                "Failed to run ffmpeg for '%s': %s. "
-                "This may indicate a permissions issue or system resource problem.",
-                src.name,
-                e,
-                exc_info=True,
-                extra={"file": src.name},
-            )
-            # Clean up any partial output (defensive)
-            if dst.exists():
-                try:
-                    dst.unlink()
-                except OSError:
-                    pass
-            continue
-
-    if not any_src:
-        logger.info("No files found in raw_audio/ directory")
-    else:
-        logger.info("Audio normalization complete")
+    logger.info("Audio normalization complete")
