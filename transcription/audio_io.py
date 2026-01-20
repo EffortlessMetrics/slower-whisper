@@ -6,6 +6,7 @@ management. All audio is normalized to 16kHz mono WAV format for ASR processing.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
 import platform
@@ -379,10 +380,100 @@ def normalize_single(src: Path, dst: Path) -> None:
         raise FFmpegNotFoundError() from e
 
 
+def _normalize_task(src: Path, dst: Path, paths: Paths) -> None:
+    """
+    Worker function to normalize a single file.
+
+    Handles validation, logging, and ffmpeg execution.
+    Designed to be run in a thread pool.
+    """
+    logger.info("Normalizing audio file", extra={"file": src.name, "output": dst.name})
+    # Security fix: Use argument list instead of shell command to prevent command injection
+    # Validate file paths to ensure they don't contain malicious characters
+    try:
+        # Validate source file path
+        src_str = str(src)
+        dst_str = str(dst)
+
+        # Basic path validation - reject paths with potentially dangerous characters
+        # This prevents path traversal and command injection attempts
+        if any(
+            char in src_str
+            for char in ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
+        ):
+            raise ValueError(f"Invalid characters in source path: {src_str}")
+        if any(
+            char in dst_str
+            for char in ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
+        ):
+            raise ValueError(f"Invalid characters in destination path: {dst_str}")
+
+        # Ensure paths are within expected directories (use is_relative_to for safety)
+        ensure_within_dir(src, paths.raw_dir)
+        ensure_within_dir(dst, paths.norm_dir)
+
+        # Use argument list to prevent shell injection
+        cmd = [
+            "ffmpeg",
+            "-y",  # overwrite
+            "-i",
+            src_str,
+            "-ac",
+            "1",  # mono
+            "-ar",
+            "16000",  # 16 kHz
+            dst_str,
+        ]
+        # Security fix: Use argument list without shell=True to prevent command injection
+        # The default is shell=False, so we don't need to specify it explicitly
+        # This ensures the command is executed as a list of arguments, not a shell string
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr_output = result.stderr.strip() if result.stderr else ""
+            _log_ffmpeg_error(src.name, result.returncode, stderr_output)
+            # Clean up partial/corrupt output file on failure
+            if dst.exists():
+                try:
+                    dst.unlink()
+                    logger.debug("Removed partial output: %s", dst.name)
+                except OSError:
+                    pass  # Best effort cleanup
+            return
+    except FileNotFoundError as e:
+        # ffmpeg binary not found (shouldn't happen after check, but defensive)
+        logger.error(
+            "ffmpeg executable not found while processing '%s'. "
+            "This is unexpected since we checked earlier. "
+            "Please verify ffmpeg is installed and on PATH.",
+            src.name,
+            exc_info=True,
+            extra={"file": src.name},
+        )
+        raise FFmpegNotFoundError() from e
+    except (OSError, ValueError) as e:
+        # Handle other subprocess launch failures
+        logger.error(
+            "Failed to run ffmpeg for '%s': %s. "
+            "This may indicate a permissions issue or system resource problem.",
+            src.name,
+            e,
+            exc_info=True,
+            extra={"file": src.name},
+        )
+        # Clean up any partial output (defensive)
+        if dst.exists():
+            try:
+                dst.unlink()
+            except OSError:
+                pass
+        return
+
+
 def normalize_all(paths: Paths) -> None:
     """
     Convert all files in raw_dir to 16 kHz mono WAV in norm_dir using ffmpeg.
 
+    Uses a thread pool to process multiple files in parallel for better performance.
     Existing normalized WAVs are skipped so the operation is idempotent.
     Failures for individual files are logged and do not abort the entire run.
 
@@ -394,13 +485,28 @@ def normalize_all(paths: Paths) -> None:
     # Check ffmpeg installation with helpful error messages
     check_ffmpeg_installation()
 
+    tasks: list[tuple[Path, Path]] = []
+    seen_dst: set[Path] = set()
     any_src = False
+
+    # Phase 1: Identify tasks and deduplicate
     for src in sorted(paths.raw_dir.iterdir()):
         if not src.is_file():
             continue
 
         any_src = True
         dst = paths.norm_dir / f"{src.stem}.wav"
+
+        # Explicitly filter duplicate destination paths to prevent race conditions
+        if dst in seen_dst:
+            logger.warning(
+                "Skipping '%s' as it maps to the same destination '%s' as a previously scheduled file.",
+                src.name,
+                dst.name,
+                extra={"file": src.name},
+            )
+            continue
+        seen_dst.add(dst)
 
         # If a normalized file already exists, skip only when it is up-to-date.
         if dst.exists():
@@ -426,88 +532,36 @@ def normalize_all(paths: Paths) -> None:
                     extra={"file": src.name},
                 )
 
-        logger.info("Normalizing audio file", extra={"file": src.name, "output": dst.name})
-        # Security fix: Use argument list instead of shell command to prevent command injection
-        # Validate file paths to ensure they don't contain malicious characters
-        try:
-            # Validate source file path
-            src_str = str(src)
-            dst_str = str(dst)
-
-            # Basic path validation - reject paths with potentially dangerous characters
-            # This prevents path traversal and command injection attempts
-            if any(
-                char in src_str
-                for char in ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
-            ):
-                raise ValueError(f"Invalid characters in source path: {src_str}")
-            if any(
-                char in dst_str
-                for char in ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
-            ):
-                raise ValueError(f"Invalid characters in destination path: {dst_str}")
-
-            # Ensure paths are within expected directories (use is_relative_to for safety)
-            ensure_within_dir(src, paths.raw_dir)
-            ensure_within_dir(dst, paths.norm_dir)
-
-            # Use argument list to prevent shell injection
-            cmd = [
-                "ffmpeg",
-                "-y",  # overwrite
-                "-i",
-                src_str,
-                "-ac",
-                "1",  # mono
-                "-ar",
-                "16000",  # 16 kHz
-                dst_str,
-            ]
-            # Security fix: Use argument list without shell=True to prevent command injection
-            # The default is shell=False, so we don't need to specify it explicitly
-            # This ensures the command is executed as a list of arguments, not a shell string
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                stderr_output = result.stderr.strip() if result.stderr else ""
-                _log_ffmpeg_error(src.name, result.returncode, stderr_output)
-                # Clean up partial/corrupt output file on failure
-                if dst.exists():
-                    try:
-                        dst.unlink()
-                        logger.debug("Removed partial output: %s", dst.name)
-                    except OSError:
-                        pass  # Best effort cleanup
-                continue
-        except FileNotFoundError as e:
-            # ffmpeg binary not found (shouldn't happen after check, but defensive)
-            logger.error(
-                "ffmpeg executable not found while processing '%s'. "
-                "This is unexpected since we checked earlier. "
-                "Please verify ffmpeg is installed and on PATH.",
-                src.name,
-                exc_info=True,
-                extra={"file": src.name},
-            )
-            raise FFmpegNotFoundError() from e
-        except OSError as e:
-            # Handle other subprocess launch failures
-            logger.error(
-                "Failed to run ffmpeg for '%s': %s. "
-                "This may indicate a permissions issue or system resource problem.",
-                src.name,
-                e,
-                exc_info=True,
-                extra={"file": src.name},
-            )
-            # Clean up any partial output (defensive)
-            if dst.exists():
-                try:
-                    dst.unlink()
-                except OSError:
-                    pass
-            continue
+        tasks.append((src, dst))
 
     if not any_src:
         logger.info("No files found in raw_audio/ directory")
-    else:
-        logger.info("Audio normalization complete")
+        return
+
+    if not tasks:
+        logger.info("Audio normalization complete (all files up to date)")
+        return
+
+    # Phase 2: Execute tasks in parallel
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Submit all tasks
+        futures = {
+            executor.submit(_normalize_task, src, dst, paths): src for src, dst in tasks
+        }
+
+        # Wait for all tasks to complete and handle any unexpected exceptions
+        for future in concurrent.futures.as_completed(futures):
+            src = futures[future]
+            try:
+                future.result()
+            except Exception as e:
+                # Should be handled inside _normalize_task, but just in case
+                logger.error(
+                    "Unexpected error during normalization of '%s': %s",
+                    src.name,
+                    e,
+                    exc_info=True,
+                    extra={"file": src.name},
+                )
+
+    logger.info("Audio normalization complete")
