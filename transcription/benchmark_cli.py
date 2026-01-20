@@ -467,46 +467,16 @@ class EmotionBenchmarkRunner(BenchmarkRunner):
         raise ValueError(f"Dataset {self.dataset} not supported for emotion track")
 
     def evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
-        from .emotion import get_emotion_recognizer
-        import librosa
-
-        # Load audio
-        try:
-            audio, _ = librosa.load(sample.audio_path, sr=16000)
-        except Exception as e:
-            logger.error(f"Failed to load audio {sample.audio_path}: {e}")
-            raise
-
-        # Get recognizer and predict
-        recognizer = get_emotion_recognizer()
-        result = recognizer.extract_emotion_categorical(audio, sr=16000)
-
-        predicted = result["categorical"]["primary"]
-
-        # Reference is a list of strings
-        reference_list = sample.reference_emotions or []
-        reference = reference_list[0] if reference_list else None
-
-        is_correct = False
-
-        if reference and predicted:
-            # Normalize labels for comparison
-            p = predicted.lower()
-            r = reference.lower()
-
-            # Map model labels to IEMOCAP labels
-            if p == "disgust":
-                p = "disgusted"
-
-            is_correct = p == r
-
+        # TODO: Implement actual emotion evaluation
+        # 1. Run emotion recognition on sample.audio_path
+        # 2. Compare with sample.reference_emotions
+        # 3. Return accuracy metrics
+        logger.debug(f"Emotion evaluation for {sample.id} (not implemented)")
         return {
             "id": sample.id,
-            "predicted": predicted,
-            "reference": reference,
-            "correct": is_correct,
-            "confidence": result["categorical"]["confidence"],
-            "all_scores": result["categorical"]["all_scores"],
+            "predicted": None,
+            "reference": sample.reference_emotions[0] if sample.reference_emotions else None,
+            "correct": False,
         }
 
     def aggregate_metrics(self, sample_results: list[dict[str, Any]]) -> list[BenchmarkMetric]:
