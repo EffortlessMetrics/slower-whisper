@@ -804,7 +804,10 @@ class TestPipelineDiarization:
             transcript.meta["diarization"] = {"status": "success"}
             return transcript
 
-        with patch("transcription.api._maybe_run_diarization", side_effect=add_diarization):
+        with patch(
+            "transcription.diarization_orchestrator._maybe_run_diarization",
+            side_effect=add_diarization,
+        ):
             result = run_pipeline(sample_app_config, diarization_config=diar_config)
 
         assert result.total_files == 1
@@ -880,7 +883,7 @@ class TestPipelineDiarization:
 
         # Mock diarization to fail
         with patch(
-            "transcription.api._maybe_run_diarization",
+            "transcription.diarization_orchestrator._maybe_run_diarization",
             side_effect=RuntimeError("Diarization model error"),
         ):
             result = run_pipeline(sample_app_config, diarization_config=diar_config)
@@ -963,7 +966,9 @@ class TestPipelineDiarization:
             transcript.chunks = [{"id": 0, "segments": [0]}]
             return transcript
 
-        with patch("transcription.api._maybe_build_chunks", side_effect=mock_build_chunks):
+        with patch(
+            "transcription.transcription_helpers._maybe_build_chunks", side_effect=mock_build_chunks
+        ):
             result = run_pipeline(sample_app_config, diarization_config=chunk_config)
 
         # File should be skipped since no diarization enabled
@@ -1008,7 +1013,7 @@ class TestPipelineDiarization:
 
         # Mock chunk building to raise error
         with patch(
-            "transcription.api._maybe_build_chunks",
+            "transcription.transcription_helpers._maybe_build_chunks",
             side_effect=RuntimeError("Chunk error"),
         ):
             with caplog.at_level(logging.ERROR):
@@ -1048,7 +1053,10 @@ class TestPipelineDiarization:
             transcript.meta["diarization"] = {"status": "success", "num_speakers": 2}
             return transcript
 
-        with patch("transcription.api._maybe_run_diarization", side_effect=add_diarization):
+        with patch(
+            "transcription.diarization_orchestrator._maybe_run_diarization",
+            side_effect=add_diarization,
+        ):
             result = run_pipeline(sample_app_config, diarization_config=diar_config)
 
         assert result.processed == 1
@@ -1093,8 +1101,13 @@ class TestPipelineDiarization:
             transcript.chunks = [{"id": 0, "segments": [0, 1]}]
             return transcript
 
-        with patch("transcription.api._maybe_run_diarization", side_effect=add_diarization):
-            with patch("transcription.api._maybe_build_chunks", side_effect=add_chunks):
+        with patch(
+            "transcription.diarization_orchestrator._maybe_run_diarization",
+            side_effect=add_diarization,
+        ):
+            with patch(
+                "transcription.transcription_helpers._maybe_build_chunks", side_effect=add_chunks
+            ):
                 result = run_pipeline(sample_app_config, diarization_config=chunk_config)
 
         assert result.processed == 1
