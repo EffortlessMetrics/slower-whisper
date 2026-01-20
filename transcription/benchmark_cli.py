@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from .asr_engine import TranscriptionEngine as _TranscriptionEngine
+    from .diarization import Diarizer
 
 from .benchmark.semantic_metrics import (
     compute_action_metrics,
@@ -372,15 +373,19 @@ class ASRBenchmarkRunner(BenchmarkRunner):
 class DiarizationBenchmarkRunner(BenchmarkRunner):
     """Benchmark runner for speaker diarization (DER) evaluation.
 
-    This is scaffolding - full implementation would:
-    1. Run diarization on each sample
-    2. Compare with reference speaker annotations
-    3. Calculate DER using pyannote.metrics
+    Evaluates speaker diarization quality by:
+    1. Running diarization on each sample
+    2. Comparing with reference speaker annotations
+    3. Calculating DER/JER using pyannote.metrics
+
+    Requirements:
+        - pyannote.metrics (install with: uv sync --extra dev)
+        - pyannote.audio for actual diarization (install with: uv sync --extra diarization)
     """
 
     def __init__(self, track: str, dataset: str, split: str = "test"):
         super().__init__(track, dataset, split)
-        self._diarizer = None
+        self._diarizer: Diarizer | None = None
 
     @property
     def diarizer(self):
@@ -406,14 +411,14 @@ class DiarizationBenchmarkRunner(BenchmarkRunner):
             ) from e
 
         if not sample.reference_speakers:
-            # Cannot evaluate without reference
+            # Cannot evaluate without reference - return None metrics
             return {
                 "id": sample.id,
-                "der": 0.0,
-                "jer": 0.0,
+                "der": None,
+                "jer": None,
                 "speaker_count_ref": 0,
                 "speaker_count_hyp": 0,
-                "error": "No reference speakers",
+                "reason": "no_reference_speakers",
             }
 
         # 1. Run diarization
@@ -459,23 +464,70 @@ class DiarizationBenchmarkRunner(BenchmarkRunner):
         if not sample_results:
             return []
 
-        avg_der = sum(r["der"] for r in sample_results) / len(sample_results)
-        avg_jer = sum(r["jer"] for r in sample_results) / len(sample_results)
+        total_count = len(sample_results)
 
-        return [
-            BenchmarkMetric(
-                name="der",
-                value=avg_der,
-                unit="%",
-                description="Diarization Error Rate (lower is better)",
-            ),
-            BenchmarkMetric(
-                name="jer",
-                value=avg_jer,
-                unit="%",
-                description="Jaccard Error Rate (lower is better)",
-            ),
-        ]
+        # Filter out samples with None metrics
+        der_values = [r["der"] for r in sample_results if r.get("der") is not None]
+        jer_values = [r["jer"] for r in sample_results if r.get("jer") is not None]
+
+        metrics: list[BenchmarkMetric] = []
+
+        if der_values:
+            avg_der = sum(der_values) / len(der_values)
+            metrics.append(
+                BenchmarkMetric(
+                    name="der",
+                    value=avg_der,
+                    unit="%",
+                    description="Diarization Error Rate (lower is better)",
+                    measured_count=len(der_values),
+                    total_count=total_count,
+                )
+            )
+        else:
+            # Find reason from samples
+            reasons = [r.get("reason") for r in sample_results if r.get("der") is None]
+            reason = reasons[0] if reasons else "not_measured"
+            metrics.append(
+                BenchmarkMetric(
+                    name="der",
+                    value=None,
+                    unit="%",
+                    description="Diarization Error Rate (lower is better)",
+                    measured_count=0,
+                    total_count=total_count,
+                    reason=reason,
+                )
+            )
+
+        if jer_values:
+            avg_jer = sum(jer_values) / len(jer_values)
+            metrics.append(
+                BenchmarkMetric(
+                    name="jer",
+                    value=avg_jer,
+                    unit="%",
+                    description="Jaccard Error Rate (lower is better)",
+                    measured_count=len(jer_values),
+                    total_count=total_count,
+                )
+            )
+        else:
+            reasons = [r.get("reason") for r in sample_results if r.get("jer") is None]
+            reason = reasons[0] if reasons else "not_measured"
+            metrics.append(
+                BenchmarkMetric(
+                    name="jer",
+                    value=None,
+                    unit="%",
+                    description="Jaccard Error Rate (lower is better)",
+                    measured_count=0,
+                    total_count=total_count,
+                    reason=reason,
+                )
+            )
+
+        return metrics
 
 
 class StreamingBenchmarkRunner(BenchmarkRunner):
