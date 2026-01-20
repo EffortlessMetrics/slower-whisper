@@ -20,11 +20,17 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from types import ModuleType
+
+    from .asr_engine import TranscriptionEngine as _TranscriptionEngine
 
 from .benchmark.semantic_metrics import (
     compute_action_metrics,
@@ -233,37 +239,48 @@ class ASRBenchmarkRunner(BenchmarkRunner):
     1. Transcribe each sample using slower-whisper (TranscriptionEngine)
     2. Compare with reference transcript
     3. Calculate WER/CER using jiwer
+
+    Note:
+        Currently hardcodes language="en" since the supported dataset (LibriSpeech)
+        is English-only. Future datasets may require language configuration.
     """
+
+    engine: _TranscriptionEngine | None
+    jiwer: ModuleType | None
 
     def __init__(self, track: str, dataset: str, split: str = "test"):
         super().__init__(track, dataset, split)
+        self.engine = None
+        self.jiwer = None
+
+        # Initialize jiwer first (fast, no side effects)
+        try:
+            import jiwer
+
+            self.jiwer = jiwer
+        except ImportError:
+            logger.warning("jiwer not installed. WER/CER calculation will fail.")
+
+        # Initialize ASR engine
         try:
             from .asr_engine import TranscriptionEngine
             from .config import AsrConfig, TranscriptionConfig
 
             # Load config from env (respects SLOWER_WHISPER_MODEL, etc.)
             t_cfg = TranscriptionConfig.from_env()
-            self.config = AsrConfig(
+            config = AsrConfig(
                 model_name=t_cfg.model,
                 device=t_cfg.device,
                 compute_type=t_cfg.compute_type,
                 beam_size=t_cfg.beam_size,
-                # Ensure we get raw text for evaluation
                 task="transcribe",
-                language="en",  # LibriSpeech is English
+                language="en",  # LibriSpeech is English-only
             )
-            self.engine = TranscriptionEngine(self.config)
+            self.engine = TranscriptionEngine(config)
+        except ImportError as e:
+            logger.error(f"ASR dependencies not available: {e}")
         except Exception as e:
             logger.error(f"Failed to initialize ASR engine: {e}")
-            self.engine = None
-
-        try:
-            import jiwer
-
-            self.jiwer = jiwer
-        except ImportError:
-            self.jiwer = None
-            logger.warning("jiwer not installed. WER/CER calculation will fail.")
 
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
         if self.dataset == "librispeech":
@@ -272,8 +289,6 @@ class ASRBenchmarkRunner(BenchmarkRunner):
 
     def _normalize_text(self, text: str) -> str:
         """Normalize text for ASR evaluation (lowercase, remove punctuation)."""
-        import re
-
         if not text:
             return ""
         # Lowercase
