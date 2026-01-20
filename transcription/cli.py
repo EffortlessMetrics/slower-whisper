@@ -20,6 +20,12 @@ from pathlib import Path
 from . import __version__
 from . import api as api_module
 from .benchmark_cli import build_benchmark_parser, handle_benchmark_command
+from .cli_commands.shared import (
+    default_export_path,
+    format_size,
+    get_cache_size,
+    setup_progress_logging,
+)
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -53,13 +59,7 @@ def _setup_progress_logging(show_progress: bool) -> None:
     Args:
         show_progress: Whether to show progress indicators (file counters).
     """
-    level = logging.INFO if show_progress else logging.WARNING
-
-    # Configure basic format first (only works on first call)
-    logging.basicConfig(format="%(message)s")
-
-    # Always set level directly (works on subsequent calls)
-    logging.getLogger().setLevel(level)
+    setup_progress_logging(show_progress)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -570,26 +570,12 @@ def _config_from_enrich_args(args: argparse.Namespace) -> EnrichmentConfig:
 
 def _get_cache_size(path: Path) -> int:
     """Get total size of directory in bytes."""
-    if not path.exists():
-        return 0
-    total = 0
-    for item in path.rglob("*"):
-        if item.is_file():
-            try:
-                total += item.stat().st_size
-            except (OSError, PermissionError):
-                pass
-    return total
+    return get_cache_size(path)
 
 
 def _format_size(bytes_size: int) -> str:
     """Format bytes as human-readable string."""
-    size = float(bytes_size)
-    for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if size < 1024.0:
-            return f"{size:.1f} {unit}"
-        size /= 1024.0
-    return f"{size:.1f} PB"
+    return format_size(bytes_size)
 
 
 def _handle_cache_command(args: argparse.Namespace) -> int:
@@ -747,9 +733,8 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
 
 
 def _default_export_path(input_path: Path, fmt: str) -> Path:
-    suffix_map = {"csv": ".csv", "html": ".html", "vtt": ".vtt", "textgrid": ".TextGrid"}
-    suffix = suffix_map.get(fmt.lower(), f".{fmt}")
-    return input_path.with_suffix(suffix)
+    """Derive default export path from input path and format."""
+    return default_export_path(input_path, fmt)
 
 
 def _handle_export_command(args: argparse.Namespace) -> int:
