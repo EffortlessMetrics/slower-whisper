@@ -1061,15 +1061,17 @@ async def transcribe_audio(
             ) from e
         except TranscriptionError as e:
             logger.error("Transcription failed", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=500,
-                detail=f"Transcription failed: {str(e)}",
+                detail="Transcription failed",
             ) from e
         except Exception as e:
             logger.exception("Unexpected error during transcription")
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=500,
-                detail=f"Unexpected error during transcription: {str(e)}",
+                detail="Unexpected error during transcription",
             ) from e
 
         # Convert Transcript to JSON-serializable dict
@@ -1284,15 +1286,17 @@ async def enrich_audio(
             ) from e
         except EnrichmentError as e:
             logger.error("Enrichment failed", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=500,
-                detail=f"Enrichment failed: {str(e)}",
+                detail="Enrichment failed",
             ) from e
         except Exception as e:
             logger.exception("Unexpected error during enrichment")
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=500,
-                detail=f"Unexpected error during enrichment: {str(e)}",
+                detail="Unexpected error during enrichment",
             ) from e
 
         # Convert to dict and return
