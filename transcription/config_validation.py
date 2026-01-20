@@ -80,7 +80,7 @@ def validate_compute_type(compute_type: str | None) -> str | None:
     Validate that compute_type is supported by faster-whisper.
 
     Args:
-        compute_type: Requested compute type (case-insensitive) or None for auto.
+        compute_type: Requested compute type (case-insensitive) or None/"auto" for auto.
 
     Returns:
         Normalized compute type (lowercase) or None if not provided.
@@ -91,7 +91,13 @@ def validate_compute_type(compute_type: str | None) -> str | None:
     if compute_type is None:
         return None
 
-    normalized = compute_type.lower()
+    if not isinstance(compute_type, str):
+        raise ConfigurationError("compute_type must be a string or null.")
+
+    normalized = compute_type.strip().lower()
+    if not normalized or normalized in {"auto", "none", "null"}:
+        return None
+
     if normalized not in ALLOWED_COMPUTE_TYPES:
         allowed = ", ".join(sorted(ALLOWED_COMPUTE_TYPES))
         raise ConfigurationError(
@@ -105,13 +111,13 @@ def auto_derive_compute_type(device: str, compute_type: str | None) -> str:
     """
     Auto-derive compute_type based on device if not explicitly provided.
 
-    If compute_type is None, selects sensible defaults:
+    If compute_type is None/"auto", selects sensible defaults:
     - "int8" for CPU (optimal for CPU inference)
     - "float16" for CUDA (uses Tensor Cores on modern GPUs)
 
     Args:
         device: Target device ("cpu" or "cuda").
-        compute_type: Requested compute type or None for auto-selection.
+        compute_type: Requested compute type or None/"auto" for auto-selection.
 
     Returns:
         Normalized compute type (lowercase, validated).
@@ -119,12 +125,12 @@ def auto_derive_compute_type(device: str, compute_type: str | None) -> str:
     Raises:
         ConfigurationError: If compute_type is not supported by faster-whisper.
     """
-    if compute_type is None:
+    normalized = validate_compute_type(compute_type)
+    if normalized is None:
         # Use sensible defaults: int8 for CPU, float16 for CUDA
-        compute_type = "int8" if device == "cpu" else "float16"
+        return "int8" if device == "cpu" else "float16"
 
-    # Validate and normalize
-    return validate_compute_type(compute_type) or compute_type
+    return normalized
 
 
 def validate_diarization_settings(
