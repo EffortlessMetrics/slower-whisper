@@ -327,6 +327,34 @@ def _indent_stderr(stderr: str, indent: str = "    ") -> str:
     return "\n".join(f"{indent}{line}" for line in lines)
 
 
+def _validate_path_safety(path: Path | str) -> None:
+    """
+    Validate that a path is safe for subprocess arguments.
+
+    Prevents:
+    - Shell injection (although we use list args, it's good defense in depth)
+    - Option injection (paths starting with -)
+
+    Args:
+        path: Path to validate
+
+    Raises:
+        ValueError: If path contains unsafe characters or patterns.
+    """
+    path_str = str(path)
+
+    # Check for shell metacharacters
+    # This list covers characters that could be dangerous in shell context
+    forbidden_chars = ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
+    if any(char in path_str for char in forbidden_chars):
+        raise ValueError(f"Invalid characters in path: {path_str}")
+
+    # Check for option injection (leading dash)
+    # ffmpeg might interpret files starting with - as options
+    if path_str.startswith("-"):
+        raise ValueError(f"Path cannot start with '-': {path_str}. Use ./{path_str} instead.")
+
+
 def normalize_single(src: Path, dst: Path) -> None:
     """
     Normalize a single audio file to 16kHz mono WAV using ffmpeg.
@@ -339,7 +367,12 @@ def normalize_single(src: Path, dst: Path) -> None:
         FFmpegNotFoundError: If ffmpeg is not installed or not on PATH.
         FFmpegError: If ffmpeg fails to process the file.
         FileNotFoundError: If the source file does not exist.
+        ValueError: If paths contain unsafe characters.
     """
+    # Security fix: Validate paths first
+    _validate_path_safety(src)
+    _validate_path_safety(dst)
+
     if not src.exists():
         raise FileNotFoundError(f"Source audio file not found: {src}")
 
@@ -431,21 +464,11 @@ def normalize_all(paths: Paths) -> None:
         # Validate file paths to ensure they don't contain malicious characters
         try:
             # Validate source file path
+            _validate_path_safety(src)
+            _validate_path_safety(dst)
+
             src_str = str(src)
             dst_str = str(dst)
-
-            # Basic path validation - reject paths with potentially dangerous characters
-            # This prevents path traversal and command injection attempts
-            if any(
-                char in src_str
-                for char in ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
-            ):
-                raise ValueError(f"Invalid characters in source path: {src_str}")
-            if any(
-                char in dst_str
-                for char in ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
-            ):
-                raise ValueError(f"Invalid characters in destination path: {dst_str}")
 
             # Ensure paths are within expected directories (use is_relative_to for safety)
             ensure_within_dir(src, paths.raw_dir)
@@ -489,6 +512,15 @@ def normalize_all(paths: Paths) -> None:
                 extra={"file": src.name},
             )
             raise FFmpegNotFoundError() from e
+        except ValueError as e:
+            # Path validation failed (unsafe characters or option injection)
+            logger.warning(
+                "Skipping '%s': %s",
+                src.name,
+                e,
+                extra={"file": src.name},
+            )
+            continue
         except OSError as e:
             # Handle other subprocess launch failures
             logger.error(

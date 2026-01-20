@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "meeting_id": "design_review",
+  "topics": [
+    {"label": "design", "segment_ids": [0, 2, 6]},
+    {"label": "technical", "segment_ids": [1, 4]},
+    {"label": "timeline", "segment_ids": [3, 4, 5]},
+    {"label": "process", "segment_ids": [5]}
+  ],
+  "risks": [
+    {"type": "escalation", "severity": "medium", "segment_id": 1, "evidence": "Main risk is the payment form latency; we should keep the old flow as fallback."}
+  ],
+  "actions": [
+    {"text": "Draft test plan and own mobile QA checklist", "speaker_id": "spk_pm", "segment_ids": [5]},
+    {"text": "Update designs and share prototypes", "speaker_id": "spk_designer", "segment_ids": [6]},
+    {"text": "Keep old checkout flow as fallback", "speaker_id": "spk_engineer", "segment_ids": [1]}
+  ],
+  "summary": "Team reviews checkout redesign scope with target MVP by next Wednesday. Key risk identified is payment form latency requiring old flow fallback. PM owns test plan, designer will update and share prototypes."
+}

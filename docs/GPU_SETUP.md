@@ -123,6 +123,43 @@ slower-whisper transcribe --model base --device auto
 slower-whisper transcribe --model large-v3 --device auto
 ```
 
+## VRAM Requirements by Model
+
+| Model | Model Size | Min VRAM (float16) | Recommended VRAM | Speed (RTF) |
+|-------|------------|-------------------|------------------|-------------|
+| tiny | 39M | ~1 GB | 2 GB | ~32x |
+| base | 74M | ~1 GB | 2 GB | ~16x |
+| small | 244M | ~2 GB | 4 GB | ~6x |
+| medium | 769M | ~5 GB | 8 GB | ~2x |
+| large-v2 | 1.5B | ~10 GB | 12 GB | ~1x |
+| large-v3 | 1.5B | ~10 GB | 12 GB | ~1x |
+
+**RTF** = Real-Time Factor (e.g., 16x means 16 minutes of audio processed per minute)
+
+**With diarization enabled**, add ~2-3 GB additional VRAM for the pyannote model.
+
+**With emotion enrichment**, add ~1.5 GB for the dimensional model, ~1.5 GB for categorical.
+
+## CUDA Compatibility Matrix
+
+| NVIDIA Driver | CUDA Version | CTranslate2 Support | PyTorch Support |
+|---------------|--------------|---------------------|-----------------|
+| 525+ | CUDA 12.x | Yes | Yes (2.0+) |
+| 515+ | CUDA 11.8 | Yes | Yes (1.13+) |
+| 470+ | CUDA 11.4 | Yes | Yes (1.10+) |
+| < 470 | CUDA 11.x | Partial | Limited |
+
+Check your driver version:
+```bash
+nvidia-smi  # Look for "Driver Version" in header
+```
+
+Check CUDA version seen by Python:
+```bash
+python -c "import torch; print(f'CUDA: {torch.version.cuda}')"
+python -c "import ctranslate2; print(f'CTranslate2 CUDA devices: {ctranslate2.get_cuda_device_count()}')"
+```
+
 ## Compute Types
 
 | Compute Type | Device | Speed | Quality | VRAM |

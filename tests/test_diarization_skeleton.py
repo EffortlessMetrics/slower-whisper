@@ -409,7 +409,9 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
         transcript.meta = {"diarization": {"status": "ok", "requested": True}}
         return transcript
 
-    monkeypatch.setattr("transcription.api._maybe_run_diarization", _fake_maybe_run_diarization)
+    monkeypatch.setattr(
+        "transcription.diarization_orchestrator._maybe_run_diarization", _fake_maybe_run_diarization
+    )
 
     app_cfg = AppConfig(
         paths=paths,

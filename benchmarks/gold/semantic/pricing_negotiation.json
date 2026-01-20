@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "meeting_id": "pricing_negotiation",
+  "topics": [
+    {"label": "pricing", "segment_ids": [0, 1, 2, 3, 4, 5]},
+    {"label": "negotiation", "segment_ids": [1, 2, 3, 4, 5]},
+    {"label": "process", "segment_ids": [6]}
+  ],
+  "risks": [
+    {"type": "pricing", "severity": "medium", "segment_id": 1, "evidence": "That's too high. We budgeted eight hundred and still need onboarding help."},
+    {"type": "churn", "severity": "low", "segment_id": 3, "evidence": "Last vendor surprised us."}
+  ],
+  "actions": [
+    {"text": "Send one-year contract at $1000/month with capped overages", "speaker_id": "spk_seller", "segment_ids": [5, 6]},
+    {"text": "Include white-glove onboarding setup", "speaker_id": "spk_seller", "segment_ids": [2]},
+    {"text": "Cap overages at 20% and send weekly alerts", "speaker_id": "spk_seller", "segment_ids": [4]},
+    {"text": "Include onboarding dates for next week", "speaker_id": "spk_seller", "segment_ids": [6]}
+  ],
+  "summary": "Pricing negotiation where buyer pushes back on $1200/month Pro plan. Seller agrees to $1000/month with annual commitment, white-glove onboarding, and 20% overage cap. Contract to be sent with onboarding dates."
+}
