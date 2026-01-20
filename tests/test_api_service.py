@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -25,7 +26,20 @@ from transcription.service import app  # noqa: E402
 @pytest.fixture
 def client() -> TestClient:
     """Create a test client for the FastAPI app."""
-    return TestClient(app)
+
+    # Patch normalize_all to copy files instead of running ffmpeg
+    # This allows tests to run in environments without ffmpeg
+    def mock_normalize_all(paths):
+        import shutil
+
+        for src in paths.raw_dir.glob("*"):
+            if src.is_file():
+                dst = paths.norm_dir / f"{src.stem}.wav"
+                if not dst.exists():
+                    shutil.copy(src, dst)
+
+    with patch("transcription.audio_io.normalize_all", side_effect=mock_normalize_all):
+        yield TestClient(app)
 
 
 @pytest.fixture
