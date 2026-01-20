@@ -512,6 +512,15 @@ def normalize_all(paths: Paths) -> None:
                 extra={"file": src.name},
             )
             raise FFmpegNotFoundError() from e
+        except ValueError as e:
+            # Path validation failed (unsafe characters or option injection)
+            logger.warning(
+                "Skipping '%s': %s",
+                src.name,
+                e,
+                extra={"file": src.name},
+            )
+            continue
         except OSError as e:
             # Handle other subprocess launch failures
             logger.error(

@@ -196,3 +196,52 @@ class TestPathValidation:
         # Leading dash
         with pytest.raises(ValueError, match="Path cannot start with '-'"):
             audio_io.normalize_single(Path("-src.wav"), dst)
+
+    def test_normalize_all_skips_unsafe_paths_and_continues(self, tmp_path, monkeypatch):
+        """normalize_all should skip files with unsafe names and continue processing others."""
+        paths = Paths(root=tmp_path)
+        audio_io.ensure_dirs(paths)
+
+        monkeypatch.setattr(audio_io, "ffmpeg_available", lambda: True)
+
+        class FakeVersionResult:
+            returncode = 0
+            stdout = "ffmpeg version 6.1.1 Copyright (c) 2000-2024"
+            stderr = ""
+
+        class FakeNormResult:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        processed_files: list[str] = []
+
+        def fake_run(cmd, **kwargs):
+            if cmd == ["ffmpeg", "-version"]:
+                return FakeVersionResult()
+            # Track which files were actually processed
+            src_path = cmd[3]  # -i argument
+            processed_files.append(src_path)
+            dst = Path(cmd[-1])
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text("normalized", encoding="utf-8")
+            return FakeNormResult()
+
+        monkeypatch.setattr(audio_io.subprocess, "run", fake_run)
+
+        # Create a mix of safe and unsafe files
+        safe_file = paths.raw_dir / "safe.mp3"
+        safe_file.write_text("audio", encoding="utf-8")
+        unsafe_file = paths.raw_dir / "unsafe;rm.mp3"  # Contains shell metachar
+        unsafe_file.write_text("audio", encoding="utf-8")
+
+        # normalize_all should not raise, should process safe file, skip unsafe
+        audio_io.normalize_all(paths)
+
+        # Only safe file should have been processed
+        assert len(processed_files) == 1
+        assert "safe.mp3" in processed_files[0]
+
+        # Safe file should have output, unsafe should not
+        assert (paths.norm_dir / "safe.wav").exists()
+        assert not (paths.norm_dir / "unsafe;rm.wav").exists()
