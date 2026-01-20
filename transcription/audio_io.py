@@ -352,7 +352,7 @@ def _validate_path_safety(path: Path | str) -> None:
     # Check for option injection (leading dash)
     # ffmpeg might interpret files starting with - as options
     if path_str.startswith("-"):
-        raise ValueError(f"Path cannot start with '-': {path_str}. Use ./-{path_str} instead.")
+        raise ValueError(f"Path cannot start with '-': {path_str}. Use ./{path_str} instead.")
 
 
 def normalize_single(src: Path, dst: Path) -> None:
