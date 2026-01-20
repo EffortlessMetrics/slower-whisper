@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -120,6 +121,67 @@ class ClaudeCodeProvider(LLMProvider):
         )
 
 
+class AnthropicProvider(LLMProvider):
+    """
+    LLM provider using the official Anthropic Python client.
+
+    Requires the anthropic package (pip install anthropic) and either:
+    - ANTHROPIC_API_KEY environment variable, or
+    - api_key in LLMConfig
+    """
+
+    async def complete(self, system: str, user: str) -> LLMResponse:
+        """Send completion via Anthropic API."""
+        start_time = time.time()
+
+        try:
+            import anthropic
+        except ImportError as e:
+            raise ImportError(
+                "anthropic package not installed. Install with: pip install anthropic"
+            ) from e
+
+        # Resolve API key: config > env > error
+        api_key = self.config.api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "Anthropic API key not found. Set ANTHROPIC_API_KEY env var or pass in config."
+            )
+
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        model = self.config.model or "claude-sonnet-4-20250514"
+
+        try:
+            message = await client.messages.create(
+                model=model,
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+        except Exception as e:
+            raise RuntimeError(f"Anthropic API call failed: {e}") from e
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Extract text content
+        response_text = ""
+        for block in message.content:
+            if block.type == "text":
+                response_text += block.text
+
+        tokens_used = None
+        if message.usage:
+            tokens_used = message.usage.input_tokens + message.usage.output_tokens
+
+        return LLMResponse(
+            text=response_text,
+            tokens_used=tokens_used,
+            duration_ms=duration_ms,
+            raw_response=message,
+        )
+
+
 class MockProvider(LLMProvider):
     """Mock provider for testing."""
 
@@ -158,6 +220,8 @@ def create_llm_provider(config: LLMConfig) -> LLMProvider:
     """
     if config.provider == "claude-code":
         return ClaudeCodeProvider(config)
+    elif config.provider == "anthropic":
+        return AnthropicProvider(config)
     elif config.provider == "mock":
         return MockProvider(config)
     else:
@@ -170,6 +234,7 @@ async def llm_complete(
     user: str,
     provider: str = "claude-code",
     model: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """
     Convenience function for one-off LLM completions.
@@ -177,13 +242,14 @@ async def llm_complete(
     Args:
         system: System prompt
         user: User prompt
-        provider: Provider name
+        provider: Provider name ("claude-code", "anthropic", "mock")
         model: Optional model override
+        api_key: Optional API key (for anthropic provider)
 
     Returns:
         Response text
     """
-    config = LLMConfig(provider=provider, model=model)
+    config = LLMConfig(provider=provider, model=model, api_key=api_key)
     llm = create_llm_provider(config)
     response = await llm.complete(system, user)
     return response.text
