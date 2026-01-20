@@ -187,7 +187,11 @@ class TestTranscribeEndpoint:
             assert diar_meta.get("error_type") in {"auth", "missing_dependency"}
 
     def test_transcribe_invalid_diarization_bounds(self, client, sample_audio_wav):
-        """min_speakers > max_speakers should return a 400 error."""
+        """min_speakers > max_speakers should return a 400 error.
+
+        Note: Detailed validation info (which parameter failed) is logged
+        server-side for debugging but not exposed to clients for security.
+        """
         with open(sample_audio_wav, "rb") as f:
             response = client.post(
                 "/transcribe",
@@ -200,7 +204,8 @@ class TestTranscribeEndpoint:
             )
 
         assert response.status_code == 400
-        assert "min_speakers" in response.json()["detail"]
+        # Security: generic message, details logged server-side
+        assert "Configuration error" in response.json()["detail"]
 
     def test_transcribe_invalid_diarization_device(self, client, sample_audio_wav):
         """Invalid diarization_device should return a 400 error."""

@@ -308,9 +308,10 @@ def validate_transcript_json(transcript_content: bytes) -> None:
         data = json.loads(transcript_content)
     except json.JSONDecodeError as e:
         logger.warning("Invalid transcript JSON: %s", e)
+        # Security fix: Provide safe parse error location without raw exception
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid transcript JSON: {str(e)}",
+            detail=f"Invalid transcript JSON: parse error at line {e.lineno}, column {e.colno}",
         ) from e
 
     # Validate required top-level fields
@@ -951,9 +952,10 @@ async def transcribe_audio(
         normalized_compute_type = validate_compute_type(compute_type)
     except ConfigurationError as e:
         logger.warning("Invalid compute_type: %s", compute_type, exc_info=e)
+        # Security fix: Do not leak raw exception to client
         raise HTTPException(
             status_code=400,
-            detail=str(e),
+            detail=f"Invalid compute_type '{compute_type}'. See logs for details.",
         ) from e
     task_value = cast(WhisperTask, task)
 
@@ -1001,9 +1003,10 @@ async def transcribe_audio(
             audio_path.write_bytes(content)
         except Exception as e:
             logger.error("Failed to save uploaded audio file", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to save uploaded audio file: {str(e)}",
+                detail="Failed to save uploaded audio file",
             ) from e
 
         # Validate audio format
@@ -1031,9 +1034,10 @@ async def transcribe_audio(
             )
         except (ValueError, TypeError) as e:
             logger.warning("Invalid transcription configuration", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid configuration: {str(e)}",
+                detail="Invalid transcription configuration. Check parameter values.",
             ) from e
 
         # Transcribe
@@ -1055,9 +1059,10 @@ async def transcribe_audio(
             )
         except ConfigurationError as e:
             logger.error("Configuration error during transcription", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=400,
-                detail=f"Configuration error: {str(e)}",
+                detail="Configuration error during transcription. Check parameter values.",
             ) from e
         except TranscriptionError as e:
             logger.error("Transcription failed", exc_info=e)
@@ -1165,9 +1170,10 @@ async def enrich_audio(
             transcript_content = await transcript.read()
         except Exception as e:
             logger.error("Failed to read transcript file", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to read transcript file: {str(e)}",
+                detail="Failed to read transcript file",
             ) from e
 
         # Validate transcript file size
@@ -1182,9 +1188,10 @@ async def enrich_audio(
             transcript_path.write_bytes(transcript_content)
         except Exception as e:
             logger.error("Failed to save transcript file", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to save transcript file: {str(e)}",
+                detail="Failed to save transcript file",
             ) from e
 
         # Read and validate uploaded audio
@@ -1192,9 +1199,10 @@ async def enrich_audio(
             audio_content = await audio.read()
         except Exception as e:
             logger.error("Failed to read audio file", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to read audio file: {str(e)}",
+                detail="Failed to read audio file",
             ) from e
 
         # Validate audio file size
@@ -1240,9 +1248,10 @@ async def enrich_audio(
             transcript_obj = load_transcript(transcript_path)
         except Exception as e:
             logger.warning("Invalid transcript JSON", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid transcript JSON: {str(e)}",
+                detail="Invalid transcript JSON structure. Ensure valid JSON from /transcribe.",
             ) from e
 
         # Create enrichment config
@@ -1256,9 +1265,10 @@ async def enrich_audio(
             )
         except (ValueError, TypeError) as e:
             logger.warning("Invalid enrichment configuration", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid enrichment configuration: {str(e)}",
+                detail="Invalid enrichment configuration. Check parameter values.",
             ) from e
 
         # Enrich
@@ -1280,9 +1290,10 @@ async def enrich_audio(
             )
         except ConfigurationError as e:
             logger.error("Configuration error during enrichment", exc_info=e)
+            # Security fix: Do not leak exception details to client
             raise HTTPException(
                 status_code=400,
-                detail=f"Configuration error: {str(e)}",
+                detail="Configuration error during enrichment. Check parameter values.",
             ) from e
         except EnrichmentError as e:
             logger.error("Enrichment failed", exc_info=e)
