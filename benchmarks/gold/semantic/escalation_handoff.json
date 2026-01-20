@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "meeting_id": "escalation_handoff",
+  "topics": [
+    {"label": "support", "segment_ids": [0, 2]},
+    {"label": "escalation", "segment_ids": [1, 2, 3, 4]},
+    {"label": "timeline", "segment_ids": [5, 6]}
+  ],
+  "risks": [
+    {"type": "escalation", "severity": "high", "segment_id": 1, "evidence": "My outage ticket has been open for two days. I'm losing customers."},
+    {"type": "churn", "severity": "high", "segment_id": 1, "evidence": "I'm losing customers."},
+    {"type": "escalation", "severity": "high", "segment_id": 3, "evidence": "Please bring in a supervisor. I need a timeline today."}
+  ],
+  "actions": [
+    {"text": "Escalate ticket from engineering triage", "speaker_id": "spk_agent", "segment_ids": [2]},
+    {"text": "Move customer to critical queue", "speaker_id": "spk_lead", "segment_ids": [4]},
+    {"text": "Provide hourly updates", "speaker_id": "spk_lead", "segment_ids": [4]},
+    {"text": "Call customer within the hour with progress", "speaker_id": "spk_lead", "segment_ids": [6]}
+  ],
+  "summary": "Customer with two-day open outage ticket escalates due to business impact. Support lead takes over, moves to critical queue, and commits to hourly updates with first callback within the hour."
+}

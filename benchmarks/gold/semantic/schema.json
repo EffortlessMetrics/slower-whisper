@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slower-whisper.io/schemas/semantic-gold-v1.json",
+  "title": "Semantic Gold Label Schema",
+  "description": "Gold-standard semantic annotations for evaluating KeywordSemanticAnnotator output",
+  "type": "object",
+  "required": ["schema_version", "meeting_id", "topics", "risks", "actions"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "description": "Schema version for forward compatibility",
+      "const": 1
+    },
+    "meeting_id": {
+      "type": "string",
+      "description": "Unique identifier for the meeting/transcript being labeled",
+      "minLength": 1
+    },
+    "topics": {
+      "type": "array",
+      "description": "Topics discussed in the meeting",
+      "items": {
+        "type": "object",
+        "required": ["label"],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Topic label from controlled vocabulary",
+            "minLength": 1
+          },
+          "segment_ids": {
+            "type": "array",
+            "description": "Segment IDs where this topic is discussed",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "risks": {
+      "type": "array",
+      "description": "Risk signals identified in the meeting",
+      "items": {
+        "type": "object",
+        "required": ["type", "severity", "segment_id"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Risk category",
+            "enum": ["escalation", "churn", "pricing"]
+          },
+          "severity": {
+            "type": "string",
+            "description": "Risk severity level",
+            "enum": ["low", "medium", "high"]
+          },
+          "segment_id": {
+            "type": "integer",
+            "description": "Segment ID where risk was identified",
+            "minimum": 0
+          },
+          "evidence": {
+            "type": "string",
+            "description": "Optional quote or description supporting the risk label"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "actions": {
+      "type": "array",
+      "description": "Action items identified in the meeting",
+      "items": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Description of the action item",
+            "minLength": 1
+          },
+          "speaker_id": {
+            "type": "string",
+            "description": "Speaker who committed to or is assigned the action"
+          },
+          "segment_ids": {
+            "type": "array",
+            "description": "Segment IDs where this action is mentioned",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "string",
+      "description": "Optional human-written summary for Track A evaluation"
+    }
+  },
+  "additionalProperties": false
+}

@@ -6,7 +6,7 @@ Get started with slower-whisper in 5 minutes. This guide covers both Stage 1 (tr
 
 ## Prerequisites
 
-- **Python 3.9+**
+- **Python 3.11+**
 - **ffmpeg** installed and on PATH
 - **NVIDIA GPU** (recommended but optional)
   - Required for fast transcription and emotion recognition
@@ -35,31 +35,35 @@ choco install ffmpeg -y
 
 ### Step 2: Set Up Python Environment
 
-**Option 1: Using uv (recommended - fast)**
+**Option 1: Using Nix (recommended)**
 ```bash
-# Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Create and activate virtual environment
-uv venv
-source .venv/bin/activate  # Linux/Mac
-# or
-.venv\Scripts\activate  # Windows
-
-# Install dependencies
-uv pip install -r requirements.txt
+git clone https://github.com/EffortlessMetrics/slower-whisper.git
+cd slower-whisper
+nix develop
+uv sync --extra full --extra dev
 ```
 
-**Option 2: Using pip (traditional)**
+**Option 2: Using uv (fast)**
 ```bash
-# Create and activate virtual environment
+git clone https://github.com/EffortlessMetrics/slower-whisper.git
+cd slower-whisper
+
+# Install system deps (ffmpeg, libsndfile) via apt/brew/choco
+uv sync --extra full --extra dev   # contributors
+# or
+uv sync --extra full               # runtime only
+```
+
+**Option 3: Using pip (traditional)**
+```bash
+git clone https://github.com/EffortlessMetrics/slower-whisper.git
+cd slower-whisper
+
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate  # Windows
+# or venv\Scripts\activate on Windows
 
-# Install dependencies
-pip install -r requirements.txt
+pip install -e ".[full,dev]"
 ```
 
 ### Step 3: Verify Installation
@@ -68,8 +72,8 @@ pip install -r requirements.txt
 # Check ffmpeg
 ffmpeg -version
 
-# Check Python dependencies
-python -c "import faster_whisper; print('faster-whisper OK')"
+# Check slower-whisper CLI
+slower-whisper --version
 
 # Optional: Check GPU availability
 python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
@@ -84,7 +88,7 @@ python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
 **Step 1: Prepare Audio**
 ```bash
 # Create directory structure (automatic on first run)
-mkdir -p raw_audio input_audio transcripts whisper_json
+mkdir -p raw_audio
 
 # Add your audio file
 cp /path/to/your/audio.mp3 raw_audio/
@@ -94,10 +98,10 @@ cp /path/to/your/audio.mp3 raw_audio/
 **Step 2: Run Transcription**
 ```bash
 # Basic transcription (auto-detect language)
-python transcribe_pipeline.py
+slower-whisper transcribe --root .
 
 # Or specify language
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --root . --language en
 ```
 
 **Step 3: Check Output**
@@ -175,13 +179,13 @@ pip install soundfile librosa praat-parselmouth transformers torch
 
 ```bash
 # Fast mode (prosody only, ~30 seconds per minute of audio)
-python audio_enrich.py --no-enable-emotion
+slower-whisper enrich --root . --no-enable-emotion
 
 # Standard mode (prosody + dimensional emotion, ~2-3 minutes per minute of audio)
-python audio_enrich.py
+slower-whisper enrich --root .
 
 # Full mode (prosody + dimensional + categorical emotion, ~5-10 minutes per minute of audio)
-python audio_enrich.py --enable-categorical-emotion
+slower-whisper enrich --root . --enable-categorical-emotion
 ```
 
 **Step 3: View Enriched Output**
@@ -295,7 +299,7 @@ Total duration: 892.5s
 
 ```bash
 # Transcribe with defaults
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --root . --language en
 
 # That's it! Check transcripts/ directory
 ```
@@ -304,10 +308,10 @@ python transcribe_pipeline.py --language en
 
 ```bash
 # Stage 1: Transcribe
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --root . --language en
 
 # Stage 2: Enrich with prosody only (fast)
-python audio_enrich.py --no-enable-emotion
+slower-whisper enrich --root . --no-enable-emotion
 
 # Analyze
 python examples/complete_workflow.py whisper_json/your_audio.json
@@ -318,10 +322,10 @@ python examples/complete_workflow.py whisper_json/your_audio.json
 ```bash
 # Place multiple audio files in raw_audio/
 # Transcribe all
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --root . --language en
 
 # Enrich all (skip already enriched)
-python audio_enrich.py --skip-existing
+slower-whisper enrich --root . --skip-existing
 
 # Analyze each
 for file in whisper_json/*.json; do
@@ -333,56 +337,58 @@ done
 
 ```bash
 # Day 1: Transcribe everything
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --root . --language en
 
 # Day 2: Add new audio files and skip existing
-python transcribe_pipeline.py --language en --skip-existing-json
+slower-whisper transcribe --root . --language en --skip-existing-json
 
 # Day 3: Enrich everything (skip already enriched)
-python audio_enrich.py --skip-existing
+slower-whisper enrich --root . --skip-existing
 ```
 
 ---
 
 ## Command Reference
 
-### Stage 1: transcribe_pipeline.py
+### Stage 1: slower-whisper transcribe
 
 ```bash
 # Basic options
-python transcribe_pipeline.py
+slower-whisper transcribe
   --root DIR              # Root directory (default: current)
   --model MODEL           # Model size: tiny, base, small, medium, large-v3
   --language LANG         # Language code (e.g., en, es, fr) or auto-detect
-  --device DEVICE         # cuda or cpu
-  --skip-existing-json    # Skip files with existing JSON output
+  --device DEVICE         # auto, cuda, or cpu
+  --compute-type TYPE     # float16, float32, int8, int8_float16 (auto by default)
+  --skip-existing-json    # Skip files with existing JSON output (default: true)
+  --progress              # Show progress indicator
 
 # Examples
-python transcribe_pipeline.py --model medium --language en
-python transcribe_pipeline.py --device cpu --skip-existing-json
-python transcribe_pipeline.py --root /path/to/project
+slower-whisper transcribe --root . --model medium --language en
+slower-whisper transcribe --root . --device cpu
+slower-whisper transcribe --root /path/to/project --progress
 ```
 
-### Stage 2: audio_enrich.py
+### Stage 2: slower-whisper enrich
 
 ```bash
 # Basic options
-python audio_enrich.py
+slower-whisper enrich
   --root DIR                    # Root directory (default: current)
-  --file FILE                   # Process single file (relative to root)
-  --skip-existing               # Skip files with existing audio_state
-  --device DEVICE               # cuda or cpu
+  --skip-existing               # Skip files with existing audio_state (default: true)
+  --device DEVICE               # auto, cuda, or cpu
   --enable-prosody              # Extract prosody (default: true)
   --no-enable-prosody           # Skip prosody
   --enable-emotion              # Extract dimensional emotion (default: true)
   --no-enable-emotion           # Skip emotion
   --enable-categorical-emotion  # Extract categorical emotion (default: false)
+  --enable-semantics            # Run keyword-based semantic annotation
+  --progress                    # Show progress indicator
 
 # Examples
-python audio_enrich.py --no-enable-emotion  # Prosody only
-python audio_enrich.py --enable-categorical-emotion  # Full analysis
-python audio_enrich.py --file whisper_json/audio.json  # Single file
-python audio_enrich.py --device cpu  # CPU mode
+slower-whisper enrich --root . --no-enable-emotion   # Prosody only
+slower-whisper enrich --root . --enable-categorical-emotion  # Full analysis
+slower-whisper enrich --root . --device cpu          # CPU mode
 ```
 
 ---
@@ -419,11 +425,11 @@ python audio_enrich.py --device cpu  # CPU mode
 **Solution:**
 ```bash
 # Use smaller model
-python transcribe_pipeline.py --model medium
+slower-whisper transcribe --root . --model medium
 
 # Or use CPU
-python transcribe_pipeline.py --device cpu
-python audio_enrich.py --device cpu
+slower-whisper transcribe --root . --device cpu
+slower-whisper enrich --root . --device cpu
 ```
 
 ### "No module named 'transformers'"
@@ -482,10 +488,10 @@ See **[CONTRIBUTING.md](../CONTRIBUTING.md)** for:
 **Minimal workflow:**
 ```bash
 # 1. Install
-uv pip install -r requirements.txt
+uv sync --extra full
 
 # 2. Transcribe
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --root . --language en
 
 # 3. Done! Check transcripts/ and whisper_json/
 ```
@@ -493,13 +499,13 @@ python transcribe_pipeline.py --language en
 **Full workflow:**
 ```bash
 # 1. Install
-uv pip install -r requirements.txt
+uv sync --extra full
 
 # 2. Transcribe
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --root . --language en
 
 # 3. Enrich
-python audio_enrich.py
+slower-whisper enrich --root .
 
 # 4. Analyze
 python examples/complete_workflow.py whisper_json/your_audio.json
@@ -509,6 +515,6 @@ python examples/complete_workflow.py whisper_json/your_audio.json
 
 ---
 
-**Ready to go!** Place audio in `raw_audio/` and run `python transcribe_pipeline.py`.
+**Ready to go!** Place audio in `raw_audio/` and run `slower-whisper transcribe --root .`.
 
 For questions or issues, see the main **[README](../README.md)** or open an issue.
