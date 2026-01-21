@@ -184,7 +184,7 @@ def ensure_within_dir(path: Path, base_dir: Path) -> Path:
     """
     try:
         resolved_base = base_dir.resolve(strict=True)
-    except (OSError, FileNotFoundError) as e:
+    except OSError as e:
         raise ValueError(f"Base directory does not exist: {base_dir}") from e
 
     return _check_within_resolved_base(path, resolved_base)
@@ -423,8 +423,8 @@ def _normalize_one_file(
     try:
         _validate_path_safety(src)
         _validate_path_safety(dst)
-        _check_within_resolved_base(src, raw_dir_resolved)
-        _check_within_resolved_base(dst, norm_dir_resolved)
+        _ = _check_within_resolved_base(src, raw_dir_resolved)
+        _ = _check_within_resolved_base(dst, norm_dir_resolved)
 
         cmd = [
             "ffmpeg",
@@ -559,7 +559,7 @@ def normalize_all(paths: Paths) -> None:
     try:
         raw_dir_resolved = paths.raw_dir.resolve(strict=True)
         norm_dir_resolved = paths.norm_dir.resolve(strict=True)
-    except (OSError, FileNotFoundError) as e:
+    except OSError as e:
         logger.error("Required directories missing: %s", e)
         raise
 
