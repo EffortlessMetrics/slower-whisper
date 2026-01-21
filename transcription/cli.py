@@ -343,6 +343,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["all", "whisper", "emotion", "diarization", "hf", "torch", "samples"],
         help="Clear selected cache.",
     )
+    p_cache.add_argument(
+        "--force",
+        "-f",
+        "-y",
+        action="store_true",
+        help="Skip confirmation prompt when clearing cache (aliases: -f, -y).",
+    )
 
     # ============================================================================
     # samples subcommand
@@ -620,6 +627,7 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
         return 0
 
     if args.clear:
+        # Build targets list first so we can show size in confirmation
         targets = []
         if args.clear == "all":
             targets = [
@@ -642,6 +650,23 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
             targets = [("Torch", paths.torch_home)]
         elif args.clear == "samples":
             targets = [("Samples", samples_dir)]
+
+        if not args.force:
+            if not sys.stdin.isatty():
+                print(
+                    f"Error: Cache clear requires --force in non-interactive mode.\n"
+                    f"Run with: slower-whisper cache --clear {args.clear} --force",
+                    file=sys.stderr,
+                )
+                return 1
+
+            # Only calculate size when prompting (skip expensive traversal when --force)
+            total_size = sum(_get_cache_size(path) for _, path in targets)
+            size_str = _format_size(total_size)
+            confirm = input(f"Clear {args.clear} cache ({size_str})? This cannot be undone. [y/N] ")
+            if confirm.lower() not in ("y", "yes"):
+                print("Aborted.")
+                return 0
 
         for name, target in targets:
             if target.exists():
