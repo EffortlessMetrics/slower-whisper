@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
 **Current Version:** v1.9.2
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-01-21
 <!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
 Roadmap = forward-looking execution plan.
@@ -16,7 +16,7 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 |-------|--------|-------------|
 | v1.9.x Closeout | ✅ Complete | — |
 | API Polish Bundle | 📋 Ready to Start | Begin #70 |
-| Track 1: Benchmarks | 📋 Ready to Start | Begin #95 |
+| Track 1: Benchmarks | 🔄 In Progress | Complete #137 (baselines) |
 | Track 2: Streaming | 📋 Ready to Start | Begin #133 |
 | Track 3: Semantics | 📋 Ready to Start | Begin #88 |
 
@@ -47,6 +47,7 @@ nix-clean flake check        # Nix checks
 
 | Version | Highlights |
 |---------|------------|
+| **Unreleased** | Benchmark evaluation framework (ASR/DER/emotion/streaming), Anthropic LLM provider, parallel audio normalization |
 | **v1.9.2** | Version constant fix (`transcription.__version__` now correct) |
 | **v1.9.1** | GPU UX (`--device auto` default, preflight banner), CI caching fixes |
 | **v1.9.0** | Streaming callbacks (`StreamCallbacks` protocol), safe callback execution |
@@ -175,21 +176,32 @@ Track 2: Streaming (#133 → #134 → #84)
 
 ### Track 1: Benchmark Foundations
 
-**Status:** 📋 Ready to start (gates all other tracks)
+**Status:** 🔄 In Progress — evaluation runners implemented, baselines & CI integration remaining
 
 Benchmarks must exist before streaming work can be measured.
 
 | Order | Issue | Deliverable | Status |
 |-------|-------|-------------|--------|
-| 1 | [#95](https://github.com/EffortlessMetrics/slower-whisper/issues/95) | ASR WER runner (jiwer, smoke dataset) | ⬜ |
+| 1 | [#95](https://github.com/EffortlessMetrics/slower-whisper/issues/95) | ASR WER runner (jiwer, smoke dataset) | ✅ `ASRBenchmarkRunner` (#186) |
 | 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format + comparator | ⬜ |
-| 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency (P50/P95/P99, RTF) | ⬜ |
-| 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner (AMI subset) | ⬜ |
+| 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency (P50/P95/P99, RTF) | ✅ `StreamingBenchmarkRunner` (#190) |
+| 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner (AMI subset) | ✅ `DiarizationBenchmarkRunner` (#189) |
 | 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ⬜ |
 
+**Also implemented:**
+
+- `EmotionBenchmarkRunner` (#187): Categorical emotion accuracy, F1, confusion matrix
+
 **Supporting:**
+
 - [#94](https://github.com/EffortlessMetrics/slower-whisper/issues/94): Dataset manifest format
 - [#57](https://github.com/EffortlessMetrics/slower-whisper/issues/57): CLI `slower-whisper benchmark --track asr|diarization|streaming`
+
+**Remaining work:**
+
+1. Baseline file format and comparison logic (#137)
+2. CI integration with report-only mode (#99)
+3. CLI subcommand wiring (`slower-whisper benchmark`)
 
 **Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline comparison.
 

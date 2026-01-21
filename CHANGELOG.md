@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Benchmark Evaluation Framework**: Complete evaluation infrastructure for all benchmark tracks
+  - **ASR Evaluation** (`ASRBenchmarkRunner`): WER/CER computation using jiwer with proper text normalization (#186)
+  - **Diarization Evaluation** (`DiarizationBenchmarkRunner`): DER/JER/speaker count metrics using pyannote.metrics (#189)
+  - **Emotion Evaluation** (`EmotionBenchmarkRunner`): Accuracy, F1, and confusion matrix for categorical emotions (#187)
+  - **Streaming Evaluation** (`StreamingBenchmarkRunner`): P50/P95/P99 latency, RTF, and first-token timing (#190)
+- **Anthropic LLM Provider**: New `AnthropicProvider` in `llm_client` module for Claude API integration with streaming support (#188)
+- **Colorized CLI Output**: Enhanced CLI with ANSI colors for status messages and errors, respects `NO_COLOR` environment variable (#191)
+- **Cache Clear Confirmation**: Interactive confirmation prompt for `slower-whisper cache clear` to prevent accidental data loss (#198)
+
+### Changed
+
+- **Parallel Audio Normalization**: `normalize_all()` now uses `ThreadPoolExecutor` for parallel ffmpeg invocations, significantly improving batch processing throughput (#192)
+- **Optimized Path Resolution**: Audio normalization loop now resolves paths more efficiently, reducing overhead on large directories (#197)
+
+### Fixed
+
+- **Security (Argument Injection)**: Hardened dogfood CLI subprocess calls against argument injection attacks (#196)
+
+### Developer Experience
+
+- **Test Portability**: Added `normalize_all` mocking to allow tests to pass without ffmpeg installed (#185)
+
 ## [1.9.2] - 2026-01-05
 
 ### Fixed

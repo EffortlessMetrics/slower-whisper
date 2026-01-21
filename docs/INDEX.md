@@ -74,6 +74,8 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [DOCKER.md](DOCKER.md) | Docker containerization guide | Images, builds, usage |
 | [DOCKER_DEPLOYMENT_GUIDE.md](DOCKER_DEPLOYMENT_GUIDE.md) | Production deployment with Docker | Compose, scaling, best practices |
 | [API_SERVICE.md](API_SERVICE.md) | RESTful API service setup | Web API, endpoints, integration |
+| [GPU_SETUP.md](GPU_SETUP.md) | GPU configuration and troubleshooting | CUDA, device selection, compute types |
+| [DEV_ENV_NIX.md](DEV_ENV_NIX.md) | Nix development environment | Reproducible builds, flake setup |
 
 ### Release & Packaging (docs/releases/)
 
@@ -106,6 +108,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [PROSODY.md](PROSODY.md) | Prosodic feature extraction details | Pitch, energy, rate, pauses |
 | [PROSODY_QUICK_REFERENCE.md](PROSODY_QUICK_REFERENCE.md) | Quick reference for prosody features | API, thresholds, examples |
 | [SPEAKER_DIARIZATION.md](SPEAKER_DIARIZATION.md) | Speaker diarization design and implementation | Who spoke when, turn structure |
+| [STREAMING_ARCHITECTURE.md](STREAMING_ARCHITECTURE.md) | Streaming transcription design | Callbacks, events, v2.0 protocol |
 | [LLM_PROMPT_PATTERNS.md](LLM_PROMPT_PATTERNS.md) | Reference prompts for LLM conversation analysis | Prompts, rendering, use cases |
 | [MODEL_CACHE.md](MODEL_CACHE.md) | Model cache management | Cache location, cleanup, troubleshooting |
 
@@ -162,13 +165,34 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 ---
 
-## Benchmarks Documentation (benchmarks/)
+## Benchmarks Documentation (benchmarks/ + docs/)
+
+### Benchmark Framework
 
 | Document | Description |
 |----------|-------------|
+| [BENCHMARKS.md](BENCHMARKS.md) | Benchmark CLI reference and usage |
+| [SEMANTIC_BENCHMARK.md](SEMANTIC_BENCHMARK.md) | LLM-based quality evaluation |
 | [benchmarks/README.md](../benchmarks/README.md) | Benchmarking guide and overview |
 | [benchmarks/INTERPRETING_RESULTS.md](../benchmarks/INTERPRETING_RESULTS.md) | How to read benchmark data |
 | [benchmarks/BASELINE_RESULTS.md](../benchmarks/BASELINE_RESULTS.md) | Performance baselines |
+
+### Dataset Setup Guides
+
+| Document | Description |
+|----------|-------------|
+| [AMI_SETUP.md](AMI_SETUP.md) | AMI Meeting Corpus setup for diarization evaluation |
+| [IEMOCAP_SETUP.md](IEMOCAP_SETUP.md) | IEMOCAP emotion dataset setup |
+| [LIBRISPEECH_QUICKSTART.md](LIBRISPEECH_QUICKSTART.md) | LibriSpeech ASR evaluation quick start |
+| [BENCHMARK_EVALUATION_QUICKSTART.md](BENCHMARK_EVALUATION_QUICKSTART.md) | Getting started with benchmark evaluation |
+| [GETTING_STARTED_EVALUATION.md](GETTING_STARTED_EVALUATION.md) | Evaluation framework introduction |
+
+### Benchmark Cache & Strategy
+
+| Document | Description |
+|----------|-------------|
+| [BENCHMARK_CACHE_RECOMMENDATIONS.md](BENCHMARK_CACHE_RECOMMENDATIONS.md) | Cache strategy recommendations |
+| [BENCHMARK_CACHE_STRATEGY_ANALYSIS.md](BENCHMARK_CACHE_STRATEGY_ANALYSIS.md) | Detailed cache strategy analysis |
 
 ---
 
@@ -317,6 +341,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2026-01-07
+**Last Updated:** 2026-01-21
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.
