@@ -170,7 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             try:
                 result = subprocess.run(
-                    ["python", str(llm_example), str(json_file)],
+                    ["python", str(llm_example), "--", str(json_file)],
                     capture_output=True,
                     text=True,
                     check=True,
