@@ -134,6 +134,30 @@ def sanitize_filename(
     return safe_stem, safe_suffix
 
 
+def _check_within_resolved_base(path: Path, resolved_base: Path) -> Path:
+    """
+    Validate that a path resolves to within a pre-resolved base directory.
+
+    This is an optimized internal helper for batch operations where the base
+    directory has already been resolved. Avoids repeated resolve(strict=True)
+    syscalls when checking many files against the same base.
+
+    Args:
+        path: Path to validate (may not exist)
+        resolved_base: Already-resolved base directory path
+
+    Returns:
+        The resolved path if validation passes
+
+    Raises:
+        ValueError: If path escapes the base directory
+    """
+    resolved_path = path.resolve()
+    if not resolved_path.is_relative_to(resolved_base):
+        raise ValueError(f"Path escapes base directory: {resolved_path}")
+    return resolved_path
+
+
 def ensure_within_dir(path: Path, base_dir: Path) -> Path:
     """
     Validate that a path resolves to within a base directory.
@@ -163,12 +187,7 @@ def ensure_within_dir(path: Path, base_dir: Path) -> Path:
     except (OSError, FileNotFoundError) as e:
         raise ValueError(f"Base directory does not exist: {base_dir}") from e
 
-    resolved_path = path.resolve()
-
-    if not resolved_path.is_relative_to(resolved_base):
-        raise ValueError(f"Path escapes base directory: {resolved_path}")
-
-    return resolved_path
+    return _check_within_resolved_base(path, resolved_base)
 
 
 def unique_path(path: Path) -> Path:
@@ -367,18 +386,6 @@ class _NormalizeResult(NamedTuple):
     abort: bool = False  # True if we should abort the entire run
 
 
-def _ensure_relative_to_resolved(path: Path, resolved_base: Path) -> Path:
-    """
-    Optimized version of ensure_within_dir that accepts an already resolved base directory.
-    Avoiding repeated resolve(strict=True) on the base directory significantly speeds up
-    processing when checking many files.
-    """
-    resolved_path = path.resolve()
-    if not resolved_path.is_relative_to(resolved_base):
-        raise ValueError(f"Path escapes base directory: {resolved_path}")
-    return resolved_path
-
-
 def _normalize_one_file(
     src: Path, dst: Path, raw_dir_resolved: Path, norm_dir_resolved: Path
 ) -> _NormalizeResult:
@@ -416,8 +423,8 @@ def _normalize_one_file(
     try:
         _validate_path_safety(src)
         _validate_path_safety(dst)
-        _ensure_relative_to_resolved(src, raw_dir_resolved)
-        _ensure_relative_to_resolved(dst, norm_dir_resolved)
+        _check_within_resolved_base(src, raw_dir_resolved)
+        _check_within_resolved_base(dst, norm_dir_resolved)
 
         cmd = [
             "ffmpeg",
@@ -573,9 +580,7 @@ def normalize_all(paths: Paths) -> None:
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = {
-            executor.submit(
-                _normalize_one_file, src, dst, raw_dir_resolved, norm_dir_resolved
-            ): src
+            executor.submit(_normalize_one_file, src, dst, raw_dir_resolved, norm_dir_resolved): src
             for src, dst in files_to_process
         }
 
