@@ -343,6 +343,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["all", "whisper", "emotion", "diarization", "hf", "torch", "samples"],
         help="Clear selected cache.",
     )
+    p_cache.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Skip confirmation prompt when clearing cache.",
+    )
 
     # ============================================================================
     # samples subcommand
@@ -620,6 +626,23 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
         return 0
 
     if args.clear:
+        if not sys.stdin.isatty() and not args.force:
+            print(
+                f"Error: Cache clear requires --force in non-interactive mode.\n"
+                f"Run with: slower-whisper cache --clear {args.clear} --force",
+                file=sys.stderr,
+            )
+            return 1
+
+        if not args.force:
+            confirm = input(
+                f"Are you sure you want to clear the {args.clear} cache? "
+                f"This cannot be undone. [y/N] "
+            )
+            if confirm.lower() not in ("y", "yes"):
+                print("Aborted.")
+                return 0
+
         targets = []
         if args.clear == "all":
             targets = [
