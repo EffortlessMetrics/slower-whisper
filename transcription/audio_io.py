@@ -367,7 +367,21 @@ class _NormalizeResult(NamedTuple):
     abort: bool = False  # True if we should abort the entire run
 
 
-def _normalize_one_file(src: Path, dst: Path, paths: Paths) -> _NormalizeResult:
+def _ensure_relative_to_resolved(path: Path, resolved_base: Path) -> Path:
+    """
+    Optimized version of ensure_within_dir that accepts an already resolved base directory.
+    Avoiding repeated resolve(strict=True) on the base directory significantly speeds up
+    processing when checking many files.
+    """
+    resolved_path = path.resolve()
+    if not resolved_path.is_relative_to(resolved_base):
+        raise ValueError(f"Path escapes base directory: {resolved_path}")
+    return resolved_path
+
+
+def _normalize_one_file(
+    src: Path, dst: Path, raw_dir_resolved: Path, norm_dir_resolved: Path
+) -> _NormalizeResult:
     """
     Process a single file for normalization (thread-safe).
 
@@ -402,8 +416,8 @@ def _normalize_one_file(src: Path, dst: Path, paths: Paths) -> _NormalizeResult:
     try:
         _validate_path_safety(src)
         _validate_path_safety(dst)
-        ensure_within_dir(src, paths.raw_dir)
-        ensure_within_dir(dst, paths.norm_dir)
+        _ensure_relative_to_resolved(src, raw_dir_resolved)
+        _ensure_relative_to_resolved(dst, norm_dir_resolved)
 
         cmd = [
             "ffmpeg",
@@ -534,6 +548,14 @@ def normalize_all(paths: Paths) -> None:
     # Check ffmpeg installation before spawning threads
     check_ffmpeg_installation()
 
+    # Resolve base directories once to avoid repeated syscalls in workers
+    try:
+        raw_dir_resolved = paths.raw_dir.resolve(strict=True)
+        norm_dir_resolved = paths.norm_dir.resolve(strict=True)
+    except (OSError, FileNotFoundError) as e:
+        logger.error("Required directories missing: %s", e)
+        raise
+
     # Collect files to process
     files_to_process: list[tuple[Path, Path]] = []
     for src in sorted(paths.raw_dir.iterdir()):
@@ -551,7 +573,9 @@ def normalize_all(paths: Paths) -> None:
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = {
-            executor.submit(_normalize_one_file, src, dst, paths): src
+            executor.submit(
+                _normalize_one_file, src, dst, raw_dir_resolved, norm_dir_resolved
+            ): src
             for src, dst in files_to_process
         }
 
