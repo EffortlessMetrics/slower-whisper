@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Diarization Evaluation** (`DiarizationBenchmarkRunner`): DER/JER/speaker count metrics using pyannote.metrics (#189)
   - **Emotion Evaluation** (`EmotionBenchmarkRunner`): Accuracy, F1, and confusion matrix for categorical emotions (#187)
   - **Streaming Evaluation** (`StreamingBenchmarkRunner`): P50/P95/P99 latency, RTF, and first-token timing (#190)
+- **Benchmark Baselines** (#137): Baseline file format and comparison infrastructure for regression testing
+  - New `benchmarks/baselines/` directory structure with JSON baseline files per track/dataset
+  - `BaselineFile`, `BaselineMetric`, `BaselineReceipt` data structures for provenance tracking
+  - `benchmark save-baseline` CLI command to create baselines from evaluation results
+  - `benchmark compare` CLI command with report and gate modes for regression detection
+  - `benchmark baselines` CLI command to list stored baselines
+  - Configurable regression thresholds per metric (default: 10%)
+  - Comprehensive test coverage for baseline serialization and comparison logic
 - **Anthropic LLM Provider**: New `AnthropicProvider` in `llm_client` module for Claude API integration with streaming support (#188)
 - **Colorized CLI Output**: Enhanced CLI with ANSI colors for status messages and errors, respects `NO_COLOR` environment variable (#191)
 - **Cache Clear Confirmation**: Interactive confirmation prompt for `slower-whisper cache clear` to prevent accidental data loss (#198)

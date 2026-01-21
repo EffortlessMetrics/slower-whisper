@@ -324,6 +324,188 @@ ANTHROPIC_API_KEY=sk-ant-xxx slower-whisper benchmark run \
   --verbose
 ```
 
+### benchmark baselines
+
+List all stored baselines.
+
+```bash
+slower-whisper benchmark baselines
+```
+
+**Output:**
+```
+Stored Baselines
+============================================================
+
+Baselines directory: /home/user/.cache/slower-whisper/benchmarks/baselines
+
+Found 5 baseline(s):
+
+  [asr] librispeech
+    Created: 2026-01-21T00:00:00Z
+    Version: 1.9.2
+    Metrics: wer, cer
+
+  [diarization] ami
+    Created: 2026-01-21T00:00:00Z
+    Version: 1.9.2
+    Metrics: der, jer, speaker_count_accuracy
+  ...
+```
+
+### benchmark save-baseline
+
+Run a benchmark and save results as a baseline for future comparisons.
+
+```bash
+slower-whisper benchmark save-baseline --track TRACK [OPTIONS]
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--track` | `-t` | Evaluation track (required) |
+| `--dataset` | `-d` | Dataset to use (default: track-specific) |
+| `--split` | `-s` | Dataset split (default: test) |
+| `--limit` | `-n` | Limit number of samples |
+| `--output` | `-o` | Also save full benchmark results JSON |
+| `--verbose` | `-v` | Show detailed progress |
+| `--threshold` | | Set regression threshold (e.g., `--threshold wer=0.05`) |
+
+**Examples:**
+
+```bash
+# Create ASR baseline with default thresholds (10%)
+slower-whisper benchmark save-baseline --track asr --dataset librispeech
+
+# Create with custom thresholds
+slower-whisper benchmark save-baseline --track asr --dataset librispeech \
+  --threshold wer=0.05 --threshold cer=0.10
+
+# Quick baseline from subset
+slower-whisper benchmark save-baseline --track diarization --dataset ami --limit 10
+```
+
+### benchmark compare
+
+Run a benchmark and compare results against a stored baseline.
+
+```bash
+slower-whisper benchmark compare --track TRACK [OPTIONS]
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--track` | `-t` | Evaluation track (required) |
+| `--dataset` | `-d` | Dataset to use (default: track-specific) |
+| `--split` | `-s` | Dataset split (default: test) |
+| `--limit` | `-n` | Limit number of samples |
+| `--output` | `-o` | Save comparison results JSON |
+| `--verbose` | `-v` | Show detailed progress |
+| `--gate` | | Exit with error if regression exceeds threshold |
+
+**Examples:**
+
+```bash
+# Report-only comparison (never fails)
+slower-whisper benchmark compare --track asr --dataset librispeech
+
+# Gate mode (fails on regression)
+slower-whisper benchmark compare --track asr --dataset librispeech --gate
+
+# Quick check with limited samples
+slower-whisper benchmark compare --track diarization --dataset ami --limit 10 -v
+```
+
+**Output:**
+```
+Benchmark Comparison: asr / librispeech
+============================================================
+Mode: report (informational only)
+Baseline created: 2026-01-21T00:00:00Z
+
+------------------------------------------------------------
+Metric               Current      Baseline     Regression   Status
+------------------------------------------------------------
+wer                  4.8000       4.5000       +6.7%        ✓ PASS (≤10%)
+cer                  1.3000       1.2000       +8.3%        ✓ PASS (≤15%)
+------------------------------------------------------------
+
+Overall: PASSED
+```
+
+## Baselines
+
+Baselines provide a reference point for detecting performance regressions.
+
+### Directory Structure
+
+```
+benchmarks/baselines/
+├── asr/
+│   └── librispeech.json
+├── diarization/
+│   └── ami.json
+├── streaming/
+│   └── librispeech.json
+├── semantic/
+│   └── ami.json
+└── emotion/
+    └── iemocap.json
+```
+
+### Baseline File Format
+
+```json
+{
+  "schema_version": 1,
+  "track": "asr",
+  "dataset": "librispeech",
+  "created_at": "2026-01-21T00:00:00Z",
+  "metrics": {
+    "wer": {
+      "value": 4.5,
+      "unit": "%",
+      "threshold": 0.10
+    },
+    "cer": {
+      "value": 1.2,
+      "unit": "%",
+      "threshold": 0.15
+    }
+  },
+  "receipt": {
+    "tool_version": "1.9.2",
+    "model": "large-v3",
+    "device": "cuda",
+    "compute_type": "float16"
+  }
+}
+```
+
+### Regression Policy
+
+- **Report mode (default):** Comparison prints results but never fails
+- **Gate mode (`--gate`):** Exit with error if any metric exceeds its threshold
+
+**Regression formula:**
+```
+regression = (current_value - baseline_value) / baseline_value
+```
+
+A metric **fails** if `regression > threshold`.
+
+### Updating Baselines
+
+When intentionally changing model behavior:
+
+1. Run the benchmark to verify expected changes
+2. Save a new baseline: `slower-whisper benchmark save-baseline --track <track>`
+3. Commit the updated baseline file with a descriptive message
+
 ## Output Format
 
 Benchmark results are saved as JSON with the following structure:

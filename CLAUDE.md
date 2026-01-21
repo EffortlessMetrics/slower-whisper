@@ -1,7 +1,7 @@
 # CLAUDE.md — Repo Guide (slower-whisper)
 
-**Status:** v1.9.2 — benchmark evaluation framework + parallel processing + Anthropic provider
-**Current focus:** Track 1 benchmark completion (baselines + CI integration)
+**Status:** v1.9.2 — benchmark evaluation framework + baseline infrastructure (#137)
+**Current focus:** Track 1 benchmark completion (CI integration #99)
 **Next arc:** Track 2 streaming protocol + Track 3 semantics adapters
 
 If this doc disagrees with code, update it.
@@ -64,6 +64,7 @@ nix-clean run .#verify -- --quick
 | Device resolution | `transcription/device.py` |
 | JSON I/O | `transcription/writers.py` |
 | Benchmark runners | `transcription/benchmark_runners.py` |
+| Benchmark CLI | `transcription/benchmark_cli.py` |
 | LLM providers | `transcription/llm_client.py` |
 
 ---

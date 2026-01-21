@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "track": "asr",
+  "dataset": "librispeech",
+  "created_at": "2026-01-21T00:00:00Z",
+  "metrics": {
+    "wer": {
+      "value": 4.5,
+      "unit": "%",
+      "threshold": 0.10
+    },
+    "cer": {
+      "value": 1.2,
+      "unit": "%",
+      "threshold": 0.15
+    }
+  },
+  "receipt": {
+    "tool_version": "1.9.2",
+    "model": "large-v3",
+    "device": "cuda",
+    "compute_type": "float16"
+  }
+}

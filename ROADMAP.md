@@ -16,7 +16,7 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 |-------|--------|-------------|
 | v1.9.x Closeout | ✅ Complete | — |
 | API Polish Bundle | 📋 Ready to Start | Begin #70 |
-| Track 1: Benchmarks | 🔄 In Progress | Complete #137 (baselines) |
+| Track 1: Benchmarks | 🔄 In Progress | Complete #99 (CI integration) |
 | Track 2: Streaming | 📋 Ready to Start | Begin #133 |
 | Track 3: Semantics | 📋 Ready to Start | Begin #88 |
 
@@ -47,7 +47,7 @@ nix-clean flake check        # Nix checks
 
 | Version | Highlights |
 |---------|------------|
-| **Unreleased** | Benchmark evaluation framework (ASR/DER/emotion/streaming), Anthropic LLM provider, parallel audio normalization |
+| **Unreleased** | Benchmark evaluation framework (ASR/DER/emotion/streaming), baseline infrastructure (#137), Anthropic LLM provider, parallel audio normalization |
 | **v1.9.2** | Version constant fix (`transcription.__version__` now correct) |
 | **v1.9.1** | GPU UX (`--device auto` default, preflight banner), CI caching fixes |
 | **v1.9.0** | Streaming callbacks (`StreamCallbacks` protocol), safe callback execution |
@@ -183,7 +183,7 @@ Benchmarks must exist before streaming work can be measured.
 | Order | Issue | Deliverable | Status |
 |-------|-------|-------------|--------|
 | 1 | [#95](https://github.com/EffortlessMetrics/slower-whisper/issues/95) | ASR WER runner (jiwer, smoke dataset) | ✅ `ASRBenchmarkRunner` (#186) |
-| 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format + comparator | ⬜ |
+| 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format + comparator | ✅ Baseline infrastructure complete |
 | 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency (P50/P95/P99, RTF) | ✅ `StreamingBenchmarkRunner` (#190) |
 | 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner (AMI subset) | ✅ `DiarizationBenchmarkRunner` (#189) |
 | 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ⬜ |
@@ -199,9 +199,8 @@ Benchmarks must exist before streaming work can be measured.
 
 **Remaining work:**
 
-1. Baseline file format and comparison logic (#137)
-2. CI integration with report-only mode (#99)
-3. CLI subcommand wiring (`slower-whisper benchmark`)
+1. CI integration with report-only mode (#99)
+2. CLI subcommand wiring for `slower-whisper benchmark` (partially complete)
 
 **Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline comparison.
 

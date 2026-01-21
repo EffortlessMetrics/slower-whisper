@@ -157,6 +157,363 @@ class BenchmarkResult:
 
 
 # =============================================================================
+# Baseline File Format (#137)
+# =============================================================================
+
+BASELINE_SCHEMA_VERSION = 1
+DEFAULT_REGRESSION_THRESHOLD = 0.10  # 10% regression allowed
+
+
+@dataclass
+class BaselineMetric:
+    """A metric in a baseline file with optional threshold."""
+
+    value: float
+    unit: str = ""
+    threshold: float | None = None  # Regression threshold (e.g., 0.10 = 10%)
+
+
+@dataclass
+class BaselineReceipt:
+    """Provenance information for a baseline."""
+
+    tool_version: str
+    model: str = ""
+    device: str = ""
+    compute_type: str = ""
+    git_commit: str | None = None
+
+
+@dataclass
+class BaselineFile:
+    """A baseline file for comparing benchmark results.
+
+    Location: benchmarks/baselines/<track>/<dataset>.json
+
+    Example:
+        {
+            "schema_version": 1,
+            "track": "asr",
+            "dataset": "librispeech-test-clean",
+            "created_at": "2026-01-07T12:00:00Z",
+            "metrics": {
+                "wer": {"value": 0.045, "unit": "ratio", "threshold": 0.05}
+            },
+            "receipt": {
+                "tool_version": "1.9.2",
+                "model": "large-v3"
+            }
+        }
+    """
+
+    schema_version: int
+    track: str
+    dataset: str
+    created_at: str
+    metrics: dict[str, BaselineMetric]
+    receipt: BaselineReceipt
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "schema_version": self.schema_version,
+            "track": self.track,
+            "dataset": self.dataset,
+            "created_at": self.created_at,
+            "metrics": {
+                name: {
+                    "value": m.value,
+                    "unit": m.unit,
+                    **({"threshold": m.threshold} if m.threshold is not None else {}),
+                }
+                for name, m in self.metrics.items()
+            },
+            "receipt": asdict(self.receipt),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BaselineFile:
+        """Create from dictionary (JSON deserialization)."""
+        metrics = {}
+        for name, m in data.get("metrics", {}).items():
+            metrics[name] = BaselineMetric(
+                value=m["value"],
+                unit=m.get("unit", ""),
+                threshold=m.get("threshold"),
+            )
+
+        receipt_data = data.get("receipt", {})
+        receipt = BaselineReceipt(
+            tool_version=receipt_data.get("tool_version", ""),
+            model=receipt_data.get("model", ""),
+            device=receipt_data.get("device", ""),
+            compute_type=receipt_data.get("compute_type", ""),
+            git_commit=receipt_data.get("git_commit"),
+        )
+
+        return cls(
+            schema_version=data.get("schema_version", 1),
+            track=data["track"],
+            dataset=data["dataset"],
+            created_at=data.get("created_at", ""),
+            metrics=metrics,
+            receipt=receipt,
+        )
+
+
+@dataclass
+class ComparisonResult:
+    """Result of comparing a metric against baseline."""
+
+    metric_name: str
+    current_value: float
+    baseline_value: float
+    regression: float  # (current - baseline) / baseline
+    threshold: float | None
+    passed: bool  # True if regression <= threshold (or no threshold)
+    unit: str = ""
+
+
+@dataclass
+class BaselineComparison:
+    """Full comparison of benchmark results against baseline."""
+
+    track: str
+    dataset: str
+    baseline_created_at: str
+    comparison_timestamp: str
+    results: list[ComparisonResult]
+    overall_passed: bool  # All metrics passed
+    mode: Literal["report", "gate"]  # report = never fail, gate = fail on regression
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "track": self.track,
+            "dataset": self.dataset,
+            "baseline_created_at": self.baseline_created_at,
+            "comparison_timestamp": self.comparison_timestamp,
+            "results": [
+                {
+                    "metric": r.metric_name,
+                    "current": r.current_value,
+                    "baseline": r.baseline_value,
+                    "regression": r.regression,
+                    "threshold": r.threshold,
+                    "passed": r.passed,
+                    "unit": r.unit,
+                }
+                for r in self.results
+            ],
+            "overall_passed": self.overall_passed,
+            "mode": self.mode,
+        }
+
+
+def get_baselines_dir() -> Path:
+    """Get the baselines directory path.
+
+    Returns the baselines directory from the project's benchmarks folder.
+    Baselines are version-controlled artifacts, not cache data.
+
+    Location priority:
+    1. SLOWER_WHISPER_BASELINES environment variable (if set)
+    2. Project root's benchmarks/baselines directory
+
+    Returns:
+        Path to baselines directory
+    """
+    # Check for explicit override
+    if baselines_override := os.environ.get("SLOWER_WHISPER_BASELINES"):
+        return Path(baselines_override).expanduser()
+
+    # Use project root's benchmarks/baselines directory
+    # This is the package's parent directory (transcription -> project root)
+    project_root = Path(__file__).parent.parent
+    return project_root / "benchmarks" / "baselines"
+
+
+def get_baseline_path(track: str, dataset: str) -> Path:
+    """Get the path to a baseline file."""
+    return get_baselines_dir() / track / f"{dataset}.json"
+
+
+def load_baseline(track: str, dataset: str) -> BaselineFile | None:
+    """Load a baseline file if it exists.
+
+    Args:
+        track: Benchmark track (asr, diarization, etc.)
+        dataset: Dataset name (librispeech, ami, etc.)
+
+    Returns:
+        BaselineFile if exists, None otherwise
+    """
+    path = get_baseline_path(track, dataset)
+    if not path.exists():
+        logger.debug(f"No baseline file at {path}")
+        return None
+
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return BaselineFile.from_dict(data)
+    except (json.JSONDecodeError, KeyError, OSError) as e:
+        logger.warning(f"Failed to load baseline from {path}: {e}")
+        return None
+
+
+def save_baseline(baseline: BaselineFile) -> Path:
+    """Save a baseline file.
+
+    Args:
+        baseline: The baseline to save
+
+    Returns:
+        Path where baseline was saved
+    """
+    path = get_baseline_path(baseline.track, baseline.dataset)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(path, "w") as f:
+        json.dump(baseline.to_dict(), f, indent=2)
+
+    return path
+
+
+def create_baseline_from_result(
+    result: BenchmarkResult,
+    thresholds: dict[str, float] | None = None,
+) -> BaselineFile:
+    """Create a baseline file from benchmark results.
+
+    Args:
+        result: Benchmark results to use as baseline
+        thresholds: Optional dict of metric_name -> threshold (e.g., {"wer": 0.10})
+
+    Returns:
+        BaselineFile ready to save
+    """
+    thresholds = thresholds or {}
+
+    # Get version info
+    try:
+        from . import __version__
+    except ImportError:
+        __version__ = "unknown"
+
+    # Get git commit if available
+    git_commit = None
+    try:
+        import subprocess
+
+        git_result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if git_result.returncode == 0:
+            git_commit = git_result.stdout.strip()
+    except Exception:
+        pass
+
+    # Build metrics dict
+    metrics = {}
+    for m in result.metrics:
+        if m.value is not None:
+            metrics[m.name] = BaselineMetric(
+                value=m.value,
+                unit=m.unit,
+                threshold=thresholds.get(m.name),
+            )
+
+    # Build receipt from system info
+    receipt = BaselineReceipt(
+        tool_version=__version__,
+        model=result.config.get("model", ""),
+        device=result.system_info.get("cuda_device", "cpu"),
+        compute_type=result.config.get("compute_type", ""),
+        git_commit=git_commit,
+    )
+
+    return BaselineFile(
+        schema_version=BASELINE_SCHEMA_VERSION,
+        track=result.track,
+        dataset=result.dataset,
+        created_at=datetime.now().isoformat(),
+        metrics=metrics,
+        receipt=receipt,
+    )
+
+
+def compare_with_baseline(
+    result: BenchmarkResult,
+    baseline: BaselineFile,
+    mode: Literal["report", "gate"] = "report",
+    default_threshold: float = DEFAULT_REGRESSION_THRESHOLD,
+) -> BaselineComparison:
+    """Compare benchmark results against a baseline.
+
+    Args:
+        result: Current benchmark results
+        baseline: Baseline to compare against
+        mode: "report" (never fail) or "gate" (fail on regression)
+        default_threshold: Default regression threshold if metric has none
+
+    Returns:
+        BaselineComparison with per-metric results
+    """
+    comparison_results = []
+
+    for metric in result.metrics:
+        if metric.value is None:
+            continue
+
+        baseline_metric = baseline.metrics.get(metric.name)
+        if baseline_metric is None:
+            logger.debug(f"Metric {metric.name} not in baseline, skipping comparison")
+            continue
+
+        # Calculate regression
+        if baseline_metric.value == 0:
+            regression = 0.0 if metric.value == 0 else float("inf")
+        else:
+            regression = (metric.value - baseline_metric.value) / baseline_metric.value
+
+        # Determine threshold
+        threshold = baseline_metric.threshold
+        if threshold is None:
+            threshold = default_threshold
+
+        # Check if passed (for metrics where lower is better, regression > 0 is bad)
+        passed = regression <= threshold
+
+        comparison_results.append(
+            ComparisonResult(
+                metric_name=metric.name,
+                current_value=metric.value,
+                baseline_value=baseline_metric.value,
+                regression=regression,
+                threshold=threshold,
+                passed=passed,
+                unit=metric.unit,
+            )
+        )
+
+    overall_passed = all(r.passed for r in comparison_results)
+
+    return BaselineComparison(
+        track=result.track,
+        dataset=result.dataset,
+        baseline_created_at=baseline.created_at,
+        comparison_timestamp=datetime.now().isoformat(),
+        results=comparison_results,
+        overall_passed=overall_passed,
+        mode=mode,
+    )
+
+
+# =============================================================================
 # Benchmark Runners (Scaffolding)
 # =============================================================================
 
@@ -1394,10 +1751,302 @@ def handle_benchmark_status() -> int:
         status = "[OK]" if info["available"] else "[MISSING]"
         print(f"  {status} {name}")
 
+    # Show baseline status
+    baselines_dir = get_baselines_dir()
+    print(f"\nBaselines directory: {baselines_dir}")
+    if baselines_dir.exists():
+        baseline_files = list(baselines_dir.glob("*/*.json"))
+        print(f"  Baseline files: {len(baseline_files)}")
+        for bf in sorted(baseline_files):
+            track = bf.parent.name
+            dataset = bf.stem
+            print(f"    [{track}] {dataset}")
+    else:
+        print("  No baselines directory found")
+
     print("\nTo stage a dataset, see the setup documentation:")
     for name, info in datasets.items():
         if not info["available"]:
             print(f"  {name}: {info['setup_doc']}")
+
+    return 0
+
+
+def handle_baseline_save(
+    track: str,
+    dataset: str | None,
+    split: str,
+    limit: int | None,
+    output: Path | None,
+    verbose: bool,
+    thresholds: dict[str, float] | None = None,
+    mode: SemanticMode | None = None,
+) -> int:
+    """Handle 'benchmark save-baseline' command - run benchmark and save as baseline.
+
+    Args:
+        track: Benchmark track (asr, diarization, etc.)
+        dataset: Dataset name (or None for default)
+        split: Dataset split (train/dev/test)
+        limit: Sample limit
+        output: Optional output path for results JSON
+        verbose: Show detailed progress
+        thresholds: Optional dict of metric_name -> threshold
+        mode: Semantic evaluation mode
+
+    Returns:
+        Exit code (0 = success, 1 = error)
+    """
+    # Validate track
+    if track not in BENCHMARK_TRACKS:
+        print(f"Error: Unknown track '{track}'.", file=sys.stderr)
+        print(f"Available tracks: {', '.join(BENCHMARK_TRACKS.keys())}", file=sys.stderr)
+        return 1
+
+    track_config = BENCHMARK_TRACKS[track]
+
+    # Use default dataset if not specified
+    if dataset is None:
+        dataset = track_config.default_dataset
+        if dataset is None:
+            print(
+                f"Error: No dataset specified and no default for track '{track}'.", file=sys.stderr
+            )
+            return 1
+
+    # Validate dataset for track
+    if dataset not in track_config.supported_datasets:
+        print(f"Error: Dataset '{dataset}' not supported for track '{track}'.", file=sys.stderr)
+        print(f"Supported datasets: {', '.join(track_config.supported_datasets)}", file=sys.stderr)
+        return 1
+
+    print(f"Running benchmark to create baseline: {track}")
+    print(f"  Dataset: {dataset}")
+    print(f"  Split: {split}")
+    if limit:
+        print(f"  Limit: {limit} samples")
+    print()
+
+    try:
+        runner = get_benchmark_runner(track, dataset, split, mode=mode)
+        result = runner.run(limit=limit, verbose=verbose)
+
+        if result.samples_evaluated == 0:
+            print("Error: No samples evaluated. Cannot create baseline.", file=sys.stderr)
+            return 1
+
+        # Create and save baseline
+        baseline = create_baseline_from_result(result, thresholds=thresholds)
+        baseline_path = save_baseline(baseline)
+
+        print("=" * 60)
+        print("BASELINE SAVED")
+        print("=" * 60)
+        print(f"\nTrack: {baseline.track}")
+        print(f"Dataset: {baseline.dataset}")
+        print(f"Samples evaluated: {result.samples_evaluated}")
+        print(f"File: {baseline_path}")
+
+        print("\nBaseline metrics:")
+        for name, m in baseline.metrics.items():
+            threshold_str = f" (threshold: {m.threshold:.1%})" if m.threshold else ""
+            print(f"  {name}: {m.value:.4f}{m.unit}{threshold_str}")
+
+        print("\nReceipt:")
+        print(f"  tool_version: {baseline.receipt.tool_version}")
+        if baseline.receipt.model:
+            print(f"  model: {baseline.receipt.model}")
+        if baseline.receipt.device:
+            print(f"  device: {baseline.receipt.device}")
+        if baseline.receipt.git_commit:
+            print(f"  git_commit: {baseline.receipt.git_commit}")
+
+        # Optionally save full results
+        if output:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with open(output, "w") as f:
+                json.dump(result.to_dict(), f, indent=2)
+            print(f"\nFull results saved to: {output}")
+
+        return 0
+
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error creating baseline: {e}", file=sys.stderr)
+        if verbose:
+            import traceback
+
+            traceback.print_exc()
+        return 1
+
+
+def handle_baseline_compare(
+    track: str,
+    dataset: str | None,
+    split: str,
+    limit: int | None,
+    output: Path | None,
+    verbose: bool,
+    gate_mode: bool = False,
+    mode: SemanticMode | None = None,
+) -> int:
+    """Handle 'benchmark compare' command - run benchmark and compare with baseline.
+
+    Args:
+        track: Benchmark track (asr, diarization, etc.)
+        dataset: Dataset name (or None for default)
+        split: Dataset split (train/dev/test)
+        limit: Sample limit
+        output: Optional output path for comparison JSON
+        verbose: Show detailed progress
+        gate_mode: If True, exit with error on regression
+        mode: Semantic evaluation mode
+
+    Returns:
+        Exit code (0 = success/no regression, 1 = error/regression in gate mode)
+    """
+    # Validate track
+    if track not in BENCHMARK_TRACKS:
+        print(f"Error: Unknown track '{track}'.", file=sys.stderr)
+        print(f"Available tracks: {', '.join(BENCHMARK_TRACKS.keys())}", file=sys.stderr)
+        return 1
+
+    track_config = BENCHMARK_TRACKS[track]
+
+    # Use default dataset if not specified
+    if dataset is None:
+        dataset = track_config.default_dataset
+        if dataset is None:
+            print(
+                f"Error: No dataset specified and no default for track '{track}'.", file=sys.stderr
+            )
+            return 1
+
+    # Validate dataset for track
+    if dataset not in track_config.supported_datasets:
+        print(f"Error: Dataset '{dataset}' not supported for track '{track}'.", file=sys.stderr)
+        print(f"Supported datasets: {', '.join(track_config.supported_datasets)}", file=sys.stderr)
+        return 1
+
+    # Load baseline
+    baseline = load_baseline(track, dataset)
+    if baseline is None:
+        baseline_path = get_baseline_path(track, dataset)
+        print(f"Error: No baseline found at {baseline_path}", file=sys.stderr)
+        print("Run 'benchmark save-baseline' first to create a baseline.", file=sys.stderr)
+        return 1
+
+    print(f"Comparing against baseline: {track}/{dataset}")
+    print(f"  Baseline created: {baseline.created_at}")
+    print(f"  Split: {split}")
+    if limit:
+        print(f"  Limit: {limit} samples")
+    print(f"  Mode: {'gate' if gate_mode else 'report'}")
+    print()
+
+    try:
+        runner = get_benchmark_runner(track, dataset, split, mode=mode)
+        result = runner.run(limit=limit, verbose=verbose)
+
+        if result.samples_evaluated == 0:
+            print("Error: No samples evaluated.", file=sys.stderr)
+            return 1
+
+        # Compare with baseline
+        comparison_mode: Literal["report", "gate"] = "gate" if gate_mode else "report"
+        comparison = compare_with_baseline(result, baseline, mode=comparison_mode)
+
+        print("=" * 60)
+        print("BASELINE COMPARISON")
+        print("=" * 60)
+        print(f"\nTrack: {comparison.track}")
+        print(f"Dataset: {comparison.dataset}")
+        print(f"Baseline: {comparison.baseline_created_at}")
+        print(f"Mode: {comparison.mode}")
+
+        print("\nMetric Comparison:")
+        print("-" * 60)
+        print(f"{'Metric':<20} {'Current':<12} {'Baseline':<12} {'Regression':<12} {'Status'}")
+        print("-" * 60)
+
+        for r in comparison.results:
+            status = "✓ PASS" if r.passed else "✗ FAIL"
+            regression_str = f"{r.regression:+.1%}"
+            threshold_str = f"(≤{r.threshold:.0%})" if r.threshold else ""
+            print(
+                f"{r.metric_name:<20} {r.current_value:<12.4f} "
+                f"{r.baseline_value:<12.4f} {regression_str:<12} {status} {threshold_str}"
+            )
+
+        print("-" * 60)
+
+        overall_status = "PASSED" if comparison.overall_passed else "FAILED"
+        print(f"\nOverall: {overall_status}")
+
+        if not comparison.overall_passed:
+            failed_metrics = [r.metric_name for r in comparison.results if not r.passed]
+            print(f"Failed metrics: {', '.join(failed_metrics)}")
+
+        # Save comparison if output specified
+        if output:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with open(output, "w") as f:
+                json.dump(comparison.to_dict(), f, indent=2)
+            print(f"\nComparison saved to: {output}")
+
+        # Return appropriate exit code
+        if gate_mode and not comparison.overall_passed:
+            print("\nGate mode: Failing due to regression.")
+            return 1
+
+        return 0
+
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error running comparison: {e}", file=sys.stderr)
+        if verbose:
+            import traceback
+
+            traceback.print_exc()
+        return 1
+
+
+def handle_baseline_list() -> int:
+    """Handle 'benchmark baselines' command - list all baselines."""
+    baselines_dir = get_baselines_dir()
+    print("Stored Baselines")
+    print("=" * 60)
+    print(f"\nBaselines directory: {baselines_dir}")
+
+    if not baselines_dir.exists():
+        print("\nNo baselines directory found.")
+        print("Run 'benchmark save-baseline' to create baselines.")
+        return 0
+
+    baseline_files = list(baselines_dir.glob("*/*.json"))
+    if not baseline_files:
+        print("\nNo baseline files found.")
+        print("Run 'benchmark save-baseline' to create baselines.")
+        return 0
+
+    print(f"\nFound {len(baseline_files)} baseline(s):\n")
+
+    for bf in sorted(baseline_files):
+        baseline = load_baseline(bf.parent.name, bf.stem)
+        if baseline is None:
+            print(f"  [{bf.parent.name}] {bf.stem}: <error loading>")
+            continue
+
+        print(f"  [{baseline.track}] {baseline.dataset}")
+        print(f"    Created: {baseline.created_at}")
+        print(f"    Version: {baseline.receipt.tool_version}")
+        if baseline.metrics:
+            print(f"    Metrics: {', '.join(baseline.metrics.keys())}")
+        print()
 
     return 0
 
@@ -1509,10 +2158,168 @@ def build_benchmark_parser(
         ),
     )
 
+    # benchmark baselines - list stored baselines
+    benchmark_subparsers.add_parser(
+        "baselines",
+        help="List stored baselines.",
+    )
+
+    # benchmark save-baseline - run benchmark and save as baseline
+    p_save = benchmark_subparsers.add_parser(
+        "save-baseline",
+        help="Run benchmark and save results as baseline for future comparisons.",
+    )
+
+    p_save.add_argument(
+        "--track",
+        "-t",
+        choices=list(BENCHMARK_TRACKS.keys()),
+        required=True,
+        help="Evaluation track to run.",
+    )
+
+    p_save.add_argument(
+        "--dataset",
+        "-d",
+        help="Dataset to evaluate on (default: track-specific).",
+    )
+
+    p_save.add_argument(
+        "--split",
+        "-s",
+        default="test",
+        help="Dataset split to use (default: test).",
+    )
+
+    p_save.add_argument(
+        "--limit",
+        "-n",
+        type=int,
+        default=None,
+        help="Limit number of samples to evaluate (for quick testing).",
+    )
+
+    p_save.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=None,
+        help="Output path for full benchmark results JSON (baseline saved separately).",
+    )
+
+    p_save.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed progress.",
+    )
+
+    p_save.add_argument(
+        "--threshold",
+        type=str,
+        action="append",
+        metavar="METRIC=VALUE",
+        help=(
+            "Set regression threshold for a metric (e.g., --threshold wer=0.10). "
+            "Can be specified multiple times. Value is a decimal (0.10 = 10%%)."
+        ),
+    )
+
+    p_save.add_argument(
+        "--mode",
+        "-m",
+        choices=["tags", "summary", "both"],
+        default="tags",
+        help="Semantic evaluation mode (only for --track semantic).",
+    )
+
+    # benchmark compare - run benchmark and compare with baseline
+    p_compare = benchmark_subparsers.add_parser(
+        "compare",
+        help="Run benchmark and compare results against stored baseline.",
+    )
+
+    p_compare.add_argument(
+        "--track",
+        "-t",
+        choices=list(BENCHMARK_TRACKS.keys()),
+        required=True,
+        help="Evaluation track to run.",
+    )
+
+    p_compare.add_argument(
+        "--dataset",
+        "-d",
+        help="Dataset to evaluate on (default: track-specific).",
+    )
+
+    p_compare.add_argument(
+        "--split",
+        "-s",
+        default="test",
+        help="Dataset split to use (default: test).",
+    )
+
+    p_compare.add_argument(
+        "--limit",
+        "-n",
+        type=int,
+        default=None,
+        help="Limit number of samples to evaluate (for quick testing).",
+    )
+
+    p_compare.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=None,
+        help="Output path for comparison results JSON.",
+    )
+
+    p_compare.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed progress.",
+    )
+
+    p_compare.add_argument(
+        "--gate",
+        action="store_true",
+        help="Gate mode: exit with error if regression exceeds threshold.",
+    )
+
+    p_compare.add_argument(
+        "--mode",
+        "-m",
+        choices=["tags", "summary", "both"],
+        default="tags",
+        help="Semantic evaluation mode (only for --track semantic).",
+    )
+
     # Default action if no subcommand given - show help
     p_benchmark.set_defaults(benchmark_action=None)
 
     return p_benchmark
+
+
+def _parse_thresholds(threshold_args: list[str] | None) -> dict[str, float]:
+    """Parse threshold arguments (--threshold metric=value) into a dict."""
+    if not threshold_args:
+        return {}
+
+    thresholds = {}
+    for arg in threshold_args:
+        if "=" not in arg:
+            logger.warning(f"Invalid threshold format: {arg} (expected METRIC=VALUE)")
+            continue
+        metric, value_str = arg.split("=", 1)
+        try:
+            thresholds[metric.strip()] = float(value_str.strip())
+        except ValueError:
+            logger.warning(f"Invalid threshold value: {value_str} (expected float)")
+
+    return thresholds
 
 
 def handle_benchmark_command(args: argparse.Namespace) -> int:
@@ -1530,6 +2337,9 @@ def handle_benchmark_command(args: argparse.Namespace) -> int:
     if args.benchmark_action == "status":
         return handle_benchmark_status()
 
+    if args.benchmark_action == "baselines":
+        return handle_baseline_list()
+
     if args.benchmark_action == "run":
         return handle_benchmark_run(
             track=args.track,
@@ -1538,6 +2348,31 @@ def handle_benchmark_command(args: argparse.Namespace) -> int:
             limit=args.limit,
             output=args.output,
             verbose=args.verbose,
+            mode=getattr(args, "mode", None),
+        )
+
+    if args.benchmark_action == "save-baseline":
+        thresholds = _parse_thresholds(getattr(args, "threshold", None))
+        return handle_baseline_save(
+            track=args.track,
+            dataset=args.dataset,
+            split=args.split,
+            limit=args.limit,
+            output=args.output,
+            verbose=args.verbose,
+            thresholds=thresholds if thresholds else None,
+            mode=getattr(args, "mode", None),
+        )
+
+    if args.benchmark_action == "compare":
+        return handle_baseline_compare(
+            track=args.track,
+            dataset=args.dataset,
+            split=args.split,
+            limit=args.limit,
+            output=args.output,
+            verbose=args.verbose,
+            gate_mode=getattr(args, "gate", False),
             mode=getattr(args, "mode", None),
         )
 
