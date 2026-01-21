@@ -651,19 +651,18 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
         elif args.clear == "samples":
             targets = [("Samples", samples_dir)]
 
-        # Calculate total size to be cleared
-        total_size = sum(_get_cache_size(path) for _, path in targets)
-        size_str = _format_size(total_size)
-
-        if not sys.stdin.isatty() and not args.force:
-            print(
-                f"Error: Cache clear requires --force in non-interactive mode.\n"
-                f"Run with: slower-whisper cache --clear {args.clear} --force",
-                file=sys.stderr,
-            )
-            return 1
-
         if not args.force:
+            if not sys.stdin.isatty():
+                print(
+                    f"Error: Cache clear requires --force in non-interactive mode.\n"
+                    f"Run with: slower-whisper cache --clear {args.clear} --force",
+                    file=sys.stderr,
+                )
+                return 1
+
+            # Only calculate size when prompting (skip expensive traversal when --force)
+            total_size = sum(_get_cache_size(path) for _, path in targets)
+            size_str = _format_size(total_size)
             confirm = input(f"Clear {args.clear} cache ({size_str})? This cannot be undone. [y/N] ")
             if confirm.lower() not in ("y", "yes"):
                 print("Aborted.")

@@ -58,40 +58,15 @@ class TestCacheClearConfirmation:
             captured = capsys.readouterr()
             assert "Aborted" in captured.out
 
-    def test_force_flag_skips_prompt(self, mock_cache_paths, capsys):
-        """--force skips the confirmation prompt entirely."""
+    @pytest.mark.parametrize("force_flag", ["--force", "-f", "-y"])
+    def test_force_flags_skip_prompt(self, mock_cache_paths, force_flag):
+        """--force and its aliases skip the confirmation prompt entirely."""
         with (
             patch("shutil.rmtree") as mock_rmtree,
             patch("builtins.input") as mock_input,
             patch("sys.stdin.isatty", return_value=True),
         ):
-            exit_code = main(["cache", "--clear", "whisper", "--force"])
-
-            assert exit_code == 0
-            assert not mock_input.called
-            assert mock_rmtree.called
-
-    def test_short_force_flag_works(self, mock_cache_paths, capsys):
-        """-f short flag works same as --force."""
-        with (
-            patch("shutil.rmtree") as mock_rmtree,
-            patch("builtins.input") as mock_input,
-            patch("sys.stdin.isatty", return_value=True),
-        ):
-            exit_code = main(["cache", "--clear", "whisper", "-f"])
-
-            assert exit_code == 0
-            assert not mock_input.called
-            assert mock_rmtree.called
-
-    def test_yes_flag_alias_works(self, mock_cache_paths, capsys):
-        """-y alias works same as --force."""
-        with (
-            patch("shutil.rmtree") as mock_rmtree,
-            patch("builtins.input") as mock_input,
-            patch("sys.stdin.isatty", return_value=True),
-        ):
-            exit_code = main(["cache", "--clear", "whisper", "-y"])
+            exit_code = main(["cache", "--clear", "whisper", force_flag])
 
             assert exit_code == 0
             assert not mock_input.called
