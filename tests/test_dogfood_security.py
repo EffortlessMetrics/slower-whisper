@@ -36,7 +36,9 @@ class TestSubprocessArgumentInjection:
 
         # Find the subprocess call to the LLM script
         llm_calls = [
-            call for call in mock_run.call_args_list if "summarize_with_diarization.py" in str(call)
+            call
+            for call in mock_run.call_args_list
+            if call.args and "summarize_with_diarization.py" in call.args[0][1]
         ]
         assert llm_calls, "LLM integration script was not invoked"
 
