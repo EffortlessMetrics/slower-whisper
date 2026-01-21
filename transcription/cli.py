@@ -346,8 +346,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_cache.add_argument(
         "--force",
         "-f",
+        "-y",
         action="store_true",
-        help="Skip confirmation prompt when clearing cache.",
+        help="Skip confirmation prompt when clearing cache (aliases: -f, -y).",
     )
 
     # ============================================================================
@@ -626,23 +627,7 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
         return 0
 
     if args.clear:
-        if not sys.stdin.isatty() and not args.force:
-            print(
-                f"Error: Cache clear requires --force in non-interactive mode.\n"
-                f"Run with: slower-whisper cache --clear {args.clear} --force",
-                file=sys.stderr,
-            )
-            return 1
-
-        if not args.force:
-            confirm = input(
-                f"Are you sure you want to clear the {args.clear} cache? "
-                f"This cannot be undone. [y/N] "
-            )
-            if confirm.lower() not in ("y", "yes"):
-                print("Aborted.")
-                return 0
-
+        # Build targets list first so we can show size in confirmation
         targets = []
         if args.clear == "all":
             targets = [
@@ -665,6 +650,24 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
             targets = [("Torch", paths.torch_home)]
         elif args.clear == "samples":
             targets = [("Samples", samples_dir)]
+
+        # Calculate total size to be cleared
+        total_size = sum(_get_cache_size(path) for _, path in targets)
+        size_str = _format_size(total_size)
+
+        if not sys.stdin.isatty() and not args.force:
+            print(
+                f"Error: Cache clear requires --force in non-interactive mode.\n"
+                f"Run with: slower-whisper cache --clear {args.clear} --force",
+                file=sys.stderr,
+            )
+            return 1
+
+        if not args.force:
+            confirm = input(f"Clear {args.clear} cache ({size_str})? This cannot be undone. [y/N] ")
+            if confirm.lower() not in ("y", "yes"):
+                print("Aborted.")
+                return 0
 
         for name, target in targets:
             if target.exists():
