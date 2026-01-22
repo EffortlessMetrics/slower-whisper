@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "meeting_id": "ami_meeting_002",
+  "topics": [
+    {"label": "technical_support", "segment_ids": [0, 1, 2, 3]},
+    {"label": "integration", "segment_ids": [4, 5, 6]},
+    {"label": "bug_report", "segment_ids": [7, 8, 9, 10]}
+  ],
+  "risks": [
+    {"type": "escalation", "severity": "high", "segment_id": 7, "evidence": "This bug has been blocking our production deployment for three days."},
+    {"type": "churn", "severity": "medium", "segment_id": 9, "evidence": "If this isn't resolved soon, we may need to evaluate alternative solutions."}
+  ],
+  "actions": [
+    {"text": "Create hotfix for authentication bug", "speaker_id": "spk_engineer", "segment_ids": [8]},
+    {"text": "Deploy patch to staging environment", "speaker_id": "spk_devops", "segment_ids": [9]},
+    {"text": "Send integration documentation", "speaker_id": "spk_support", "segment_ids": [5]},
+    {"text": "Schedule post-mortem review", "speaker_id": "spk_pm", "segment_ids": [10]}
+  ],
+  "summary": "Technical support call addressing critical authentication bug blocking production. Customer expressed frustration with three-day delay. Engineering committed to hotfix and staging deployment. Support to provide updated integration docs. Post-mortem scheduled to prevent recurrence."
+}

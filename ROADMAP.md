@@ -186,7 +186,7 @@ Benchmarks must exist before streaming work can be measured.
 | 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format + comparator | ✅ Baseline infrastructure complete |
 | 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency (P50/P95/P99, RTF) | ✅ `StreamingBenchmarkRunner` (#190) |
 | 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner (AMI subset) | ✅ `DiarizationBenchmarkRunner` (#189) |
-| 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ⬜ |
+| 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ✅ Phase 2 complete |
 
 **Also implemented:**
 
@@ -199,8 +199,9 @@ Benchmarks must exist before streaming work can be measured.
 
 **Remaining work:**
 
-1. CI integration with report-only mode (#99)
+1. ~~CI integration with report-only mode (#99)~~ - ✅ Phase 1 (report-only) and Phase 2 (PR comments) complete
 2. CLI subcommand wiring for `slower-whisper benchmark` (partially complete)
+3. Phase 3: Gate mode with `--gate` flag for critical regressions (future)
 
 **Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline comparison.
 

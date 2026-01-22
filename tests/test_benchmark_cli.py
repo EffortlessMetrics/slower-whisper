@@ -74,3 +74,158 @@ def test_streaming_benchmark_runner_evaluate_sample(
     assert "latency_total_ms" in result
     assert result["audio_duration_s"] == 2.0
     assert "rtf" in result
+
+
+# =============================================================================
+# Dry-run validation tests
+# =============================================================================
+
+
+class TestDryRunValidation:
+    """Tests for --dry-run flag and _perform_dry_run_validation function."""
+
+    def test_dry_run_commonvoice_en_smoke_returns_zero_for_valid_manifest(self) -> None:
+        """Dry-run returns exit code 0 for valid manifest (even if audio not staged)."""
+        from transcription.benchmark_cli import handle_benchmark_run
+
+        exit_code = handle_benchmark_run(
+            track="asr",
+            dataset="commonvoice_en_smoke",
+            split="test",
+            limit=None,
+            output=None,
+            verbose=False,
+            mode=None,
+            dry_run=True,
+        )
+
+        assert exit_code == 0
+
+    def test_dry_run_invalid_track_returns_one(self) -> None:
+        """Dry-run returns exit code 1 for invalid track."""
+        from transcription.benchmark_cli import handle_benchmark_run
+
+        exit_code = handle_benchmark_run(
+            track="invalid_track",
+            dataset="commonvoice_en_smoke",
+            split="test",
+            limit=None,
+            output=None,
+            verbose=False,
+            mode=None,
+            dry_run=True,
+        )
+
+        assert exit_code == 1
+
+    def test_dry_run_invalid_dataset_for_track_returns_one(self) -> None:
+        """Dry-run returns exit code 1 for dataset not supported by track."""
+        from transcription.benchmark_cli import handle_benchmark_run
+
+        exit_code = handle_benchmark_run(
+            track="asr",
+            dataset="ami",  # ami is not an ASR dataset
+            split="test",
+            limit=None,
+            output=None,
+            verbose=False,
+            mode=None,
+            dry_run=True,
+        )
+
+        assert exit_code == 1
+
+    def test_dry_run_output_contains_expected_fields(self, capsys: pytest.CaptureFixture) -> None:
+        """Dry-run output contains manifest path, schema version, samples, and staging info."""
+        from transcription.benchmark_cli import handle_benchmark_run
+
+        handle_benchmark_run(
+            track="asr",
+            dataset="commonvoice_en_smoke",
+            split="test",
+            limit=None,
+            output=None,
+            verbose=False,
+            mode=None,
+            dry_run=True,
+        )
+
+        captured = capsys.readouterr()
+        output = captured.out
+
+        # Check required output fields
+        assert "Dry-run validation for asr/commonvoice_en_smoke:" in output
+        assert "Manifest found:" in output
+        assert "Schema version:" in output
+        assert "Samples defined:" in output
+        assert "Audio files staged:" in output
+        assert "To stage audio:" in output
+
+    def test_dry_run_uses_unicode_symbols(self, capsys: pytest.CaptureFixture) -> None:
+        """Dry-run output uses Unicode check mark and warning symbols."""
+        from transcription.benchmark_cli import handle_benchmark_run
+
+        handle_benchmark_run(
+            track="asr",
+            dataset="commonvoice_en_smoke",
+            split="test",
+            limit=None,
+            output=None,
+            verbose=False,
+            mode=None,
+            dry_run=True,
+        )
+
+        captured = capsys.readouterr()
+        output = captured.out
+
+        # Should contain Unicode check mark for valid manifest fields
+        assert "\u2713" in output  # CHECK mark
+
+        # Should contain warning symbol for unstaged audio (commonvoice_en_smoke has 0 staged)
+        assert "\u26a0" in output  # WARNING symbol
+
+    def test_dry_run_does_not_run_benchmarks(self) -> None:
+        """Dry-run mode exits early without running actual benchmarks."""
+        from transcription.benchmark_cli import handle_benchmark_run
+
+        # If benchmarks were run, this would try to load ASR model and fail
+        # or take a long time. Dry-run should complete nearly instantly.
+        with patch("transcription.benchmark_cli.get_benchmark_runner") as mock_runner:
+            handle_benchmark_run(
+                track="asr",
+                dataset="commonvoice_en_smoke",
+                split="test",
+                limit=None,
+                output=None,
+                verbose=False,
+                mode=None,
+                dry_run=True,
+            )
+
+            # get_benchmark_runner should NOT be called in dry-run mode
+            mock_runner.assert_not_called()
+
+    def test_dry_run_respects_selection_csv_for_sample_count(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Dry-run reads sample count from selection.csv for commonvoice_en_smoke."""
+        from transcription.benchmark_cli import handle_benchmark_run
+
+        handle_benchmark_run(
+            track="asr",
+            dataset="commonvoice_en_smoke",
+            split="test",
+            limit=None,
+            output=None,
+            verbose=False,
+            mode=None,
+            dry_run=True,
+        )
+
+        captured = capsys.readouterr()
+        output = captured.out
+
+        # selection.csv has 15 entries (from the test data)
+        assert "Samples defined: 15" in output
+        assert "from selection.csv" in output

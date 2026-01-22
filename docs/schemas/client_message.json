@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slower-whisper.dev/schemas/client_message.json",
+  "title": "ClientMessage",
+  "description": "Client-to-server message for WebSocket streaming protocol v2.0. Clients send these messages to control session lifecycle and submit audio data.",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "$ref": "#/$defs/ClientMessageType",
+      "description": "Client message type indicating the operation."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "START_SESSION" } }
+      },
+      "then": {
+        "$ref": "#/$defs/StartSessionMessage"
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "AUDIO_CHUNK" } }
+      },
+      "then": {
+        "$ref": "#/$defs/AudioChunkMessage"
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "END_SESSION" } }
+      },
+      "then": {
+        "$ref": "#/$defs/EndSessionMessage"
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "PING" } }
+      },
+      "then": {
+        "$ref": "#/$defs/PingMessage"
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "RESUME_SESSION" } }
+      },
+      "then": {
+        "$ref": "#/$defs/ResumeSessionMessage"
+      }
+    }
+  ],
+  "$defs": {
+    "ClientMessageType": {
+      "type": "string",
+      "enum": [
+        "START_SESSION",
+        "AUDIO_CHUNK",
+        "END_SESSION",
+        "PING",
+        "RESUME_SESSION"
+      ],
+      "description": "Client message types sent from client to server."
+    },
+    "StartSessionMessage": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "const": "START_SESSION"
+        },
+        "config": {
+          "$ref": "#/$defs/SessionConfig",
+          "description": "Optional session configuration. If omitted, defaults are used."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Start a new streaming session. Server responds with SESSION_STARTED event."
+    },
+    "SessionConfig": {
+      "type": "object",
+      "properties": {
+        "max_gap_sec": {
+          "type": "number",
+          "minimum": 0,
+          "default": 1.0,
+          "description": "Gap threshold in seconds to finalize segment. When gap between chunks exceeds this, segment is finalized."
+        },
+        "enable_prosody": {
+          "type": "boolean",
+          "default": false,
+          "description": "Extract prosodic features (pitch, energy, rate) from audio."
+        },
+        "enable_emotion": {
+          "type": "boolean",
+          "default": false,
+          "description": "Extract dimensional emotion features (valence, arousal) from audio."
+        },
+        "enable_categorical_emotion": {
+          "type": "boolean",
+          "default": false,
+          "description": "Extract categorical emotion labels (happy, sad, angry, etc.)."
+        },
+        "enable_diarization": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable incremental speaker diarization."
+        },
+        "diarization_interval_sec": {
+          "type": "number",
+          "minimum": 0,
+          "default": 30.0,
+          "description": "Interval in seconds between diarization updates when enabled."
+        },
+        "sample_rate": {
+          "type": "integer",
+          "minimum": 8000,
+          "maximum": 48000,
+          "default": 16000,
+          "description": "Expected audio sample rate in Hz."
+        },
+        "audio_format": {
+          "type": "string",
+          "enum": ["pcm_s16le", "pcm_f32le", "opus"],
+          "default": "pcm_s16le",
+          "description": "Audio encoding format. pcm_s16le is 16-bit signed little-endian PCM."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Session configuration options."
+    },
+    "AudioChunkMessage": {
+      "type": "object",
+      "required": ["type", "data", "sequence"],
+      "properties": {
+        "type": {
+          "const": "AUDIO_CHUNK"
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "description": "Base64-encoded audio data. Decode before processing."
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Chunk sequence number. Must be monotonically increasing per session. Used for ordering validation."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Submit an audio chunk for processing. Chunks must arrive in sequence order."
+    },
+    "EndSessionMessage": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "const": "END_SESSION"
+        }
+      },
+      "additionalProperties": false,
+      "description": "End the streaming session. Server will finalize pending segments and respond with SESSION_ENDED event."
+    },
+    "PingMessage": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "const": "PING"
+        },
+        "timestamp": {
+          "type": "integer",
+          "description": "Client timestamp in Unix epoch milliseconds. Echoed in PONG response for latency measurement."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Keep-alive ping. Server responds with PONG event containing both timestamps."
+    },
+    "ResumeSessionMessage": {
+      "type": "object",
+      "required": ["type", "stream_id", "last_event_id"],
+      "properties": {
+        "type": {
+          "const": "RESUME_SESSION"
+        },
+        "stream_id": {
+          "type": "string",
+          "pattern": "^str-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "description": "Stream ID from the original session to resume."
+        },
+        "last_event_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Last event_id received by client. Server will replay events after this ID if in buffer."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Resume a disconnected session. Server replays missed events if available, or returns RESUME_GAP error."
+    }
+  }
+}

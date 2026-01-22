@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `benchmark baselines` CLI command to list stored baselines
   - Configurable regression thresholds per metric (default: 10%)
   - Comprehensive test coverage for baseline serialization and comparison logic
+- **Benchmark CI Integration Phase 2** (#99): Automated PR comments with regression summaries
+  - GitHub Actions workflow posts benchmark comparison results to pull requests
+  - Markdown table format showing track, metric, current/baseline values, regression %, threshold, and pass/fail status
+  - Comment updates on subsequent runs (uses `peter-evans/find-comment` + `create-or-update-comment` actions)
+  - Graceful handling of missing baselines and skipped benchmarks
+  - Collapsible details section with workflow run link and artifacts reference
+  - Report-only mode: regressions inform but do not block merges
 - **Anthropic LLM Provider**: New `AnthropicProvider` in `llm_client` module for Claude API integration with streaming support (#188)
 - **Colorized CLI Output**: Enhanced CLI with ANSI colors for status messages and errors, respects `NO_COLOR` environment variable (#191)
 - **Cache Clear Confirmation**: Interactive confirmation prompt for `slower-whisper cache clear` to prevent accidental data loss (#198)

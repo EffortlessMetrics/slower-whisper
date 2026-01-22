@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "meeting_id": "ami_meeting_003",
+  "topics": [
+    {"label": "onboarding", "segment_ids": [0, 1, 2]},
+    {"label": "training", "segment_ids": [3, 4, 5]},
+    {"label": "subscription", "segment_ids": [6, 7]},
+    {"label": "features", "segment_ids": [8, 9, 10]}
+  ],
+  "risks": [
+    {"type": "churn", "severity": "low", "segment_id": 7, "evidence": "We're still evaluating whether the enterprise tier is right for us."}
+  ],
+  "actions": [
+    {"text": "Create personalized onboarding guide", "speaker_id": "spk_csm", "segment_ids": [2]},
+    {"text": "Schedule training session for admin users", "speaker_id": "spk_trainer", "segment_ids": [4, 5]},
+    {"text": "Provide trial extension for enterprise features", "speaker_id": "spk_sales", "segment_ids": [7]},
+    {"text": "Share API documentation and sample code", "speaker_id": "spk_engineer", "segment_ids": [10]}
+  ],
+  "summary": "Customer onboarding kickoff meeting. Discussed training requirements and subscription tier evaluation. Customer success manager to provide personalized guide. Training scheduled for admin team. Trial extension offered while customer evaluates enterprise features."
+}

@@ -11,6 +11,9 @@ Key components:
 - ProviderHealth: Health check result for providers
 - SemanticAdapter: Protocol for all semantic providers
 - LocalKeywordAdapter: Wrapper for KeywordSemanticAnnotator
+- LocalLLMSemanticAdapter: Local LLM-based semantic annotator (#89)
+- OpenAISemanticAdapter: Cloud LLM adapter using OpenAI API (#90)
+- AnthropicSemanticAdapter: Cloud LLM adapter using Anthropic API (#90)
 
 Schema version: 0.1.0
 
@@ -20,7 +23,9 @@ See ROADMAP.md Track 3 for design rationale.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -30,6 +35,125 @@ if TYPE_CHECKING:
     from .semantic import KeywordSemanticAnnotator
 
 logger = logging.getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Prompt Templates for Local LLM Semantic Extraction
+# -----------------------------------------------------------------------------
+
+TOPIC_EXTRACTION_PROMPT = """Extract topics from this conversation chunk.
+
+CONTEXT (previous chunks):
+{context}
+
+CURRENT CHUNK:
+Speaker: {speaker_id}
+Timestamp: {start}s - {end}s
+Text: {text}
+
+Extract 1-3 main topics discussed. Focus on:
+- Business topics (pricing, billing, features, support)
+- Technical topics (bugs, integrations, setup)
+- Relationship topics (satisfaction, complaints, requests)
+
+Respond with ONLY valid JSON (no other text):
+{{"topics": [
+  {{"label": "topic_name", "confidence": 0.0-1.0, "evidence": "brief quote"}}
+]}}
+"""
+
+RISK_DETECTION_PROMPT = """Detect risk signals in this conversation chunk.
+
+CONTEXT (previous chunks):
+{context}
+
+CURRENT CHUNK:
+Speaker: {speaker_id}
+Timestamp: {start}s - {end}s
+Text: {text}
+
+Identify any of these risk signals:
+- escalation: Customer requests manager/supervisor, uses threatening language
+- churn_risk: Customer mentions leaving, canceling, competitor products
+- compliance: Legal threats, regulatory mentions, recording concerns
+- sentiment_negative: Strong negative emotion, frustration, anger
+- pricing_objection: Budget concerns, price complaints, discount demands
+- competitor_mention: References to competing products/services
+- customer_frustration: Repeated issues, long wait times, unresolved problems
+- agent_error: Mistakes, miscommunication, incorrect information
+
+For each risk found, assess severity:
+- critical: Immediate action required (legal threat, explicit churn intent)
+- high: Urgent attention needed (escalation request, strong frustration)
+- medium: Monitor closely (pricing concerns, mild frustration)
+- low: Note for context (competitor mention, minor concerns)
+
+Respond with ONLY valid JSON (no other text):
+{{"risks": [
+  {{"type": "risk_type", "severity": "level", "confidence": 0.0-1.0, "evidence": "brief quote"}}
+]}}
+"""
+
+ACTION_EXTRACTION_PROMPT = """Extract action items from this conversation chunk.
+
+CONTEXT (previous chunks):
+{context}
+
+CURRENT CHUNK:
+Speaker: {speaker_id}
+Timestamp: {start}s - {end}s
+Text: {text}
+
+Identify explicit commitments and tasks:
+- Look for phrases like "I will", "I'll", "Let me", "We'll send", "I can"
+- Note who made the commitment (speaker ID or role: agent/customer)
+- Extract deadlines if mentioned (today, tomorrow, end of week, specific dates)
+- Assess priority based on urgency signals
+
+Only extract clear, actionable commitments. Do NOT include:
+- Vague intentions ("maybe", "might", "could")
+- Questions ("should I?", "do you want me to?")
+- Past actions already completed
+
+Respond with ONLY valid JSON (no other text):
+{{"actions": [
+  {{"description": "clear action description", "assignee": "speaker_id or null", "due": "deadline or null", "priority": "low|medium|high|null", "verbatim": "exact quote"}}
+]}}
+"""
+
+COMBINED_EXTRACTION_PROMPT = """Analyze this conversation chunk and extract structured annotations.
+
+CONTEXT (previous chunks):
+{context}
+
+CURRENT CHUNK:
+Speaker: {speaker_id}
+Timestamp: {start}s - {end}s
+Text: {text}
+
+Extract the following:
+
+1. TOPICS: Main subjects discussed (1-3 topics max)
+   - Use lowercase labels with underscores (e.g., "pricing", "technical_support")
+   - Confidence: 0.9+ for explicit mentions, 0.7-0.9 for strong inference
+
+2. RISKS: Any concerning signals
+   - Types: escalation, churn_risk, compliance, sentiment_negative, pricing_objection, competitor_mention, customer_frustration, agent_error
+   - Severity: low, medium, high, critical
+
+3. ACTIONS: Explicit commitments and tasks
+   - Only clear commitments (not suggestions or wishes)
+   - Include assignee if identifiable
+
+Respond with ONLY valid JSON (no other text):
+{{
+  "topics": [{{"label": "topic", "confidence": 0.0-1.0, "evidence": "quote"}}],
+  "risks": [{{"type": "type", "severity": "level", "confidence": 0.0-1.0, "evidence": "quote"}}],
+  "actions": [{{"description": "task", "assignee": "speaker|null", "due": "deadline|null", "priority": "level|null"}}]
+}}
+
+If no items found for a category, return empty array [].
+"""
 
 # Schema version for semantic annotations
 SEMANTIC_SCHEMA_VERSION = "0.1.0"
@@ -517,6 +641,551 @@ class LocalKeywordAdapter:
 
 
 # -----------------------------------------------------------------------------
+# Cloud LLM Semantic Extraction Prompt
+# -----------------------------------------------------------------------------
+
+CLOUD_SEMANTIC_EXTRACTION_SYSTEM_PROMPT = """\
+You are a semantic analysis expert. Analyze the provided conversation text \
+and extract semantic information.
+
+Output a JSON object with exactly this structure:
+{
+  "topics": ["list of 1-5 topic labels like 'pricing', 'contract_terms'"],
+  "intent": "question, objection, statement, request, confirmation, greeting, closing, or null",
+  "sentiment": "positive, negative, neutral, or null",
+  "action_items": [
+    {
+      "text": "the full text of the action/commitment",
+      "speaker_id": "speaker ID if identifiable, or null",
+      "confidence": 0.0-1.0
+    }
+  ],
+  "risk_tags": ["list of risk indicators like 'escalation', 'churn_risk', 'compliance_concern'"]
+}
+
+Rules:
+- Return ONLY valid JSON, no markdown or explanation
+- topics: Identify key themes discussed (max 5)
+- intent: The primary intent of the speaker(s)
+- sentiment: Overall emotional tone
+- action_items: Any commitments, promises, or tasks mentioned
+- risk_tags: Potential concerns or risks identified
+- If uncertain about a field, use null or empty list
+
+Focus on accuracy over completeness."""
+
+CLOUD_SEMANTIC_EXTRACTION_USER_TEMPLATE = """Analyze this conversation segment:
+
+Speaker: {speaker_id}
+Context: {context}
+
+Text:
+{text}
+
+Return the JSON semantic analysis."""
+
+
+# -----------------------------------------------------------------------------
+# Cloud LLM Adapters (#90)
+# -----------------------------------------------------------------------------
+
+
+class CloudLLMSemanticAdapter:
+    """Base class for cloud LLM semantic adapters.
+
+    Provides common functionality for OpenAI and Anthropic adapters including:
+    - Prompt building
+    - JSON response parsing
+    - Error handling with graceful degradation
+    - Guardrails integration
+
+    Subclasses must implement:
+    - _get_provider_name() -> str
+    - _get_model_name() -> str
+    - _make_request_sync(system: str, user: str) -> tuple[str, int]
+    - _check_health_impl() -> ProviderHealth
+    """
+
+    def __init__(
+        self,
+        guardrails: Any | None = None,
+        context_window: int = 3,
+    ) -> None:
+        """Initialize the cloud adapter.
+
+        Args:
+            guardrails: Optional LLMGuardrails for rate limiting, cost tracking, PII.
+                       If None, a default guardrails instance is created.
+            context_window: Number of previous chunks to include for context.
+        """
+        from .llm_guardrails import LLMGuardrails
+
+        self._guardrails = guardrails or LLMGuardrails()
+        self._context_window = context_window
+
+    def _build_prompt(self, text: str, context: ChunkContext) -> tuple[str, str]:
+        """Build system and user prompts for semantic extraction.
+
+        Args:
+            text: The text to annotate.
+            context: Chunk context with speaker, timing, etc.
+
+        Returns:
+            Tuple of (system_prompt, user_prompt).
+        """
+        # Build context string from previous chunks
+        context_str = ""
+        if context.previous_chunks:
+            recent = context.previous_chunks[-self._context_window :]
+            context_str = " | ".join(recent)
+        else:
+            context_str = "(start of conversation)"
+
+        speaker = context.speaker_id or "unknown"
+
+        user_prompt = CLOUD_SEMANTIC_EXTRACTION_USER_TEMPLATE.format(
+            speaker_id=speaker,
+            context=context_str,
+            text=text,
+        )
+
+        return CLOUD_SEMANTIC_EXTRACTION_SYSTEM_PROMPT, user_prompt
+
+    def _parse_response(self, response_text: str) -> NormalizedAnnotation:
+        """Parse JSON response into NormalizedAnnotation.
+
+        Args:
+            response_text: Raw text response from LLM.
+
+        Returns:
+            NormalizedAnnotation parsed from response.
+
+        Raises:
+            ValueError: If response is not valid JSON or missing required fields.
+        """
+        # Strip markdown code blocks if present
+        text = response_text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+        data = json.loads(text)
+
+        # Parse action items
+        action_items = []
+        for item in data.get("action_items", []):
+            if isinstance(item, dict):
+                action_items.append(
+                    ActionItem(
+                        text=str(item.get("text", "")),
+                        speaker_id=item.get("speaker_id"),
+                        confidence=float(item.get("confidence", 0.8)),
+                    )
+                )
+
+        # Parse sentiment
+        sentiment_raw = data.get("sentiment")
+        sentiment: Literal["positive", "negative", "neutral"] | None = None
+        if sentiment_raw in ("positive", "negative", "neutral"):
+            sentiment = sentiment_raw
+
+        return NormalizedAnnotation(
+            topics=list(data.get("topics", [])),
+            intent=data.get("intent"),
+            sentiment=sentiment,
+            action_items=action_items,
+            risk_tags=list(data.get("risk_tags", [])),
+        )
+
+    def _get_provider_name(self) -> str:
+        """Return provider identifier (e.g., 'openai', 'anthropic')."""
+        raise NotImplementedError
+
+    def _get_model_name(self) -> str:
+        """Return model identifier (e.g., 'gpt-4o', 'claude-3-5-sonnet')."""
+        raise NotImplementedError
+
+    def _make_request_sync(self, system: str, user: str) -> tuple[str, int]:
+        """Make synchronous LLM request.
+
+        Args:
+            system: System prompt.
+            user: User prompt.
+
+        Returns:
+            Tuple of (response_text, latency_ms).
+
+        Raises:
+            Exception: On API failure.
+        """
+        raise NotImplementedError
+
+    def _check_health_impl(self) -> ProviderHealth:
+        """Check provider health (implementation).
+
+        Returns:
+            ProviderHealth indicating availability.
+        """
+        raise NotImplementedError
+
+    def annotate_chunk(self, text: str, context: ChunkContext) -> SemanticAnnotation:
+        """Annotate text using cloud LLM.
+
+        Args:
+            text: The text to annotate.
+            context: Chunk context (speaker, timing, etc.).
+
+        Returns:
+            SemanticAnnotation with extracted semantics.
+
+        Note:
+            Does not raise exceptions. On failure, returns low-confidence
+            annotation with error in raw_model_output.
+        """
+        start_time = time.perf_counter_ns()
+
+        try:
+            # Build prompts
+            system_prompt, user_prompt = self._build_prompt(text, context)
+
+            # Make request
+            response_text, _ = self._make_request_sync(system_prompt, user_prompt)
+
+            # Parse response
+            normalized = self._parse_response(response_text)
+
+            # Compute latency
+            end_time = time.perf_counter_ns()
+            latency_ms = (end_time - start_time) // 1_000_000
+
+            return SemanticAnnotation(
+                schema_version=SEMANTIC_SCHEMA_VERSION,
+                provider=self._get_provider_name(),
+                model=self._get_model_name(),
+                normalized=normalized,
+                confidence=0.85,  # Cloud LLMs have good but not perfect accuracy
+                latency_ms=latency_ms,
+                raw_model_output={"response": response_text},
+            )
+
+        except Exception as e:
+            # Log error and return low-confidence annotation
+            logger.warning(
+                f"{self._get_provider_name()} annotation failed: {e}",
+                exc_info=True,
+            )
+
+            end_time = time.perf_counter_ns()
+            latency_ms = (end_time - start_time) // 1_000_000
+
+            return SemanticAnnotation(
+                schema_version=SEMANTIC_SCHEMA_VERSION,
+                provider=self._get_provider_name(),
+                model=self._get_model_name(),
+                normalized=NormalizedAnnotation(),  # Empty annotation
+                confidence=0.0,  # No confidence on error
+                latency_ms=latency_ms,
+                raw_model_output={"error": str(e)},
+            )
+
+    def health_check(self) -> ProviderHealth:
+        """Check provider availability and quota.
+
+        Returns:
+            ProviderHealth with availability and remaining quota.
+        """
+        start_time = time.perf_counter_ns()
+
+        try:
+            result = self._check_health_impl()
+            end_time = time.perf_counter_ns()
+            result.latency_ms = (end_time - start_time) // 1_000_000
+            return result
+        except Exception as e:
+            end_time = time.perf_counter_ns()
+            latency_ms = (end_time - start_time) // 1_000_000
+            return ProviderHealth(
+                available=False,
+                error=str(e),
+                latency_ms=latency_ms,
+            )
+
+
+class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
+    """Semantic adapter using OpenAI API (GPT-4o, GPT-4, etc.).
+
+    This adapter:
+    - Wraps OpenAIProvider from llm_client
+    - Applies guardrails (rate limit, cost budget, PII detection)
+    - Builds prompts for semantic extraction
+    - Parses JSON responses into SemanticAnnotation
+
+    Example:
+        >>> adapter = OpenAISemanticAdapter(
+        ...     api_key="sk-...",  # Or use OPENAI_API_KEY env
+        ...     model="gpt-4o",
+        ... )
+        >>> annotation = adapter.annotate_chunk(text, context)
+        >>> health = adapter.health_check()
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "gpt-4o",
+        base_url: str | None = None,
+        guardrails: Any | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 1024,
+        context_window: int = 3,
+    ) -> None:
+        """Initialize OpenAI semantic adapter.
+
+        Args:
+            api_key: OpenAI API key. If None, uses OPENAI_API_KEY env var.
+            model: Model to use (default: gpt-4o).
+            base_url: Optional custom API base URL (for Azure, proxies, etc.).
+            guardrails: Optional LLMGuardrails for rate limiting, cost tracking, PII.
+            temperature: Sampling temperature (default: 0.3 for consistency).
+            max_tokens: Maximum tokens in response (default: 1024).
+            context_window: Number of previous chunks to include for context.
+        """
+        from .historian.llm_client import LLMConfig, OpenAIProvider
+        from .llm_guardrails import GuardedLLMProvider
+
+        super().__init__(guardrails=guardrails, context_window=context_window)
+
+        config = LLMConfig(
+            provider="openai",
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        self._provider = OpenAIProvider(config)
+        self._guarded_provider = GuardedLLMProvider(self._provider, self._guardrails)
+        self._model = model
+
+    def _get_provider_name(self) -> str:
+        """Return 'openai' provider identifier."""
+        return "openai"
+
+    def _get_model_name(self) -> str:
+        """Return configured model name."""
+        return self._model
+
+    def _make_request_sync(self, system: str, user: str) -> tuple[str, int]:
+        """Make synchronous request via guarded provider.
+
+        Args:
+            system: System prompt.
+            user: User prompt.
+
+        Returns:
+            Tuple of (response_text, latency_ms).
+        """
+        import asyncio
+
+        async def _make_request() -> tuple[str, int]:
+            response = await self._guarded_provider.complete(system, user)
+            return response.text, response.duration_ms
+
+        return asyncio.run(_make_request())
+
+    def _check_health_impl(self) -> ProviderHealth:
+        """Check OpenAI API availability.
+
+        Makes a minimal request to verify connectivity and API key validity.
+
+        Returns:
+            ProviderHealth with availability status.
+        """
+        import os
+
+        # Check API key is available
+        api_key = self._provider.config.api_key or os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            return ProviderHealth(
+                available=False,
+                error="OpenAI API key not configured",
+            )
+
+        # Check remaining budget
+        stats = self._guardrails.stats
+        budget = self._guardrails.cost_budget_usd
+        remaining = max(0, budget - stats.total_cost_usd)
+
+        # Estimate remaining requests based on cost per request
+        # Approximate cost per semantic extraction: ~$0.002 for GPT-4o
+        estimated_cost_per_request = 0.002
+        quota_remaining = int(remaining / estimated_cost_per_request) if remaining > 0 else 0
+
+        # Try a lightweight API check (list models endpoint is fast)
+        try:
+            import openai
+
+            client = openai.OpenAI(api_key=api_key)
+            # Just check if we can list models - lightweight health check
+            list(client.models.list())
+
+            return ProviderHealth(
+                available=True,
+                quota_remaining=quota_remaining,
+            )
+        except ImportError:
+            return ProviderHealth(
+                available=False,
+                error="openai package not installed",
+            )
+        except Exception as e:
+            return ProviderHealth(
+                available=False,
+                error=f"OpenAI API error: {e}",
+            )
+
+
+class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
+    """Semantic adapter using Anthropic API (Claude models).
+
+    This adapter:
+    - Wraps AnthropicProvider from llm_client
+    - Applies guardrails (rate limit, cost budget, PII detection)
+    - Builds prompts for semantic extraction
+    - Parses JSON responses into SemanticAnnotation
+
+    Example:
+        >>> adapter = AnthropicSemanticAdapter(
+        ...     api_key="sk-ant-...",  # Or use ANTHROPIC_API_KEY env
+        ...     model="claude-sonnet-4-20250514",
+        ... )
+        >>> annotation = adapter.annotate_chunk(text, context)
+        >>> health = adapter.health_check()
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "claude-sonnet-4-20250514",
+        guardrails: Any | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 1024,
+        context_window: int = 3,
+    ) -> None:
+        """Initialize Anthropic semantic adapter.
+
+        Args:
+            api_key: Anthropic API key. If None, uses ANTHROPIC_API_KEY env var.
+            model: Model to use (default: claude-sonnet-4-20250514).
+            guardrails: Optional LLMGuardrails for rate limiting, cost tracking, PII.
+            temperature: Sampling temperature (default: 0.3 for consistency).
+            max_tokens: Maximum tokens in response (default: 1024).
+            context_window: Number of previous chunks to include for context.
+        """
+        from .historian.llm_client import AnthropicProvider, LLMConfig
+        from .llm_guardrails import GuardedLLMProvider
+
+        super().__init__(guardrails=guardrails, context_window=context_window)
+
+        config = LLMConfig(
+            provider="anthropic",
+            model=model,
+            api_key=api_key,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        self._provider = AnthropicProvider(config)
+        self._guarded_provider = GuardedLLMProvider(self._provider, self._guardrails)
+        self._model = model
+
+    def _get_provider_name(self) -> str:
+        """Return 'anthropic' provider identifier."""
+        return "anthropic"
+
+    def _get_model_name(self) -> str:
+        """Return configured model name."""
+        return self._model
+
+    def _make_request_sync(self, system: str, user: str) -> tuple[str, int]:
+        """Make synchronous request via guarded provider.
+
+        Args:
+            system: System prompt.
+            user: User prompt.
+
+        Returns:
+            Tuple of (response_text, latency_ms).
+        """
+        import asyncio
+
+        async def _make_request() -> tuple[str, int]:
+            response = await self._guarded_provider.complete(system, user)
+            return response.text, response.duration_ms
+
+        return asyncio.run(_make_request())
+
+    def _check_health_impl(self) -> ProviderHealth:
+        """Check Anthropic API availability.
+
+        Makes a minimal request to verify connectivity and API key validity.
+
+        Returns:
+            ProviderHealth with availability status.
+        """
+        import os
+
+        # Check API key is available
+        api_key = self._provider.config.api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            return ProviderHealth(
+                available=False,
+                error="Anthropic API key not configured",
+            )
+
+        # Check remaining budget
+        stats = self._guardrails.stats
+        budget = self._guardrails.cost_budget_usd
+        remaining = max(0, budget - stats.total_cost_usd)
+
+        # Estimate remaining requests based on cost per request
+        # Approximate cost per semantic extraction: ~$0.003 for Claude Sonnet
+        estimated_cost_per_request = 0.003
+        quota_remaining = int(remaining / estimated_cost_per_request) if remaining > 0 else 0
+
+        # Try a lightweight API check using the count_tokens endpoint
+        try:
+            import anthropic
+
+            client = anthropic.Anthropic(api_key=api_key)
+            # Count tokens is a lightweight way to verify API access
+            client.messages.count_tokens(
+                model=self._model,
+                messages=[{"role": "user", "content": "test"}],
+            )
+
+            return ProviderHealth(
+                available=True,
+                quota_remaining=quota_remaining,
+            )
+        except ImportError:
+            return ProviderHealth(
+                available=False,
+                error="anthropic package not installed",
+            )
+        except Exception as e:
+            return ProviderHealth(
+                available=False,
+                error=f"Anthropic API error: {e}",
+            )
+
+
+# -----------------------------------------------------------------------------
 # No-Op Adapter
 # -----------------------------------------------------------------------------
 
@@ -557,6 +1226,519 @@ class NoOpSemanticAdapter:
 
 
 # -----------------------------------------------------------------------------
+# Local LLM Semantic Adapter (#89)
+# -----------------------------------------------------------------------------
+
+
+class LocalLLMSemanticAdapter:
+    """Local LLM-based semantic annotator implementing SemanticAdapter protocol.
+
+    This adapter uses local models (via transformers) for semantic annotation,
+    providing topic extraction, risk detection, and action item extraction
+    without requiring cloud API access.
+
+    Features:
+    - Lazy model loading (only loads model on first use)
+    - Structured JSON output parsing with validation
+    - Graceful error handling for malformed LLM responses
+    - Configurable extraction modes (topics, risks, actions, or combined)
+
+    The adapter uses the LocalLLMProvider from historian/llm_client.py for
+    actual model inference.
+
+    Attributes:
+        model: Model identifier (e.g., "Qwen/Qwen2.5-7B-Instruct").
+        temperature: LLM temperature for generation (default: 0.1).
+        max_tokens: Maximum tokens for LLM response (default: 1024).
+        extraction_mode: What to extract ("combined", "topics", "risks", "actions").
+
+    Example:
+        >>> adapter = LocalLLMSemanticAdapter(model="Qwen/Qwen2.5-7B-Instruct")
+        >>> context = ChunkContext(speaker_id="agent", start=0.0, end=30.0)
+        >>> annotation = adapter.annotate_chunk("I'll send the report tomorrow", context)
+        >>> print(annotation.normalized.action_items)
+        [ActionItem(text='Send the report', due='tomorrow', ...)]
+    """
+
+    # Default model if none specified
+    DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+
+    # Valid risk types for validation
+    VALID_RISK_TYPES = frozenset(
+        {
+            "escalation",
+            "churn_risk",
+            "compliance",
+            "sentiment_negative",
+            "legal",
+            "pricing_objection",
+            "competitor_mention",
+            "customer_frustration",
+            "agent_error",
+            "other",
+        }
+    )
+
+    # Valid severity levels for validation
+    VALID_SEVERITIES = frozenset({"low", "medium", "high", "critical"})
+
+    # Valid priority levels for validation
+    VALID_PRIORITIES = frozenset({"low", "medium", "high"})
+
+    def __init__(
+        self,
+        model: str | None = None,
+        temperature: float = 0.1,
+        max_tokens: int = 1024,
+        extraction_mode: Literal["combined", "topics", "risks", "actions"] = "combined",
+    ) -> None:
+        """Initialize the local LLM semantic adapter.
+
+        Args:
+            model: Model identifier for local LLM. If None, uses DEFAULT_MODEL.
+            temperature: LLM temperature for generation (lower = more deterministic).
+            max_tokens: Maximum tokens for LLM response.
+            extraction_mode: What to extract. Options:
+                - "combined": Extract all (topics, risks, actions) in one call
+                - "topics": Only extract topics
+                - "risks": Only extract risks
+                - "actions": Only extract action items
+        """
+        self.model = model or self.DEFAULT_MODEL
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.extraction_mode = extraction_mode
+        self._provider: Any = None
+        self._provider_available: bool | None = None
+
+    def _lazy_load_provider(self) -> bool:
+        """Lazy load the LocalLLMProvider on first use.
+
+        Returns:
+            True if provider is available and loaded, False otherwise.
+        """
+        if self._provider_available is not None:
+            return self._provider_available
+
+        try:
+            from .historian.llm_client import LLMConfig, LocalLLMProvider
+
+            config = LLMConfig(
+                provider="local",
+                model=self.model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+            self._provider = LocalLLMProvider(config)
+            self._provider_available = True
+            logger.info(f"LocalLLMSemanticAdapter: Loaded provider with model {self.model}")
+            return True
+        except ImportError as e:
+            logger.warning(f"LocalLLMSemanticAdapter: Failed to import LLM provider: {e}")
+            self._provider_available = False
+            return False
+        except Exception as e:
+            logger.warning(f"LocalLLMSemanticAdapter: Failed to initialize provider: {e}")
+            self._provider_available = False
+            return False
+
+    def _build_prompt(self, text: str, context: ChunkContext) -> str:
+        """Build the appropriate prompt based on extraction mode.
+
+        Args:
+            text: The text to annotate.
+            context: Chunk context information.
+
+        Returns:
+            Formatted prompt string.
+        """
+        # Build context string from previous chunks
+        context_str = (
+            "\n".join(context.previous_chunks[-3:])  # Last 3 chunks
+            if context.previous_chunks
+            else "No prior context"
+        )
+
+        # Common format kwargs
+        format_kwargs = {
+            "context": context_str,
+            "speaker_id": context.speaker_id or "unknown",
+            "start": f"{context.start:.1f}",
+            "end": f"{context.end:.1f}",
+            "text": text,
+        }
+
+        # Select prompt based on extraction mode
+        if self.extraction_mode == "topics":
+            return TOPIC_EXTRACTION_PROMPT.format(**format_kwargs)
+        elif self.extraction_mode == "risks":
+            return RISK_DETECTION_PROMPT.format(**format_kwargs)
+        elif self.extraction_mode == "actions":
+            return ACTION_EXTRACTION_PROMPT.format(**format_kwargs)
+        else:  # combined (default)
+            return COMBINED_EXTRACTION_PROMPT.format(**format_kwargs)
+
+    def _extract_json_from_response(self, response: str) -> str | None:
+        """Extract JSON from LLM response, handling markdown code blocks.
+
+        Args:
+            response: Raw LLM response string.
+
+        Returns:
+            Extracted JSON string, or None if no JSON found.
+        """
+        response = response.strip()
+
+        # Try to extract from markdown code block
+        if "```" in response:
+            # Pattern to match JSON in code blocks
+            code_block_pattern = r"```(?:json)?\s*([\s\S]*?)```"
+            matches = re.findall(code_block_pattern, response)
+            if matches:
+                return str(matches[0]).strip()
+
+        # Try to find JSON object directly
+        # Look for outermost { } pair
+        brace_start = response.find("{")
+        if brace_start != -1:
+            # Find matching closing brace
+            depth = 0
+            for i, char in enumerate(response[brace_start:], start=brace_start):
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return response[brace_start : i + 1]
+
+        return None
+
+    def _parse_llm_response(self, response: str) -> dict[str, Any]:
+        """Parse and validate LLM JSON response.
+
+        Args:
+            response: Raw LLM response string.
+
+        Returns:
+            Parsed and validated dictionary with topics, risks, and actions.
+            Returns empty structure if parsing fails.
+        """
+        # Default empty structure
+        empty_result: dict[str, Any] = {"topics": [], "risks": [], "actions": []}
+
+        # Extract JSON from response
+        json_str = self._extract_json_from_response(response)
+        if not json_str:
+            logger.warning("LocalLLMSemanticAdapter: No JSON found in response")
+            return empty_result
+
+        # Parse JSON
+        try:
+            parsed = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            logger.warning(f"LocalLLMSemanticAdapter: JSON parse error: {e}")
+            return empty_result
+
+        if not isinstance(parsed, dict):
+            logger.warning("LocalLLMSemanticAdapter: Response is not a JSON object")
+            return empty_result
+
+        # Validate and normalize topics
+        topics = []
+        for topic in parsed.get("topics", []):
+            if isinstance(topic, dict) and "label" in topic:
+                validated_topic = {
+                    "label": str(topic["label"]).lower().replace(" ", "_"),
+                    "confidence": self._clamp_confidence(topic.get("confidence", 0.5)),
+                    "evidence": str(topic.get("evidence", ""))[:100],  # Limit length
+                }
+                topics.append(validated_topic)
+
+        # Validate and normalize risks
+        risks = []
+        for risk in parsed.get("risks", []):
+            if isinstance(risk, dict) and "type" in risk:
+                risk_type = str(risk["type"]).lower()
+                if risk_type not in self.VALID_RISK_TYPES:
+                    risk_type = "other"
+
+                severity = str(risk.get("severity", "medium")).lower()
+                if severity not in self.VALID_SEVERITIES:
+                    severity = "medium"
+
+                validated_risk = {
+                    "type": risk_type,
+                    "severity": severity,
+                    "confidence": self._clamp_confidence(risk.get("confidence", 0.5)),
+                    "evidence": str(risk.get("evidence", ""))[:100],
+                }
+                risks.append(validated_risk)
+
+        # Validate and normalize actions
+        actions = []
+        for action in parsed.get("actions", []):
+            if isinstance(action, dict) and "description" in action:
+                priority = action.get("priority")
+                if priority and str(priority).lower() not in self.VALID_PRIORITIES:
+                    priority = None
+                elif priority:
+                    priority = str(priority).lower()
+
+                validated_action = {
+                    "description": str(action["description"]),
+                    "assignee": action.get("assignee"),
+                    "due": action.get("due"),
+                    "priority": priority,
+                    "verbatim": str(action.get("verbatim", ""))[:200],
+                    "confidence": self._clamp_confidence(action.get("confidence", 0.8)),
+                }
+                actions.append(validated_action)
+
+        return {"topics": topics, "risks": risks, "actions": actions}
+
+    def _clamp_confidence(self, value: Any) -> float:
+        """Clamp confidence value to valid range [0.0, 1.0].
+
+        Args:
+            value: Value to clamp.
+
+        Returns:
+            Float clamped to [0.0, 1.0].
+        """
+        try:
+            conf = float(value)
+            return max(0.0, min(1.0, conf))
+        except (TypeError, ValueError):
+            return 0.5
+
+    def _build_normalized_annotation(
+        self, parsed: dict[str, Any], context: ChunkContext
+    ) -> NormalizedAnnotation:
+        """Build NormalizedAnnotation from parsed LLM response.
+
+        Args:
+            parsed: Parsed and validated LLM response.
+            context: Chunk context information.
+
+        Returns:
+            NormalizedAnnotation with topics, risks, and action items.
+        """
+        # Extract topics as simple labels
+        topics = [t["label"] for t in parsed.get("topics", [])]
+
+        # Extract risk tags (just the type strings)
+        risk_tags = [r["type"] for r in parsed.get("risks", [])]
+
+        # Build ActionItem objects
+        action_items = []
+        for action in parsed.get("actions", []):
+            action_item = ActionItem(
+                text=action["description"],
+                speaker_id=action.get("assignee"),
+                segment_ids=list(context.segment_ids) if context.segment_ids else [],
+                pattern=None,  # LLM-based, no regex pattern
+                confidence=action.get("confidence", 0.8),
+            )
+            action_items.append(action_item)
+
+        # Detect intent from context (simple heuristic)
+        intent = self._detect_intent(parsed)
+
+        # Detect sentiment from risks
+        sentiment = self._detect_sentiment(parsed)
+
+        return NormalizedAnnotation(
+            topics=topics,
+            intent=intent,
+            sentiment=sentiment,
+            action_items=action_items,
+            risk_tags=risk_tags,
+        )
+
+    def _detect_intent(self, parsed: dict[str, Any]) -> str | None:
+        """Detect intent from parsed response.
+
+        Args:
+            parsed: Parsed LLM response.
+
+        Returns:
+            Intent string or None.
+        """
+        # Simple heuristic based on topics and risks
+        risks = parsed.get("risks", [])
+        for risk in risks:
+            if risk.get("type") == "escalation":
+                return "request"
+            if risk.get("type") == "pricing_objection":
+                return "objection"
+
+        actions = parsed.get("actions", [])
+        if actions:
+            return "statement"  # Commitment/statement
+
+        return None
+
+    def _detect_sentiment(
+        self, parsed: dict[str, Any]
+    ) -> Literal["positive", "negative", "neutral"] | None:
+        """Detect sentiment from parsed response.
+
+        Args:
+            parsed: Parsed LLM response.
+
+        Returns:
+            Sentiment classification or None.
+        """
+        risks = parsed.get("risks", [])
+        negative_indicators = {
+            "escalation",
+            "churn_risk",
+            "sentiment_negative",
+            "customer_frustration",
+        }
+
+        for risk in risks:
+            if risk.get("type") in negative_indicators:
+                severity = risk.get("severity", "medium")
+                if severity in ("high", "critical"):
+                    return "negative"
+
+        # Default to None (not enough signal)
+        return None
+
+    def _compute_overall_confidence(self, parsed: dict[str, Any]) -> float:
+        """Compute overall confidence score for the annotation.
+
+        Args:
+            parsed: Parsed LLM response.
+
+        Returns:
+            Overall confidence score (0.0-1.0).
+        """
+        confidences = []
+
+        for topic in parsed.get("topics", []):
+            confidences.append(topic.get("confidence", 0.5))
+
+        for risk in parsed.get("risks", []):
+            confidences.append(risk.get("confidence", 0.5))
+
+        for action in parsed.get("actions", []):
+            confidences.append(action.get("confidence", 0.8))
+
+        if not confidences:
+            return 0.5  # Default confidence when no extractions
+
+        return float(sum(confidences) / len(confidences))
+
+    def annotate_chunk(self, text: str, context: ChunkContext) -> SemanticAnnotation:
+        """Annotate a single chunk of text with semantic information.
+
+        Uses local LLM to extract topics, risks, and action items from the text.
+        Handles errors gracefully, returning low-confidence annotations on failure.
+
+        Args:
+            text: The text to annotate (typically 60-120 seconds of conversation).
+            context: Surrounding context including speaker, timing, and history.
+
+        Returns:
+            SemanticAnnotation with normalized annotations and provenance.
+        """
+        start_time = time.perf_counter_ns()
+
+        # Check if provider is available
+        if not self._lazy_load_provider():
+            logger.warning(
+                "LocalLLMSemanticAdapter: Provider not available, returning empty annotation"
+            )
+            end_time = time.perf_counter_ns()
+            return SemanticAnnotation(
+                provider="local-llm",
+                model=self.model,
+                normalized=NormalizedAnnotation(),
+                confidence=0.0,
+                latency_ms=(end_time - start_time) // 1_000_000,
+                raw_model_output={"error": "Provider not available"},
+            )
+
+        # Build prompt
+        prompt = self._build_prompt(text, context)
+
+        # System prompt for structured extraction
+        system_prompt = (
+            "You are a semantic annotation assistant for conversation transcripts. "
+            "Your task is to extract structured information. "
+            "Always respond with ONLY valid JSON - no explanations or other text."
+        )
+
+        # Call LLM
+        try:
+            import asyncio
+
+            response = asyncio.run(self._provider.complete(system_prompt, prompt))
+            raw_output = response.text
+        except Exception as e:
+            logger.warning(f"LocalLLMSemanticAdapter: LLM call failed: {e}")
+            end_time = time.perf_counter_ns()
+            return SemanticAnnotation(
+                provider="local-llm",
+                model=self.model,
+                normalized=NormalizedAnnotation(),
+                confidence=0.0,
+                latency_ms=(end_time - start_time) // 1_000_000,
+                raw_model_output={"error": str(e)},
+            )
+
+        # Parse response
+        parsed = self._parse_llm_response(raw_output)
+
+        # Build normalized annotation
+        normalized = self._build_normalized_annotation(parsed, context)
+
+        # Compute confidence
+        confidence = self._compute_overall_confidence(parsed)
+
+        # Compute latency
+        end_time = time.perf_counter_ns()
+        latency_ms = (end_time - start_time) // 1_000_000
+
+        return SemanticAnnotation(
+            schema_version=SEMANTIC_SCHEMA_VERSION,
+            provider="local-llm",
+            model=self.model,
+            normalized=normalized,
+            confidence=confidence,
+            latency_ms=latency_ms,
+            raw_model_output={"parsed": parsed, "raw": raw_output[:500]},  # Truncate raw
+        )
+
+    def health_check(self) -> ProviderHealth:
+        """Check provider availability.
+
+        Returns:
+            ProviderHealth indicating availability and any errors.
+        """
+        start_time = time.perf_counter_ns()
+
+        if not self._lazy_load_provider():
+            end_time = time.perf_counter_ns()
+            return ProviderHealth(
+                available=False,
+                quota_remaining=None,
+                error="LocalLLMProvider not available - check transformers/torch installation",
+                latency_ms=(end_time - start_time) // 1_000_000,
+            )
+
+        end_time = time.perf_counter_ns()
+        return ProviderHealth(
+            available=True,
+            quota_remaining=None,  # No quota for local models
+            error=None,
+            latency_ms=(end_time - start_time) // 1_000_000,
+        )
+
+
+# -----------------------------------------------------------------------------
 # Factory function
 # -----------------------------------------------------------------------------
 
@@ -570,9 +1752,31 @@ def create_adapter(
     Args:
         provider: Provider identifier. Supported values:
                  - "local": LocalKeywordAdapter (rule-based)
+                 - "local-llm": LocalLLMSemanticAdapter (local LLM-based, #89)
+                 - "openai": OpenAISemanticAdapter (GPT-4o, etc., #90)
+                 - "anthropic": AnthropicSemanticAdapter (Claude, #90)
                  - "noop": NoOpSemanticAdapter (placeholder)
-                 Future: "anthropic", "openai"
         **kwargs: Provider-specific configuration.
+                 For "local-llm":
+                 - model: Model identifier (default: "Qwen/Qwen2.5-7B-Instruct")
+                 - temperature: LLM temperature (default: 0.1)
+                 - max_tokens: Max tokens for response (default: 1024)
+                 - extraction_mode: "combined", "topics", "risks", "actions"
+                 For "openai":
+                 - api_key: OpenAI API key (or use OPENAI_API_KEY env)
+                 - model: Model to use (default: "gpt-4o")
+                 - base_url: Optional custom API base URL
+                 - guardrails: Optional LLMGuardrails instance
+                 - temperature: Sampling temperature (default: 0.3)
+                 - max_tokens: Max tokens for response (default: 1024)
+                 - context_window: Number of previous chunks for context (default: 3)
+                 For "anthropic":
+                 - api_key: Anthropic API key (or use ANTHROPIC_API_KEY env)
+                 - model: Model to use (default: "claude-sonnet-4-20250514")
+                 - guardrails: Optional LLMGuardrails instance
+                 - temperature: Sampling temperature (default: 0.3)
+                 - max_tokens: Max tokens for response (default: 1024)
+                 - context_window: Number of previous chunks for context (default: 3)
 
     Returns:
         A SemanticAdapter implementation.
@@ -583,16 +1787,33 @@ def create_adapter(
     Example:
         >>> adapter = create_adapter("local")
         >>> annotation = adapter.annotate_chunk("I'll send the report", context)
+
+        >>> # Use local LLM adapter
+        >>> adapter = create_adapter("local-llm", model="Qwen/Qwen2.5-3B-Instruct")
+        >>> annotation = adapter.annotate_chunk("I'll send the report", context)
+
+        >>> # Use OpenAI adapter
+        >>> adapter = create_adapter("openai", model="gpt-4o")
+        >>> annotation = adapter.annotate_chunk("I'll send the report", context)
+
+        >>> # Use Anthropic adapter
+        >>> adapter = create_adapter("anthropic", model="claude-sonnet-4-20250514")
+        >>> annotation = adapter.annotate_chunk("I'll send the report", context)
     """
     if provider == "local":
         return LocalKeywordAdapter(**kwargs)
+    elif provider == "local-llm":
+        return LocalLLMSemanticAdapter(**kwargs)
+    elif provider == "openai":
+        return OpenAISemanticAdapter(**kwargs)
+    elif provider == "anthropic":
+        return AnthropicSemanticAdapter(**kwargs)
     elif provider == "noop":
         return NoOpSemanticAdapter()
     else:
         raise ValueError(
             f"Unknown semantic provider: {provider}. "
-            f"Supported: 'local', 'noop'. "
-            f"Future: 'anthropic', 'openai'."
+            f"Supported: 'local', 'local-llm', 'openai', 'anthropic', 'noop'."
         )
 
 
@@ -613,7 +1834,19 @@ __all__ = [
     "SemanticAdapter",
     # Implementations
     "LocalKeywordAdapter",
+    "LocalLLMSemanticAdapter",
+    "CloudLLMSemanticAdapter",
+    "OpenAISemanticAdapter",
+    "AnthropicSemanticAdapter",
     "NoOpSemanticAdapter",
+    # Prompt templates (local LLM)
+    "TOPIC_EXTRACTION_PROMPT",
+    "RISK_DETECTION_PROMPT",
+    "ACTION_EXTRACTION_PROMPT",
+    "COMBINED_EXTRACTION_PROMPT",
+    # Prompt templates (cloud LLM)
+    "CLOUD_SEMANTIC_EXTRACTION_SYSTEM_PROMPT",
+    "CLOUD_SEMANTIC_EXTRACTION_USER_TEMPLATE",
     # Factory
     "create_adapter",
 ]

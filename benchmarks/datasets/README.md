@@ -7,6 +7,9 @@ This directory contains manifest files that describe benchmark datasets for slow
 ```
 datasets/
 ├── asr/                          # ASR (speech recognition) benchmarks
+│   ├── commonvoice_en_smoke/     # Common Voice EN smoke slice (15 clips)
+│   │   ├── manifest.json
+│   │   └── selection.csv
 │   ├── librispeech-test-clean/   # LibriSpeech test-clean subset
 │   │   └── manifest.json
 │   └── smoke/                    # Quick smoke tests (committed to repo)
@@ -113,6 +116,19 @@ slower-whisper benchmark --track diarization --dataset smoke
 
 Standard benchmark datasets. Require download and setup.
 
+#### Common Voice EN Smoke Slice (ASR)
+
+- **Size:** ~50 MB (15 clips, ~3 minutes total)
+- **Samples:** 15 fixed clips covering accent/noise variance
+- **License:** CC0-1.0 (public domain audio)
+- **Download:** Requires Hugging Face account with terms accepted
+
+```bash
+python benchmarks/scripts/stage_commonvoice.py
+```
+
+**Important:** Do not attempt to identify speakers or redistribute the dataset. See [docs/COMMONVOICE_SETUP.md](../../docs/COMMONVOICE_SETUP.md).
+
 #### LibriSpeech test-clean (ASR)
 
 - **Size:** ~350 MB compressed, 5.4 hours of audio
@@ -205,6 +221,7 @@ Each dataset has specific license requirements:
 |---------|---------|-------------------|----------------|
 | ASR smoke | MIT | No | Yes |
 | Diarization smoke | MIT | No | Yes |
+| Common Voice | CC0-1.0 | No | Yes (with terms) |
 | LibriSpeech | CC-BY-4.0 | Yes (for papers) | Yes |
 | AMI | CC-BY-4.0 | Yes (required) | Yes |
 | CALLHOME | LDC | Yes (required) | License required |

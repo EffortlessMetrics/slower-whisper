@@ -1214,12 +1214,11 @@ class TestTranscribeStreamingEndpoint:
         assert response.status_code == 200
         content = response.text
 
-        # Should contain segment events
-        assert "event: segment" in content
-        # Should contain done event
-        assert "event: done" in content
-        # Should contain progress events
-        assert "event: progress" in content
+        # New envelope format uses data: {envelope_json}
+        # Should contain PARTIAL or FINALIZED segment events
+        assert '"type": "PARTIAL"' in content or '"type": "FINALIZED"' in content
+        # Should contain SESSION_ENDED event
+        assert '"type": "SESSION_ENDED"' in content
 
     @patch("transcription.asr_engine.TranscriptionEngine")
     @patch("transcription.audio_io.normalize_single")
@@ -1254,14 +1253,16 @@ class TestTranscribeStreamingEndpoint:
 
         # Parse SSE events
         events = _parse_sse_events(content)
-        done_events = [e for e in events if e["type"] == "done"]
+        session_ended_events = [e for e in events if e["type"] == "SESSION_ENDED"]
 
-        assert len(done_events) == 1
-        done_data = done_events[0]["data"]
-        assert "total_segments" in done_data
-        assert done_data["total_segments"] == 2
-        assert "language" in done_data
-        assert done_data["language"] == "en"
+        assert len(session_ended_events) == 1
+        ended_data = session_ended_events[0]["data"]
+        assert "total_segments" in ended_data
+        assert ended_data["total_segments"] == 2
+        assert "language" in ended_data
+        assert ended_data["language"] == "en"
+        # Also verify stats are present in new format
+        assert "stats" in ended_data
 
     def test_stream_invalid_device_returns_400(
         self, client: TestClient, sample_wav_bytes: bytes
@@ -1325,17 +1326,26 @@ class TestTranscribeStreamingEndpoint:
         )
 
         events = _parse_sse_events(response.text)
-        segment_events = [e for e in events if e["type"] == "segment"]
+        # New format uses PARTIAL and FINALIZED for segments
+        segment_events = [e for e in events if e["type"] in ("PARTIAL", "FINALIZED")]
 
+        # With 2 segments: first is PARTIAL, last is FINALIZED
         assert len(segment_events) == 2
 
-        # Check segment structure
+        # Check segment structure (data is the segment dict)
         first_segment = segment_events[0]["data"]
         assert "id" in first_segment
         assert "start" in first_segment
         assert "end" in first_segment
         assert "text" in first_segment
         assert first_segment["text"] == "Hello world"
+
+        # Check envelope structure
+        envelope = segment_events[0]["envelope"]
+        assert "event_id" in envelope
+        assert "stream_id" in envelope
+        assert envelope["stream_id"].startswith("sse-")
+        assert "ts_server" in envelope
 
     @patch("transcription.asr_engine.TranscriptionEngine")
     @patch("transcription.audio_io.normalize_single")
@@ -1367,15 +1377,19 @@ class TestTranscribeStreamingEndpoint:
         )
 
         events = _parse_sse_events(response.text)
-        progress_events = [e for e in events if e["type"] == "progress"]
+        # New format doesn't have explicit progress events; uses PARTIAL/FINALIZED
+        # Verify we have segment events (PARTIAL or FINALIZED)
+        segment_events = [e for e in events if e["type"] in ("PARTIAL", "FINALIZED")]
 
-        # Should have progress events
-        assert len(progress_events) >= 1
+        # Should have at least one segment event
+        assert len(segment_events) >= 1
 
-        # Check progress structure
-        for progress in progress_events:
-            assert "percent" in progress["data"]
-            assert 0 <= progress["data"]["percent"] <= 100
+        # Verify SESSION_ENDED contains stats with segment counts
+        session_ended = [e for e in events if e["type"] == "SESSION_ENDED"]
+        assert len(session_ended) == 1
+        stats = session_ended[0]["data"].get("stats", {})
+        # Stats should track segment counts
+        assert "segments_finalized" in stats or "segments_partial" in stats
 
     @patch("transcription.audio_io.normalize_single")
     @patch("transcription.service.validate_audio_format")
@@ -1445,7 +1459,8 @@ class TestTranscribeStreamingEndpoint:
         )
 
         events = _parse_sse_events(response.text)
-        segment_events = [e for e in events if e["type"] == "segment"]
+        # Single segment should be FINALIZED (last segment is always finalized)
+        segment_events = [e for e in events if e["type"] == "FINALIZED"]
 
         assert len(segment_events) == 1
         segment_data = segment_events[0]["data"]
@@ -1489,34 +1504,79 @@ class TestTranscribeStreamingEndpoint:
 def _parse_sse_events(content: str) -> list[dict]:
     """Parse SSE event stream into list of event dicts.
 
+    Handles both old format (event: type\\ndata: json) and new envelope format
+    (data: {envelope with type inside}).
+
     Args:
         content: Raw SSE text content
 
     Returns:
-        List of dicts with 'type' and 'data' keys
+        List of dicts with 'type' and 'data' keys (normalized from envelope)
     """
     events = []
-    current_event: dict = {}
 
     for line in content.split("\n"):
         line = line.strip()
         if not line:
-            if current_event:
-                events.append(current_event)
-                current_event = {}
             continue
 
-        if line.startswith("event:"):
-            current_event["type"] = line[6:].strip()
-        elif line.startswith("data:"):
+        if line.startswith("data:"):
             data_str = line[5:].strip()
             try:
-                current_event["data"] = json.loads(data_str)
-            except json.JSONDecodeError:
-                current_event["data"] = data_str
+                envelope = json.loads(data_str)
+                # New envelope format: type is inside the JSON
+                if isinstance(envelope, dict) and "type" in envelope:
+                    # Normalize to expected test format
+                    event_type = envelope.get("type", "")
+                    payload = envelope.get("payload", {})
 
-    # Handle final event if no trailing newline
-    if current_event:
-        events.append(current_event)
+                    # Map new event types to test-friendly names
+                    if event_type == "PARTIAL":
+                        events.append(
+                            {
+                                "type": "PARTIAL",
+                                "data": payload.get("segment", {}),
+                                "envelope": envelope,
+                            }
+                        )
+                    elif event_type == "FINALIZED":
+                        events.append(
+                            {
+                                "type": "FINALIZED",
+                                "data": payload.get("segment", {}),
+                                "envelope": envelope,
+                            }
+                        )
+                    elif event_type == "SESSION_ENDED":
+                        events.append(
+                            {
+                                "type": "SESSION_ENDED",
+                                "data": payload,
+                                "envelope": envelope,
+                            }
+                        )
+                    elif event_type == "ERROR":
+                        events.append(
+                            {
+                                "type": "ERROR",
+                                "data": payload,
+                                "envelope": envelope,
+                            }
+                        )
+                    else:
+                        # Unknown type, store as-is
+                        events.append(
+                            {
+                                "type": event_type,
+                                "data": payload,
+                                "envelope": envelope,
+                            }
+                        )
+                else:
+                    # Old format or unexpected structure
+                    events.append({"type": "unknown", "data": envelope})
+            except json.JSONDecodeError:
+                # Not JSON, skip
+                pass
 
     return events

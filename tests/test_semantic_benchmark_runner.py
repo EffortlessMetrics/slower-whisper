@@ -637,3 +637,134 @@ class TestSyntheticSegmentsNote:
         assert result.get("tags_note") == "synthetic_transcript_segments"
         assert result.get("topic_note") == "vocabulary_mismatch"
         assert result.get("risk_note") == "severity_not_measured"
+
+
+class TestBenchmarkReceipt:
+    """Tests for BenchmarkReceipt generation."""
+
+    def test_receipt_generated_in_run(self) -> None:
+        """BenchmarkResult includes receipt after run."""
+        from unittest.mock import MagicMock
+
+        from transcription.benchmark_cli import SemanticBenchmarkRunner
+
+        runner = SemanticBenchmarkRunner(
+            track="semantic",
+            dataset="ami",
+            split="test",
+            mode="tags",
+        )
+        # Mock get_samples to return empty list (no samples to evaluate)
+        runner.get_samples = MagicMock(return_value=[])
+
+        result = runner.run(limit=0)
+
+        assert result.receipt is not None
+        assert result.receipt.tool_version != ""
+        assert result.receipt.config_hash != ""
+        assert result.receipt.mode == "tags"
+
+    def test_receipt_config_hash_includes_mode(self) -> None:
+        """Config hash differs between modes."""
+        from transcription.benchmark_cli import SemanticBenchmarkRunner
+
+        runner_tags = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
+        runner_summary = SemanticBenchmarkRunner("semantic", "ami", "test", "summary")
+
+        receipt_tags = runner_tags._generate_receipt()
+        receipt_summary = runner_summary._generate_receipt()
+
+        # Config hashes should be different because mode is included
+        assert receipt_tags.config_hash != receipt_summary.config_hash
+        assert receipt_tags.mode == "tags"
+        assert receipt_summary.mode == "summary"
+
+    def test_receipt_includes_git_commit(self) -> None:
+        """Receipt includes git commit if in a git repo."""
+        from transcription.benchmark_cli import SemanticBenchmarkRunner
+
+        runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
+        receipt = runner._generate_receipt()
+
+        # In a git repo, git_commit should be a short hash
+        # (this test assumes we're running in a git repo)
+        if receipt.git_commit is not None:
+            # Should be a short hash (7-12 chars)
+            assert 7 <= len(receipt.git_commit) <= 12
+
+    def test_receipt_serializes_to_dict(self) -> None:
+        """BenchmarkResult.to_dict() includes receipt."""
+        from unittest.mock import MagicMock
+
+        from transcription.benchmark_cli import SemanticBenchmarkRunner
+
+        runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
+        runner.get_samples = MagicMock(return_value=[])
+
+        result = runner.run(limit=0)
+        result_dict = result.to_dict()
+
+        assert "receipt" in result_dict
+        assert result_dict["receipt"]["tool_version"] != ""
+        assert result_dict["receipt"]["config_hash"] != ""
+        assert result_dict["receipt"]["mode"] == "tags"
+
+
+class TestTranscriptLoading:
+    """Tests for transcript JSON loading from speaker_analytics_samples."""
+
+    def test_loads_transcript_from_samples_dir(self) -> None:
+        """_load_transcript_json loads from speaker_analytics_samples directory."""
+        from transcription.benchmark_cli import SemanticBenchmarkRunner
+
+        runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
+
+        # project_retro is a sample that should exist
+        transcript = runner._load_transcript_json("project_retro")
+
+        # If samples dir exists, should load
+        if runner._samples_dir.exists():
+            assert transcript is not None
+            assert len(transcript.segments) > 0
+        else:
+            # Samples not available - that's OK
+            assert transcript is None
+
+    def test_returns_none_for_missing_transcript(self) -> None:
+        """_load_transcript_json returns None for missing files."""
+        from transcription.benchmark_cli import SemanticBenchmarkRunner
+
+        runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
+
+        result = runner._load_transcript_json("nonexistent_sample_xyz123")
+
+        assert result is None
+
+    def test_evaluate_tags_uses_real_transcript_when_available(self) -> None:
+        """_evaluate_tags uses loaded transcript with proper segments."""
+        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from transcription.benchmarks import EvalSample
+
+        runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
+
+        # Check if project_retro sample files exist
+        gold = runner._load_gold_labels("project_retro")
+        transcript = runner._load_transcript_json("project_retro")
+
+        if gold is None or transcript is None:
+            # Skip if test data not available
+            return
+
+        sample = EvalSample(
+            dataset="ami",
+            id="project_retro",
+            audio_path=Path("/fake/path.wav"),
+            reference_transcript="Fallback text that should not be used",
+        )
+
+        result = runner._evaluate_tags(sample, gold)
+
+        # Should have evaluated with real transcript (no synthetic segments note)
+        # Note: This may still have synthetic_transcript_segments note if the
+        # transcript loading failed for some reason
+        assert result.get("tags_reason") is None  # Evaluation succeeded

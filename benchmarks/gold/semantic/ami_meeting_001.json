@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "meeting_id": "ami_meeting_001",
+  "topics": [
+    {"label": "pricing", "segment_ids": [0, 1, 5, 8]},
+    {"label": "contract", "segment_ids": [2, 3, 9]},
+    {"label": "features", "segment_ids": [4, 6, 7]}
+  ],
+  "risks": [
+    {"type": "escalation", "severity": "high", "segment_id": 2, "evidence": "I need to speak with your manager about this contract issue."},
+    {"type": "pricing", "severity": "medium", "segment_id": 5, "evidence": "The pricing seems higher than what we discussed initially."},
+    {"type": "churn", "severity": "low", "segment_id": 8, "evidence": "We're considering other options if this doesn't work out."}
+  ],
+  "actions": [
+    {"text": "Send revised pricing proposal", "speaker_id": "spk_sales", "segment_ids": [5, 6]},
+    {"text": "Schedule follow-up meeting with legal team", "speaker_id": "spk_pm", "segment_ids": [3]},
+    {"text": "Prepare feature comparison document", "speaker_id": "spk_engineer", "segment_ids": [7]}
+  ],
+  "summary": "Sales meeting discussing enterprise pricing and contract terms. Customer raised escalation concern regarding contract clause. Team committed to revised pricing proposal and legal review. Customer considering alternatives if terms not adjusted."
+}

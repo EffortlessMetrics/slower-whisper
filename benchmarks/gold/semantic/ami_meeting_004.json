@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "meeting_id": "ami_meeting_004",
+  "topics": [
+    {"label": "billing", "segment_ids": [0, 1, 2, 5]},
+    {"label": "refund", "segment_ids": [3, 4, 6]},
+    {"label": "account_access", "segment_ids": [7, 8]}
+  ],
+  "risks": [
+    {"type": "escalation", "severity": "high", "segment_id": 3, "evidence": "I've been charged for services I never received and I need this resolved today."},
+    {"type": "escalation", "severity": "medium", "segment_id": 4, "evidence": "Can I speak with a supervisor about expediting this refund?"},
+    {"type": "churn", "severity": "high", "segment_id": 6, "evidence": "This has been a terrible experience and I'm seriously considering canceling my subscription."}
+  ],
+  "actions": [
+    {"text": "Process full refund for disputed charges", "speaker_id": "spk_agent", "segment_ids": [4, 5]},
+    {"text": "Escalate to billing supervisor for expedited processing", "speaker_id": "spk_agent", "segment_ids": [4]},
+    {"text": "Send refund confirmation email within 24 hours", "speaker_id": "spk_agent", "segment_ids": [6]},
+    {"text": "Reset account access credentials", "speaker_id": "spk_support", "segment_ids": [8]}
+  ],
+  "summary": "Billing dispute call with frustrated customer requesting refund for charges on services not received. Customer requested supervisor escalation. Agent committed to full refund processing with 24-hour confirmation. Account access credentials to be reset. High churn risk due to poor experience."
+}

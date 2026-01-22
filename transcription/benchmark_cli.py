@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
     from .asr_engine import TranscriptionEngine as _TranscriptionEngine
     from .diarization import Diarizer
+    from .models import Transcript
 
 from .benchmark.semantic_metrics import (
     compute_action_metrics,
@@ -42,6 +43,7 @@ from .benchmarks import (
     EvalSample,
     get_benchmarks_root,
     iter_ami_meetings,
+    iter_commonvoice,
     iter_iemocap_clips,
     iter_librispeech,
     list_available_benchmarks,
@@ -72,7 +74,7 @@ BENCHMARK_TRACKS: dict[str, TrackConfig] = {
     "asr": TrackConfig(
         name="ASR (Automatic Speech Recognition)",
         description="Evaluate transcription accuracy using WER/CER metrics",
-        supported_datasets=["librispeech"],
+        supported_datasets=["librispeech", "commonvoice_en_smoke"],
         metrics=["wer", "cer", "rtf"],
         default_dataset="librispeech",
     ),
@@ -126,6 +128,20 @@ class BenchmarkMetric:
 
 
 @dataclass
+class BenchmarkReceipt:
+    """Provenance information for a benchmark run.
+
+    Provides traceability for benchmark results including tool version,
+    config hash, and git commit for reproducibility.
+    """
+
+    tool_version: str
+    config_hash: str = ""
+    git_commit: str | None = None
+    mode: str = ""  # For semantic track: "tags", "summary", "both"
+
+
+@dataclass
 class BenchmarkResult:
     """Results from a benchmark run."""
 
@@ -139,10 +155,11 @@ class BenchmarkResult:
     config: dict[str, Any] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     system_info: dict[str, Any] = field(default_factory=dict)
+    receipt: BenchmarkReceipt | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "track": self.track,
             "dataset": self.dataset,
             "split": self.split,
@@ -154,6 +171,9 @@ class BenchmarkResult:
             "errors": self.errors,
             "system_info": self.system_info,
         }
+        if self.receipt is not None:
+            result["receipt"] = asdict(self.receipt)
+        return result
 
 
 # =============================================================================
@@ -556,6 +576,7 @@ class BenchmarkRunner:
                 errors.append(f"{sample.id}: {str(e)}")
 
         metrics = self.aggregate_metrics(sample_results)
+        receipt = self._generate_receipt()
 
         return BenchmarkResult(
             track=self.track,
@@ -566,7 +587,52 @@ class BenchmarkRunner:
             metrics=metrics,
             errors=errors,
             system_info=self._get_system_info(),
+            receipt=receipt,
         )
+
+    def _generate_receipt(self) -> BenchmarkReceipt:
+        """Generate provenance receipt for the benchmark run.
+
+        Returns:
+            BenchmarkReceipt with tool version, config hash, and git commit
+        """
+        import hashlib
+
+        # Get tool version
+        try:
+            from . import __version__
+        except ImportError:
+            __version__ = "unknown"
+
+        # Generate config hash from track, dataset, split
+        config_str = f"{self.track}:{self.dataset}:{self.split}"
+        config_hash = hashlib.sha256(config_str.encode()).hexdigest()[:12]
+
+        # Get git commit if available
+        git_commit = self._get_git_commit()
+
+        return BenchmarkReceipt(
+            tool_version=__version__,
+            config_hash=config_hash,
+            git_commit=git_commit,
+        )
+
+    def _get_git_commit(self) -> str | None:
+        """Get the current git commit hash if available."""
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+        return None
 
     def _get_system_info(self) -> dict[str, Any]:
         """Collect system information for reproducibility."""
@@ -643,6 +709,8 @@ class ASRBenchmarkRunner(BenchmarkRunner):
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
         if self.dataset == "librispeech":
             return list(iter_librispeech(split=self.split, limit=limit))
+        elif self.dataset == "commonvoice_en_smoke":
+            return list(iter_commonvoice(subset="en_smoke", limit=limit))
         raise ValueError(f"Dataset {self.dataset} not supported for ASR track")
 
     def _normalize_text(self, text: str) -> str:
@@ -1056,12 +1124,58 @@ class SemanticBenchmarkRunner(BenchmarkRunner):
         super().__init__(track, dataset, split)
         self.mode = mode
         self._annotator = KeywordSemanticAnnotator()
-        self._gold_dir = get_benchmarks_root() / "gold" / "semantic"
+        # Gold labels are in project's benchmarks/gold/semantic directory
+        self._gold_dir = self._get_gold_dir()
+        # Directory containing sample transcript JSON files with proper segments
+        self._samples_dir = self._get_samples_dir()
+
+    def _get_gold_dir(self) -> Path:
+        """Get the directory containing gold semantic labels.
+
+        Returns the gold directory from benchmarks/gold/semantic/ in the project
+        (version-controlled test fixtures, not cache data).
+        """
+        project_root = Path(__file__).parent.parent
+        return project_root / "benchmarks" / "gold" / "semantic"
+
+    def _get_samples_dir(self) -> Path:
+        """Get the directory containing sample transcript JSON files.
+
+        Returns the samples directory from benchmarks/data/speaker_analytics_samples/
+        which contains properly segmented transcript JSON files for evaluation.
+        """
+        # Project root's benchmarks/data/speaker_analytics_samples directory
+        project_root = Path(__file__).parent.parent
+        return project_root / "benchmarks" / "data" / "speaker_analytics_samples"
 
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
         if self.dataset == "ami":
             return list(iter_ami_meetings(split=self.split, limit=limit, require_summary=True))
         raise ValueError(f"Dataset {self.dataset} not supported for semantic track")
+
+    def _generate_receipt(self) -> BenchmarkReceipt:
+        """Generate provenance receipt with semantic-specific mode info."""
+        import hashlib
+
+        # Get tool version
+        try:
+            from . import __version__
+        except ImportError:
+            __version__ = "unknown"
+
+        # Generate config hash including mode for semantic track
+        config_str = f"{self.track}:{self.dataset}:{self.split}:{self.mode}"
+        config_hash = hashlib.sha256(config_str.encode()).hexdigest()[:12]
+
+        # Get git commit if available
+        git_commit = self._get_git_commit()
+
+        return BenchmarkReceipt(
+            tool_version=__version__,
+            config_hash=config_hash,
+            git_commit=git_commit,
+            mode=self.mode,
+        )
 
     def _load_gold_labels(self, meeting_id: str) -> dict[str, Any] | None:
         """Load gold labels from benchmarks/gold/semantic/{meeting_id}.json if exists."""
@@ -1073,6 +1187,29 @@ class SemanticBenchmarkRunner(BenchmarkRunner):
                     return data
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning(f"Failed to load gold labels from {gold_path}: {e}")
+        return None
+
+    def _load_transcript_json(self, meeting_id: str) -> Transcript | None:
+        """Load transcript from JSON file if available.
+
+        Attempts to load from benchmarks/data/speaker_analytics_samples/{meeting_id}.json.
+        Falls back to None if not available, in which case _evaluate_tags will
+        create a synthetic single-segment transcript.
+
+        Args:
+            meeting_id: The meeting/sample identifier
+
+        Returns:
+            Transcript object if JSON file exists and is valid, None otherwise
+        """
+        from .writers import load_transcript_from_json
+
+        transcript_path = self._samples_dir / f"{meeting_id}.json"
+        if transcript_path.exists():
+            try:
+                return load_transcript_from_json(transcript_path)
+            except (json.JSONDecodeError, OSError, KeyError) as e:
+                logger.warning(f"Failed to load transcript from {transcript_path}: {e}")
         return None
 
     def _not_measured_tags(self, reason: str) -> dict[str, Any]:
@@ -1106,22 +1243,26 @@ class SemanticBenchmarkRunner(BenchmarkRunner):
         # Load transcript and run annotator
         from .models import Segment, Transcript
 
-        # Create a minimal transcript from the sample's reference transcript
-        # In a full implementation, we'd load the actual JSON transcript with real segments
-        transcript_text = sample.reference_transcript or ""
-        if not transcript_text:
-            return self._not_measured_tags("no_transcript")
+        # Try to load actual transcript JSON with proper segments first
+        transcript = self._load_transcript_json(sample.id)
+        synthetic_segments = False
 
-        # Build a simple transcript with one segment
-        # NOTE: This is a synthetic single-segment transcript. Gold labels with
-        # segment_id > 0 will not match predicted segment IDs.
-        segments = [Segment(id=0, start=0.0, end=1.0, text=transcript_text)]
-        transcript = Transcript(
-            file_name=f"{sample.id}.json",
-            language="en",
-            segments=segments,
-        )
-        synthetic_segments = True  # Flag for measurement integrity note
+        if transcript is None:
+            # Fall back to creating a minimal transcript from the sample's reference transcript
+            transcript_text = sample.reference_transcript or ""
+            if not transcript_text:
+                return self._not_measured_tags("no_transcript")
+
+            # Build a simple transcript with one segment
+            # NOTE: This is a synthetic single-segment transcript. Gold labels with
+            # segment_id > 0 will not match predicted segment IDs.
+            segments = [Segment(id=0, start=0.0, end=1.0, text=transcript_text)]
+            transcript = Transcript(
+                file_name=f"{sample.id}.json",
+                language="en",
+                segments=segments,
+            )
+            synthetic_segments = True  # Flag for measurement integrity note
 
         # Run annotator
         annotated = self._annotator.annotate(transcript)
@@ -1631,6 +1772,196 @@ def handle_benchmark_list() -> int:
     return 0
 
 
+def _perform_dry_run_validation(track: str, dataset: str) -> int:
+    """Perform dry-run validation for a benchmark dataset.
+
+    Validates manifest and configuration without running actual benchmarks.
+    Reports validation status, sample counts, and staging status.
+
+    Output format:
+        Dry-run validation for {track}/{dataset}:
+        [checkmark] Manifest found: {manifest_path}
+        [checkmark] Schema version: {version}
+        [checkmark] Samples defined: {count}
+        [warning] Audio files staged: {staged_count}/{total_count}
+
+        To stage audio: {staging_command}
+
+    Args:
+        track: Benchmark track name
+        dataset: Dataset name
+
+    Returns:
+        Exit code (0 = manifest valid, 1 = manifest invalid/missing)
+    """
+    import csv
+
+    # Unicode symbols for output
+    CHECK = "\u2713"  # checkmark
+    WARN = "\u26a0"  # warning sign
+
+    project_root = Path(__file__).parent.parent
+
+    print(f"Dry-run validation for {track}/{dataset}:")
+
+    # Find manifest path based on track/dataset
+    if dataset == "commonvoice_en_smoke":
+        manifest_dir = project_root / "benchmarks" / "datasets" / "asr" / "commonvoice_en_smoke"
+        manifest_path = manifest_dir / "manifest.json"
+    elif dataset == "librispeech":
+        # LibriSpeech doesn't use a manifest file in the same way
+        benchmarks_root = get_benchmarks_root()
+        librispeech_path = benchmarks_root / "librispeech" / "LibriSpeech"
+        if librispeech_path.exists():
+            print(f"{CHECK} Manifest found: {librispeech_path} (directory-based)")
+            print(f"{CHECK} Schema version: N/A (file-based dataset)")
+            # Count test-clean samples
+            test_clean = librispeech_path / "test-clean"
+            if test_clean.exists():
+                flac_files = list(test_clean.rglob("*.flac"))
+                print(f"{CHECK} Samples defined: {len(flac_files)}")
+                print(f"{CHECK} Audio files staged: {len(flac_files)}/{len(flac_files)}")
+            else:
+                print(f"{WARN} Samples defined: unknown (test-clean not found)")
+                print(f"{WARN} Audio files staged: 0/unknown")
+            print()
+            print(
+                f"To stage audio: Download LibriSpeech test-clean to {benchmarks_root}/librispeech/"
+            )
+            return 0
+        else:
+            print(f"{WARN} Manifest found: No (expected directory at {librispeech_path})")
+            print()
+            print(
+                f"To stage audio: Download LibriSpeech test-clean to {benchmarks_root}/librispeech/"
+            )
+            return 1
+    elif dataset == "ami":
+        benchmarks_root = get_benchmarks_root()
+        ami_path = benchmarks_root / "ami"
+        if ami_path.exists():
+            print(f"{CHECK} Manifest found: {ami_path} (directory-based)")
+            print(f"{CHECK} Schema version: N/A (file-based dataset)")
+            # Count audio files
+            audio_files = list(ami_path.rglob("*.wav")) + list(ami_path.rglob("*.mp3"))
+            print(f"{CHECK} Samples defined: {len(audio_files)}")
+            print(f"{CHECK} Audio files staged: {len(audio_files)}/{len(audio_files)}")
+            print()
+            print("To stage audio: See docs/AMI_SETUP.md")
+            return 0
+        else:
+            print(f"{WARN} Manifest found: No (expected directory at {ami_path})")
+            print()
+            print("To stage audio: See docs/AMI_SETUP.md")
+            return 1
+    elif dataset == "iemocap":
+        benchmarks_root = get_benchmarks_root()
+        iemocap_path = benchmarks_root / "iemocap"
+        if iemocap_path.exists():
+            print(f"{CHECK} Manifest found: {iemocap_path} (directory-based)")
+            print(f"{CHECK} Schema version: N/A (file-based dataset)")
+            audio_files = list(iemocap_path.rglob("*.wav"))
+            print(f"{CHECK} Samples defined: {len(audio_files)}")
+            print(f"{CHECK} Audio files staged: {len(audio_files)}/{len(audio_files)}")
+            print()
+            print("To stage audio: See docs/IEMOCAP_SETUP.md")
+            return 0
+        else:
+            print(f"{WARN} Manifest found: No (expected directory at {iemocap_path})")
+            print()
+            print("To stage audio: See docs/IEMOCAP_SETUP.md")
+            return 1
+    else:
+        print(f"{WARN} Manifest found: No (unsupported dataset: {dataset})")
+        return 1
+
+    # For manifest-based datasets (commonvoice_en_smoke)
+    if not manifest_path.exists():
+        print(f"{WARN} Manifest found: No (expected at {manifest_path})")
+        return 1
+
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"{CHECK} Manifest found: {manifest_path}")
+        print(f"{WARN} Schema version: ERROR (invalid JSON: {e})")
+        return 1
+
+    print(f"{CHECK} Manifest found: {manifest_path}")
+
+    schema_version = manifest.get("schema_version", "unknown")
+    print(f"{CHECK} Schema version: {schema_version}")
+
+    # Determine sample count
+    samples_in_manifest = manifest.get("samples", [])
+    sample_source = manifest.get("sample_source", {})
+    selection_file = sample_source.get("file")
+
+    total_count = 0
+    staged_count = 0
+
+    if samples_in_manifest:
+        # Samples are directly in the manifest
+        total_count = len(samples_in_manifest)
+        for sample in samples_in_manifest:
+            audio_rel = sample.get("audio")
+            if audio_rel:
+                audio_path = manifest_dir / audio_rel
+                if audio_path.exists():
+                    staged_count += 1
+        print(f"{CHECK} Samples defined: {total_count}")
+    elif selection_file:
+        # Samples are in a selection file (like commonvoice_en_smoke)
+        selection_path = manifest_dir / selection_file
+        if selection_path.exists():
+            try:
+                with open(selection_path, encoding="utf-8", newline="") as f:
+                    reader = csv.DictReader(f)
+                    rows = list(reader)
+                    total_count = len(rows)
+
+                    # Check for staged audio files
+                    audio_dir = manifest_dir / "audio"
+                    for row in rows:
+                        clip_id = row.get("clip_id", "")
+                        # Check common audio extensions
+                        for ext in [".mp3", ".wav", ".flac"]:
+                            audio_path = audio_dir / f"{clip_id}{ext}"
+                            if audio_path.exists():
+                                staged_count += 1
+                                break
+            except Exception as e:
+                print(f"{WARN} Samples defined: ERROR (failed to read {selection_file}: {e})")
+                return 1
+            print(f"{CHECK} Samples defined: {total_count} (from {selection_file})")
+        else:
+            print(f"{WARN} Samples defined: ERROR (selection file not found: {selection_path})")
+            return 1
+    else:
+        # Try to get count from meta
+        meta = manifest.get("meta", {})
+        total_count = meta.get("sample_count", 0)
+        print(f"{CHECK} Samples defined: {total_count} (from meta.sample_count)")
+
+    # Report staging status
+    if staged_count == total_count and total_count > 0:
+        print(f"{CHECK} Audio files staged: {staged_count}/{total_count}")
+    else:
+        print(f"{WARN} Audio files staged: {staged_count}/{total_count}")
+
+    print()
+
+    # Provide staging command
+    if dataset == "commonvoice_en_smoke":
+        staging_script = project_root / "benchmarks" / "scripts" / "stage_commonvoice.py"
+        print(f"To stage audio: python {staging_script}")
+    else:
+        print(f"To stage audio: See documentation for {dataset}")
+
+    return 0
+
+
 def handle_benchmark_run(
     track: str,
     dataset: str | None,
@@ -1639,8 +1970,23 @@ def handle_benchmark_run(
     output: Path | None,
     verbose: bool,
     mode: SemanticMode | None = None,
+    dry_run: bool = False,
 ) -> int:
-    """Handle 'benchmark run' command - run a specific benchmark."""
+    """Handle 'benchmark run' command - run a specific benchmark.
+
+    Args:
+        track: Benchmark track name (asr, diarization, streaming, semantic, emotion)
+        dataset: Dataset name (or None for default)
+        split: Dataset split (train/dev/test)
+        limit: Sample limit
+        output: Optional output path for results JSON
+        verbose: Show detailed progress
+        mode: Semantic evaluation mode (only for semantic track)
+        dry_run: If True, validate manifest and configuration without running benchmarks
+
+    Returns:
+        Exit code (0 = success, 1 = error)
+    """
     # Validate track
     if track not in BENCHMARK_TRACKS:
         print(f"Error: Unknown track '{track}'.", file=sys.stderr)
@@ -1663,6 +2009,10 @@ def handle_benchmark_run(
         print(f"Error: Dataset '{dataset}' not supported for track '{track}'.", file=sys.stderr)
         print(f"Supported datasets: {', '.join(track_config.supported_datasets)}", file=sys.stderr)
         return 1
+
+    # Handle dry-run mode - validate manifest and exit early
+    if dry_run:
+        return _perform_dry_run_validation(track, dataset)
 
     # Check dataset availability
     available = list_available_benchmarks()
@@ -1712,6 +2062,16 @@ def handle_benchmark_run(
                 print(f"  - {error}")
             if len(result.errors) > 5:
                 print(f"  ... and {len(result.errors) - 5} more")
+
+        # Display receipt for provenance tracking
+        if result.receipt:
+            print("\nReceipt:")
+            print(f"  tool_version: {result.receipt.tool_version}")
+            print(f"  config_hash: {result.receipt.config_hash}")
+            if result.receipt.git_commit:
+                print(f"  git_commit: {result.receipt.git_commit}")
+            if result.receipt.mode:
+                print(f"  mode: {result.receipt.mode}")
 
         # Save results if output specified
         if output:
@@ -2158,6 +2518,12 @@ def build_benchmark_parser(
         ),
     )
 
+    p_run.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate manifest and configuration without running benchmarks.",
+    )
+
     # benchmark baselines - list stored baselines
     benchmark_subparsers.add_parser(
         "baselines",
@@ -2349,6 +2715,7 @@ def handle_benchmark_command(args: argparse.Namespace) -> int:
             output=args.output,
             verbose=args.verbose,
             mode=getattr(args, "mode", None),
+            dry_run=getattr(args, "dry_run", False),
         )
 
     if args.benchmark_action == "save-baseline":

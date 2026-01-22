@@ -1,0 +1,345 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slower-whisper.dev/schemas/server_message.json",
+  "title": "ServerMessage",
+  "description": "Server-to-client message for WebSocket streaming protocol v2.0. All server messages use the EventEnvelope format defined in event_envelope_v2.json. This schema provides a summary of server message types and their payloads.",
+  "type": "object",
+  "$ref": "event_envelope_v2.json",
+  "$defs": {
+    "ServerMessageType": {
+      "type": "string",
+      "enum": [
+        "SESSION_STARTED",
+        "PARTIAL",
+        "FINALIZED",
+        "SPEAKER_TURN",
+        "SEMANTIC_UPDATE",
+        "DIARIZATION_UPDATE",
+        "ERROR",
+        "SESSION_ENDED",
+        "PONG"
+      ],
+      "description": "Server message types sent from server to client."
+    },
+    "MessageTypeDescriptions": {
+      "description": "Documentation of server message types and their purposes.",
+      "type": "object",
+      "properties": {
+        "SESSION_STARTED": {
+          "description": "Confirms session initialization. Sent in response to START_SESSION. Contains the stream_id that will be used for all subsequent events.",
+          "droppable": false,
+          "trigger": "START_SESSION from client"
+        },
+        "PARTIAL": {
+          "description": "Intermediate transcription result for an in-progress segment. Text may change with subsequent updates. Multiple PARTIAL events may be emitted for the same segment_id before FINALIZED.",
+          "droppable": true,
+          "trigger": "ASR produces intermediate result"
+        },
+        "FINALIZED": {
+          "description": "Final transcription result for a completed segment. Text is immutable after this event. Exactly one FINALIZED event per segment_id. May include audio_state if enrichment enabled.",
+          "droppable": false,
+          "trigger": "Speaker change, gap exceeds threshold, or end of stream"
+        },
+        "SPEAKER_TURN": {
+          "description": "Speaker turn boundary notification. Emitted when a turn is completed (speaker change or significant pause). Contains references to all segment_ids comprising the turn.",
+          "droppable": false,
+          "trigger": "Turn boundary detected after FINALIZED"
+        },
+        "SEMANTIC_UPDATE": {
+          "description": "Semantic annotation for a finalized turn. Contains keywords, risk tags, action items, and other semantic features. Emitted after corresponding SPEAKER_TURN event.",
+          "droppable": true,
+          "trigger": "Semantic analysis completes for a turn"
+        },
+        "DIARIZATION_UPDATE": {
+          "description": "Incremental speaker diarization results. Contains speaker assignments for time ranges across the audio. Emitted periodically based on diarization_interval_sec.",
+          "droppable": true,
+          "trigger": "Diarization interval reached or end of stream"
+        },
+        "ERROR": {
+          "description": "Error notification with recovery guidance. Contains error code, message, and whether the error is recoverable. If recoverable=false, client should close connection.",
+          "droppable": false,
+          "trigger": "Processing error or protocol violation"
+        },
+        "SESSION_ENDED": {
+          "description": "Session termination confirmation. Contains final session statistics. Sent in response to END_SESSION or unrecoverable error.",
+          "droppable": false,
+          "trigger": "END_SESSION from client or session error"
+        },
+        "PONG": {
+          "description": "Response to client PING for keep-alive and latency measurement. Contains client timestamp (echoed) and server timestamp.",
+          "droppable": false,
+          "trigger": "PING from client"
+        }
+      }
+    },
+    "OrderingGuarantees": {
+      "description": "Protocol ordering guarantees that clients can rely on.",
+      "type": "object",
+      "properties": {
+        "monotonic_event_id": {
+          "description": "event_id is monotonically increasing per stream. Gaps indicate dropped events (PARTIAL under backpressure)."
+        },
+        "partial_before_finalized": {
+          "description": "PARTIAL events for a segment arrive before its FINALIZED event. Same segment_id used throughout."
+        },
+        "monotonic_finalized_timestamps": {
+          "description": "FINALIZED events are monotonic in ts_audio_start. Audio timeline progresses forward."
+        },
+        "speaker_turn_after_finalized": {
+          "description": "SPEAKER_TURN events arrive after the FINALIZED event that closed the turn."
+        },
+        "no_out_of_order_event_id": {
+          "description": "No event arrives with event_id < previously received event_id."
+        }
+      }
+    },
+    "BackpressureContract": {
+      "description": "Drop policy when server produces events faster than client can consume.",
+      "type": "object",
+      "properties": {
+        "drop_priority": {
+          "description": "Drop order: 1) oldest PARTIAL, 2) oldest SEMANTIC_UPDATE, 3) oldest DIARIZATION_UPDATE. FINALIZED, ERROR, SESSION_STARTED, SESSION_ENDED, PONG are never dropped."
+        },
+        "buffer_size": {
+          "type": "integer",
+          "default": 100,
+          "description": "Maximum events buffered before drop policy activates."
+        },
+        "signal": {
+          "description": "Server signals drops via ERROR event with code BUFFER_OVERFLOW."
+        }
+      }
+    },
+    "ErrorCodes": {
+      "description": "Standard error codes and their meanings.",
+      "type": "object",
+      "properties": {
+        "ASR_TIMEOUT": {
+          "recoverable": true,
+          "description": "ASR processing exceeded timeout."
+        },
+        "ASR_FAILURE": {
+          "recoverable": true,
+          "description": "ASR engine returned an error."
+        },
+        "ENRICHMENT_FAILURE": {
+          "recoverable": true,
+          "description": "Audio enrichment failed for a segment."
+        },
+        "SEQUENCE_ERROR": {
+          "recoverable": false,
+          "description": "Chunk sequence violation (out-of-order or duplicate)."
+        },
+        "BUFFER_OVERFLOW": {
+          "recoverable": true,
+          "description": "Event buffer overflow, events were dropped."
+        },
+        "RESUME_GAP": {
+          "recoverable": true,
+          "description": "Resume failed, requested events not in buffer."
+        },
+        "SESSION_ERROR": {
+          "recoverable": false,
+          "description": "Unrecoverable session error."
+        },
+        "INVALID_MESSAGE": {
+          "recoverable": true,
+          "description": "Client message parsing failed."
+        },
+        "RATE_LIMITED": {
+          "recoverable": false,
+          "description": "Rate limit exceeded."
+        },
+        "DIARIZATION_FAILURE": {
+          "recoverable": true,
+          "description": "Diarization processing failed."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "description": "SESSION_STARTED event",
+      "event_id": 1,
+      "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+      "segment_id": null,
+      "type": "SESSION_STARTED",
+      "ts_server": 1736251200000,
+      "ts_audio_start": null,
+      "ts_audio_end": null,
+      "payload": {
+        "session_id": "str-550e8400-e29b-41d4-a716-446655440000"
+      }
+    },
+    {
+      "description": "PARTIAL event",
+      "event_id": 5,
+      "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+      "segment_id": "seg-2",
+      "type": "PARTIAL",
+      "ts_server": 1736251200123,
+      "ts_audio_start": 4.5,
+      "ts_audio_end": 6.2,
+      "payload": {
+        "segment": {
+          "start": 4.5,
+          "end": 6.2,
+          "text": "Thank you for",
+          "speaker_id": "spk_0"
+        },
+        "confidence": 0.85
+      }
+    },
+    {
+      "description": "FINALIZED event with audio_state",
+      "event_id": 8,
+      "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+      "segment_id": "seg-2",
+      "type": "FINALIZED",
+      "ts_server": 1736251203456,
+      "ts_audio_start": 4.5,
+      "ts_audio_end": 8.3,
+      "payload": {
+        "segment": {
+          "start": 4.5,
+          "end": 8.3,
+          "text": "Thank you for calling customer support.",
+          "speaker_id": "spk_0",
+          "audio_state": {
+            "prosody": {
+              "pitch": { "level": "neutral", "mean_hz": 185.2 },
+              "energy": { "level": "moderate", "mean_db": -22.5 }
+            },
+            "emotion": {
+              "valence": { "level": "neutral", "score": 0.45 }
+            },
+            "rendering": "[audio: neutral pitch, moderate volume]"
+          }
+        }
+      }
+    },
+    {
+      "description": "SPEAKER_TURN event",
+      "event_id": 12,
+      "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+      "segment_id": null,
+      "type": "SPEAKER_TURN",
+      "ts_server": 1736251210789,
+      "ts_audio_start": 0.0,
+      "ts_audio_end": 15.5,
+      "payload": {
+        "turn": {
+          "id": "turn-3",
+          "speaker_id": "spk_1",
+          "start": 0.0,
+          "end": 15.5,
+          "segment_ids": ["seg-0", "seg-1", "seg-2"],
+          "text": "Hello, thank you for calling. How can I help you today?"
+        },
+        "previous_speaker": "spk_0"
+      }
+    },
+    {
+      "description": "SEMANTIC_UPDATE event",
+      "event_id": 15,
+      "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+      "segment_id": null,
+      "type": "SEMANTIC_UPDATE",
+      "ts_server": 1736251215000,
+      "ts_audio_start": 0.0,
+      "ts_audio_end": 15.5,
+      "payload": {
+        "turn_id": "turn-3",
+        "keywords": ["customer support", "help", "inquiry"],
+        "risk_tags": [],
+        "actions": [
+          {
+            "text": "provide assistance",
+            "pattern": "imperative",
+            "confidence": 0.78
+          }
+        ],
+        "question_count": 1,
+        "intent": "greeting",
+        "sentiment": "neutral",
+        "context_size": 3
+      }
+    },
+    {
+      "description": "DIARIZATION_UPDATE event",
+      "event_id": 18,
+      "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+      "segment_id": null,
+      "type": "DIARIZATION_UPDATE",
+      "ts_server": 1736251220000,
+      "ts_audio_start": 0.0,
+      "ts_audio_end": 30.5,
+      "payload": {
+        "update_number": 1,
+        "audio_duration": 30.5,
+        "num_speakers": 2,
+        "speaker_ids": ["spk_0", "spk_1"],
+        "assignments": [
+          { "start": 0.0, "end": 5.2, "speaker_id": "spk_0", "confidence": 0.92 },
+          { "start": 5.2, "end": 15.5, "speaker_id": "spk_1", "confidence": 0.88 },
+          { "start": 15.5, "end": 30.5, "speaker_id": "spk_0", "confidence": 0.95 }
+        ]
+      }
+    },
+    {
+      "description": "ERROR event (recoverable)",
+      "event_id": 20,
+      "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+      "segment_id": "seg-5",
+      "type": "ERROR",
+      "ts_server": 1736251225000,
+      "ts_audio_start": 25.0,
+      "ts_audio_end": 27.5,
+      "payload": {
+        "code": "ASR_TIMEOUT",
+        "message": "ASR processing timed out for audio segment",
+        "recoverable": true,
+        "details": {
+          "timeout_ms": 5000,
+          "audio_duration_sec": 2.5
+        }
+      }
+    },
+    {
+      "description": "SESSION_ENDED event",
+      "event_id": 50,
+      "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+      "segment_id": null,
+      "type": "SESSION_ENDED",
+      "ts_server": 1736251300000,
+      "ts_audio_start": null,
+      "ts_audio_end": null,
+      "payload": {
+        "stats": {
+          "chunks_received": 120,
+          "bytes_received": 384000,
+          "segments_partial": 45,
+          "segments_finalized": 12,
+          "events_sent": 50,
+          "events_dropped": 0,
+          "errors": 1,
+          "duration_sec": 100.0
+        }
+      }
+    },
+    {
+      "description": "PONG event",
+      "event_id": 25,
+      "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+      "segment_id": null,
+      "type": "PONG",
+      "ts_server": 1736251230000,
+      "ts_audio_start": null,
+      "ts_audio_end": null,
+      "payload": {
+        "timestamp": 1736251229950,
+        "server_timestamp": 1736251230000
+      }
+    }
+  ]
+}

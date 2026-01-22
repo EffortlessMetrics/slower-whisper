@@ -1102,15 +1102,96 @@ async def transcribe_audio(
 # =============================================================================
 
 
+class SSEStreamingSession:
+    """
+    Manages state for an SSE streaming transcription session.
+
+    Uses the same event envelope format as WebSocket streaming for
+    consistency across the API.
+
+    Attributes:
+        stream_id: Unique identifier for this stream (sse-{uuid4})
+        _event_id_counter: Monotonically increasing event ID
+        _segment_seq: Segment sequence counter
+    """
+
+    def __init__(self) -> None:
+        """Initialize a new SSE streaming session."""
+        self.stream_id = f"sse-{uuid.uuid4()}"
+        self._event_id_counter = 0
+        self._segment_seq = 0
+        self._start_time = time.time()
+        self._chunks_processed = 0
+        self._segments_partial = 0
+        self._segments_finalized = 0
+        self._errors = 0
+
+    def _next_event_id(self) -> int:
+        """Generate next monotonically increasing event ID."""
+        self._event_id_counter += 1
+        return self._event_id_counter
+
+    def _next_segment_id(self) -> str:
+        """Generate next segment ID."""
+        seg_id = f"seg-{self._segment_seq}"
+        self._segment_seq += 1
+        return seg_id
+
+    def _server_timestamp(self) -> int:
+        """Get current server timestamp in milliseconds."""
+        return int(time.time() * 1000)
+
+    def create_envelope(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        segment_id: str | None = None,
+        ts_audio_start: float | None = None,
+        ts_audio_end: float | None = None,
+    ) -> dict[str, Any]:
+        """Create an event envelope with current metadata."""
+        result: dict[str, Any] = {
+            "event_id": self._next_event_id(),
+            "stream_id": self.stream_id,
+            "type": event_type,
+            "ts_server": self._server_timestamp(),
+            "payload": payload,
+        }
+        if segment_id is not None:
+            result["segment_id"] = segment_id
+        if ts_audio_start is not None:
+            result["ts_audio_start"] = ts_audio_start
+        if ts_audio_end is not None:
+            result["ts_audio_end"] = ts_audio_end
+        return result
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get session statistics."""
+        duration = time.time() - self._start_time
+        return {
+            "segments_partial": self._segments_partial,
+            "segments_finalized": self._segments_finalized,
+            "errors": self._errors,
+            "duration_sec": round(duration, 3),
+        }
+
+
 async def _generate_sse_transcription(
     audio_path: Path,
     config: TranscriptionConfig,
     include_words: bool,
 ) -> AsyncGenerator[str, None]:
-    """Generate SSE events during transcription.
+    """Generate SSE events during transcription using event envelope format.
 
     Uses a thread pool to run the synchronous transcription engine while
-    yielding events as segments are produced.
+    yielding events as segments are produced. Events follow the same
+    envelope structure as WebSocket streaming for API consistency.
+
+    Event types emitted:
+    - PARTIAL: Intermediate segment (emitted during transcription progress)
+    - FINALIZED: Final segment with complete transcription
+    - SESSION_ENDED: Stream complete with statistics
+    - ERROR: Error occurred during processing
 
     Args:
         audio_path: Path to the normalized audio file
@@ -1118,7 +1199,7 @@ async def _generate_sse_transcription(
         include_words: Whether to include word-level timestamps
 
     Yields:
-        SSE-formatted event strings
+        SSE-formatted event strings: "data: {event_envelope_json}\\n\\n"
     """
     import asyncio
     import queue
@@ -1129,8 +1210,11 @@ async def _generate_sse_transcription(
     from .diarization_orchestrator import _maybe_run_diarization
     from .transcription_helpers import _maybe_build_chunks
 
+    # Create session for tracking state
+    session = SSEStreamingSession()
+
     # Create a queue to communicate between threads
-    event_queue: queue.Queue[dict | None] = queue.Queue()
+    event_queue: queue.Queue[dict[str, Any] | None] = queue.Queue()
 
     def run_transcription() -> None:
         """Run transcription in a background thread, pushing events to the queue."""
@@ -1150,74 +1234,107 @@ async def _generate_sse_transcription(
             # Initialize the transcription engine
             engine = TranscriptionEngine(asr_cfg)
 
-            # Get model's transcribe method result
+            # Check if audio file exists
             if not audio_path.exists():
+                session._errors += 1
                 event_queue.put(
-                    {
-                        "type": "error",
-                        "data": {"code": "file_not_found", "message": "Audio file not found"},
-                    }
+                    session.create_envelope(
+                        "ERROR",
+                        {
+                            "code": "file_not_found",
+                            "message": "Audio file not found",
+                            "recoverable": False,
+                        },
+                    )
                 )
                 event_queue.put(None)
                 return
 
             # Perform transcription using the engine
-            # The engine handles the model internally
             logger.info("SSE: Starting transcription for %s", audio_path.name)
 
             transcript = engine.transcribe_file(audio_path)
 
-            # Emit segments one by one
+            # Emit segments - first as PARTIAL, then final one as FINALIZED
             total_segments = len(transcript.segments)
             for idx, segment in enumerate(transcript.segments):
                 seg_dict = _segment_to_dict(segment, include_words=include_words)
-                event_queue.put({"type": "segment", "data": seg_dict})
+                segment_id = session._next_segment_id()
+                is_last = idx == total_segments - 1
 
-                # Calculate and emit progress
-                percent = int(((idx + 1) / total_segments) * 100) if total_segments > 0 else 100
-                event_queue.put({"type": "progress", "data": {"percent": percent}})
+                # Emit PARTIAL for intermediate segments during processing
+                if not is_last:
+                    session._segments_partial += 1
+                    event_queue.put(
+                        session.create_envelope(
+                            "PARTIAL",
+                            {"segment": seg_dict},
+                            segment_id=segment_id,
+                            ts_audio_start=segment.start,
+                            ts_audio_end=segment.end,
+                        )
+                    )
+                else:
+                    # Last segment gets FINALIZED
+                    session._segments_finalized += 1
+                    event_queue.put(
+                        session.create_envelope(
+                            "FINALIZED",
+                            {"segment": seg_dict},
+                            segment_id=segment_id,
+                            ts_audio_start=segment.start,
+                            ts_audio_end=segment.end,
+                        )
+                    )
 
             # Run diarization if enabled
             if config.enable_diarization:
-                event_queue.put(
-                    {
-                        "type": "progress",
-                        "data": {"percent": 100, "stage": "diarization"},
-                    }
-                )
                 transcript = _maybe_run_diarization(transcript, audio_path, config)
                 transcript = _maybe_build_chunks(transcript, config)
 
-                # Re-emit segments with speaker info
+                # Re-emit segments with speaker info as FINALIZED updates
                 for segment in transcript.segments:
                     if segment.speaker:
                         seg_dict = _segment_to_dict(segment, include_words=include_words)
-                        event_queue.put({"type": "segment_update", "data": seg_dict})
+                        segment_id = session._next_segment_id()
+                        session._segments_finalized += 1
+                        event_queue.put(
+                            session.create_envelope(
+                                "FINALIZED",
+                                {"segment": seg_dict},
+                                segment_id=segment_id,
+                                ts_audio_start=segment.start,
+                                ts_audio_end=segment.end,
+                            )
+                        )
 
-            # Emit final done event with metadata
+            # Emit SESSION_ENDED event with metadata and statistics
             event_queue.put(
-                {
-                    "type": "done",
-                    "data": {
+                session.create_envelope(
+                    "SESSION_ENDED",
+                    {
+                        "stats": session.get_stats(),
                         "total_segments": len(transcript.segments),
                         "language": transcript.language,
                         "file_name": transcript.file_name,
                         "speakers": transcript.speakers,
                         "meta": transcript.meta,
                     },
-                }
+                )
             )
 
         except Exception as e:
             logger.exception("SSE transcription error: %s", e)
+            session._errors += 1
             event_queue.put(
-                {
-                    "type": "error",
-                    "data": {
+                session.create_envelope(
+                    "ERROR",
+                    {
                         "code": "transcription_error",
                         "message": "Transcription failed",
+                        "recoverable": False,
                     },
-                }
+                )
             )
 
         finally:
@@ -1236,9 +1353,10 @@ async def _generate_sse_transcription(
                 event = await asyncio.to_thread(event_queue.get, timeout=0.1)
                 if event is None:
                     break
-                yield f"event: {event['type']}\ndata: {json.dumps(event['data'])}\n\n"
+                # SSE format: "data: {json}\n\n"
+                yield f"data: {json.dumps(event)}\n\n"
             except queue.Empty:
-                # No event yet, yield a comment to keep connection alive
+                # No event yet, continue polling
                 continue
             except Exception:
                 # Queue access error, break the loop
@@ -1250,11 +1368,12 @@ async def _generate_sse_transcription(
 
 @app.post(
     "/transcribe/stream",
-    summary="Transcribe audio with streaming results",
+    summary="Transcribe audio with streaming results (SSE)",
     description=(
         "Upload an audio file and receive transcription results as a stream "
-        "of Server-Sent Events (SSE). Each event contains a segment as it's "
-        "transcribed, allowing for progressive display of results."
+        "of Server-Sent Events (SSE). Events use the same envelope format as "
+        "WebSocket streaming for API consistency. Each event contains segment "
+        "data as it's transcribed, enabling progressive display of results."
     ),
     tags=["Transcription"],
     response_class=StreamingResponse,
@@ -1264,12 +1383,18 @@ async def _generate_sse_transcription(
             "content": {
                 "text/event-stream": {
                     "example": (
-                        "event: segment\n"
-                        'data: {"id": 0, "start": 0.0, "end": 2.5, "text": "Hello world"}\n\n'
-                        "event: progress\n"
-                        'data: {"percent": 45}\n\n'
-                        "event: done\n"
-                        'data: {"total_segments": 10}\n\n'
+                        'data: {"event_id": 1, "stream_id": "sse-abc123", "type": "PARTIAL", '
+                        '"ts_server": 1705123456789, "segment_id": "seg-0", '
+                        '"ts_audio_start": 0.0, "ts_audio_end": 2.5, '
+                        '"payload": {"segment": {"id": 0, "start": 0.0, "end": 2.5, '
+                        '"text": "Hello world"}}}\n\n'
+                        'data: {"event_id": 2, "stream_id": "sse-abc123", "type": "FINALIZED", '
+                        '"ts_server": 1705123456800, "segment_id": "seg-1", '
+                        '"payload": {"segment": {"id": 1, "start": 2.5, "end": 5.0, '
+                        '"text": "This is the final segment."}}}\n\n'
+                        'data: {"event_id": 3, "stream_id": "sse-abc123", "type": "SESSION_ENDED", '
+                        '"ts_server": 1705123456850, '
+                        '"payload": {"stats": {"segments_finalized": 2}, "total_segments": 2}}\n\n'
                     )
                 }
             },
@@ -1367,28 +1492,36 @@ async def transcribe_audio_streaming(
     ] = False,
 ) -> StreamingResponse:
     """
-    Stream transcription results as Server-Sent Events.
+    Stream transcription results as Server-Sent Events (SSE).
 
     This endpoint provides real-time streaming of transcription results,
-    emitting events as each segment is transcribed. This is useful for
-    progressive display of results in user interfaces.
+    emitting events as each segment is transcribed. Events use the same
+    envelope format as WebSocket streaming for API consistency.
 
-    Event types:
-    - `segment`: New segment transcribed, payload is segment JSON
-    - `segment_update`: Updated segment with additional info (e.g., speaker)
-    - `progress`: Progress update with percentage complete
-    - `done`: Transcription complete, payload is final metadata
-    - `error`: Error occurred, payload has error details
+    Event types (in envelope.type field):
+    - `PARTIAL`: Intermediate segment during transcription
+    - `FINALIZED`: Final segment with complete transcription
+    - `SESSION_ENDED`: Stream complete with statistics and metadata
+    - `ERROR`: Error occurred, includes code, message, and recoverable flag
+
+    Event envelope format:
+        {
+            "event_id": 1,           // Monotonically increasing per stream
+            "stream_id": "sse-...",  // Unique stream identifier
+            "type": "PARTIAL",       // Event type
+            "ts_server": 17051...,   // Server timestamp (ms)
+            "segment_id": "seg-0",   // Segment ID (for segment events)
+            "ts_audio_start": 0.0,   // Audio timestamp start (seconds)
+            "ts_audio_end": 2.5,     // Audio timestamp end (seconds)
+            "payload": {...}         // Event-specific data
+        }
 
     Example SSE format:
-        event: segment
-        data: {"id": 0, "start": 0.0, "end": 2.5, "text": "Hello world"}
+        data: {"event_id": 1, "type": "PARTIAL", "payload": {"segment": {...}}}
 
-        event: progress
-        data: {"percent": 45}
+        data: {"event_id": 2, "type": "FINALIZED", "payload": {"segment": {...}}}
 
-        event: done
-        data: {"total_segments": 10, "language": "en"}
+        data: {"event_id": 3, "type": "SESSION_ENDED", "payload": {"stats": {...}}}
 
     Args:
         audio: Uploaded audio file (any format supported by ffmpeg)
