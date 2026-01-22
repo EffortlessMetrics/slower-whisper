@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "id": "ami-headset",
+  "track": "diarization",
+  "split": "test",
+  "description": "AMI Meeting Corpus headset-mix recordings - multi-party meeting diarization benchmark",
+  "source": {
+    "name": "AMI Meeting Corpus",
+    "url": "https://groups.inf.ed.ac.uk/ami/corpus/",
+    "citation": "Carletta et al., The AMI meeting corpus: A pre-announcement, MLMI 2005"
+  },
+  "license": {
+    "id": "CC-BY-4.0",
+    "name": "Creative Commons Attribution 4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/",
+    "notes": "Academic use requires citation. Commercial use permitted with attribution."
+  },
+  "download": {
+    "method": "manual",
+    "instructions_url": "https://groups.inf.ed.ac.uk/ami/download/",
+    "base_url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/",
+    "notes": "Download requires accepting license terms. See docs/AMI_SETUP.md for detailed instructions."
+  },
+  "audio_format": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "encoding": "pcm_s16le",
+    "bit_depth": 16,
+    "variant": "Mix-Headset"
+  },
+  "annotation_format": {
+    "type": "rttm",
+    "source": "manual",
+    "notes": "Reference RTTM files derived from AMI manual speaker annotations"
+  },
+  "samples": [],
+  "sample_discovery": {
+    "method": "splits_file",
+    "splits_file": "splits/test.txt",
+    "audio_pattern": "audio/{meeting_id}.Mix-Headset.wav",
+    "rttm_pattern": "rttm/{meeting_id}.rttm",
+    "notes": "Meeting IDs listed in splits file. Audio and RTTM follow naming convention."
+  },
+  "test_meetings": [
+    "ES2002a", "ES2002b", "ES2002c", "ES2002d",
+    "ES2003a", "ES2003b", "ES2003c", "ES2003d",
+    "ES2004a", "ES2004b", "ES2004c", "ES2004d",
+    "ES2005a", "ES2005b", "ES2005c", "ES2005d"
+  ],
+  "meta": {
+    "created_at": "2026-01-21T00:00:00Z",
+    "total_duration_hours": 9.0,
+    "sample_count": 16,
+    "speaker_count_per_meeting": 4,
+    "language": "en",
+    "domain": "meeting",
+    "speech_type": "spontaneous",
+    "quality": "clean",
+    "microphone": "close-talking headset",
+    "scenario": "design project meetings",
+    "roles": ["Project Manager", "UI Designer", "Marketing Expert", "Industrial Designer"],
+    "notes": "Headset-mix provides cleanest audio by combining individual headset channels. Each meeting is ~30-45 minutes with 4 participants in a design project scenario."
+  }
+}

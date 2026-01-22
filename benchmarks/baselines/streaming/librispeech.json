@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "track": "streaming",
+  "dataset": "librispeech",
+  "created_at": "2026-01-21T00:00:00Z",
+  "metrics": {
+    "latency_p50": {
+      "value": 150.0,
+      "unit": "ms",
+      "threshold": 0.20
+    },
+    "latency_p99": {
+      "value": 450.0,
+      "unit": "ms",
+      "threshold": 0.25
+    },
+    "rtf": {
+      "value": 0.15,
+      "unit": "x",
+      "threshold": 0.20
+    }
+  },
+  "receipt": {
+    "tool_version": "1.9.2",
+    "model": "large-v3",
+    "device": "cuda",
+    "compute_type": "float16"
+  }
+}

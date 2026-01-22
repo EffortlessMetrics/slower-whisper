@@ -13,7 +13,6 @@ Technical statistics for contributors and code reviewers.
 | emotion.py | 386 | 3 | 1 | Medium | Good |
 | api.py | 368 | 6 | 0 | Low-Medium | Excellent |
 | audio_utils.py | 320 | 2 | 1 | Medium | Good |
-| audio_enrich_cli.py | 284 | 4 | 0 | Low-Medium | Good |
 | audio_rendering.py | 233 | 2 | 0 | Low-Medium | Good |
 | cli.py | 185 | 6 | 0 | Low | Excellent |
 | pipeline.py | 128 | 3 | 1 | Low | Excellent |

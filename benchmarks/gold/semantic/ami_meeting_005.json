@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "meeting_id": "ami_meeting_005",
+  "topics": [
+    {"label": "renewal", "segment_ids": [0, 1, 6, 7]},
+    {"label": "pricing", "segment_ids": [2, 3, 4]},
+    {"label": "features", "segment_ids": [5, 8]},
+    {"label": "contract", "segment_ids": [9, 10, 11]}
+  ],
+  "risks": [
+    {"type": "pricing", "severity": "high", "segment_id": 3, "evidence": "The proposed increase is significantly above our budget allocation for this year."},
+    {"type": "churn", "severity": "medium", "segment_id": 4, "evidence": "We've received competitive quotes that are more aligned with our budget."}
+  ],
+  "actions": [
+    {"text": "Prepare custom pricing proposal for renewal", "speaker_id": "spk_account_manager", "segment_ids": [4, 5]},
+    {"text": "Include multi-year discount options", "speaker_id": "spk_sales", "segment_ids": [6]},
+    {"text": "Document feature roadmap for next year", "speaker_id": "spk_pm", "segment_ids": [8]},
+    {"text": "Send contract amendment for legal review", "speaker_id": "spk_legal", "segment_ids": [10, 11]},
+    {"text": "Schedule executive sponsor call", "speaker_id": "spk_account_manager", "segment_ids": [7]}
+  ],
+  "summary": "Annual renewal negotiation meeting. Customer raised pricing concerns citing budget constraints and competitive alternatives. Account team committed to custom pricing proposal with multi-year discount options. Feature roadmap to be shared. Contract amendment pending legal review. Executive sponsor call planned to secure renewal."
+}

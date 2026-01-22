@@ -587,11 +587,81 @@ class Transcript:
     speaker_stats: list[SpeakerStats | dict[str, Any]] | None = None
     chunks: list[Chunk | dict[str, Any]] | None = None
 
+    @property
+    def full_text(self) -> str:
+        """Return concatenated text from all segments.
+
+        Joins all segment text with spaces, stripping leading/trailing whitespace
+        from each segment. This provides a convenient way to access the complete
+        transcription as a single string.
+
+        Returns:
+            The full transcript text as a single string.
+
+        Example:
+            >>> transcript.full_text
+            'Hello world. How are you today?'
+        """
+        return " ".join(seg.text.strip() for seg in self.segments if seg.text)
+
+    @property
     def duration(self) -> float:
-        """Total duration in seconds (end time of last segment)."""
+        """Return total audio duration in seconds.
+
+        Calculated as the end time of the last segment. Returns 0.0 if
+        there are no segments.
+
+        Returns:
+            Total duration in seconds.
+
+        Example:
+            >>> transcript.duration
+            125.5
+        """
         if not self.segments:
             return 0.0
         return max(seg.end for seg in self.segments)
+
+    def get_segments_by_speaker(self, speaker_id: str) -> list[Segment]:
+        """Return all segments for a given speaker.
+
+        This is an alias for segments_by_speaker() provided for API consistency.
+
+        Args:
+            speaker_id: The speaker ID to filter by (e.g., "spk_0", "SPEAKER_01").
+
+        Returns:
+            List of Segment objects belonging to the specified speaker.
+            Empty list if no segments match or diarization was not performed.
+
+        Example:
+            >>> segments = transcript.get_segments_by_speaker("spk_0")
+            >>> for seg in segments:
+            ...     print(f"{seg.start:.2f}s: {seg.text}")
+        """
+        return self.segments_by_speaker(speaker_id)
+
+    def get_segment_at_time(self, time: float) -> Segment | None:
+        """Return the segment containing the given timestamp.
+
+        Finds the first segment where start <= time < end. If no segment
+        contains the exact timestamp, returns None.
+
+        Args:
+            time: Timestamp in seconds to search for.
+
+        Returns:
+            The Segment containing the timestamp, or None if not found.
+
+        Example:
+            >>> segment = transcript.get_segment_at_time(10.5)
+            >>> if segment:
+            ...     print(f"At 10.5s: {segment.text}")
+        """
+        for seg in self.segments:
+            if seg.start <= time < seg.end:
+                return seg
+        return None
 
     def word_count(self) -> int:
         """Total word count across all segments.

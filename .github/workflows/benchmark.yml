@@ -1,0 +1,576 @@
+# =============================================================================
+# Benchmark CI Workflow (#99)
+# =============================================================================
+#
+# This workflow runs benchmark evaluations in report-only mode. It NEVER fails
+# the CI - benchmark results are informational only.
+#
+# Triggers:
+#   - Pull requests to main (automatic)
+#   - Manual dispatch with optional baseline save
+#
+# What it does:
+#   1. Runs ASR benchmark with small sample limit (smoke test)
+#   2. Runs semantic benchmark in tags mode (deterministic, no LLM required)
+#   3. Compares results against baselines if they exist
+#   4. Uploads all results as artifacts
+#   5. Posts PR comment with regression summary (Phase 2)
+#   6. (Optional) Saves new baselines on manual trigger with save_baseline=true
+#
+# Phase 1: Report-only benchmarks (completed)
+# Phase 2: PR comments with regression summary (current)
+# Phase 3: Gate mode with --gate flag for critical regressions (future)
+#
+# =============================================================================
+
+name: Benchmark
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      save_baseline:
+        description: 'Save results as new baseline (maintainers only)'
+        type: boolean
+        default: false
+      track:
+        description: 'Benchmark track to run (or "all" for all tracks)'
+        type: choice
+        options:
+          - all
+          - asr
+          - semantic
+        default: all
+      dataset:
+        description: 'ASR dataset to use (default: librispeech)'
+        type: choice
+        options:
+          - librispeech
+          - commonvoice_en_smoke
+        default: librispeech
+      limit:
+        description: 'Sample limit per benchmark (default: 5)'
+        type: number
+        default: 5
+
+# Cancel in-progress runs when a new workflow with the same group is triggered
+concurrency:
+  group: benchmark-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Default sample limit for quick CI runs
+  BENCHMARK_LIMIT: ${{ github.event.inputs.limit || '5' }}
+  # Results directory
+  RESULTS_DIR: benchmark-results
+
+jobs:
+  # ===========================================================================
+  # Main Benchmark Job
+  # ===========================================================================
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    # Report-only mode: NEVER fail CI on benchmark issues
+    continue-on-error: true
+
+    steps:
+      # -----------------------------------------------------------------------
+      # Setup
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Create results directory
+        run: mkdir -p ${{ env.RESULTS_DIR }}
+
+      # -----------------------------------------------------------------------
+      # Benchmark Infrastructure Status
+      # -----------------------------------------------------------------------
+      - name: Show benchmark infrastructure status
+        id: status
+        run: |
+          echo "## Benchmark Infrastructure Status" >> ${{ env.RESULTS_DIR }}/status.md
+          echo "" >> ${{ env.RESULTS_DIR }}/status.md
+          uv run slower-whisper benchmark status >> ${{ env.RESULTS_DIR }}/status.md 2>&1 || true
+          echo "" >> ${{ env.RESULTS_DIR }}/status.md
+
+          # Also show in job output
+          cat ${{ env.RESULTS_DIR }}/status.md
+
+      - name: List available baselines
+        run: |
+          echo "## Available Baselines" >> ${{ env.RESULTS_DIR }}/baselines.md
+          echo "" >> ${{ env.RESULTS_DIR }}/baselines.md
+          uv run slower-whisper benchmark baselines >> ${{ env.RESULTS_DIR }}/baselines.md 2>&1 || true
+
+          cat ${{ env.RESULTS_DIR }}/baselines.md
+
+      # -----------------------------------------------------------------------
+      # ASR Benchmark
+      # -----------------------------------------------------------------------
+      - name: Run ASR Benchmark (smoke test)
+        id: asr-benchmark
+        if: github.event.inputs.track == 'all' || github.event.inputs.track == 'asr' || github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          ASR_DATASET: ${{ github.event.inputs.dataset || 'librispeech' }}
+        run: |
+          echo "Running ASR benchmark with limit=${{ env.BENCHMARK_LIMIT }}, dataset=${{ env.ASR_DATASET }}..."
+
+          # Run benchmark and capture result
+          # Note: This may fail if dataset is not staged - that's OK
+          uv run slower-whisper benchmark run \
+            --track asr \
+            --dataset ${{ env.ASR_DATASET }} \
+            --limit ${{ env.BENCHMARK_LIMIT }} \
+            --output ${{ env.RESULTS_DIR }}/asr-results.json \
+            --verbose \
+            2>&1 | tee ${{ env.RESULTS_DIR }}/asr-run.log || {
+              echo "ASR benchmark did not complete (dataset may not be staged)"
+              echo '{"status": "skipped", "reason": "dataset_not_staged"}' > ${{ env.RESULTS_DIR }}/asr-results.json
+            }
+
+      - name: Compare ASR with baseline
+        id: asr-compare
+        if: |
+          (github.event.inputs.track == 'all' || github.event.inputs.track == 'asr' || github.event_name == 'pull_request') &&
+          hashFiles('benchmarks/baselines/asr/*.json') != ''
+        continue-on-error: true
+        env:
+          ASR_DATASET: ${{ github.event.inputs.dataset || 'librispeech' }}
+        run: |
+          echo "Comparing ASR results against baseline..."
+
+          # Compare with baseline (report mode - never fails)
+          uv run slower-whisper benchmark compare \
+            --track asr \
+            --dataset ${{ env.ASR_DATASET }} \
+            --limit ${{ env.BENCHMARK_LIMIT }} \
+            --output ${{ env.RESULTS_DIR }}/asr-comparison.json \
+            --verbose \
+            2>&1 | tee ${{ env.RESULTS_DIR }}/asr-compare.log || {
+              echo "ASR comparison did not complete"
+              echo '{"status": "skipped", "reason": "comparison_failed"}' > ${{ env.RESULTS_DIR }}/asr-comparison.json
+            }
+
+      # -----------------------------------------------------------------------
+      # Semantic Benchmark
+      # -----------------------------------------------------------------------
+      - name: Run Semantic Benchmark (tags mode)
+        id: semantic-benchmark
+        if: github.event.inputs.track == 'all' || github.event.inputs.track == 'semantic' || github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          echo "Running Semantic benchmark in tags mode with limit=${{ env.BENCHMARK_LIMIT }}..."
+
+          # Run semantic benchmark in deterministic tags mode (no LLM required)
+          uv run slower-whisper benchmark run \
+            --track semantic \
+            --mode tags \
+            --limit ${{ env.BENCHMARK_LIMIT }} \
+            --output ${{ env.RESULTS_DIR }}/semantic-results.json \
+            --verbose \
+            2>&1 | tee ${{ env.RESULTS_DIR }}/semantic-run.log || {
+              echo "Semantic benchmark did not complete (dataset may not be staged)"
+              echo '{"status": "skipped", "reason": "dataset_not_staged"}' > ${{ env.RESULTS_DIR }}/semantic-results.json
+            }
+
+      - name: Compare Semantic with baseline
+        id: semantic-compare
+        if: |
+          (github.event.inputs.track == 'all' || github.event.inputs.track == 'semantic' || github.event_name == 'pull_request') &&
+          hashFiles('benchmarks/baselines/semantic/*.json') != ''
+        continue-on-error: true
+        run: |
+          echo "Comparing Semantic results against baseline..."
+
+          uv run slower-whisper benchmark compare \
+            --track semantic \
+            --mode tags \
+            --limit ${{ env.BENCHMARK_LIMIT }} \
+            --output ${{ env.RESULTS_DIR }}/semantic-comparison.json \
+            --verbose \
+            2>&1 | tee ${{ env.RESULTS_DIR }}/semantic-compare.log || {
+              echo "Semantic comparison did not complete"
+              echo '{"status": "skipped", "reason": "comparison_failed"}' > ${{ env.RESULTS_DIR }}/semantic-comparison.json
+            }
+
+      # -----------------------------------------------------------------------
+      # Save Baselines (Manual Dispatch Only)
+      # -----------------------------------------------------------------------
+      - name: Save ASR Baseline
+        id: save-asr-baseline
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.save_baseline == 'true' &&
+          (github.event.inputs.track == 'all' || github.event.inputs.track == 'asr')
+        continue-on-error: true
+        env:
+          ASR_DATASET: ${{ github.event.inputs.dataset || 'librispeech' }}
+        run: |
+          echo "Saving new ASR baseline for ${{ env.ASR_DATASET }}..."
+
+          uv run slower-whisper benchmark save-baseline \
+            --track asr \
+            --dataset ${{ env.ASR_DATASET }} \
+            --limit ${{ env.BENCHMARK_LIMIT }} \
+            --output ${{ env.RESULTS_DIR }}/asr-baseline-results.json \
+            --verbose \
+            2>&1 | tee ${{ env.RESULTS_DIR }}/asr-baseline-save.log || {
+              echo "Failed to save ASR baseline"
+            }
+
+      - name: Save Semantic Baseline
+        id: save-semantic-baseline
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.save_baseline == 'true' &&
+          (github.event.inputs.track == 'all' || github.event.inputs.track == 'semantic')
+        continue-on-error: true
+        run: |
+          echo "Saving new Semantic baseline..."
+
+          uv run slower-whisper benchmark save-baseline \
+            --track semantic \
+            --mode tags \
+            --limit ${{ env.BENCHMARK_LIMIT }} \
+            --output ${{ env.RESULTS_DIR }}/semantic-baseline-results.json \
+            --verbose \
+            2>&1 | tee ${{ env.RESULTS_DIR }}/semantic-baseline-save.log || {
+              echo "Failed to save Semantic baseline"
+            }
+
+      - name: Commit baseline updates
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.save_baseline == 'true'
+        continue-on-error: true
+        run: |
+          # Check if there are baseline changes to commit
+          if git diff --quiet benchmarks/baselines/; then
+            echo "No baseline changes to commit"
+          else
+            echo "Baseline files changed:"
+            git diff --stat benchmarks/baselines/
+
+            # Note: This step only shows what would be committed
+            # Actual commit would require additional permissions and configuration
+            echo ""
+            echo "To commit these baselines, run locally:"
+            echo "  git add benchmarks/baselines/"
+            echo "  git commit -m 'chore: update benchmark baselines'"
+          fi
+
+      # -----------------------------------------------------------------------
+      # Generate Summary Report
+      # -----------------------------------------------------------------------
+      - name: Generate benchmark summary
+        if: always()
+        run: |
+          echo "## Benchmark Summary" > ${{ env.RESULTS_DIR }}/SUMMARY.md
+          echo "" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          echo "**Run Date:** $(date -Iseconds)" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          echo "**Commit:** ${{ github.sha }}" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          echo "**Branch:** ${{ github.ref_name }}" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          echo "**Trigger:** ${{ github.event_name }}" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          echo "**Sample Limit:** ${{ env.BENCHMARK_LIMIT }}" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          echo "" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+
+          # ASR Results
+          echo "### ASR Benchmark" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          if [ -f "${{ env.RESULTS_DIR }}/asr-results.json" ]; then
+            echo '```json' >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            cat ${{ env.RESULTS_DIR }}/asr-results.json >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            echo '```' >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          else
+            echo "No ASR results available" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          fi
+          echo "" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+
+          # ASR Comparison
+          if [ -f "${{ env.RESULTS_DIR }}/asr-comparison.json" ]; then
+            echo "#### ASR Baseline Comparison" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            echo '```json' >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            cat ${{ env.RESULTS_DIR }}/asr-comparison.json >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            echo '```' >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            echo "" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          fi
+
+          # Semantic Results
+          echo "### Semantic Benchmark" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          if [ -f "${{ env.RESULTS_DIR }}/semantic-results.json" ]; then
+            echo '```json' >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            cat ${{ env.RESULTS_DIR }}/semantic-results.json >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            echo '```' >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          else
+            echo "No Semantic results available" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          fi
+          echo "" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+
+          # Semantic Comparison
+          if [ -f "${{ env.RESULTS_DIR }}/semantic-comparison.json" ]; then
+            echo "#### Semantic Baseline Comparison" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            echo '```json' >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            cat ${{ env.RESULTS_DIR }}/semantic-comparison.json >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            echo '```' >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+            echo "" >> ${{ env.RESULTS_DIR }}/SUMMARY.md
+          fi
+
+          # Show summary
+          echo "=========================================="
+          echo "BENCHMARK SUMMARY"
+          echo "=========================================="
+          cat ${{ env.RESULTS_DIR }}/SUMMARY.md
+
+      # -----------------------------------------------------------------------
+      # Upload Artifacts
+      # -----------------------------------------------------------------------
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: ${{ env.RESULTS_DIR }}/
+          retention-days: 30
+
+      # -----------------------------------------------------------------------
+      # Generate PR Comment Body (Phase 2)
+      # -----------------------------------------------------------------------
+      - name: Generate PR comment body
+        id: pr-comment
+        if: github.event_name == 'pull_request'
+        run: |
+          # Create the comment body file
+          COMMENT_FILE="${{ env.RESULTS_DIR }}/pr-comment.md"
+
+          echo "## Benchmark Results" > "$COMMENT_FILE"
+          echo "" >> "$COMMENT_FILE"
+          echo "**Commit:** \`${{ github.sha }}\`" >> "$COMMENT_FILE"
+          echo "**Sample Limit:** ${{ env.BENCHMARK_LIMIT }}" >> "$COMMENT_FILE"
+          echo "" >> "$COMMENT_FILE"
+
+          # Function to generate comparison table from JSON
+          generate_comparison_table() {
+            local json_file="$1"
+            local track_name="$2"
+
+            if [ ! -f "$json_file" ]; then
+              echo "| $track_name | - | - | - | - | - | No comparison data |"
+              return
+            fi
+
+            # Check if comparison was skipped
+            if grep -q '"status": "skipped"' "$json_file" 2>/dev/null; then
+              echo "| $track_name | - | - | - | - | - | Skipped (dataset not staged) |"
+              return
+            fi
+
+            # Parse JSON and generate table rows using Python
+            python3 << PYEOF
+          import json
+          import sys
+
+          try:
+              with open("$json_file") as f:
+                  data = json.load(f)
+
+              results = data.get("results", [])
+              if not results:
+                  print("| $track_name | - | - | - | - | - | No metrics |")
+                  sys.exit(0)
+
+              for i, r in enumerate(results):
+                  metric = r.get("metric", "unknown")
+                  current = r.get("current")
+                  baseline = r.get("baseline")
+                  regression = r.get("regression", 0)
+                  threshold = r.get("threshold")
+                  passed = r.get("passed", True)
+                  unit = r.get("unit", "")
+
+                  # Format values
+                  current_str = f"{current:.4f}{unit}" if current is not None else "-"
+                  baseline_str = f"{baseline:.4f}{unit}" if baseline is not None else "-"
+                  regression_pct = f"{regression:+.1%}" if regression is not None else "-"
+                  threshold_str = f"{threshold:.0%}" if threshold is not None else "-"
+                  status = "✅" if passed else "❌"
+
+                  # Only show track name on first row
+                  track_col = "$track_name" if i == 0 else ""
+                  print(f"| {track_col} | {metric} | {current_str} | {baseline_str} | {regression_pct} | {threshold_str} | {status} |")
+
+          except json.JSONDecodeError:
+              print("| $track_name | - | - | - | - | - | Invalid JSON |")
+          except Exception as e:
+              print(f"| $track_name | - | - | - | - | - | Error: {str(e)[:30]} |")
+          PYEOF
+          }
+
+          # Check if any comparisons exist
+          HAS_COMPARISONS=false
+          if [ -f "${{ env.RESULTS_DIR }}/asr-comparison.json" ] || [ -f "${{ env.RESULTS_DIR }}/semantic-comparison.json" ]; then
+            HAS_COMPARISONS=true
+          fi
+
+          if [ "$HAS_COMPARISONS" = true ]; then
+            echo "### Baseline Comparison" >> "$COMMENT_FILE"
+            echo "" >> "$COMMENT_FILE"
+            echo "| Track | Metric | Current | Baseline | Regression | Threshold | Status |" >> "$COMMENT_FILE"
+            echo "|-------|--------|---------|----------|------------|-----------|--------|" >> "$COMMENT_FILE"
+
+            # ASR comparison
+            if [ -f "${{ env.RESULTS_DIR }}/asr-comparison.json" ]; then
+              generate_comparison_table "${{ env.RESULTS_DIR }}/asr-comparison.json" "ASR" >> "$COMMENT_FILE"
+            fi
+
+            # Semantic comparison
+            if [ -f "${{ env.RESULTS_DIR }}/semantic-comparison.json" ]; then
+              generate_comparison_table "${{ env.RESULTS_DIR }}/semantic-comparison.json" "Semantic" >> "$COMMENT_FILE"
+            fi
+
+            echo "" >> "$COMMENT_FILE"
+
+            # Overall status
+            OVERALL_PASSED=true
+
+            # Check ASR comparison
+            if [ -f "${{ env.RESULTS_DIR }}/asr-comparison.json" ]; then
+              if grep -q '"overall_passed": false' "${{ env.RESULTS_DIR }}/asr-comparison.json" 2>/dev/null; then
+                OVERALL_PASSED=false
+              fi
+            fi
+
+            # Check Semantic comparison
+            if [ -f "${{ env.RESULTS_DIR }}/semantic-comparison.json" ]; then
+              if grep -q '"overall_passed": false' "${{ env.RESULTS_DIR }}/semantic-comparison.json" 2>/dev/null; then
+                OVERALL_PASSED=false
+              fi
+            fi
+
+            if [ "$OVERALL_PASSED" = true ]; then
+              echo "**Overall:** ✅ All metrics within thresholds" >> "$COMMENT_FILE"
+            else
+              echo "**Overall:** ⚠️ Some metrics exceeded regression thresholds (report-only mode)" >> "$COMMENT_FILE"
+            fi
+          else
+            echo "### Benchmark Status" >> "$COMMENT_FILE"
+            echo "" >> "$COMMENT_FILE"
+            echo "| Track | Status |" >> "$COMMENT_FILE"
+            echo "|-------|--------|" >> "$COMMENT_FILE"
+
+            # ASR status
+            if [ -f "${{ env.RESULTS_DIR }}/asr-results.json" ]; then
+              if grep -q '"status": "skipped"' "${{ env.RESULTS_DIR }}/asr-results.json" 2>/dev/null; then
+                echo "| ASR | Skipped (dataset not staged) |" >> "$COMMENT_FILE"
+              else
+                echo "| ASR | Completed (no baseline) |" >> "$COMMENT_FILE"
+              fi
+            else
+              echo "| ASR | Not run |" >> "$COMMENT_FILE"
+            fi
+
+            # Semantic status
+            if [ -f "${{ env.RESULTS_DIR }}/semantic-results.json" ]; then
+              if grep -q '"status": "skipped"' "${{ env.RESULTS_DIR }}/semantic-results.json" 2>/dev/null; then
+                echo "| Semantic | Skipped (dataset not staged) |" >> "$COMMENT_FILE"
+              else
+                echo "| Semantic | Completed (no baseline) |" >> "$COMMENT_FILE"
+              fi
+            else
+              echo "| Semantic | Not run |" >> "$COMMENT_FILE"
+            fi
+          fi
+
+          echo "" >> "$COMMENT_FILE"
+          echo "---" >> "$COMMENT_FILE"
+          echo "<details><summary>Details</summary>" >> "$COMMENT_FILE"
+          echo "" >> "$COMMENT_FILE"
+          echo "- **Workflow run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> "$COMMENT_FILE"
+          echo "- **Artifacts:** \`benchmark-results-${{ github.run_id }}\`" >> "$COMMENT_FILE"
+          echo "- **Mode:** Report-only (regressions do not block merge)" >> "$COMMENT_FILE"
+          echo "" >> "$COMMENT_FILE"
+          echo "</details>" >> "$COMMENT_FILE"
+
+          # Output comment body for the action
+          echo "Generated PR comment:"
+          cat "$COMMENT_FILE"
+
+      # -----------------------------------------------------------------------
+      # Post PR Comment (Phase 2)
+      # -----------------------------------------------------------------------
+      - name: Find existing comment
+        id: find-comment
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '## Benchmark Results'
+
+      - name: Create or update PR comment
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: ${{ env.RESULTS_DIR }}/pr-comment.md
+          edit-mode: replace
+
+      # -----------------------------------------------------------------------
+      # Job Summary (GitHub Actions Summary)
+      # -----------------------------------------------------------------------
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Track | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+
+          # ASR status
+          if [ -f "${{ env.RESULTS_DIR }}/asr-results.json" ]; then
+            if grep -q '"status": "skipped"' "${{ env.RESULTS_DIR }}/asr-results.json" 2>/dev/null; then
+              echo "| ASR | Skipped | Dataset not staged |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| ASR | Completed | See artifacts |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| ASR | Not run | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Semantic status
+          if [ -f "${{ env.RESULTS_DIR }}/semantic-results.json" ]; then
+            if grep -q '"status": "skipped"' "${{ env.RESULTS_DIR }}/semantic-results.json" 2>/dev/null; then
+              echo "| Semantic | Skipped | Dataset not staged |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Semantic | Completed | See artifacts |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| Semantic | Not run | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** This is a report-only benchmark run. Results do not affect CI status." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the \`benchmark-results-${{ github.run_id }}\` artifact for full details." >> $GITHUB_STEP_SUMMARY

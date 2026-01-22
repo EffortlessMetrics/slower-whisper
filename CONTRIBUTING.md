@@ -375,18 +375,15 @@ slower-whisper/
 │   ├── asr_engine.py      # Whisper wrapper
 │   ├── writers.py         # JSON/TXT/SRT output
 │   ├── pipeline.py        # Orchestration
-│   ├── cli.py             # Stage 1 CLI
+│   ├── cli.py             # Unified CLI (transcribe + enrich)
 │   ├── prosody.py         # Prosody extraction
 │   ├── emotion.py         # Emotion recognition
 │   ├── audio_enrichment.py # Stage 2 orchestrator
-│   ├── audio_enrich_cli.py # Stage 2 CLI
 │   ├── audio_rendering.py  # Text rendering
 │   └── audio_utils.py      # Audio utilities
 ├── tests/                  # Test suite
 ├── examples/               # Example scripts
-├── docs/                   # Documentation
-├── transcribe_pipeline.py  # Stage 1 entry point
-└── audio_enrich.py        # Stage 2 entry point
+└── docs/                   # Documentation
 ```
 
 ---

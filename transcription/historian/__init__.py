@@ -42,6 +42,17 @@ from transcription.historian.estimation import (
     compute_session_bounds,
     generate_fallback_decision_candidates,
 )
+from transcription.historian.llm_client import (
+    AnthropicProvider,
+    ClaudeCodeProvider,
+    LLMConfig,
+    LLMProvider,
+    LLMResponse,
+    MockProvider,
+    OpenAIProvider,
+    create_llm_provider,
+    llm_complete,
+)
 from transcription.historian.synthesis import (
     AnalyzerStatus,
     PipelineReport,
@@ -73,4 +84,14 @@ __all__ = [
     "AnalyzerStatus",
     "PipelineReport",
     "SynthesisResult",
+    # LLM providers
+    "LLMConfig",
+    "LLMProvider",
+    "LLMResponse",
+    "create_llm_provider",
+    "llm_complete",
+    "AnthropicProvider",
+    "OpenAIProvider",
+    "ClaudeCodeProvider",
+    "MockProvider",
 ]

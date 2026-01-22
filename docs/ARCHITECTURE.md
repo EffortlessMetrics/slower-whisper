@@ -341,22 +341,19 @@ Converts numeric features to LLM-friendly text annotations:
 - Extraction status tracking
 - Graceful error handling (partial enrichment on failures)
 
-### 7. CLI Tool (`audio_enrich.py` + `transcription/audio_enrich_cli.py`)
+### 7. CLI Tool (`slower-whisper enrich`)
 ```bash
 # Enrich all transcripts
-python audio_enrich.py
-
-# Enrich specific file
-python audio_enrich.py --file whisper_json/meeting.json
+slower-whisper enrich
 
 # Skip already-enriched files
-python audio_enrich.py --skip-existing
+slower-whisper enrich --skip-existing
 
 # CPU-only mode
-python audio_enrich.py --device cpu
+slower-whisper enrich --device cpu
 
 # Disable specific features
-python audio_enrich.py --no-enable-emotion
+slower-whisper enrich --no-enable-emotion
 ```
 
 ### 8. JSON I/O (`transcription/writers.py`)
@@ -596,10 +593,10 @@ Text rendering creates concise annotations suitable for context windows:
 ### Basic Two-Stage Pipeline
 ```bash
 # Stage 1: Transcribe
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --language en
 
 # Stage 2: Enrich
-python audio_enrich.py
+slower-whisper enrich
 
 # Verify
 cat whisper_json/meeting.json | jq '.segments[0].audio_state'
@@ -608,16 +605,13 @@ cat whisper_json/meeting.json | jq '.segments[0].audio_state'
 ### Advanced Usage
 ```bash
 # Prosody only (fast, no GPU)
-python audio_enrich.py --no-enable-emotion
+slower-whisper enrich --no-enable-emotion
 
 # Full emotional analysis (slower)
-python audio_enrich.py --enable-categorical-emotion
+slower-whisper enrich --enable-categorical-emotion
 
 # Skip already-enriched files
-python audio_enrich.py --skip-existing
-
-# Single file
-python audio_enrich.py --file whisper_json/meeting.json
+slower-whisper enrich --skip-existing
 ```
 
 ### Querying Results

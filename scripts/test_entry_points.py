@@ -175,12 +175,6 @@ def main():
     else:
         failed += 1
 
-    success = test_import("transcription.audio_enrich_cli")
-    if success:
-        passed += 1
-    else:
-        failed += 1
-
     # Test 5: Dependencies
     print_section("📚 Dependencies")
 

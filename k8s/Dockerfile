@@ -40,7 +40,6 @@ COPY --from=dependencies /app/.venv /app/.venv
 
 # Copy application code
 COPY transcription/ ./transcription/
-COPY transcribe_pipeline.py audio_enrich.py ./
 COPY README.md CHANGELOG.md ./
 
 # Copy pyproject.toml for package metadata

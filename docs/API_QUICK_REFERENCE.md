@@ -890,7 +890,7 @@ enrich_config = EnrichmentConfig.from_sources(
 ```text
 1. CLI arguments (highest priority)
    ↓
-2. Config file values (--config or --enrich-config)
+2. Config file values (--config)
    ↓
 3. Environment variables (SLOWER_WHISPER_* or custom prefix)
    ↓
@@ -926,20 +926,6 @@ config = TranscriptionConfig.from_sources(
 ```
 
 See [CONFIGURATION.md](CONFIGURATION.md) for complete configuration reference and advanced usage patterns.
-
-### Configuration Precedence (Legacy)
-
-For backward compatibility, settings are still loaded in order of priority:
-
-```text
-1. CLI flags (highest priority)
-   ↓
-2. Config file (--config or --enrich-config)
-   ↓
-3. Environment variables (SLOWER_WHISPER_*)
-   ↓
-4. Defaults (lowest priority)
-```
 
 ### TranscriptionConfig
 
@@ -1237,7 +1223,7 @@ uv run slower-whisper enrich [OPTIONS]
 | Option | Default | Notes |
 |--------|---------|-------|
 | `--root PATH` | `.` | Project root with `whisper_json/` + `input_audio/` |
-| `--enrich-config FILE` | `None` | Merge order: CLI > file > env > defaults |
+| `--config FILE` | `None` | Merge order: CLI > file > env > defaults |
 | `--skip-existing / --no-skip-existing` | `True` | Skip segments with `audio_state` |
 | `--enable-prosody / --no-enable-prosody` | `True` | Pitch/energy/rate/pauses |
 | `--enable-emotion / --no-enable-emotion` | `True` | Dimensional emotion |

@@ -1,7 +1,8 @@
 # Benchmark Cache Strategy: Recommended Changes
 
 **Analysis Date:** 2025-11-19
-**Status:** ✅ Infrastructure is aligned, minor enhancements recommended
+**Last Updated:** 2026-01-21
+**Status:** ✅ Infrastructure is aligned; most recommendations implemented
 
 ## Overall Assessment
 
@@ -357,9 +358,9 @@ for name, info in benchmarks.items():
 
 ## Summary Checklist
 
-- [ ] **Add benchmark results to `.gitignore`** (high priority)
-- [ ] **Create `docs/IEMOCAP_SETUP.md` stub** (medium priority)
-- [ ] **Create `docs/LIBRICSS_SETUP.md` stub** (medium priority)
+- [x] **Add benchmark results to `.gitignore`** — Done: `benchmarks/results/` excluded
+- [x] **Create `docs/IEMOCAP_SETUP.md`** — Done: Full setup guide with label mapping
+- [ ] **Create `docs/LIBRICSS_SETUP.md` stub** — Pending (LibriCSS not yet needed)
 - [ ] **Update `CLAUDE.md` with benchmark datasets section** (low priority)
 - [ ] **Consider adding `validate_dataset_structure()` helper** (optional)
 - [ ] **Consider adding `benchmark-datasets` CLI command** (optional)

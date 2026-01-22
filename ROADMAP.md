@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
 **Current Version:** v1.9.2
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-01-21
 <!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
 Roadmap = forward-looking execution plan.
@@ -16,9 +16,9 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 |-------|--------|-------------|
 | v1.9.x Closeout | ✅ Complete | — |
 | API Polish Bundle | 📋 Ready to Start | Begin #70 |
-| Track 1: Benchmarks | 📋 Ready to Start | Begin #95 |
+| Track 1: Benchmarks | 🔄 In Progress | Complete #99 (CI integration) |
 | Track 2: Streaming | 📋 Ready to Start | Begin #133 |
-| Track 3: Semantics | 📋 Ready to Start | Begin #88 |
+| Track 3: Semantics | 🔄 In Progress | Begin #90 (cloud LLM interface) |
 
 ---
 
@@ -47,6 +47,7 @@ nix-clean flake check        # Nix checks
 
 | Version | Highlights |
 |---------|------------|
+| **Unreleased** | Semantic adapter protocol (#88), benchmark evaluation framework (ASR/DER/emotion/streaming), baseline infrastructure (#137), Anthropic LLM provider, parallel audio normalization |
 | **v1.9.2** | Version constant fix (`transcription.__version__` now correct) |
 | **v1.9.1** | GPU UX (`--device auto` default, preflight banner), CI caching fixes |
 | **v1.9.0** | Streaming callbacks (`StreamCallbacks` protocol), safe callback execution |
@@ -70,7 +71,7 @@ All v1.9.x deliverables shipped:
 
 P95 latency harness moves to Track 1 ([#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97)).
 
-### B) API Polish Bundle — 🔄 In Progress
+### B) API Polish Bundle — 📋 Ready to Start
 
 Ship as **one coherent PR** (high adoption value, low risk):
 
@@ -175,21 +176,32 @@ Track 2: Streaming (#133 → #134 → #84)
 
 ### Track 1: Benchmark Foundations
 
-**Status:** 📋 Ready to start (gates all other tracks)
+**Status:** 🔄 In Progress — all evaluation runners complete, CI integration remaining
 
 Benchmarks must exist before streaming work can be measured.
 
 | Order | Issue | Deliverable | Status |
 |-------|-------|-------------|--------|
-| 1 | [#95](https://github.com/EffortlessMetrics/slower-whisper/issues/95) | ASR WER runner (jiwer, smoke dataset) | ⬜ |
-| 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format + comparator | ⬜ |
-| 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency (P50/P95/P99, RTF) | ⬜ |
-| 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner (AMI subset) | ⬜ |
-| 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ⬜ |
+| 1 | [#95](https://github.com/EffortlessMetrics/slower-whisper/issues/95) | ASR WER runner (jiwer, smoke dataset) | ✅ `ASRBenchmarkRunner` (#186) |
+| 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format + comparator | ✅ Baseline infrastructure complete |
+| 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency (P50/P95/P99, RTF) | ✅ `StreamingBenchmarkRunner` (#190) |
+| 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner (AMI subset) | ✅ `DiarizationBenchmarkRunner` (#189) |
+| 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ✅ Phase 2 complete |
+
+**Also implemented:**
+
+- ✅ `EmotionBenchmarkRunner` (#187): Categorical emotion accuracy, F1, confusion matrix
 
 **Supporting:**
+
 - [#94](https://github.com/EffortlessMetrics/slower-whisper/issues/94): Dataset manifest format
 - [#57](https://github.com/EffortlessMetrics/slower-whisper/issues/57): CLI `slower-whisper benchmark --track asr|diarization|streaming`
+
+**Remaining work:**
+
+1. ~~CI integration with report-only mode (#99)~~ - ✅ Phase 1 (report-only) and Phase 2 (PR comments) complete
+2. CLI subcommand wiring for `slower-whisper benchmark` (partially complete)
+3. Phase 3: Gate mode with `--gate` flag for critical regressions (future)
 
 **Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline comparison.
 
@@ -451,13 +463,13 @@ All streaming events share this envelope:
 
 ### Track 3: Semantics Adapter Skeleton
 
-**Status:** ⏳ Blocked on Track 2 (needs stable Turn/Chunk model)
+**Status:** 🔄 In Progress — annotation schema and adapter protocol complete, cloud LLM interface next
 
 **Approach:** Contract-first — interfaces before backends.
 
 | Order | Issue | Deliverable | Status |
 |-------|-------|-------------|--------|
-| 1 | [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88) | LLM annotation schema + versioning | ⬜ |
+| 1 | [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88) | LLM annotation schema + versioning | ✅ `SemanticAdapter` protocol + `SemanticAnnotation` schema |
 | 2 | [#90](https://github.com/EffortlessMetrics/slower-whisper/issues/90) | Cloud LLM interface (OpenAI/Anthropic) | ⬜ |
 | 3 | [#91](https://github.com/EffortlessMetrics/slower-whisper/issues/91) | Guardrails (rate limits, cost, PII) | ⬜ |
 | 4 | [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92) | Golden files + contract tests | ⬜ |
@@ -536,7 +548,7 @@ class SemanticProvider(Protocol):
 
 | Issue | Deliverable | Status |
 |-------|-------------|--------|
-| [#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59) | Remove deprecated APIs (`--enrich-config`, legacy scripts) | ⬜ |
+| [#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59) | Remove deprecated APIs (`--enrich-config`, legacy scripts) | ✅ |
 | [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) | Expanded benchmark datasets (AMI, CALLHOME, LibriSpeech) | ⬜ |
 
 ---
@@ -698,10 +710,12 @@ nix-clean flake check        # Nix checks
 - Warnings logged during usage
 - Removed only in major versions
 
-**Current deprecations (removal: v2.0.0):**
-- `--enrich-config` → `--config`
-- `transcribe_pipeline.py` → `slower-whisper transcribe`
-- `audio_enrich.py` → `slower-whisper enrich`
+**Removed in v2.0.0 (#59):**
+- `--enrich-config` (use `--config`)
+- `transcribe_pipeline.py` (use `slower-whisper transcribe`)
+- `audio_enrich.py` (use `slower-whisper enrich`)
+- `slower-whisper-enrich` entry point (use `slower-whisper enrich`)
+- `transcription/audio_enrich_cli.py` module
 
 ### Stability Guarantees
 

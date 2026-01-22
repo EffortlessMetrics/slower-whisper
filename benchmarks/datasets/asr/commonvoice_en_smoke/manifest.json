@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "commonvoice_en_smoke",
+  "track": "asr",
+  "split": "smoke",
+  "description": "Common Voice English smoke slice - 15 fixed clips covering accent/noise variance for ASR regression testing",
+  "source": {
+    "name": "Mozilla Common Voice",
+    "url": "https://commonvoice.mozilla.org/",
+    "citation": "Ardila et al., Common Voice: A Massively-Multilingual Speech Corpus, LREC 2020"
+  },
+  "license": {
+    "id": "CC0-1.0",
+    "name": "Creative Commons Zero 1.0",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "notes": "Audio is CC0. IMPORTANT: Do not attempt to identify speakers. Do not redistribute the dataset."
+  },
+  "download": {
+    "method": "huggingface",
+    "dataset": "mozilla-foundation/common_voice_17_0",
+    "config": "en",
+    "split": "test",
+    "requires_auth": true,
+    "notes": "Requires accepting terms on Hugging Face. Use stage_commonvoice.py to download selected clips."
+  },
+  "audio_format": {
+    "sample_rate": 48000,
+    "channels": 1,
+    "encoding": "mp3"
+  },
+  "text_normalization": {
+    "lowercase": true,
+    "remove_punctuation": true,
+    "expand_contractions": false,
+    "notes": "CV transcripts are often punctuated/cased. Normalize both reference and hypothesis to lowercase without punctuation for fair WER comparison."
+  },
+  "samples": [],
+  "sample_source": {
+    "method": "selection_file",
+    "file": "selection.csv",
+    "notes": "Fixed 15 clips selected for deterministic regression testing. Clips chosen for accent/quality variance."
+  },
+  "meta": {
+    "created_at": "2026-01-21T00:00:00Z",
+    "total_duration_s": 180,
+    "sample_count": 15,
+    "language": "en",
+    "domain": "diverse",
+    "speech_type": "spontaneous",
+    "quality": "mixed",
+    "pinned_cv_version": "17.0",
+    "notes": "Messy real-world audio with accent variance, mic variance, and background noise. Complements clean LibriSpeech for realistic ASR evaluation."
+  }
+}

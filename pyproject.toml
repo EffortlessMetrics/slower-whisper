@@ -165,7 +165,7 @@ profiling = [
 ]
 
 [project.scripts]
-# Unified CLI (new, recommended)
+# Unified CLI
 slower-whisper = "transcription.cli:main"
 
 # Verification and testing CLI (developers)
@@ -173,10 +173,6 @@ slower-whisper-verify = "scripts.verify_all:main"
 
 # Dogfooding workflow CLI (for testing before release)
 slower-whisper-dogfood = "transcription.dogfood:main"
-
-# Legacy entry points (backward compatibility)
-# These still work but are deprecated in favor of the unified CLI
-slower-whisper-enrich = "transcription.audio_enrich_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/EffortlessMetrics/slower-whisper"
@@ -245,6 +241,7 @@ module = [
     "pyannote.*",
     "claude_agent_sdk.*",
     "anthropic.*",
+    "openai.*",
     "sklearn.*",
 ]
 ignore_missing_imports = true

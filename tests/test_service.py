@@ -34,6 +34,7 @@ import pytest
 pytest.importorskip("fastapi")
 pytest.importorskip("uvicorn")
 
+from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from transcription.models import Segment, Transcript, Word  # noqa: E402
@@ -1138,3 +1139,444 @@ class TestContentTypeHandling:
             )
 
             assert response.status_code == 200
+
+
+# =============================================================================
+# Test SSE Streaming Endpoint
+# =============================================================================
+
+
+class TestTranscribeStreamingEndpoint:
+    """Tests for /transcribe/stream SSE endpoint."""
+
+    @patch("transcription.asr_engine.TranscriptionEngine")
+    @patch("transcription.audio_io.normalize_single")
+    @patch("transcription.service.validate_audio_format")
+    def test_stream_returns_sse_content_type(
+        self,
+        mock_validate_audio: MagicMock,
+        mock_normalize: MagicMock,
+        mock_engine_class: MagicMock,
+        client: TestClient,
+        sample_wav_bytes: bytes,
+        sample_transcript: Transcript,
+    ) -> None:
+        """Test that streaming endpoint returns text/event-stream content type."""
+        # Setup mocks
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = sample_transcript
+        mock_engine_class.return_value = mock_engine
+        mock_validate_audio.return_value = None
+
+        def fake_normalize(src: Path, dst: Path) -> None:
+            dst.write_bytes(sample_wav_bytes)
+
+        mock_normalize.side_effect = fake_normalize
+
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("test.wav", sample_wav_bytes, "audio/wav")},
+            params={"model": "tiny", "device": "cpu"},
+        )
+
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+
+    @patch("transcription.asr_engine.TranscriptionEngine")
+    @patch("transcription.audio_io.normalize_single")
+    @patch("transcription.service.validate_audio_format")
+    def test_stream_emits_segment_events(
+        self,
+        mock_validate_audio: MagicMock,
+        mock_normalize: MagicMock,
+        mock_engine_class: MagicMock,
+        client: TestClient,
+        sample_wav_bytes: bytes,
+        sample_transcript: Transcript,
+    ) -> None:
+        """Test that streaming emits segment events."""
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = sample_transcript
+        mock_engine_class.return_value = mock_engine
+        mock_validate_audio.return_value = None
+
+        def fake_normalize(src: Path, dst: Path) -> None:
+            dst.write_bytes(sample_wav_bytes)
+
+        mock_normalize.side_effect = fake_normalize
+
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("test.wav", sample_wav_bytes, "audio/wav")},
+            params={"device": "cpu"},
+        )
+
+        assert response.status_code == 200
+        content = response.text
+
+        # New envelope format uses data: {envelope_json}
+        # Should contain PARTIAL or FINALIZED segment events
+        assert '"type": "PARTIAL"' in content or '"type": "FINALIZED"' in content
+        # Should contain SESSION_ENDED event
+        assert '"type": "SESSION_ENDED"' in content
+
+    @patch("transcription.asr_engine.TranscriptionEngine")
+    @patch("transcription.audio_io.normalize_single")
+    @patch("transcription.service.validate_audio_format")
+    def test_stream_done_event_contains_metadata(
+        self,
+        mock_validate_audio: MagicMock,
+        mock_normalize: MagicMock,
+        mock_engine_class: MagicMock,
+        client: TestClient,
+        sample_wav_bytes: bytes,
+        sample_transcript: Transcript,
+    ) -> None:
+        """Test that done event contains expected metadata."""
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = sample_transcript
+        mock_engine_class.return_value = mock_engine
+        mock_validate_audio.return_value = None
+
+        def fake_normalize(src: Path, dst: Path) -> None:
+            dst.write_bytes(sample_wav_bytes)
+
+        mock_normalize.side_effect = fake_normalize
+
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("test.wav", sample_wav_bytes, "audio/wav")},
+            params={"device": "cpu"},
+        )
+
+        content = response.text
+
+        # Parse SSE events
+        events = _parse_sse_events(content)
+        session_ended_events = [e for e in events if e["type"] == "SESSION_ENDED"]
+
+        assert len(session_ended_events) == 1
+        ended_data = session_ended_events[0]["data"]
+        assert "total_segments" in ended_data
+        assert ended_data["total_segments"] == 2
+        assert "language" in ended_data
+        assert ended_data["language"] == "en"
+        # Also verify stats are present in new format
+        assert "stats" in ended_data
+
+    def test_stream_invalid_device_returns_400(
+        self, client: TestClient, sample_wav_bytes: bytes
+    ) -> None:
+        """Test that invalid device returns 400."""
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("test.wav", sample_wav_bytes, "audio/wav")},
+            params={"device": "invalid"},
+        )
+
+        assert response.status_code == 400
+        assert "Invalid device" in response.json()["detail"]
+
+    def test_stream_invalid_task_returns_400(
+        self, client: TestClient, sample_wav_bytes: bytes
+    ) -> None:
+        """Test that invalid task returns 400."""
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("test.wav", sample_wav_bytes, "audio/wav")},
+            params={"task": "invalid"},
+        )
+
+        assert response.status_code == 400
+        assert "Invalid task" in response.json()["detail"]
+
+    def test_stream_missing_audio_returns_422(self, client: TestClient) -> None:
+        """Test that missing audio file returns 422."""
+        response = client.post("/transcribe/stream", params={"device": "cpu"})
+
+        assert response.status_code == 422
+
+    @patch("transcription.asr_engine.TranscriptionEngine")
+    @patch("transcription.audio_io.normalize_single")
+    @patch("transcription.service.validate_audio_format")
+    def test_stream_segment_data_structure(
+        self,
+        mock_validate_audio: MagicMock,
+        mock_normalize: MagicMock,
+        mock_engine_class: MagicMock,
+        client: TestClient,
+        sample_wav_bytes: bytes,
+        sample_transcript: Transcript,
+    ) -> None:
+        """Test that segment events have correct data structure."""
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = sample_transcript
+        mock_engine_class.return_value = mock_engine
+        mock_validate_audio.return_value = None
+
+        def fake_normalize(src: Path, dst: Path) -> None:
+            dst.write_bytes(sample_wav_bytes)
+
+        mock_normalize.side_effect = fake_normalize
+
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("test.wav", sample_wav_bytes, "audio/wav")},
+            params={"device": "cpu"},
+        )
+
+        events = _parse_sse_events(response.text)
+        # New format uses PARTIAL and FINALIZED for segments
+        segment_events = [e for e in events if e["type"] in ("PARTIAL", "FINALIZED")]
+
+        # With 2 segments: first is PARTIAL, last is FINALIZED
+        assert len(segment_events) == 2
+
+        # Check segment structure (data is the segment dict)
+        first_segment = segment_events[0]["data"]
+        assert "id" in first_segment
+        assert "start" in first_segment
+        assert "end" in first_segment
+        assert "text" in first_segment
+        assert first_segment["text"] == "Hello world"
+
+        # Check envelope structure
+        envelope = segment_events[0]["envelope"]
+        assert "event_id" in envelope
+        assert "stream_id" in envelope
+        assert envelope["stream_id"].startswith("sse-")
+        assert "ts_server" in envelope
+
+    @patch("transcription.asr_engine.TranscriptionEngine")
+    @patch("transcription.audio_io.normalize_single")
+    @patch("transcription.service.validate_audio_format")
+    def test_stream_progress_events(
+        self,
+        mock_validate_audio: MagicMock,
+        mock_normalize: MagicMock,
+        mock_engine_class: MagicMock,
+        client: TestClient,
+        sample_wav_bytes: bytes,
+        sample_transcript: Transcript,
+    ) -> None:
+        """Test that progress events are emitted."""
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = sample_transcript
+        mock_engine_class.return_value = mock_engine
+        mock_validate_audio.return_value = None
+
+        def fake_normalize(src: Path, dst: Path) -> None:
+            dst.write_bytes(sample_wav_bytes)
+
+        mock_normalize.side_effect = fake_normalize
+
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("test.wav", sample_wav_bytes, "audio/wav")},
+            params={"device": "cpu"},
+        )
+
+        events = _parse_sse_events(response.text)
+        # New format doesn't have explicit progress events; uses PARTIAL/FINALIZED
+        # Verify we have segment events (PARTIAL or FINALIZED)
+        segment_events = [e for e in events if e["type"] in ("PARTIAL", "FINALIZED")]
+
+        # Should have at least one segment event
+        assert len(segment_events) >= 1
+
+        # Verify SESSION_ENDED contains stats with segment counts
+        session_ended = [e for e in events if e["type"] == "SESSION_ENDED"]
+        assert len(session_ended) == 1
+        stats = session_ended[0]["data"].get("stats", {})
+        # Stats should track segment counts
+        assert "segments_finalized" in stats or "segments_partial" in stats
+
+    @patch("transcription.audio_io.normalize_single")
+    @patch("transcription.service.validate_audio_format")
+    def test_stream_handles_empty_audio(
+        self,
+        mock_validate_audio: MagicMock,
+        mock_normalize: MagicMock,
+        client: TestClient,
+    ) -> None:
+        """Test handling of empty audio file."""
+        mock_validate_audio.side_effect = HTTPException(
+            status_code=400,
+            detail="Invalid audio file: file is empty.",
+        )
+
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("empty.wav", b"", "audio/wav")},
+            params={"device": "cpu"},
+        )
+
+        assert response.status_code == 400
+
+    @patch("transcription.asr_engine.TranscriptionEngine")
+    @patch("transcription.audio_io.normalize_single")
+    @patch("transcription.service.validate_audio_format")
+    def test_stream_with_word_timestamps(
+        self,
+        mock_validate_audio: MagicMock,
+        mock_normalize: MagicMock,
+        mock_engine_class: MagicMock,
+        client: TestClient,
+        sample_wav_bytes: bytes,
+    ) -> None:
+        """Test streaming with word timestamps enabled."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(
+                    id=0,
+                    start=0.0,
+                    end=1.0,
+                    text="Hello world",
+                    words=[
+                        Word(word="Hello", start=0.0, end=0.5, probability=0.95),
+                        Word(word="world", start=0.5, end=1.0, probability=0.9),
+                    ],
+                )
+            ],
+        )
+
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = transcript
+        mock_engine_class.return_value = mock_engine
+        mock_validate_audio.return_value = None
+
+        def fake_normalize(src: Path, dst: Path) -> None:
+            dst.write_bytes(sample_wav_bytes)
+
+        mock_normalize.side_effect = fake_normalize
+
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("test.wav", sample_wav_bytes, "audio/wav")},
+            params={"device": "cpu", "word_timestamps": True},
+        )
+
+        events = _parse_sse_events(response.text)
+        # Single segment should be FINALIZED (last segment is always finalized)
+        segment_events = [e for e in events if e["type"] == "FINALIZED"]
+
+        assert len(segment_events) == 1
+        segment_data = segment_events[0]["data"]
+        assert "words" in segment_data
+        assert len(segment_data["words"]) == 2
+
+    @patch("transcription.asr_engine.TranscriptionEngine")
+    @patch("transcription.audio_io.normalize_single")
+    @patch("transcription.service.validate_audio_format")
+    def test_stream_cache_control_headers(
+        self,
+        mock_validate_audio: MagicMock,
+        mock_normalize: MagicMock,
+        mock_engine_class: MagicMock,
+        client: TestClient,
+        sample_wav_bytes: bytes,
+        sample_transcript: Transcript,
+    ) -> None:
+        """Test that appropriate caching headers are set."""
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = sample_transcript
+        mock_engine_class.return_value = mock_engine
+        mock_validate_audio.return_value = None
+
+        def fake_normalize(src: Path, dst: Path) -> None:
+            dst.write_bytes(sample_wav_bytes)
+
+        mock_normalize.side_effect = fake_normalize
+
+        response = client.post(
+            "/transcribe/stream",
+            files={"audio": ("test.wav", sample_wav_bytes, "audio/wav")},
+            params={"device": "cpu"},
+        )
+
+        assert response.status_code == 200
+        assert response.headers.get("cache-control") == "no-cache"
+        assert response.headers.get("x-accel-buffering") == "no"
+
+
+def _parse_sse_events(content: str) -> list[dict]:
+    """Parse SSE event stream into list of event dicts.
+
+    Handles both old format (event: type\\ndata: json) and new envelope format
+    (data: {envelope with type inside}).
+
+    Args:
+        content: Raw SSE text content
+
+    Returns:
+        List of dicts with 'type' and 'data' keys (normalized from envelope)
+    """
+    events = []
+
+    for line in content.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+
+        if line.startswith("data:"):
+            data_str = line[5:].strip()
+            try:
+                envelope = json.loads(data_str)
+                # New envelope format: type is inside the JSON
+                if isinstance(envelope, dict) and "type" in envelope:
+                    # Normalize to expected test format
+                    event_type = envelope.get("type", "")
+                    payload = envelope.get("payload", {})
+
+                    # Map new event types to test-friendly names
+                    if event_type == "PARTIAL":
+                        events.append(
+                            {
+                                "type": "PARTIAL",
+                                "data": payload.get("segment", {}),
+                                "envelope": envelope,
+                            }
+                        )
+                    elif event_type == "FINALIZED":
+                        events.append(
+                            {
+                                "type": "FINALIZED",
+                                "data": payload.get("segment", {}),
+                                "envelope": envelope,
+                            }
+                        )
+                    elif event_type == "SESSION_ENDED":
+                        events.append(
+                            {
+                                "type": "SESSION_ENDED",
+                                "data": payload,
+                                "envelope": envelope,
+                            }
+                        )
+                    elif event_type == "ERROR":
+                        events.append(
+                            {
+                                "type": "ERROR",
+                                "data": payload,
+                                "envelope": envelope,
+                            }
+                        )
+                    else:
+                        # Unknown type, store as-is
+                        events.append(
+                            {
+                                "type": event_type,
+                                "data": payload,
+                                "envelope": envelope,
+                            }
+                        )
+                else:
+                    # Old format or unexpected structure
+                    events.append({"type": "unknown", "data": envelope})
+            except json.JSONDecodeError:
+                # Not JSON, skip
+                pass
+
+    return events

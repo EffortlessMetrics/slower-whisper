@@ -1,0 +1,30 @@
+{
+  "description": "Support agent making multiple action commitments",
+  "input": {
+    "text": "I'll follow up with the engineering team and we'll send you the documentation by end of day. Let me also schedule a call for next week.",
+    "context": {
+      "speaker_id": "support_agent",
+      "language": "en",
+      "start": 45.0,
+      "end": 52.3
+    }
+  },
+  "expected_normalized": {
+    "topics": [],
+    "intent": null,
+    "sentiment": null,
+    "action_items": [
+      {
+        "text": "I'll follow up with the engineering team and we'll send you the documentation by end of day. Let me also schedule a call for next week.",
+        "speaker_id": "support_agent"
+      }
+    ],
+    "risk_tags": []
+  },
+  "allow_partial_match": {
+    "topics": true,
+    "action_items": true,
+    "risk_tags": false
+  },
+  "notes": "Local adapter detects action patterns: 'I'll follow up', 'we'll send', 'Let me'"
+}

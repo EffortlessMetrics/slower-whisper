@@ -126,11 +126,8 @@ docker compose run --rm transcribe-cpu --model base
 # Enrich all transcripts with prosody and emotion features
 docker compose run --rm enrich
 
-# Enrich specific transcript
-docker compose run --rm enrich python audio_enrich.py enrich /app/whisper_json/file.json
-
 # Prosody only (skip emotion recognition)
-docker compose run --rm enrich --prosody-only
+docker compose run --rm enrich --no-enable-emotion
 ```
 
 ### Batch Processing
@@ -175,7 +172,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pre-comm
 docker compose run --rm dev python examples/basic_transcription.py
 
 # Run benchmarks
-docker compose run --rm dev python benchmarks/benchmark_audio_enrich.py
+docker compose run --rm dev uv run slower-whisper benchmark
 
 # Access Python REPL
 docker compose run --rm dev python

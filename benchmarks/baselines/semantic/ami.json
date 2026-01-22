@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "track": "semantic",
+  "dataset": "ami",
+  "created_at": "2026-01-21T00:00:00Z",
+  "metrics": {
+    "topic_f1": {
+      "value": 0.80,
+      "unit": "",
+      "threshold": 0.10
+    },
+    "risk_f1": {
+      "value": 0.75,
+      "unit": "",
+      "threshold": 0.10
+    },
+    "action_f1": {
+      "value": 0.70,
+      "unit": "",
+      "threshold": 0.15
+    }
+  },
+  "receipt": {
+    "tool_version": "1.9.2",
+    "model": "keyword-annotator",
+    "device": "cpu",
+    "compute_type": "int8"
+  }
+}

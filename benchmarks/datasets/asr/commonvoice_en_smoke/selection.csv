@@ -1,0 +1,16 @@
+clip_id,expected_transcript,accent,duration_s,notes
+cv_en_us_001,the quick brown fox jumps over the lazy dog near the old barn,us,5.2,clear_speech
+cv_en_us_002,please remember to turn off the lights before you leave the office today,us,4.8,clear_speech
+cv_en_us_003,technology has changed the way we communicate with each other every day,us,5.1,clear_speech
+cv_en_uk_001,the weather forecast predicts rain throughout the weekend across southern regions,uk,5.4,clear_speech
+cv_en_uk_002,university students gathered in the library to prepare for their final examinations,uk,5.0,clear_speech
+cv_en_uk_003,the train to london will depart from platform three in approximately ten minutes,uk,4.9,clear_speech
+cv_en_in_001,software development requires careful planning and attention to detail at every stage,indian,5.3,moderate_clarity
+cv_en_in_002,the customer service representative helped resolve the issue within fifteen minutes,indian,5.1,moderate_clarity
+cv_en_au_001,the cricket match was postponed due to unexpected rainfall early this morning,australian,4.7,clear_speech
+cv_en_au_002,tourists often visit the great barrier reef to experience its natural beauty,australian,5.0,clear_speech
+cv_en_noisy_001,can you please repeat that i could not hear you clearly over the background noise,mixed,4.5,background_noise
+cv_en_noisy_002,the announcement was difficult to understand because of the crowd noise nearby,mixed,4.8,background_noise
+cv_en_ie_001,the small village has maintained its traditional character for over two hundred years,irish,5.2,regional_accent
+cv_en_sc_001,the highlands offer some of the most spectacular scenery in all of europe,scottish,4.9,regional_accent
+cv_en_za_001,conservation efforts have helped protect endangered wildlife throughout the national park,south_african,5.3,regional_accent

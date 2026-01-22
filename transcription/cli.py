@@ -241,7 +241,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_enrich.add_argument(
         "--config",
-        "--enrich-config",  # deprecated alias, kept for backward compatibility
         type=Path,
         default=None,
         dest="enrich_config",
@@ -530,7 +529,7 @@ def _config_from_enrich_args(args: argparse.Namespace) -> EnrichmentConfig:
 
     Precedence order (highest to lowest):
     1. Explicit CLI flags
-    2. Config file (if --enrich-config provided)
+    2. Config file (if --config provided)
     3. Environment variables
     4. Defaults
 

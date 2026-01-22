@@ -32,6 +32,25 @@ Streaming:
     - LiveSemanticsConfig: Configuration for live semantics (v1.7.0)
     - SemanticUpdatePayload: Structured payload for semantic updates (v1.7.0)
 
+WebSocket Streaming (v2.0.0):
+    - WebSocketStreamingSession: Server-side session manager for WebSocket streams
+    - WebSocketSessionConfig: Configuration for WebSocket streaming sessions
+    - EventEnvelope: Event wrapper with metadata for WebSocket messages
+    - ClientMessageType: Enum of client-to-server message types
+    - ServerMessageType: Enum of server-to-client message types
+    - SessionState: Enum of session lifecycle states
+    - SessionStats: Statistics tracked for streaming sessions
+
+LLM Guardrails (v2.0.0):
+    - LLMGuardrails: Configurable guardrails for rate limiting, cost tracking, PII detection
+    - GuardedLLMProvider: Wrapper that enforces guardrails on LLM providers
+    - GuardrailStats: Statistics tracked by guardrails
+    - PIIMatch: Detected PII pattern match
+    - RateLimitExceeded: Exception when rate limit is exceeded
+    - CostBudgetExceeded: Exception when cost budget is exceeded
+    - RequestTimeout: Exception when request times out
+    - create_guarded_provider: Factory function for creating guarded providers
+
 Models:
     - Transcript: Complete transcript with segments
     - Segment: Single transcribed segment
@@ -99,6 +118,18 @@ from .exceptions import (
     TranscriptionError,
 )
 from .exporters import export_transcript
+
+# v2.0.0 LLM guardrails (#89)
+from .llm_guardrails import (
+    CostBudgetExceeded,
+    GuardedLLMProvider,
+    GuardrailStats,
+    LLMGuardrails,
+    PIIMatch,
+    RateLimitExceeded,
+    RequestTimeout,
+    create_guarded_provider,
+)
 from .llm_utils import (
     render_conversation_compact,
     render_conversation_for_llm,
@@ -121,15 +152,52 @@ from .models import (
     Word,
 )
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
+
+# Track 3: Semantic adapter protocol (#88)
+from .semantic_adapter import (
+    SEMANTIC_SCHEMA_VERSION,
+    ActionItem,
+    ChunkContext,
+    LocalKeywordAdapter,
+    NoOpSemanticAdapter,
+    NormalizedAnnotation,
+    ProviderHealth,
+    SemanticAdapter,
+    SemanticAnnotation,
+    create_adapter,
+)
 from .speaker_id import get_speaker_id, get_speaker_label_or_id
 from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamingSession
 
 # v1.9.0 streaming callbacks
 from .streaming_callbacks import StreamCallbacks, StreamingError
 
+# v2.0.0 Reference Python streaming client (#134)
+from .streaming_client import (
+    ClientState,
+    ClientStats,
+    StreamingClient,
+    StreamingConfig,
+    create_client,
+)
+from .streaming_client import (
+    StreamEvent as ClientStreamEvent,
+)
+
 # v1.7.0 streaming features
 from .streaming_enrich import StreamingEnrichmentConfig, StreamingEnrichmentSession
 from .streaming_semantic import LiveSemanticsConfig, LiveSemanticSession, SemanticUpdatePayload
+
+# v2.0.0 WebSocket streaming
+from .streaming_ws import (
+    ClientMessageType,
+    EventEnvelope,
+    ServerMessageType,
+    SessionState,
+    SessionStats,
+    WebSocketSessionConfig,
+    WebSocketStreamingSession,
+)
 from .turn_helpers import turn_to_dict
 from .types_audio import AudioState, EmotionState, ExtractionStatus, ProsodyState
 from .validation import validate_transcript_json
@@ -164,6 +232,17 @@ __all__ = [
     "SemanticAnnotator",
     "NoOpSemanticAnnotator",
     "KeywordSemanticAnnotator",
+    # Track 3: Semantic adapter protocol (#88)
+    "SEMANTIC_SCHEMA_VERSION",
+    "ActionItem",
+    "ChunkContext",
+    "LocalKeywordAdapter",
+    "NoOpSemanticAdapter",
+    "NormalizedAnnotation",
+    "ProviderHealth",
+    "SemanticAdapter",
+    "SemanticAnnotation",
+    "create_adapter",
     # Public configuration
     "TranscriptionConfig",
     "EnrichmentConfig",
@@ -201,6 +280,30 @@ __all__ = [
     # v1.9.0: Streaming callbacks
     "StreamCallbacks",
     "StreamingError",
+    # v2.0.0: WebSocket streaming
+    "ClientMessageType",
+    "ServerMessageType",
+    "SessionState",
+    "SessionStats",
+    "EventEnvelope",
+    "WebSocketSessionConfig",
+    "WebSocketStreamingSession",
+    # v2.0.0: Reference Python streaming client (#134)
+    "StreamingClient",
+    "StreamingConfig",
+    "ClientStreamEvent",
+    "ClientState",
+    "ClientStats",
+    "create_client",
+    # v2.0.0: LLM guardrails (#89)
+    "LLMGuardrails",
+    "GuardedLLMProvider",
+    "GuardrailStats",
+    "PIIMatch",
+    "RateLimitExceeded",
+    "CostBudgetExceeded",
+    "RequestTimeout",
+    "create_guarded_provider",
     # Utilities
     "turn_to_dict",
     "get_speaker_id",

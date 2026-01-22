@@ -19,6 +19,7 @@ Environment variables respected:
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import os
@@ -451,6 +452,244 @@ def iter_librispeech(
                     count += 1
 
 
+def iter_commonvoice(
+    subset: str = "en_smoke",
+    limit: int | None = None,
+    validate_only: bool = False,
+) -> Iterable[EvalSample]:
+    """Iterate over Common Voice dataset samples from a manifest file.
+
+    This function reads samples from a JSON manifest file located at:
+        benchmarks/datasets/asr/commonvoice_{subset}/manifest.json
+
+    The manifest should follow the standard benchmark manifest schema with
+    a "samples" array containing sample definitions. If the samples array
+    is empty and sample_source.method is "selection_file", samples are
+    loaded from the referenced selection CSV file instead.
+
+    Args:
+        subset: Common Voice subset identifier (e.g., "en_smoke")
+        limit: Maximum number of samples to return (None = all)
+        validate_only: When True, skip audio file existence checks (for dry-run mode)
+
+    Yields:
+        EvalSample objects with:
+            - dataset="commonvoice"
+            - id=sample["id"]
+            - audio_path: Resolved path to audio file
+            - reference_transcript: Ground truth text
+            - metadata: Additional sample metadata
+
+    Raises:
+        FileNotFoundError: If manifest file not found
+
+    Example:
+        >>> for sample in iter_commonvoice(subset="en_smoke", limit=5):
+        ...     print(f"{sample.id}: {sample.reference_transcript[:50]}...")
+    """
+    # Manifest is in the project benchmarks directory, not the cache
+    # Look relative to this module's location
+    module_dir = Path(__file__).parent.parent
+    manifest_path = (
+        module_dir / "benchmarks" / "datasets" / "asr" / f"commonvoice_{subset}" / "manifest.json"
+    )
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Common Voice manifest not found at {manifest_path}.\n"
+            f"Please ensure the manifest file exists for subset '{subset}'."
+        )
+
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    samples = manifest.get("samples", [])
+
+    # Check for selection_file sample_source when samples is empty
+    sample_source = manifest.get("sample_source", {})
+    if sample_source.get("method") == "selection_file" and not samples:
+        # Load samples from selection.csv
+        selection_filename = sample_source.get("file", "selection.csv")
+        selection_path = manifest_path.parent / selection_filename
+
+        if not selection_path.exists():
+            raise FileNotFoundError(
+                f"Selection file not found at {selection_path}.\n"
+                f"The manifest references sample_source.file='{selection_filename}' "
+                f"but the file does not exist."
+            )
+
+        yield from _iter_commonvoice_from_selection(
+            manifest_path=manifest_path,
+            selection_path=selection_path,
+            subset=subset,
+            manifest=manifest,
+            limit=limit,
+            validate_only=validate_only,
+        )
+        return
+
+    if not samples:
+        logger.warning(f"No samples found in Common Voice manifest: {manifest_path}")
+        return
+
+    count = 0
+    for sample in samples:
+        if limit and count >= limit:
+            return
+
+        sample_id = sample.get("id")
+        audio_rel = sample.get("audio")
+        reference = sample.get("reference_transcript")
+
+        if not sample_id or not audio_rel:
+            logger.debug(f"Skipping sample with missing id or audio: {sample}")
+            continue
+
+        # Resolve audio path relative to manifest directory
+        audio_path = (manifest_path.parent / audio_rel).resolve()
+
+        if not validate_only and not audio_path.exists():
+            logger.warning(
+                f"Audio file not staged for sample '{sample_id}': {audio_path}. Skipping sample."
+            )
+            continue
+
+        yield EvalSample(
+            dataset="commonvoice",
+            id=sample_id,
+            audio_path=audio_path,
+            reference_transcript=reference,
+            metadata={
+                "subset": subset,
+                "language": sample.get("language", "en"),
+                "duration_s": sample.get("duration_s"),
+                "source": sample.get("source"),
+                "profile": sample.get("profile"),
+            },
+        )
+        count += 1
+
+
+def _iter_commonvoice_from_selection(
+    manifest_path: Path,
+    selection_path: Path,
+    subset: str,
+    manifest: dict[str, Any],
+    limit: int | None = None,
+    validate_only: bool = False,
+) -> Iterable[EvalSample]:
+    """Load Common Voice samples from a selection CSV file.
+
+    The selection CSV is expected to have columns (supports two formats):
+
+    New format (from --generate-selection):
+        - path: Audio file path/name from Common Voice (e.g., "common_voice_en_12345.mp3")
+        - sentence: Reference transcript text
+        - accent: Speaker accent (optional)
+        - duration_s: Audio duration in seconds (optional)
+        - slot_bucket: Selection bucket (optional)
+        - slot_feature: Selection feature (optional)
+
+    Old format (legacy):
+        - clip_id: Sample identifier
+        - expected_transcript: Reference transcript text
+
+    Audio files are looked up in the cache directory:
+        ~/.cache/slower-whisper/benchmarks/commonvoice_{subset}/
+
+    Args:
+        manifest_path: Path to the manifest.json file
+        selection_path: Path to the selection.csv file
+        subset: Common Voice subset identifier
+        manifest: Parsed manifest dictionary
+        limit: Maximum number of samples to return
+        validate_only: When True, skip audio file existence checks
+
+    Yields:
+        EvalSample objects
+    """
+    # Audio files are staged to cache directory
+    cache_root = get_benchmarks_root()
+    audio_dir = cache_root / f"commonvoice_{subset}"
+
+    # Get audio format from manifest for file extension
+    audio_format = manifest.get("audio_format", {})
+    audio_encoding = audio_format.get("encoding", "mp3")
+
+    count = 0
+    with open(selection_path, encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if limit and count >= limit:
+                return
+
+            # Support both new format (path) and old format (clip_id)
+            clip_path = row.get("path", "").strip()
+            clip_id = row.get("clip_id", "").strip()
+
+            if clip_path:
+                # New format: extract filename from path, remove extension for ID
+                clip_filename = Path(clip_path).name
+                clip_id = Path(clip_filename).stem  # Remove .mp3 extension
+            elif not clip_id:
+                logger.debug(f"Skipping row with missing path/clip_id: {row}")
+                continue
+
+            # Reference transcript can be in 'expected_transcript' or 'sentence'
+            reference = row.get("expected_transcript") or row.get("sentence", "")
+            reference = reference.strip() if reference else None
+
+            # Build audio path
+            # Staged audio is converted to WAV, so try .wav first, then original format
+            if clip_path:
+                # New format: use the original filename but try .wav extension first
+                audio_filename_wav = Path(clip_path).stem + ".wav"
+                audio_filename_orig = Path(clip_path).name
+            else:
+                # Old format: build from clip_id
+                audio_filename_wav = f"{clip_id}.wav"
+                audio_filename_orig = f"{clip_id}.{audio_encoding}"
+
+            # Try WAV first (staging converts to WAV), then original format
+            audio_path = audio_dir / audio_filename_wav
+            if not audio_path.exists():
+                audio_path = audio_dir / audio_filename_orig
+
+            if not validate_only and not audio_path.exists():
+                logger.warning(
+                    f"Audio file not staged for sample '{clip_id}': {audio_path}. "
+                    f"Run stage_commonvoice.py to download audio files. Skipping sample."
+                )
+                continue
+
+            # Parse duration if available
+            duration_s = None
+            if duration_str := row.get("duration_s", "").strip():
+                try:
+                    duration_s = float(duration_str)
+                except ValueError:
+                    pass
+
+            yield EvalSample(
+                dataset="commonvoice",
+                id=clip_id,
+                audio_path=audio_path,
+                reference_transcript=reference,
+                metadata={
+                    "subset": subset,
+                    "language": manifest.get("meta", {}).get("language", "en"),
+                    "duration_s": duration_s,
+                    "accent": row.get("accent", "").strip() or None,
+                    "notes": row.get("notes", "").strip() or None,
+                    "slot_bucket": row.get("slot_bucket", "").strip() or None,
+                    "slot_feature": row.get("slot_feature", "").strip() or None,
+                    "source": "selection_file",
+                },
+            )
+            count += 1
+
+
 def list_available_benchmarks() -> dict[str, dict[str, Any]]:
     """List available benchmark datasets with status.
 
@@ -501,6 +740,26 @@ def list_available_benchmarks() -> dict[str, dict[str, Any]]:
             "setup_doc": "docs/LIBRICSS_SETUP.md",
             "description": "LibriCSS for overlapping speech and diarization",
             "tasks": ["diarization", "overlap_detection"],
+        },
+        "commonvoice_en_smoke": {
+            "path": str(
+                Path(__file__).parent.parent
+                / "benchmarks"
+                / "datasets"
+                / "asr"
+                / "commonvoice_en_smoke"
+            ),
+            "available": (
+                Path(__file__).parent.parent
+                / "benchmarks"
+                / "datasets"
+                / "asr"
+                / "commonvoice_en_smoke"
+                / "manifest.json"
+            ).exists(),
+            "setup_doc": "Manifest-based dataset",
+            "description": "Common Voice English smoke test subset for quick ASR evaluation",
+            "tasks": ["asr"],
         },
     }
 

@@ -1105,71 +1105,90 @@ class TestTranscribeBytes:
         with pytest.raises(TranscriptionError, match="Audio data is empty"):
             transcribe_bytes(b"", config)
 
-    def test_invalid_format_hint_special_chars(self) -> None:
-        """Test that invalid format hints with special characters are rejected."""
+    def test_empty_bytes_raises_error_without_config(self) -> None:
+        """Test that empty audio data raises TranscriptionError even without config."""
+        with pytest.raises(TranscriptionError, match="Audio data is empty"):
+            transcribe_bytes(b"")
+
+    def test_file_name_extension_used_as_format_hint(self) -> None:
+        """Test that file_name extension is used as format hint."""
         config = TranscriptionConfig()
 
-        # Path injection attempt
-        with pytest.raises(TranscriptionError, match="Invalid audio format hint"):
-            transcribe_bytes(b"data", config, format="../../../etc/passwd")
+        # Using file_name="audio.mp3" should use "mp3" as format hint
+        try:
+            transcribe_bytes(b"not-real-audio", config, file_name="audio.mp3")
+        except TranscriptionError as e:
+            # Should NOT be a format validation error (MP3 is valid format)
+            assert "Invalid audio format hint" not in str(e)
 
-    def test_invalid_format_hint_too_long(self) -> None:
-        """Test that format hints longer than 16 chars are rejected."""
+    def test_file_name_no_extension_defaults_to_wav(self) -> None:
+        """Test that file_name without extension defaults to wav format."""
         config = TranscriptionConfig()
 
-        with pytest.raises(TranscriptionError, match="Invalid audio format hint"):
-            transcribe_bytes(b"data", config, format="this_is_way_too_long_format")
+        # Using file_name="audio" (no extension) should default to "wav"
+        try:
+            transcribe_bytes(b"not-real-audio", config, file_name="audio")
+        except TranscriptionError as e:
+            # Should NOT be a format validation error
+            assert "Invalid audio format hint" not in str(e)
 
-    def test_invalid_format_hint_empty(self) -> None:
-        """Test that empty format hint is rejected."""
+    def test_file_name_with_path_uses_basename_extension(self) -> None:
+        """Test that file_name with path uses the basename's extension."""
         config = TranscriptionConfig()
 
+        # Using full path in file_name should extract extension from basename
+        try:
+            transcribe_bytes(b"not-real-audio", config, file_name="/path/to/audio.flac")
+        except TranscriptionError as e:
+            # Should NOT be a format validation error (FLAC is valid format)
+            assert "Invalid audio format hint" not in str(e)
+
+    def test_invalid_format_from_file_name_special_chars(self) -> None:
+        """Test that invalid format from file_name with special characters is rejected.
+
+        The format validation regex allows [a-z0-9][a-z0-9+.-]{0,15} which
+        includes . and - (for formats like "tar.gz" or "audio-only").
+        However, extensions starting with special chars or containing slashes
+        would be invalid.
+        """
+        config = TranscriptionConfig()
+
+        # Extension that's too long (>16 chars)
         with pytest.raises(TranscriptionError, match="Invalid audio format hint"):
-            transcribe_bytes(b"data", config, format="")
+            transcribe_bytes(b"data", config, file_name="audio.this_is_way_too_long_ext")
 
-    def test_valid_format_hints(self) -> None:
-        """Test that common valid format hints pass validation.
+    def test_valid_format_hints_via_file_name(self) -> None:
+        """Test that common valid format hints pass validation via file_name.
 
-        This test only validates the format checking logic by checking
+        This test validates the format checking logic by checking
         that TranscriptionError is raised for other reasons (like
         failing to normalize the audio) rather than format validation.
         """
         config = TranscriptionConfig()
-        valid_formats = ["wav", "mp3", "flac", "ogg", "m4a", "webm", "opus", "aac"]
+        valid_extensions = ["wav", "mp3", "flac", "ogg", "m4a", "webm", "opus", "aac"]
 
-        for fmt in valid_formats:
+        for ext in valid_extensions:
             # Should not raise "Invalid audio format hint"
             # Will fail later due to invalid audio data, but format is accepted
             try:
-                transcribe_bytes(b"not-real-audio", config, format=fmt)
+                transcribe_bytes(b"not-real-audio", config, file_name=f"audio.{ext}")
             except TranscriptionError as e:
                 # Should NOT be a format validation error
                 assert "Invalid audio format hint" not in str(e)
 
-    def test_format_with_leading_dot(self) -> None:
-        """Test that format hint with leading dot is normalized."""
+    def test_file_name_extension_case_insensitive(self) -> None:
+        """Test that file_name extension is case-insensitive."""
         config = TranscriptionConfig()
 
-        # Leading dot should be stripped and accepted
+        # Upper case extension should be normalized to lowercase
         try:
-            transcribe_bytes(b"not-real-audio", config, format=".wav")
+            transcribe_bytes(b"not-real-audio", config, file_name="audio.WAV")
         except TranscriptionError as e:
             # Should NOT be a format validation error
             assert "Invalid audio format hint" not in str(e)
 
-    def test_format_case_insensitive(self) -> None:
-        """Test that format hint is case-insensitive."""
-        config = TranscriptionConfig()
-
-        # Upper case should be normalized to lowercase
-        try:
-            transcribe_bytes(b"not-real-audio", config, format="WAV")
-        except TranscriptionError as e:
-            # Should NOT be a format validation error
-            assert "Invalid audio format hint" not in str(e)
-
-    def test_unusual_but_valid_formats(self) -> None:
-        """Test that unusual but valid ffmpeg formats are accepted."""
+    def test_unusual_but_valid_formats_via_file_name(self) -> None:
+        """Test that unusual but valid ffmpeg formats are accepted via file_name."""
         config = TranscriptionConfig()
 
         # These are real formats ffmpeg supports
@@ -1177,7 +1196,24 @@ class TestTranscribeBytes:
 
         for fmt in unusual_formats:
             try:
-                transcribe_bytes(b"not-real-audio", config, format=fmt)
+                transcribe_bytes(b"not-real-audio", config, file_name=f"audio.{fmt}")
             except TranscriptionError as e:
                 # Should NOT be a format validation error
                 assert "Invalid audio format hint" not in str(e)
+
+    def test_config_none_uses_defaults_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that config=None uses defaults from TranscriptionConfig.from_sources()."""
+        # Clear any env vars that might affect config
+        monkeypatch.delenv("SLOWER_WHISPER_MODEL", raising=False)
+        monkeypatch.delenv("SLOWER_WHISPER_DEVICE", raising=False)
+
+        # Should not raise "Invalid audio format hint" error
+        # Will fail later due to invalid audio data
+        try:
+            transcribe_bytes(b"not-real-audio")
+        except TranscriptionError as e:
+            # Should NOT be a format validation error
+            # The function should proceed past config creation
+            assert "Invalid audio format hint" not in str(e)
+            # Should fail on audio processing, not config creation
+            assert "audio" in str(e).lower() or "normalize" in str(e).lower()

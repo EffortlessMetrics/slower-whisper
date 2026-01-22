@@ -1,0 +1,30 @@
+{
+  "description": "Sales call with pricing objection and follow-up commitment",
+  "input": {
+    "text": "I understand your concerns about the pricing. Let me see what I can do. I'll send you a revised quote by Friday.",
+    "context": {
+      "speaker_id": "sales_rep",
+      "language": "en",
+      "start": 0.0,
+      "end": 8.5
+    }
+  },
+  "expected_normalized": {
+    "topics": [],
+    "intent": null,
+    "sentiment": null,
+    "action_items": [
+      {
+        "text": "I understand your concerns about the pricing. Let me see what I can do. I'll send you a revised quote by Friday.",
+        "speaker_id": "sales_rep"
+      }
+    ],
+    "risk_tags": ["pricing"]
+  },
+  "allow_partial_match": {
+    "topics": true,
+    "action_items": true,
+    "risk_tags": true
+  },
+  "notes": "Local adapter detects 'pricing' keyword and 'I'll send' action pattern"
+}

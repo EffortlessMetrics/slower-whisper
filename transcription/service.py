@@ -26,12 +26,23 @@ import logging
 import tempfile
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Annotated, Any, cast
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    FastAPI,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import __version__
 from .api import enrich_transcript as _enrich_transcript
@@ -1087,6 +1098,627 @@ async def transcribe_audio(
 
 
 # =============================================================================
+# SSE Streaming Transcription Endpoint
+# =============================================================================
+
+
+class SSEStreamingSession:
+    """
+    Manages state for an SSE streaming transcription session.
+
+    Uses the same event envelope format as WebSocket streaming for
+    consistency across the API.
+
+    Attributes:
+        stream_id: Unique identifier for this stream (sse-{uuid4})
+        _event_id_counter: Monotonically increasing event ID
+        _segment_seq: Segment sequence counter
+    """
+
+    def __init__(self) -> None:
+        """Initialize a new SSE streaming session."""
+        self.stream_id = f"sse-{uuid.uuid4()}"
+        self._event_id_counter = 0
+        self._segment_seq = 0
+        self._start_time = time.time()
+        self._chunks_processed = 0
+        self._segments_partial = 0
+        self._segments_finalized = 0
+        self._errors = 0
+
+    def _next_event_id(self) -> int:
+        """Generate next monotonically increasing event ID."""
+        self._event_id_counter += 1
+        return self._event_id_counter
+
+    def _next_segment_id(self) -> str:
+        """Generate next segment ID."""
+        seg_id = f"seg-{self._segment_seq}"
+        self._segment_seq += 1
+        return seg_id
+
+    def _server_timestamp(self) -> int:
+        """Get current server timestamp in milliseconds."""
+        return int(time.time() * 1000)
+
+    def create_envelope(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        segment_id: str | None = None,
+        ts_audio_start: float | None = None,
+        ts_audio_end: float | None = None,
+    ) -> dict[str, Any]:
+        """Create an event envelope with current metadata."""
+        result: dict[str, Any] = {
+            "event_id": self._next_event_id(),
+            "stream_id": self.stream_id,
+            "type": event_type,
+            "ts_server": self._server_timestamp(),
+            "payload": payload,
+        }
+        if segment_id is not None:
+            result["segment_id"] = segment_id
+        if ts_audio_start is not None:
+            result["ts_audio_start"] = ts_audio_start
+        if ts_audio_end is not None:
+            result["ts_audio_end"] = ts_audio_end
+        return result
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get session statistics."""
+        duration = time.time() - self._start_time
+        return {
+            "segments_partial": self._segments_partial,
+            "segments_finalized": self._segments_finalized,
+            "errors": self._errors,
+            "duration_sec": round(duration, 3),
+        }
+
+
+async def _generate_sse_transcription(
+    audio_path: Path,
+    config: TranscriptionConfig,
+    include_words: bool,
+) -> AsyncGenerator[str, None]:
+    """Generate SSE events during transcription using event envelope format.
+
+    Uses a thread pool to run the synchronous transcription engine while
+    yielding events as segments are produced. Events follow the same
+    envelope structure as WebSocket streaming for API consistency.
+
+    Event types emitted:
+    - PARTIAL: Intermediate segment (emitted during transcription progress)
+    - FINALIZED: Final segment with complete transcription
+    - SESSION_ENDED: Stream complete with statistics
+    - ERROR: Error occurred during processing
+
+    Args:
+        audio_path: Path to the normalized audio file
+        config: Transcription configuration
+        include_words: Whether to include word-level timestamps
+
+    Yields:
+        SSE-formatted event strings: "data: {event_envelope_json}\\n\\n"
+    """
+    import asyncio
+    import queue
+    import threading
+
+    from .asr_engine import TranscriptionEngine
+    from .config import AsrConfig
+    from .diarization_orchestrator import _maybe_run_diarization
+    from .transcription_helpers import _maybe_build_chunks
+
+    # Create session for tracking state
+    session = SSEStreamingSession()
+
+    # Create a queue to communicate between threads
+    event_queue: queue.Queue[dict[str, Any] | None] = queue.Queue()
+
+    def run_transcription() -> None:
+        """Run transcription in a background thread, pushing events to the queue."""
+        try:
+            # Create ASR configuration
+            asr_cfg = AsrConfig(
+                model_name=config.model,
+                device=config.device,
+                compute_type=config.compute_type,
+                vad_min_silence_ms=config.vad_min_silence_ms,
+                beam_size=config.beam_size,
+                language=config.language,
+                task=config.task,
+                word_timestamps=config.word_timestamps,
+            )
+
+            # Initialize the transcription engine
+            engine = TranscriptionEngine(asr_cfg)
+
+            # Check if audio file exists
+            if not audio_path.exists():
+                session._errors += 1
+                event_queue.put(
+                    session.create_envelope(
+                        "ERROR",
+                        {
+                            "code": "file_not_found",
+                            "message": "Audio file not found",
+                            "recoverable": False,
+                        },
+                    )
+                )
+                event_queue.put(None)
+                return
+
+            # Perform transcription using the engine
+            logger.info("SSE: Starting transcription for %s", audio_path.name)
+
+            transcript = engine.transcribe_file(audio_path)
+
+            # Emit segments - first as PARTIAL, then final one as FINALIZED
+            total_segments = len(transcript.segments)
+            for idx, segment in enumerate(transcript.segments):
+                seg_dict = _segment_to_dict(segment, include_words=include_words)
+                segment_id = session._next_segment_id()
+                is_last = idx == total_segments - 1
+
+                # Emit PARTIAL for intermediate segments during processing
+                if not is_last:
+                    session._segments_partial += 1
+                    event_queue.put(
+                        session.create_envelope(
+                            "PARTIAL",
+                            {"segment": seg_dict},
+                            segment_id=segment_id,
+                            ts_audio_start=segment.start,
+                            ts_audio_end=segment.end,
+                        )
+                    )
+                else:
+                    # Last segment gets FINALIZED
+                    session._segments_finalized += 1
+                    event_queue.put(
+                        session.create_envelope(
+                            "FINALIZED",
+                            {"segment": seg_dict},
+                            segment_id=segment_id,
+                            ts_audio_start=segment.start,
+                            ts_audio_end=segment.end,
+                        )
+                    )
+
+            # Run diarization if enabled
+            if config.enable_diarization:
+                transcript = _maybe_run_diarization(transcript, audio_path, config)
+                transcript = _maybe_build_chunks(transcript, config)
+
+                # Re-emit segments with speaker info as FINALIZED updates
+                for segment in transcript.segments:
+                    if segment.speaker:
+                        seg_dict = _segment_to_dict(segment, include_words=include_words)
+                        segment_id = session._next_segment_id()
+                        session._segments_finalized += 1
+                        event_queue.put(
+                            session.create_envelope(
+                                "FINALIZED",
+                                {"segment": seg_dict},
+                                segment_id=segment_id,
+                                ts_audio_start=segment.start,
+                                ts_audio_end=segment.end,
+                            )
+                        )
+
+            # Emit SESSION_ENDED event with metadata and statistics
+            event_queue.put(
+                session.create_envelope(
+                    "SESSION_ENDED",
+                    {
+                        "stats": session.get_stats(),
+                        "total_segments": len(transcript.segments),
+                        "language": transcript.language,
+                        "file_name": transcript.file_name,
+                        "speakers": transcript.speakers,
+                        "meta": transcript.meta,
+                    },
+                )
+            )
+
+        except Exception as e:
+            logger.exception("SSE transcription error: %s", e)
+            session._errors += 1
+            event_queue.put(
+                session.create_envelope(
+                    "ERROR",
+                    {
+                        "code": "transcription_error",
+                        "message": "Transcription failed",
+                        "recoverable": False,
+                    },
+                )
+            )
+
+        finally:
+            # Signal end of stream
+            event_queue.put(None)
+
+    # Start transcription in background thread
+    thread = threading.Thread(target=run_transcription, daemon=True)
+    thread.start()
+
+    # Yield SSE events as they arrive
+    try:
+        while True:
+            try:
+                # Use asyncio.to_thread for non-blocking queue access
+                event = await asyncio.to_thread(event_queue.get, timeout=0.1)
+                if event is None:
+                    break
+                # SSE format: "data: {json}\n\n"
+                yield f"data: {json.dumps(event)}\n\n"
+            except queue.Empty:
+                # No event yet, continue polling
+                continue
+            except Exception:
+                # Queue access error, break the loop
+                break
+    finally:
+        # Ensure thread cleanup
+        thread.join(timeout=1.0)
+
+
+@app.post(
+    "/transcribe/stream",
+    summary="Transcribe audio with streaming results (SSE)",
+    description=(
+        "Upload an audio file and receive transcription results as a stream "
+        "of Server-Sent Events (SSE). Events use the same envelope format as "
+        "WebSocket streaming for API consistency. Each event contains segment "
+        "data as it's transcribed, enabling progressive display of results."
+    ),
+    tags=["Transcription"],
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "SSE stream of transcription events",
+            "content": {
+                "text/event-stream": {
+                    "example": (
+                        'data: {"event_id": 1, "stream_id": "sse-abc123", "type": "PARTIAL", '
+                        '"ts_server": 1705123456789, "segment_id": "seg-0", '
+                        '"ts_audio_start": 0.0, "ts_audio_end": 2.5, '
+                        '"payload": {"segment": {"id": 0, "start": 0.0, "end": 2.5, '
+                        '"text": "Hello world"}}}\n\n'
+                        'data: {"event_id": 2, "stream_id": "sse-abc123", "type": "FINALIZED", '
+                        '"ts_server": 1705123456800, "segment_id": "seg-1", '
+                        '"payload": {"segment": {"id": 1, "start": 2.5, "end": 5.0, '
+                        '"text": "This is the final segment."}}}\n\n'
+                        'data: {"event_id": 3, "stream_id": "sse-abc123", "type": "SESSION_ENDED", '
+                        '"ts_server": 1705123456850, '
+                        '"payload": {"stats": {"segments_finalized": 2}, "total_segments": 2}}\n\n'
+                    )
+                }
+            },
+        },
+        400: {"description": "Invalid configuration or audio format"},
+        413: {"description": "File too large"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def transcribe_audio_streaming(
+    audio: Annotated[UploadFile, File(description="Audio file to transcribe")],
+    model: Annotated[
+        str,
+        Query(
+            description="Whisper model to use (tiny, base, small, medium, large-v3)",
+            examples=["large-v3"],
+        ),
+    ] = "large-v3",
+    language: Annotated[
+        str | None,
+        Query(
+            description="Language code (e.g., 'en', 'es', 'fr'). If null, auto-detect is used.",
+            examples=["en", "es", "fr"],
+        ),
+    ] = None,
+    device: Annotated[
+        str,
+        Query(
+            description="Device to use for inference ('cuda' or 'cpu')",
+            examples=["cuda", "cpu"],
+        ),
+    ] = "cpu",
+    compute_type: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Compute precision override (float16, float32, int8). "
+                "Leave empty to auto-select based on device."
+            ),
+            examples=["float16", "float32"],
+        ),
+    ] = None,
+    task: Annotated[
+        str,
+        Query(
+            description="Task to perform ('transcribe' or 'translate' to English)",
+            examples=["transcribe", "translate"],
+        ),
+    ] = "transcribe",
+    enable_diarization: Annotated[
+        bool,
+        Query(
+            description="Run speaker diarization (pyannote.audio)",
+            examples=[False, True],
+        ),
+    ] = False,
+    diarization_device: Annotated[
+        str,
+        Query(
+            description="Device for diarization ('cuda', 'cpu', or 'auto')",
+            examples=["auto"],
+        ),
+    ] = "auto",
+    min_speakers: Annotated[
+        int | None,
+        Query(
+            description="Minimum number of speakers expected (hint to diarization model)",
+            ge=1,
+            examples=[2],
+        ),
+    ] = None,
+    max_speakers: Annotated[
+        int | None,
+        Query(
+            description="Maximum number of speakers expected (hint to diarization model)",
+            ge=1,
+            examples=[4],
+        ),
+    ] = None,
+    overlap_threshold: Annotated[
+        float | None,
+        Query(
+            description="Minimum overlap ratio (0.0-1.0) required to assign a speaker to a segment",
+            ge=0.0,
+            le=1.0,
+            examples=[0.3],
+        ),
+    ] = None,
+    word_timestamps: Annotated[
+        bool,
+        Query(
+            description="Enable word-level timestamps in the response",
+            examples=[False, True],
+        ),
+    ] = False,
+) -> StreamingResponse:
+    """
+    Stream transcription results as Server-Sent Events (SSE).
+
+    This endpoint provides real-time streaming of transcription results,
+    emitting events as each segment is transcribed. Events use the same
+    envelope format as WebSocket streaming for API consistency.
+
+    Event types (in envelope.type field):
+    - `PARTIAL`: Intermediate segment during transcription
+    - `FINALIZED`: Final segment with complete transcription
+    - `SESSION_ENDED`: Stream complete with statistics and metadata
+    - `ERROR`: Error occurred, includes code, message, and recoverable flag
+
+    Event envelope format:
+        {
+            "event_id": 1,           // Monotonically increasing per stream
+            "stream_id": "sse-...",  // Unique stream identifier
+            "type": "PARTIAL",       // Event type
+            "ts_server": 17051...,   // Server timestamp (ms)
+            "segment_id": "seg-0",   // Segment ID (for segment events)
+            "ts_audio_start": 0.0,   // Audio timestamp start (seconds)
+            "ts_audio_end": 2.5,     // Audio timestamp end (seconds)
+            "payload": {...}         // Event-specific data
+        }
+
+    Example SSE format:
+        data: {"event_id": 1, "type": "PARTIAL", "payload": {"segment": {...}}}
+
+        data: {"event_id": 2, "type": "FINALIZED", "payload": {"segment": {...}}}
+
+        data: {"event_id": 3, "type": "SESSION_ENDED", "payload": {"stats": {...}}}
+
+    Args:
+        audio: Uploaded audio file (any format supported by ffmpeg)
+        model: Whisper model size (tiny, base, small, medium, large-v3)
+        language: Language code for transcription, or None for auto-detect
+        device: Device to use ('cuda' for GPU, 'cpu' for CPU)
+        compute_type: Precision for model inference
+        task: 'transcribe' or 'translate' (to English)
+        enable_diarization: Whether to run speaker diarization (pyannote.audio)
+        diarization_device: Device for diarization ('cuda', 'cpu', or 'auto')
+        min_speakers: Minimum expected speaker count hint
+        max_speakers: Maximum expected speaker count hint
+        overlap_threshold: Minimum overlap ratio required to assign a speaker
+        word_timestamps: Enable word-level timestamps in the response
+
+    Returns:
+        StreamingResponse with Content-Type: text/event-stream
+
+    Raises:
+        400: Invalid configuration or unsupported audio format
+        413: File too large
+        422: Validation error in request parameters
+        500: Internal transcription error
+    """
+    import re
+    import secrets
+
+    from .audio_io import normalize_single
+
+    # Validate task
+    if task not in ("transcribe", "translate"):
+        logger.warning("Invalid task parameter: %s", task)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid task '{task}'. Must be 'transcribe' or 'translate'.",
+        )
+
+    # Validate device
+    if device not in ("cuda", "cpu"):
+        logger.warning("Invalid device parameter: %s", device)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid device '{device}'. Must be 'cuda' or 'cpu'.",
+        )
+
+    # Validate diarization device
+    if diarization_device not in ("cuda", "cpu", "auto"):
+        logger.warning("Invalid diarization_device parameter: %s", diarization_device)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid diarization_device '{diarization_device}'. "
+                "Must be 'cuda', 'cpu', or 'auto'."
+            ),
+        )
+
+    try:
+        normalized_compute_type = validate_compute_type(compute_type)
+    except ConfigurationError as e:
+        logger.warning("Invalid compute_type: %s", compute_type, exc_info=e)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid compute_type '{compute_type}'. See logs for details.",
+        ) from e
+
+    task_value = cast(WhisperTask, task)
+
+    # Create temporary directory for processing
+    tmpdir = tempfile.mkdtemp()
+    tmpdir_path = Path(tmpdir)
+
+    try:
+        # Read and validate uploaded audio file
+        try:
+            content = await audio.read()
+        except Exception as e:
+            logger.error("Failed to read uploaded audio file", exc_info=e)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to read uploaded audio file",
+            ) from e
+
+        # Validate file size before processing
+        validate_file_size(content, MAX_AUDIO_SIZE_MB, file_type="audio")
+
+        # Security: Generate random filename with sanitized extension
+        safe_suffix = ""
+        if audio.filename:
+            ext_match = re.search(r"(\.[^.]+)$", audio.filename)
+            if ext_match:
+                ext = ext_match.group(1)
+                allowed_extensions = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
+                if ext.lower() in allowed_extensions:
+                    safe_suffix = ext
+
+        random_id = secrets.token_hex(16)
+        audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
+
+        try:
+            audio_path.write_bytes(content)
+        except Exception as e:
+            logger.error("Failed to save uploaded audio file", exc_info=e)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to save uploaded audio file",
+            ) from e
+
+        # Validate audio format
+        validate_audio_format(audio_path)
+
+        # Normalize audio to 16kHz mono WAV
+        norm_path = tmpdir_path / f"norm_{random_id}.wav"
+        try:
+            normalize_single(audio_path, norm_path)
+        except Exception as e:
+            logger.error("Failed to normalize audio", exc_info=e)
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to normalize audio. Ensure ffmpeg is installed.",
+            ) from e
+
+        if not norm_path.exists():
+            raise HTTPException(
+                status_code=500,
+                detail="Audio normalization failed: output file not created.",
+            )
+
+        # Create transcription config
+        extra_kwargs: dict[str, Any] = {}
+        if overlap_threshold is not None:
+            extra_kwargs["overlap_threshold"] = overlap_threshold
+
+        config = TranscriptionConfig(
+            model=model,
+            language=language,
+            device=device,
+            compute_type=normalized_compute_type,
+            task=task_value,
+            skip_existing_json=False,
+            enable_diarization=enable_diarization,
+            diarization_device=diarization_device,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+            word_timestamps=word_timestamps,
+            **extra_kwargs,
+        )
+
+        # Create async generator for SSE events
+        async def generate_with_cleanup() -> AsyncGenerator[str, None]:
+            """Wrapper that ensures cleanup after streaming completes."""
+            try:
+                async for event in _generate_sse_transcription(norm_path, config, word_timestamps):
+                    yield event
+            finally:
+                # Clean up temporary directory
+                import shutil
+
+                try:
+                    shutil.rmtree(tmpdir, ignore_errors=True)
+                except Exception as cleanup_err:
+                    logger.debug("Failed to clean up temp dir: %s", cleanup_err)
+
+        logger.info(
+            "Starting SSE streaming transcription: model=%s, device=%s",
+            model,
+            device,
+        )
+
+        return StreamingResponse(
+            generate_with_cleanup(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable nginx buffering
+            },
+        )
+
+    except HTTPException:
+        # Clean up on HTTP errors
+        import shutil
+
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        raise
+    except Exception as e:
+        # Clean up on unexpected errors
+        import shutil
+
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        logger.exception("Unexpected error setting up SSE stream")
+        raise HTTPException(
+            status_code=500,
+            detail="Unexpected error setting up transcription stream",
+        ) from e
+
+
+# =============================================================================
 # Enrichment Endpoint
 # =============================================================================
 
@@ -1419,6 +2051,293 @@ def _transcript_to_dict(
         data["turns"] = transcript.turns
 
     return data
+
+
+# =============================================================================
+# WebSocket Streaming Endpoint (v2.0.0)
+# =============================================================================
+
+
+@app.websocket("/stream")
+async def websocket_stream(websocket: WebSocket) -> None:
+    """
+    WebSocket endpoint for real-time audio streaming and transcription.
+
+    This endpoint enables bidirectional communication for streaming audio
+    transcription. Clients send audio chunks and receive transcription
+    events in real-time.
+
+    Protocol:
+        1. Client connects to /stream
+        2. Client sends START_SESSION with configuration
+        3. Server responds with SESSION_STARTED
+        4. Client sends AUDIO_CHUNK messages with base64-encoded audio
+        5. Server sends PARTIAL and FINALIZED segment events
+        6. Client sends END_SESSION to finalize
+        7. Server sends SESSION_ENDED with statistics
+        8. Connection closes
+
+    Client Message Types:
+        - START_SESSION: {type, config: {max_gap_sec, enable_prosody, ...}}
+        - AUDIO_CHUNK: {type, data: base64_string, sequence: int}
+        - END_SESSION: {type}
+        - PING: {type, timestamp: int}
+
+    Server Message Types:
+        - SESSION_STARTED: {event_id, stream_id, type, ts_server, payload: {session_id}}
+        - PARTIAL: {event_id, stream_id, segment_id, type, ts_server, ts_audio_*, payload: {segment}}
+        - FINALIZED: {event_id, stream_id, segment_id, type, ts_server, ts_audio_*, payload: {segment}}
+        - ERROR: {event_id, stream_id, type, ts_server, payload: {code, message, recoverable}}
+        - SESSION_ENDED: {event_id, stream_id, type, ts_server, payload: {stats}}
+        - PONG: {event_id, stream_id, type, ts_server, payload: {timestamp, server_timestamp}}
+
+    Example (JavaScript):
+        const ws = new WebSocket('ws://localhost:8000/stream');
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                type: 'START_SESSION',
+                config: {max_gap_sec: 1.0, enable_prosody: true}
+            }));
+        };
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'FINALIZED') {
+                console.log('Segment:', msg.payload.segment.text);
+            }
+        };
+    """
+    from .streaming_ws import (
+        ClientMessageType,
+        WebSocketSessionConfig,
+        WebSocketStreamingSession,
+        decode_audio_chunk,
+        parse_client_message,
+    )
+
+    await websocket.accept()
+    logger.info("WebSocket connection accepted")
+
+    session: WebSocketStreamingSession | None = None
+
+    try:
+        while True:
+            # Receive message from client
+            try:
+                data = await websocket.receive_json()
+            except Exception as e:
+                logger.warning("Failed to receive/parse WebSocket message: %s", e)
+                if session:
+                    error_event = session.create_error_event(
+                        code="invalid_message",
+                        message=f"Failed to parse message: {e}",
+                        recoverable=True,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                continue
+
+            # Parse message type and payload
+            try:
+                msg_type, payload = parse_client_message(data)
+            except ValueError as e:
+                logger.warning("Invalid client message: %s", e)
+                if session:
+                    error_event = session.create_error_event(
+                        code="invalid_message_type",
+                        message=str(e),
+                        recoverable=True,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                continue
+
+            # Handle message based on type
+            if msg_type == ClientMessageType.START_SESSION:
+                if session is not None:
+                    error_event = session.create_error_event(
+                        code="session_already_started",
+                        message="Session already started",
+                        recoverable=True,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                    continue
+
+                # Parse configuration from payload
+                config_data = payload.get("config", {})
+                config = WebSocketSessionConfig.from_dict(config_data)
+
+                # Create and start session
+                session = WebSocketStreamingSession(config=config)
+                try:
+                    start_event = await session.start()
+                    await websocket.send_json(start_event.to_dict())
+                    logger.info(
+                        "WebSocket session started: stream_id=%s",
+                        session.stream_id,
+                    )
+                except Exception as e:
+                    logger.error("Failed to start session: %s", e, exc_info=True)
+                    error_event = session.create_error_event(
+                        code="session_start_failed",
+                        message=f"Failed to start session: {e}",
+                        recoverable=False,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                    session = None
+
+            elif msg_type == ClientMessageType.AUDIO_CHUNK:
+                if session is None:
+                    # Create temporary session just to send error
+                    temp_session = WebSocketStreamingSession()
+                    error_event = temp_session.create_error_event(
+                        code="no_session",
+                        message="No active session. Send START_SESSION first.",
+                        recoverable=True,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                    continue
+
+                try:
+                    audio_bytes, sequence = decode_audio_chunk(payload)
+                    events = await session.process_audio_chunk(audio_bytes, sequence)
+                    for event in events:
+                        await websocket.send_json(event.to_dict())
+                except ValueError as e:
+                    logger.warning("Invalid audio chunk: %s", e)
+                    error_event = session.create_error_event(
+                        code="invalid_audio_chunk",
+                        message=str(e),
+                        recoverable=True,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                except Exception as e:
+                    logger.error("Error processing audio chunk: %s", e, exc_info=True)
+                    error_event = session.create_error_event(
+                        code="processing_error",
+                        message=f"Error processing audio: {e}",
+                        recoverable=True,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+
+            elif msg_type == ClientMessageType.END_SESSION:
+                if session is None:
+                    temp_session = WebSocketStreamingSession()
+                    error_event = temp_session.create_error_event(
+                        code="no_session",
+                        message="No active session to end.",
+                        recoverable=True,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                    continue
+
+                try:
+                    end_events = await session.end()
+                    for event in end_events:
+                        await websocket.send_json(event.to_dict())
+                    logger.info(
+                        "WebSocket session ended: stream_id=%s",
+                        session.stream_id,
+                    )
+                except Exception as e:
+                    logger.error("Error ending session: %s", e, exc_info=True)
+                    error_event = session.create_error_event(
+                        code="end_session_error",
+                        message=f"Error ending session: {e}",
+                        recoverable=False,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+
+                # Close connection after END_SESSION
+                break
+
+            elif msg_type == ClientMessageType.PING:
+                if session is None:
+                    temp_session = WebSocketStreamingSession()
+                    pong_event = temp_session.create_pong_event(payload.get("timestamp", 0))
+                    await websocket.send_json(pong_event.to_dict())
+                else:
+                    pong_event = session.create_pong_event(payload.get("timestamp", 0))
+                    await websocket.send_json(pong_event.to_dict())
+
+    except WebSocketDisconnect:
+        logger.info(
+            "WebSocket disconnected: stream_id=%s",
+            session.stream_id if session else "no_session",
+        )
+        # Clean up session if it was active
+        if session and session.state.value == "active":
+            try:
+                await session.end()
+            except Exception as e:
+                logger.warning("Error cleaning up session on disconnect: %s", e)
+
+    except Exception:
+        logger.exception("Unexpected error in WebSocket handler")
+        if session:
+            try:
+                error_event = session.create_error_event(
+                    code="internal_error",
+                    message="An unexpected error occurred",
+                    recoverable=False,
+                )
+                await websocket.send_json(error_event.to_dict())
+            except Exception:
+                pass  # Connection may already be closed
+
+    finally:
+        logger.info("WebSocket connection closed")
+
+
+# =============================================================================
+# WebSocket Session Management Endpoints (v2.0.0)
+# =============================================================================
+
+
+@app.get(
+    "/stream/config",
+    summary="Get default streaming configuration",
+    description="Returns the default configuration for WebSocket streaming sessions.",
+    tags=["Streaming"],
+)
+async def get_stream_config() -> JSONResponse:
+    """
+    Get default streaming configuration.
+
+    Returns the default values for WebSocket streaming session configuration.
+    Clients can use this to understand available options before connecting.
+
+    Returns:
+        JSONResponse with default configuration options.
+    """
+    from .streaming_ws import WebSocketSessionConfig
+
+    default_config = WebSocketSessionConfig()
+    return JSONResponse(
+        status_code=200,
+        content={
+            "default_config": {
+                "max_gap_sec": default_config.max_gap_sec,
+                "enable_prosody": default_config.enable_prosody,
+                "enable_emotion": default_config.enable_emotion,
+                "enable_categorical_emotion": default_config.enable_categorical_emotion,
+                "sample_rate": default_config.sample_rate,
+                "audio_format": default_config.audio_format,
+            },
+            "supported_audio_formats": ["pcm_s16le"],
+            "supported_sample_rates": [16000],
+            "message_types": {
+                "client": ["START_SESSION", "AUDIO_CHUNK", "END_SESSION", "PING"],
+                "server": [
+                    "SESSION_STARTED",
+                    "PARTIAL",
+                    "FINALIZED",
+                    "SPEAKER_TURN",
+                    "SEMANTIC_UPDATE",
+                    "ERROR",
+                    "SESSION_ENDED",
+                    "PONG",
+                ],
+            },
+        },
+    )
 
 
 # =============================================================================

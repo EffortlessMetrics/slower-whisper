@@ -830,7 +830,7 @@ class TestCLIErrorExitCodes:
         bad_config = tmp_path / "bad_enrich.json"
         bad_config.write_text('{"device": "tpu"}', encoding="utf-8")
 
-        argv = ["enrich", "--root", str(temp_project_root), "--enrich-config", str(bad_config)]
+        argv = ["enrich", "--root", str(temp_project_root), "--config", str(bad_config)]
 
         exit_code = cli_main(argv)
         assert exit_code == 1

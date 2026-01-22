@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Semantic Adapter Protocol** (#88): New `SemanticAdapter` protocol and annotation schema for pluggable semantic analysis backends
+  - `SemanticAdapter` protocol defining standard interface for annotation providers
+  - `SemanticAnnotation` dataclass with versioning, provenance, and latency tracking
+  - `NormalizedAnnotation` dataclass for provider-agnostic annotation structure (topics, intent, sentiment, action_items, risk_tags)
+  - `ActionItem` dataclass for individual action item representation with speaker attribution
+  - `ChunkContext` dataclass for context-aware annotation with speaker, timing, and conversation history
+  - `ProviderHealth` dataclass for health checks and quota monitoring
+  - `LocalKeywordAdapter` wrapping existing `KeywordSemanticAnnotator` for protocol compliance
+  - `NoOpSemanticAdapter` placeholder for disabled semantic annotation
+  - `create_adapter()` factory function for provider instantiation
+  - `SEMANTIC_SCHEMA_VERSION` constant (`0.1.0`) for forward compatibility
+  - Foundation for Track 3 cloud LLM integration work
+- **Benchmark Evaluation Framework**: Complete evaluation infrastructure for all benchmark tracks
+  - **ASR Evaluation** (`ASRBenchmarkRunner`): WER/CER computation using jiwer with proper text normalization (#186)
+  - **Diarization Evaluation** (`DiarizationBenchmarkRunner`): DER/JER/speaker count metrics using pyannote.metrics (#189)
+  - **Emotion Evaluation** (`EmotionBenchmarkRunner`): Accuracy, F1, and confusion matrix for categorical emotions (#187)
+  - **Streaming Evaluation** (`StreamingBenchmarkRunner`): P50/P95/P99 latency, RTF, and first-token timing (#190)
+- **Benchmark Baselines** (#137): Baseline file format and comparison infrastructure for regression testing
+  - New `benchmarks/baselines/` directory structure with JSON baseline files per track/dataset
+  - `BaselineFile`, `BaselineMetric`, `BaselineReceipt` data structures for provenance tracking
+  - `benchmark save-baseline` CLI command to create baselines from evaluation results
+  - `benchmark compare` CLI command with report and gate modes for regression detection
+  - `benchmark baselines` CLI command to list stored baselines
+  - Configurable regression thresholds per metric (default: 10%)
+  - Comprehensive test coverage for baseline serialization and comparison logic
+- **Benchmark CI Integration Phase 2** (#99): Automated PR comments with regression summaries
+  - GitHub Actions workflow posts benchmark comparison results to pull requests
+  - Markdown table format showing track, metric, current/baseline values, regression %, threshold, and pass/fail status
+  - Comment updates on subsequent runs (uses `peter-evans/find-comment` + `create-or-update-comment` actions)
+  - Graceful handling of missing baselines and skipped benchmarks
+  - Collapsible details section with workflow run link and artifacts reference
+  - Report-only mode: regressions inform but do not block merges
+- **Anthropic LLM Provider**: New `AnthropicProvider` in `llm_client` module for Claude API integration with streaming support (#188)
+- **Colorized CLI Output**: Enhanced CLI with ANSI colors for status messages and errors, respects `NO_COLOR` environment variable (#191)
+- **Cache Clear Confirmation**: Interactive confirmation prompt for `slower-whisper cache clear` to prevent accidental data loss (#198)
+
+### Changed
+
+- **Parallel Audio Normalization**: `normalize_all()` now uses `ThreadPoolExecutor` for parallel ffmpeg invocations, significantly improving batch processing throughput (#192)
+- **Optimized Path Resolution**: Audio normalization loop now resolves paths more efficiently, reducing overhead on large directories (#197)
+
+### Fixed
+
+- **Security (Argument Injection)**: Hardened dogfood CLI subprocess calls against argument injection attacks (#196)
+
+### Removed
+
+- **Deprecated CLI flag** (#59): Removed `--enrich-config` alias from `slower-whisper enrich` command. Use `--config` instead.
+- **Legacy scripts** (#59): Removed `scripts/transcribe_pipeline.py` and `scripts/audio_enrich.py`. Use `slower-whisper transcribe` and `slower-whisper enrich` CLI commands.
+- **Legacy entry point** (#59): Removed `slower-whisper-enrich` command. Use `slower-whisper enrich` instead.
+- **Legacy module** (#59): Removed `transcription/audio_enrich_cli.py`. The unified CLI in `transcription/cli.py` handles all commands.
+
+### Developer Experience
+
+- **Test Portability**: Added `normalize_all` mocking to allow tests to pass without ffmpeg installed (#185)
+
 ## [1.9.2] - 2026-01-05
 
 ### Fixed

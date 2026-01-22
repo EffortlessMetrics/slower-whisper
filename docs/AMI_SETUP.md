@@ -2,6 +2,15 @@
 
 This guide explains how to set up the **AMI Meeting Corpus** for evaluating slower-whisper's diarization and LLM-based summarization capabilities.
 
+## Quick Reference
+
+**Manifest:** [`benchmarks/datasets/diarization/ami-headset/manifest.json`](../benchmarks/datasets/diarization/ami-headset/manifest.json)
+
+```bash
+# Check dataset status
+python scripts/download_datasets.py --dataset ami-headset --verify
+```
+
 ## Overview
 
 The AMI corpus is a widely-used benchmark for:
@@ -10,7 +19,7 @@ The AMI corpus is a widely-used benchmark for:
 - **Action item detection**
 - **Multi-party conversation understanding**
 
-**Dataset size:** ~100 hours of meeting recordings
+**Dataset size:** ~100 hours of meeting recordings (test set: ~9 hours, 16 meetings)
 **License:** Creative Commons Attribution 4.0
 **Citation:** Required for academic use (see below)
 
@@ -69,7 +78,7 @@ slower-whisper expects AMI to be organized under your benchmarks cache:
 
 ```bash
 # Default location
-~/.cache/slower-whisper/benchmarks/ami/
+~/.cache/slower-whisper/benchmarks/diarization/ami-headset/
 
 # Or set custom location
 export SLOWER_WHISPER_BENCHMARKS=/path/to/benchmarks
@@ -78,15 +87,15 @@ export SLOWER_WHISPER_BENCHMARKS=/path/to/benchmarks
 **Required directory structure:**
 
 ```
-benchmarks/ami/
+benchmarks/diarization/ami-headset/
 ├── audio/
 │   ├── ES2002a.Mix-Headset.wav
 │   ├── ES2002b.Mix-Headset.wav
 │   ├── ES2002c.Mix-Headset.wav
 │   └── ...
-├── annotations/
-│   ├── ES2002a.json
-│   ├── ES2002b.json
+├── rttm/
+│   ├── ES2002a.rttm
+│   ├── ES2002b.rttm
 │   └── ...
 └── splits/
     ├── train.txt
@@ -99,12 +108,12 @@ benchmarks/ami/
 ```bash
 # Create directories
 BENCHMARKS_ROOT="${HOME}/.cache/slower-whisper/benchmarks"
-mkdir -p "${BENCHMARKS_ROOT}/ami/audio"
-mkdir -p "${BENCHMARKS_ROOT}/ami/annotations"
-mkdir -p "${BENCHMARKS_ROOT}/ami/splits"
+mkdir -p "${BENCHMARKS_ROOT}/diarization/ami-headset/audio"
+mkdir -p "${BENCHMARKS_ROOT}/diarization/ami-headset/rttm"
+mkdir -p "${BENCHMARKS_ROOT}/diarization/ami-headset/splits"
 
 # Move downloaded audio
-mv path/to/downloaded/wavs/*.wav "${BENCHMARKS_ROOT}/ami/audio/"
+mv path/to/downloaded/wavs/*.wav "${BENCHMARKS_ROOT}/diarization/ami-headset/audio/"
 ```
 
 ### Step 3: Prepare Annotations
@@ -213,32 +222,48 @@ Standard AMI splits:
 
 ### Step 5: Verify Setup
 
-Test that the benchmark infrastructure can find AMI:
+Test that the benchmark infrastructure can find AMI using the dataset helper script:
 
 ```bash
-# Check if AMI is detected
-uv run python -c "
-from transcription.benchmarks import list_available_benchmarks
-benchmarks = list_available_benchmarks()
-print('AMI available:', benchmarks['ami']['available'])
-print('AMI path:', benchmarks['ami']['path'])
-"
+# Check dataset status
+python scripts/download_datasets.py --dataset ami-headset --verify
 
-# List test meetings
-uv run python -c "
-from transcription.benchmarks import iter_ami_meetings
-for i, sample in enumerate(iter_ami_meetings(split='test', limit=3)):
-    print(f'{i+1}. {sample.id} -> {sample.audio_path}')
-"
+# List all datasets
+python scripts/download_datasets.py --list
 ```
 
 **Expected output:**
 ```
-AMI available: True
-AMI path: /home/user/.cache/slower-whisper/benchmarks/ami
-1. ES2002a -> /home/user/.cache/slower-whisper/benchmarks/ami/audio/ES2002a.Mix-Headset.wav
-2. ES2002b -> /home/user/.cache/slower-whisper/benchmarks/ami/audio/ES2002b.Mix-Headset.wav
-3. ES2002c -> /home/user/.cache/slower-whisper/benchmarks/ami/audio/ES2002c.Mix-Headset.wav
+============================================================
+Dataset: ami-headset
+============================================================
+This dataset requires manual download
+  Instructions: https://groups.inf.ed.ac.uk/ami/download/
+  Dataset found at: /home/user/.cache/slower-whisper/benchmarks/diarization/ami-headset
+  Verifying...
+  Verification OK
+```
+
+You can also verify programmatically:
+
+```bash
+uv run python -c "
+from pathlib import Path
+import os
+
+cache_dir = os.environ.get('SLOWER_WHISPER_BENCHMARKS', Path.home() / '.cache/slower-whisper/benchmarks')
+ami_dir = Path(cache_dir) / 'diarization' / 'ami-headset'
+audio_dir = ami_dir / 'audio'
+
+if audio_dir.exists():
+    wavs = list(audio_dir.glob('*.wav'))
+    print(f'AMI available: True')
+    print(f'AMI path: {ami_dir}')
+    print(f'Audio files: {len(wavs)}')
+else:
+    print('AMI available: False')
+    print(f'Expected at: {ami_dir}')
+"
 ```
 
 ## Running Evaluations
@@ -276,9 +301,10 @@ If you use AMI in your research or evaluation reports, please cite:
 ## Troubleshooting
 
 **"AMI Meeting Corpus not found"**
-- Verify path: `ls ~/.cache/slower-whisper/benchmarks/ami/`
+- Verify path: `ls ~/.cache/slower-whisper/benchmarks/diarization/ami-headset/`
 - Check environment variable: `echo $SLOWER_WHISPER_BENCHMARKS`
-- Ensure `audio/` and `annotations/` subdirectories exist
+- Ensure `audio/` and `rttm/` subdirectories exist
+- Use `python scripts/download_datasets.py --dataset ami-headset --verify` for detailed status
 
 **"AMI directory structure invalid"**
 - Verify structure matches the template above
@@ -315,8 +341,14 @@ For quick testing without full AMI setup:
 
 This is sufficient for smoke testing the evaluation harness before investing in full corpus setup.
 
+## Related Resources
+
+- **Dataset manifest:** [`benchmarks/datasets/diarization/ami-headset/manifest.json`](../benchmarks/datasets/diarization/ami-headset/manifest.json)
+- **Baseline metrics:** [`benchmarks/baselines/diarization/ami.json`](../benchmarks/baselines/diarization/ami.json)
+- **Download helper:** `python scripts/download_datasets.py --help`
+
 ## Next Steps
 
-- See `IEMOCAP_SETUP.md` for emotion evaluation setup
-- See `LIBRICSS_SETUP.md` for overlapping speech evaluation
-- See `benchmarks/README.md` for evaluation harness documentation
+- See [`IEMOCAP_SETUP.md`](IEMOCAP_SETUP.md) for emotion evaluation setup
+- See [`benchmarks/datasets/README.md`](../benchmarks/datasets/README.md) for dataset manifest documentation
+- See [`benchmarks/README.md`](../benchmarks/README.md) for evaluation harness documentation

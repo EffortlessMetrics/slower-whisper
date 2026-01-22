@@ -353,6 +353,236 @@ class TestTranscript:
 class TestTranscriptConvenienceMethods:
     """Tests for Transcript convenience methods (speaker_ids, segments_by_speaker, word_count)."""
 
+    # -------------------------------------------------------------------------
+    # full_text property tests
+    # -------------------------------------------------------------------------
+
+    def test_full_text_empty_segments(self) -> None:
+        """Test full_text returns empty string for empty segments."""
+        transcript = Transcript(file_name="test.wav", language="en", segments=[])
+        assert transcript.full_text == ""
+
+    def test_full_text_single_segment(self) -> None:
+        """Test full_text with single segment."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[Segment(id=0, start=0.0, end=1.0, text="  Hello world  ")],
+        )
+        assert transcript.full_text == "Hello world"
+
+    def test_full_text_multiple_segments(self) -> None:
+        """Test full_text concatenates multiple segments with spaces."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello"),
+                Segment(id=1, start=1.0, end=2.0, text="world"),
+                Segment(id=2, start=2.0, end=3.0, text="test"),
+            ],
+        )
+        assert transcript.full_text == "Hello world test"
+
+    def test_full_text_strips_whitespace(self) -> None:
+        """Test full_text strips leading/trailing whitespace from each segment."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="  Hello  "),
+                Segment(id=1, start=1.0, end=2.0, text="\n world \t"),
+            ],
+        )
+        assert transcript.full_text == "Hello world"
+
+    def test_full_text_skips_empty_segments(self) -> None:
+        """Test full_text skips segments with empty text."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello"),
+                Segment(id=1, start=1.0, end=2.0, text=""),
+                Segment(id=2, start=2.0, end=3.0, text="world"),
+            ],
+        )
+        assert transcript.full_text == "Hello world"
+
+    # -------------------------------------------------------------------------
+    # duration property tests
+    # -------------------------------------------------------------------------
+
+    def test_duration_empty_segments(self) -> None:
+        """Test duration returns 0.0 for empty segments."""
+        transcript = Transcript(file_name="test.wav", language="en", segments=[])
+        assert transcript.duration == 0.0
+
+    def test_duration_single_segment(self) -> None:
+        """Test duration returns end time of single segment."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[Segment(id=0, start=0.0, end=5.5, text="Hello")],
+        )
+        assert transcript.duration == 5.5
+
+    def test_duration_multiple_segments(self) -> None:
+        """Test duration returns max end time from segments."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=2.0, text="Hello"),
+                Segment(id=1, start=2.0, end=5.0, text="world"),
+                Segment(id=2, start=5.0, end=10.5, text="test"),
+            ],
+        )
+        assert transcript.duration == 10.5
+
+    def test_duration_non_sequential_segments(self) -> None:
+        """Test duration handles non-sequential segment times correctly."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=8.0, text="Long segment"),
+                Segment(id=1, start=2.0, end=3.0, text="Overlap"),  # Ends earlier
+            ],
+        )
+        assert transcript.duration == 8.0  # Max of all end times
+
+    # -------------------------------------------------------------------------
+    # get_segments_by_speaker method tests
+    # -------------------------------------------------------------------------
+
+    def test_get_segments_by_speaker_alias(self) -> None:
+        """Test get_segments_by_speaker is alias for segments_by_speaker."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello", speaker={"id": "spk_0"}),
+                Segment(id=1, start=1.0, end=2.0, text="Hi", speaker={"id": "spk_1"}),
+            ],
+        )
+        # Both methods should return identical results
+        assert transcript.get_segments_by_speaker("spk_0") == transcript.segments_by_speaker(
+            "spk_0"
+        )
+
+    def test_get_segments_by_speaker_empty(self) -> None:
+        """Test get_segments_by_speaker returns empty list for unknown speaker."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=1.0, text="Hello", speaker={"id": "spk_0"}),
+            ],
+        )
+        assert transcript.get_segments_by_speaker("unknown") == []
+
+    # -------------------------------------------------------------------------
+    # get_segment_at_time method tests
+    # -------------------------------------------------------------------------
+
+    def test_get_segment_at_time_empty_segments(self) -> None:
+        """Test get_segment_at_time returns None for empty segments."""
+        transcript = Transcript(file_name="test.wav", language="en", segments=[])
+        assert transcript.get_segment_at_time(1.0) is None
+
+    def test_get_segment_at_time_exact_start(self) -> None:
+        """Test get_segment_at_time finds segment at exact start time."""
+        seg = Segment(id=0, start=1.0, end=3.0, text="Hello")
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[seg],
+        )
+        assert transcript.get_segment_at_time(1.0) == seg
+
+    def test_get_segment_at_time_middle(self) -> None:
+        """Test get_segment_at_time finds segment at middle time."""
+        seg = Segment(id=0, start=1.0, end=3.0, text="Hello")
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[seg],
+        )
+        assert transcript.get_segment_at_time(2.0) == seg
+
+    def test_get_segment_at_time_exact_end(self) -> None:
+        """Test get_segment_at_time returns None at exact end time (exclusive)."""
+        seg = Segment(id=0, start=1.0, end=3.0, text="Hello")
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[seg],
+        )
+        # End time is exclusive, so should return None
+        assert transcript.get_segment_at_time(3.0) is None
+
+    def test_get_segment_at_time_before_first(self) -> None:
+        """Test get_segment_at_time returns None for time before first segment."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[Segment(id=0, start=2.0, end=4.0, text="Hello")],
+        )
+        assert transcript.get_segment_at_time(1.0) is None
+
+    def test_get_segment_at_time_after_last(self) -> None:
+        """Test get_segment_at_time returns None for time after last segment."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[Segment(id=0, start=1.0, end=3.0, text="Hello")],
+        )
+        assert transcript.get_segment_at_time(5.0) is None
+
+    def test_get_segment_at_time_gap_between_segments(self) -> None:
+        """Test get_segment_at_time returns None for time in gap between segments."""
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                Segment(id=0, start=0.0, end=2.0, text="Hello"),
+                Segment(id=1, start=4.0, end=6.0, text="World"),
+            ],
+        )
+        # Time 3.0 is in the gap
+        assert transcript.get_segment_at_time(3.0) is None
+
+    def test_get_segment_at_time_multiple_segments(self) -> None:
+        """Test get_segment_at_time returns correct segment from multiple."""
+        seg1 = Segment(id=0, start=0.0, end=2.0, text="Hello")
+        seg2 = Segment(id=1, start=2.0, end=4.0, text="World")
+        seg3 = Segment(id=2, start=4.0, end=6.0, text="Test")
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[seg1, seg2, seg3],
+        )
+        assert transcript.get_segment_at_time(1.0) == seg1
+        assert transcript.get_segment_at_time(2.5) == seg2
+        assert transcript.get_segment_at_time(5.5) == seg3
+
+    def test_get_segment_at_time_overlapping_returns_first(self) -> None:
+        """Test get_segment_at_time returns first matching segment if overlapping."""
+        seg1 = Segment(id=0, start=0.0, end=3.0, text="Long")
+        seg2 = Segment(id=1, start=2.0, end=4.0, text="Overlap")
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[seg1, seg2],
+        )
+        # Time 2.5 is in both segments, should return first
+        assert transcript.get_segment_at_time(2.5) == seg1
+
+    # -------------------------------------------------------------------------
+    # word_count tests (existing tests below)
+    # -------------------------------------------------------------------------
+
     def test_word_count_uses_words_when_present(self) -> None:
         """Test that word_count uses seg.words when available."""
         words = [

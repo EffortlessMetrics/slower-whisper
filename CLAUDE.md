@@ -1,8 +1,8 @@
 # CLAUDE.md — Repo Guide (slower-whisper)
 
-**Status:** v1.9.2 — streaming callbacks + GPU UX + CI hardening shipped
-**Current focus:** v1.9 closeout (P95 latency harness) + API polish arc
-**Next arc:** v2.0 Track 1 benchmarks (gates streaming + semantics)
+**Status:** v1.9.2 — benchmark evaluation framework + baseline infrastructure (#137) + semantic adapter protocol (#88)
+**Current focus:** Track 1 benchmark completion (CI integration #99) + Track 3 semantics (cloud LLM interface #90)
+**Next arc:** Track 2 streaming protocol
 
 If this doc disagrees with code, update it.
 
@@ -47,6 +47,11 @@ nix-clean run .#verify -- --quick
 6. **Optional deps degrade gracefully**
    - Missing diarization/emotion/integrations → actionable skip/error, not crash
 
+7. **Benchmark runners use consistent interfaces**
+   - All runners implement `BenchmarkRunner` protocol
+   - Results emit JSON with `receipt` for provenance tracking
+   - Missing datasets → skip with clear message, not crash
+
 ---
 
 ## Key Surfaces
@@ -58,6 +63,10 @@ nix-clean run .#verify -- --quick
 | Streaming | `transcription/streaming*.py` |
 | Device resolution | `transcription/device.py` |
 | JSON I/O | `transcription/writers.py` |
+| Benchmark runners | `transcription/benchmark_runners.py` |
+| Benchmark CLI | `transcription/benchmark_cli.py` |
+| LLM providers | `transcription/llm_client.py` |
+| Semantic adapters | `transcription/semantic_adapter.py` |
 
 ---
 
@@ -81,3 +90,7 @@ nix-clean run .#verify -- --quick
 | Configuration | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
 | Benchmarks | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) |
 | Semantic benchmark | [docs/SEMANTIC_BENCHMARK.md](docs/SEMANTIC_BENCHMARK.md) |
+| LLM semantic annotator | [docs/LLM_SEMANTIC_ANNOTATOR.md](docs/LLM_SEMANTIC_ANNOTATOR.md) |
+| AMI dataset setup | [docs/AMI_SETUP.md](docs/AMI_SETUP.md) |
+| IEMOCAP dataset setup | [docs/IEMOCAP_SETUP.md](docs/IEMOCAP_SETUP.md) |
+| Documentation index | [docs/INDEX.md](docs/INDEX.md) |

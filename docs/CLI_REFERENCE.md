@@ -18,8 +18,6 @@ The legacy `slower-whisper-enrich` script still exists for backward compatibilit
 ```toml
 [project.scripts]
 slower-whisper = "transcription.cli:main"
-# Legacy compatibility
-slower-whisper-enrich = "transcription.audio_enrich_cli:main"
 ```
 
 Install with uv (recommended):
@@ -172,13 +170,6 @@ slower-whisper samples copy mini_diarization --root /path/to/project
 # Generate synthetic audio
 slower-whisper samples generate --output ./raw_audio --speakers 2
 ```
-
----
-
-## Legacy Compatibility
-
-- `slower-whisper-enrich` remains available but delegates to the legacy Stage 2 entry point. Prefer `slower-whisper enrich`.
-- Wrapper scripts (`transcribe_pipeline.py`, `audio_enrich.py`) also call into the unified CLI and are kept for users who run `python script.py`.
 
 ---
 

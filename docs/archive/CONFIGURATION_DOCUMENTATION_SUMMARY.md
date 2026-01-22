@@ -126,7 +126,7 @@ All documentation consistently explains the precedence order:
 ```
 1. CLI flags (highest priority)
    ↓
-2. Config file (--config or --enrich-config)
+2. Config file (--config)
    ↓
 3. Environment variables (SLOWER_WHISPER_*)
    ↓
