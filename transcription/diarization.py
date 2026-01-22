@@ -656,7 +656,9 @@ def _find_best_speaker(
 ) -> tuple[str | None, float]:
     """Find speaker with maximum overlap for a time range.
 
-    Assumes speaker_turns is sorted by start time (or is a relevant subset) for optimization.
+    Assumes speaker_turns is sorted by start time in ascending order. Any subsets
+    passed to this helper must preserve this ordering (e.g., a slice or filtered
+    view of an already-sorted list) so that the early-exit optimization remains valid.
     """
     best_speaker_id: str | None = None
     max_overlap_duration = 0.0
