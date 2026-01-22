@@ -1,6 +1,6 @@
 # Documentation Index
 
-Welcome to the **slower-whisper** documentation — your guide to local-first conversation intelligence infrastructure.
+Welcome to the **slower-whisper** documentation -- your guide to local-first conversation intelligence infrastructure.
 
 ---
 
@@ -10,11 +10,11 @@ slower-whisper is a **local conversation signal engine** that turns audio into *
 
 **Key differentiators:**
 
-- 🔒 **Local-first** — runs entirely on your machine, no cloud dependency
-- 📋 **Stable JSON schema** — versioned contracts for production use
-- 🧩 **Modular architecture** — use only the features you need
-- 🧪 **Contract-driven** — BDD scenarios enforce behavioral stability
-- 🤖 **LLM-native** — designed for RAG, summarization, analysis
+- **Local-first** -- runs entirely on your machine, no cloud dependency
+- **Stable JSON schema** -- versioned contracts for production use
+- **Modular architecture** -- use only the features you need
+- **Contract-driven** -- BDD scenarios enforce behavioral stability
+- **LLM-native** -- designed for RAG, summarization, analysis
 
 See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROADMAP.md) for development timeline.
 
@@ -24,22 +24,22 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 **New to slower-whisper?**
 
-1. Start with [README](../README.md) — project overview, installation, architecture
-2. Read [VISION.md](../VISION.md) — understand the "why" and positioning
-3. Follow [Quickstart Guide](QUICKSTART.md) — your first transcription
-4. Check [API Quick Reference](API_QUICK_REFERENCE.md) — function usage
+1. Start with [README](../README.md) -- project overview, installation, architecture
+2. Read [VISION.md](../VISION.md) -- understand the "why" and positioning
+3. Follow [Quickstart Guide](QUICKSTART.md) -- your first transcription
+4. Check [API Quick Reference](API_QUICK_REFERENCE.md) -- function usage
 
 **Need help?**
 
-- [Troubleshooting Guide](TROUBLESHOOTING.md) — common issues and solutions
-- [ARCHITECTURE](ARCHITECTURE.md) — layered design (L0-L4)
-- [Examples](../examples/) — working code examples
+- [Troubleshooting Guide](TROUBLESHOOTING.md) -- common issues and solutions
+- [ARCHITECTURE](ARCHITECTURE.md) -- layered design (L0-L4)
+- [Examples](../examples/) -- working code examples
 
 **Want to contribute?**
 
-- [Contributing Guide](../CONTRIBUTING.md) — how to contribute
-- [ROADMAP.md](../ROADMAP.md) — planned features and priorities
-- [CLAUDE.md](../CLAUDE.md) — AI assistant instructions for this codebase
+- [Contributing Guide](../CONTRIBUTING.md) -- how to contribute
+- [ROADMAP.md](../ROADMAP.md) -- planned features and priorities
+- [CLAUDE.md](../CLAUDE.md) -- AI assistant instructions for this codebase
 
 ---
 
@@ -63,9 +63,10 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | Document | Description | Topics |
 |----------|-------------|--------|
 | [SCHEMA.md](SCHEMA.md) | Transcript JSON schema contract | Normative keys, stability tiers, validation |
-| [CONFIGURATION.md](CONFIGURATION.md) | Configuration guide for all layers | Defaults, env vars, files, CLI flags, precedence, patterns |
+| [CONFIGURATION.md](CONFIGURATION.md) | Configuration guide for all layers | Defaults, env vars, files, CLI flags, precedence |
 | [API_QUICK_REFERENCE.md](API_QUICK_REFERENCE.md) | Quick reference for Python API | Functions, configs, examples |
 | [CLI_REFERENCE.md](CLI_REFERENCE.md) | Command-line interface documentation | Commands, options, workflows |
+| [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) | Environment variable reference | All supported env vars |
 
 ### Infrastructure & Deployment (docs/)
 
@@ -76,6 +77,9 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [API_SERVICE.md](API_SERVICE.md) | RESTful API service setup | Web API, endpoints, integration |
 | [GPU_SETUP.md](GPU_SETUP.md) | GPU configuration and troubleshooting | CUDA, device selection, compute types |
 | [DEV_ENV_NIX.md](DEV_ENV_NIX.md) | Nix development environment | Reproducible builds, flake setup |
+| [INSTALL.md](INSTALL.md) | Installation guide | Setup, dependencies, verification |
+| [CI_CHECKS.md](CI_CHECKS.md) | CI pipeline documentation | GitHub Actions, checks, gates |
+| [PERFORMANCE.md](PERFORMANCE.md) | Performance tuning guide | Optimization, profiling, benchmarks |
 
 ### Release & Packaging (docs/releases/)
 
@@ -87,6 +91,10 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [releases/FINAL_VERIFICATION_CHECKLIST.md](releases/FINAL_VERIFICATION_CHECKLIST.md) | Final verification before tagging |
 | [releases/PACKAGING.md](releases/PACKAGING.md) | Packaging and distribution guide |
 | [releases/GITHUB_RELEASE_v1.1.0.md](releases/GITHUB_RELEASE_v1.1.0.md) | GitHub release template for v1.1.0 |
+| [releases/v1.0.0-release-notes.md](releases/v1.0.0-release-notes.md) | v1.0.0 release notes |
+| [releases/RELEASE_v1.0.0_SUMMARY.md](releases/RELEASE_v1.0.0_SUMMARY.md) | v1.0.0 release summary |
+| [releases/RELEASE_EXECUTIVE_SUMMARY.md](releases/RELEASE_EXECUTIVE_SUMMARY.md) | Executive summary for releases |
+| [RELEASE_CHECKLIST_NIX.md](RELEASE_CHECKLIST_NIX.md) | Nix-specific release checklist |
 
 ---
 
@@ -99,6 +107,8 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [QUICKSTART.md](QUICKSTART.md) | 5-minute tutorial for first transcription | Starting from scratch |
 | [CONFIGURATION.md](CONFIGURATION.md) | Complete configuration guide | Setting up options, using config files, understanding precedence |
 | [QUICKSTART_AUDIO_ENRICHMENT.md](QUICKSTART_AUDIO_ENRICHMENT.md) | Quick guide to audio enrichment | Adding audio features |
+| [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) | Migration guide for version upgrades | Upgrading between versions |
+| [MIGRATION_V2.md](MIGRATION_V2.md) | v2.0 migration guide | Preparing for v2.0 changes |
 
 ### Core Features
 
@@ -108,10 +118,23 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [PROSODY.md](PROSODY.md) | Prosodic feature extraction details | Pitch, energy, rate, pauses |
 | [PROSODY_QUICK_REFERENCE.md](PROSODY_QUICK_REFERENCE.md) | Quick reference for prosody features | API, thresholds, examples |
 | [SPEAKER_DIARIZATION.md](SPEAKER_DIARIZATION.md) | Speaker diarization design and implementation | Who spoke when, turn structure |
+| [MODEL_CACHE.md](MODEL_CACHE.md) | Model cache management | Cache location, cleanup, troubleshooting |
+| [REDACTION.md](REDACTION.md) | PII redaction capabilities | Privacy, data handling |
+
+### Streaming
+
+| Document | Description | Topics |
+|----------|-------------|--------|
 | [STREAMING_ARCHITECTURE.md](STREAMING_ARCHITECTURE.md) | Streaming transcription design | Callbacks, events, v2.0 protocol |
 | [STREAMING_API.md](STREAMING_API.md) | Streaming API reference | WebSocket API, REST SSE, Python client |
+
+### LLM Integration & Semantic Analysis
+
+| Document | Description | Topics |
+|----------|-------------|--------|
 | [LLM_PROMPT_PATTERNS.md](LLM_PROMPT_PATTERNS.md) | Reference prompts for LLM conversation analysis | Prompts, rendering, use cases |
-| [MODEL_CACHE.md](MODEL_CACHE.md) | Model cache management | Cache location, cleanup, troubleshooting |
+| [LLM_SEMANTIC_ANNOTATOR.md](LLM_SEMANTIC_ANNOTATOR.md) | LLM-based semantic annotation system | Cloud LLM integration, annotation protocols |
+| [SEMANTIC_BENCHMARK.md](SEMANTIC_BENCHMARK.md) | Semantic quality evaluation | LLM-based quality metrics, evaluation |
 
 ### System Documentation
 
@@ -120,6 +143,8 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, architecture, and internals | Understanding the codebase |
 | [LOGGING.md](LOGGING.md) | Logging system documentation | Configuring logs, debugging, monitoring |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems and solutions | Encountering errors |
+| [TYPING_POLICY.md](TYPING_POLICY.md) | Type annotation policy | Type hints, mypy, conventions |
+| [DATA_FLOW_ANALYSIS.md](DATA_FLOW_ANALYSIS.md) | Data flow through the pipeline | Understanding data transformations |
 
 ### Testing & Quality Assurance
 
@@ -130,6 +155,16 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [BDD_IAC_IMPLEMENTATION_SUMMARY.md](BDD_IAC_IMPLEMENTATION_SUMMARY.md) | Implementation summary and usage guide | Status, scripts, next steps |
 | [BDD_IAC_PYTHON_CLI.md](BDD_IAC_PYTHON_CLI.md) | Python CLI verification tooling | Cross-platform verification, testing infrastructure |
 | [API_BDD_CONTRACT.md](API_BDD_CONTRACT.md) | FastAPI service behavioral contract | REST API BDD scenarios, black-box testing, smoke and functional tests |
+| [CONTRACT_ENFORCEMENT_SUMMARY.md](CONTRACT_ENFORCEMENT_SUMMARY.md) | Contract enforcement overview | How contracts are enforced |
+| [TEST_COVERAGE_GAPS.md](TEST_COVERAGE_GAPS.md) | Known test coverage gaps | Areas needing more tests |
+
+### Diarization Deep Dives
+
+| Document | Description |
+|----------|-------------|
+| [DIARIZATION_DATA_FLOW_SUMMARY.md](DIARIZATION_DATA_FLOW_SUMMARY.md) | Diarization data flow overview |
+| [DIARIZATION_VERIFICATION_INDEX.md](DIARIZATION_VERIFICATION_INDEX.md) | Diarization verification index |
+| [DIARIZATION_TRACE_LOG.md](DIARIZATION_TRACE_LOG.md) | Diarization trace logging |
 
 ### Audit & Process (docs/audit/)
 
@@ -140,6 +175,56 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [audit/EXHIBITS.md](audit/EXHIBITS.md) | Annotated PRs demonstrating audit workflow |
 | [audit/FAILURE_MODES.md](audit/FAILURE_MODES.md) | Taxonomy of failure modes and prevention patterns |
 | [audit/PR_DOSSIER_SCHEMA.md](audit/PR_DOSSIER_SCHEMA.md) | Schema for structured PR analysis |
+| [audit/PR_ANALYSIS_WORKFLOW.md](audit/PR_ANALYSIS_WORKFLOW.md) | PR analysis workflow guide |
+| [audit/PR_LEDGER_TEMPLATE.md](audit/PR_LEDGER_TEMPLATE.md) | Template for PR ledger entries |
+
+---
+
+## Benchmarks Documentation
+
+### Benchmark Framework (docs/)
+
+| Document | Description |
+|----------|-------------|
+| [BENCHMARKS.md](BENCHMARKS.md) | Benchmark CLI reference and usage |
+| [SEMANTIC_BENCHMARK.md](SEMANTIC_BENCHMARK.md) | LLM-based semantic quality evaluation |
+| [BENCHMARK_EVALUATION_QUICKSTART.md](BENCHMARK_EVALUATION_QUICKSTART.md) | Getting started with benchmark evaluation |
+| [GETTING_STARTED_EVALUATION.md](GETTING_STARTED_EVALUATION.md) | Evaluation framework introduction |
+| [LOCAL_EVAL_WORKFLOW.md](LOCAL_EVAL_WORKFLOW.md) | Local evaluation workflow |
+| [EVALUATION_LOOP_QUICKREF.md](EVALUATION_LOOP_QUICKREF.md) | Quick reference for evaluation loop |
+| [METRICS_EXAMPLES.md](METRICS_EXAMPLES.md) | Metrics calculation examples |
+
+### Benchmark Results & Baselines (benchmarks/)
+
+| Document | Description |
+|----------|-------------|
+| [benchmarks/README.md](../benchmarks/README.md) | Benchmarking guide and overview |
+| [benchmarks/INTERPRETING_RESULTS.md](../benchmarks/INTERPRETING_RESULTS.md) | How to read benchmark data |
+| [benchmarks/BASELINE_RESULTS.md](../benchmarks/BASELINE_RESULTS.md) | Performance baselines |
+
+### Dataset Setup Guides
+
+| Document | Description |
+|----------|-------------|
+| [AMI_SETUP.md](AMI_SETUP.md) | AMI Meeting Corpus setup for diarization evaluation |
+| [AMI_DOWNLOAD_GUIDE.md](AMI_DOWNLOAD_GUIDE.md) | AMI dataset download instructions |
+| [AMI_DIRECTORY_LAYOUT.md](AMI_DIRECTORY_LAYOUT.md) | AMI dataset directory structure |
+| [AMI_ANNOTATION_SCHEMA.md](AMI_ANNOTATION_SCHEMA.md) | AMI annotation schema reference |
+| [AMI_INTEGRATION_SUMMARY.md](AMI_INTEGRATION_SUMMARY.md) | AMI integration summary |
+| [AMI_EVAL_SMOKE_TEST_RESULTS.md](AMI_EVAL_SMOKE_TEST_RESULTS.md) | AMI evaluation smoke test results |
+| [IEMOCAP_SETUP.md](IEMOCAP_SETUP.md) | IEMOCAP emotion dataset setup |
+| [IEMOCAP_QUICKREF.md](IEMOCAP_QUICKREF.md) | IEMOCAP quick reference |
+| [IEMOCAP_LABEL_MAPPING.md](IEMOCAP_LABEL_MAPPING.md) | IEMOCAP emotion label mapping |
+| [IEMOCAP_INTEGRATION_SUMMARY.md](IEMOCAP_INTEGRATION_SUMMARY.md) | IEMOCAP integration summary |
+| [LIBRISPEECH_QUICKSTART.md](LIBRISPEECH_QUICKSTART.md) | LibriSpeech ASR evaluation quick start |
+| [LIBRISPEECH_EVAL_RESULTS.md](LIBRISPEECH_EVAL_RESULTS.md) | LibriSpeech evaluation results |
+
+### Benchmark Cache & Strategy
+
+| Document | Description |
+|----------|-------------|
+| [BENCHMARK_CACHE_RECOMMENDATIONS.md](BENCHMARK_CACHE_RECOMMENDATIONS.md) | Cache strategy recommendations |
+| [BENCHMARK_CACHE_STRATEGY_ANALYSIS.md](BENCHMARK_CACHE_STRATEGY_ANALYSIS.md) | Detailed cache strategy analysis |
 
 ---
 
@@ -166,34 +251,27 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 ---
 
-## Benchmarks Documentation (benchmarks/ + docs/)
+## Development & Internal Documentation
 
-### Benchmark Framework
-
-| Document | Description |
-|----------|-------------|
-| [BENCHMARKS.md](BENCHMARKS.md) | Benchmark CLI reference and usage |
-| [SEMANTIC_BENCHMARK.md](SEMANTIC_BENCHMARK.md) | LLM-based quality evaluation |
-| [benchmarks/README.md](../benchmarks/README.md) | Benchmarking guide and overview |
-| [benchmarks/INTERPRETING_RESULTS.md](../benchmarks/INTERPRETING_RESULTS.md) | How to read benchmark data |
-| [benchmarks/BASELINE_RESULTS.md](../benchmarks/BASELINE_RESULTS.md) | Performance baselines |
-
-### Dataset Setup Guides
+### Dogfooding & Internal Testing
 
 | Document | Description |
 |----------|-------------|
-| [AMI_SETUP.md](AMI_SETUP.md) | AMI Meeting Corpus setup for diarization evaluation |
-| [IEMOCAP_SETUP.md](IEMOCAP_SETUP.md) | IEMOCAP emotion dataset setup |
-| [LIBRISPEECH_QUICKSTART.md](LIBRISPEECH_QUICKSTART.md) | LibriSpeech ASR evaluation quick start |
-| [BENCHMARK_EVALUATION_QUICKSTART.md](BENCHMARK_EVALUATION_QUICKSTART.md) | Getting started with benchmark evaluation |
-| [GETTING_STARTED_EVALUATION.md](GETTING_STARTED_EVALUATION.md) | Evaluation framework introduction |
+| [DOGFOOD_SETUP.md](DOGFOOD_SETUP.md) | Dogfooding setup guide |
+| [DOGFOOD_QUICKSTART.md](DOGFOOD_QUICKSTART.md) | Dogfooding quick start |
+| [DOGFOOD_NOTES.md](DOGFOOD_NOTES.md) | Dogfooding notes and observations |
 
-### Benchmark Cache & Strategy
+### Planning & Status
 
 | Document | Description |
 |----------|-------------|
-| [BENCHMARK_CACHE_RECOMMENDATIONS.md](BENCHMARK_CACHE_RECOMMENDATIONS.md) | Cache strategy recommendations |
-| [BENCHMARK_CACHE_STRATEGY_ANALYSIS.md](BENCHMARK_CACHE_STRATEGY_ANALYSIS.md) | Detailed cache strategy analysis |
+| [CURRENT_STATUS.md](CURRENT_STATUS.md) | Current development status |
+| [EVAL_STATUS.md](EVAL_STATUS.md) | Evaluation status |
+| [EVALUATION_LOG.md](EVALUATION_LOG.md) | Evaluation log entries |
+| [TIER2_IMPLEMENTATION_PLAN.md](TIER2_IMPLEMENTATION_PLAN.md) | Tier 2 feature implementation plan |
+| [V1.1_SKELETON_SUMMARY.md](V1.1_SKELETON_SUMMARY.md) | v1.1 skeleton summary |
+| [V1.1_GITHUB_ISSUES.md](V1.1_GITHUB_ISSUES.md) | v1.1 GitHub issues tracking |
+| [GITHUB_UI_TASKS.md](GITHUB_UI_TASKS.md) | GitHub UI tasks |
 
 ---
 
@@ -222,6 +300,16 @@ These documents are historical artifacts from the development process and transf
 | [STATS_BADGES.md](archive/STATS_BADGES.md) | Statistics badges | 2025-11-15 |
 | [DEVELOPER_METRICS.md](archive/DEVELOPER_METRICS.md) | Developer productivity metrics | 2025-11-15 |
 
+### Additional Archives
+
+| Document | Description | Date |
+|----------|-------------|------|
+| [API_SUMMARY.md](archive/API_SUMMARY.md) | Historical API summary | 2025-11-15 |
+| [INDEX.md](archive/INDEX.md) | Historical documentation index | 2025-11-15 |
+| [PROJECT_SUMMARY.md](archive/PROJECT_SUMMARY.md) | Historical project summary | 2025-11-15 |
+| [DEPLOYMENT_CHECKLIST.md](archive/DEPLOYMENT_CHECKLIST.md) | Historical deployment checklist | 2025-11-15 |
+| [CONFIGURATION_DOCUMENTATION_SUMMARY.md](archive/CONFIGURATION_DOCUMENTATION_SUMMARY.md) | Configuration documentation summary | 2025-11-15 |
+
 ---
 
 ## Documentation by Use Case
@@ -246,31 +334,43 @@ These documents are historical artifacts from the development process and transf
 
 ### "I want to analyze enriched transcripts with LLMs"
 1. [LLM Prompt Patterns](LLM_PROMPT_PATTERNS.md) - Reference prompts and rendering strategies
-2. [LLM Integration Examples](../examples/llm_integration/README.md) - Working scripts (summarization, QA scoring, coaching)
-3. [README Python API](../README.md#llm-integration-analyze-conversations) - Quick API example with speaker labels
-4. [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Understand the prosody/emotion features
+2. [LLM Semantic Annotator](LLM_SEMANTIC_ANNOTATOR.md) - Cloud LLM integration for semantic annotation
+3. [LLM Integration Examples](../examples/llm_integration/README.md) - Working scripts (summarization, QA scoring, coaching)
+4. [README Python API](../README.md#llm-integration-analyze-conversations) - Quick API example with speaker labels
+5. [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Understand the prosody/emotion features
 
 ### "I want to stream audio in real-time"
 1. [Streaming API Reference](STREAMING_API.md) - WebSocket and SSE endpoints
 2. [Streaming Architecture](STREAMING_ARCHITECTURE.md) - Internal design
 3. [API Service](API_SERVICE.md) - REST API setup
 
+### "I want to run benchmarks and evaluate quality"
+1. [Benchmarks](BENCHMARKS.md) - Benchmark CLI reference
+2. [Semantic Benchmark](SEMANTIC_BENCHMARK.md) - LLM-based quality evaluation
+3. [Getting Started Evaluation](GETTING_STARTED_EVALUATION.md) - Evaluation framework intro
+4. [AMI Setup](AMI_SETUP.md) - Diarization benchmark dataset
+5. [IEMOCAP Setup](IEMOCAP_SETUP.md) - Emotion benchmark dataset
+6. [LibriSpeech Quickstart](LIBRISPEECH_QUICKSTART.md) - ASR benchmark dataset
+
 ### "I want to deploy this in production"
 1. [Docker Guide](DOCKER.md) - Containerization
 2. [Docker Deployment Guide](DOCKER_DEPLOYMENT_GUIDE.md) - Production deployment
 3. [API Service](API_SERVICE.md) - Web API setup
+4. [Performance](PERFORMANCE.md) - Performance tuning
 
 ### "I want to contribute code"
 1. [Contributing Guide](../CONTRIBUTING.md) - Process and standards
 2. [CLAUDE.md](../CLAUDE.md) - Codebase guidance
 3. [Architecture](ARCHITECTURE.md) - System design
-4. [BDD/IaC Contracts](BDD_IAC_LOCKDOWN.md) - Testing and deployment standards
-5. [Audit Infrastructure](audit/README.md) - DevLT, receipts, failure modes
+4. [Typing Policy](TYPING_POLICY.md) - Type annotation conventions
+5. [BDD/IaC Contracts](BDD_IAC_LOCKDOWN.md) - Testing and deployment standards
+6. [Audit Infrastructure](audit/README.md) - DevLT, receipts, failure modes
 
 ### "I want to understand the system design"
 1. [Architecture](ARCHITECTURE.md) - Complete architecture overview
 2. [API Quick Reference](API_QUICK_REFERENCE.md) - API structure
-3. [Prosody Guide](PROSODY.md) - Feature extraction details
+3. [Data Flow Analysis](DATA_FLOW_ANALYSIS.md) - Data transformations
+4. [Prosody Guide](PROSODY.md) - Feature extraction details
 
 ### "I encountered an error"
 1. [Troubleshooting](TROUBLESHOOTING.md) - Common issues
@@ -315,7 +415,7 @@ Found an error or want to improve the docs? See [CONTRIBUTING.md](../CONTRIBUTIN
 
 ## Documentation Status
 
-### Complete ✅
+### Complete
 - Core documentation (README, CHANGELOG, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT)
 - Configuration guide (defaults, environment variables, config files, CLI flags, precedence)
 - API and CLI references
@@ -324,10 +424,12 @@ Found an error or want to improve the docs? See [CONTRIBUTING.md](../CONTRIBUTIN
 - Audio enrichment documentation
 - Prosody documentation
 - Examples documentation
-- Benchmarks documentation
+- Benchmarks documentation (including semantic benchmarks)
 - Docker and deployment guides
+- LLM integration documentation (including semantic annotator)
+- Streaming documentation
 
-### Archived 📦
+### Archived
 - Transformation and verification reports (docs/archive/)
 - Statistics and metrics reports (docs/archive/)
 - Historical test plans (docs/archive/)
@@ -344,6 +446,8 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 - **Examples**: Browse examples/ directory or example README files
 - **Error messages**: Search error text in TROUBLESHOOTING.md
 - **Deployment**: Check DOCKER.md or DOCKER_DEPLOYMENT_GUIDE.md
+- **Benchmarks**: Check BENCHMARKS.md or SEMANTIC_BENCHMARK.md
+- **LLM integration**: Check LLM_PROMPT_PATTERNS.md or LLM_SEMANTIC_ANNOTATOR.md
 
 ---
 

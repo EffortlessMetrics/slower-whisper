@@ -18,7 +18,7 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 | API Polish Bundle | 📋 Ready to Start | Begin #70 |
 | Track 1: Benchmarks | 🔄 In Progress | Complete #99 (CI integration) |
 | Track 2: Streaming | 📋 Ready to Start | Begin #133 |
-| Track 3: Semantics | 🔄 In Progress | Complete #88, begin #90 |
+| Track 3: Semantics | 🔄 In Progress | Begin #90 (cloud LLM interface) |
 
 ---
 
@@ -71,7 +71,7 @@ All v1.9.x deliverables shipped:
 
 P95 latency harness moves to Track 1 ([#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97)).
 
-### B) API Polish Bundle — 🔄 In Progress
+### B) API Polish Bundle — 📋 Ready to Start
 
 Ship as **one coherent PR** (high adoption value, low risk):
 
@@ -176,7 +176,7 @@ Track 2: Streaming (#133 → #134 → #84)
 
 ### Track 1: Benchmark Foundations
 
-**Status:** 🔄 In Progress — evaluation runners implemented, baselines & CI integration remaining
+**Status:** 🔄 In Progress — all evaluation runners complete, CI integration remaining
 
 Benchmarks must exist before streaming work can be measured.
 
@@ -190,7 +190,7 @@ Benchmarks must exist before streaming work can be measured.
 
 **Also implemented:**
 
-- `EmotionBenchmarkRunner` (#187): Categorical emotion accuracy, F1, confusion matrix
+- ✅ `EmotionBenchmarkRunner` (#187): Categorical emotion accuracy, F1, confusion matrix
 
 **Supporting:**
 
@@ -462,7 +462,7 @@ All streaming events share this envelope:
 
 ### Track 3: Semantics Adapter Skeleton
 
-**Status:** 🔄 In Progress — annotation schema and adapter protocol implemented
+**Status:** 🔄 In Progress — annotation schema and adapter protocol complete, cloud LLM interface next
 
 **Approach:** Contract-first — interfaces before backends.
 
