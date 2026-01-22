@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Semantic Adapter Protocol**: New `SemanticAdapter` protocol and annotation schema for pluggable semantic analysis backends
+  - `SemanticAdapter` protocol defining standard interface for annotation providers
+  - `SemanticAnnotation` dataclass with normalized fields (topics, intent, sentiment, action_items, risk_tags)
+  - Schema versioning support for forward compatibility
+  - Foundation for Track 3 LLM integration work (#88)
 - **Benchmark Evaluation Framework**: Complete evaluation infrastructure for all benchmark tracks
   - **ASR Evaluation** (`ASRBenchmarkRunner`): WER/CER computation using jiwer with proper text normalization (#186)
   - **Diarization Evaluation** (`DiarizationBenchmarkRunner`): DER/JER/speaker count metrics using pyannote.metrics (#189)

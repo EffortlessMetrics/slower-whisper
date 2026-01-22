@@ -18,7 +18,7 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 | API Polish Bundle | 📋 Ready to Start | Begin #70 |
 | Track 1: Benchmarks | 🔄 In Progress | Complete #99 (CI integration) |
 | Track 2: Streaming | 📋 Ready to Start | Begin #133 |
-| Track 3: Semantics | 📋 Ready to Start | Begin #88 |
+| Track 3: Semantics | 🔄 In Progress | Complete #88, begin #90 |
 
 ---
 
@@ -47,7 +47,7 @@ nix-clean flake check        # Nix checks
 
 | Version | Highlights |
 |---------|------------|
-| **Unreleased** | Benchmark evaluation framework (ASR/DER/emotion/streaming), baseline infrastructure (#137), Anthropic LLM provider, parallel audio normalization |
+| **Unreleased** | Semantic adapter protocol (#88), benchmark evaluation framework (ASR/DER/emotion/streaming), baseline infrastructure (#137), Anthropic LLM provider, parallel audio normalization |
 | **v1.9.2** | Version constant fix (`transcription.__version__` now correct) |
 | **v1.9.1** | GPU UX (`--device auto` default, preflight banner), CI caching fixes |
 | **v1.9.0** | Streaming callbacks (`StreamCallbacks` protocol), safe callback execution |
@@ -462,13 +462,13 @@ All streaming events share this envelope:
 
 ### Track 3: Semantics Adapter Skeleton
 
-**Status:** ⏳ Blocked on Track 2 (needs stable Turn/Chunk model)
+**Status:** 🔄 In Progress — annotation schema and adapter protocol implemented
 
 **Approach:** Contract-first — interfaces before backends.
 
 | Order | Issue | Deliverable | Status |
 |-------|-------|-------------|--------|
-| 1 | [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88) | LLM annotation schema + versioning | ⬜ |
+| 1 | [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88) | LLM annotation schema + versioning | ✅ `SemanticAdapter` protocol + `SemanticAnnotation` schema |
 | 2 | [#90](https://github.com/EffortlessMetrics/slower-whisper/issues/90) | Cloud LLM interface (OpenAI/Anthropic) | ⬜ |
 | 3 | [#91](https://github.com/EffortlessMetrics/slower-whisper/issues/91) | Guardrails (rate limits, cost, PII) | ⬜ |
 | 4 | [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92) | Golden files + contract tests | ⬜ |
