@@ -862,9 +862,11 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
             print(f"  ... and {len(failures) - 5} more")
 
     # Suggest next steps if any files were successfully processed
-    if result.processed > 0 or result.skipped > 0:
+    if result.processed > 0 or result.skipped > 0 or result.diarized_only > 0:
         print(f"\n{Colors.bold('Next steps:')}")
-        print(f"  Run stage 2 enrichment:  {Colors.cyan('slower-whisper enrich')}")
+        # Include --root if non-default to make the command copy-pasteable
+        root_arg = f" --root {root}" if root != Path(".") else ""
+        print(f"  Run stage 2 enrichment:  {Colors.cyan(f'slower-whisper enrich{root_arg}')}")
 
     if result.failed > 0:
         return 1
@@ -976,7 +978,7 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
     if enriched_count > 0 or skipped_count > 0:
         print(f"\n{Colors.bold('Next steps:')}")
         print(
-            f"  Export transcripts:      {Colors.cyan('slower-whisper export <transcript.json> --format csv')}"
+            f"  Export transcripts:      {Colors.cyan('slower-whisper export path/to/transcript.json --format csv')}"
         )
 
     if failed_count > 0:
