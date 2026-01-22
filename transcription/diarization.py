@@ -460,6 +460,9 @@ def assign_speakers(
     # Per-speaker aggregates for building speakers[] array
     speaker_stats: dict[str, dict[str, Any]] = {}
 
+    # Sort turns by start time for optimized search
+    speaker_turns.sort(key=lambda t: t.start)
+
     # Assign speakers to each segment
     for segment in transcript.segments:
         seg_start = segment.start
@@ -476,6 +479,15 @@ def assign_speakers(
         max_overlap_duration = 0.0
 
         for turn in speaker_turns:
+            # Optimization: Since turns are sorted by start time,
+            # if a turn starts after the segment ends, all subsequent turns also will.
+            if turn.start >= seg_end:
+                break
+
+            # Optimization: Skip turns that end before the segment starts
+            if turn.end <= seg_start:
+                continue
+
             overlap_duration = _compute_overlap(seg_start, seg_end, turn.start, turn.end)
 
             if overlap_duration > max_overlap_duration:
@@ -558,7 +570,20 @@ def assign_speakers_to_words(
     # Per-speaker aggregates
     speaker_stats: dict[str, dict[str, Any]] = {}
 
+    # Sort turns by start time for optimized search
+    speaker_turns.sort(key=lambda t: t.start)
+
     for segment in transcript.segments:
+        # Optimization: Filter turns relevant to this segment once
+        # This drastically reduces the number of turns checked for each word.
+        # Since speaker_turns is sorted, we can use early break in iteration.
+        relevant_turns: list[SpeakerTurn] = []
+        for t in speaker_turns:
+            if t.start >= segment.end:
+                break
+            if t.end > segment.start:
+                relevant_turns.append(t)
+
         if not segment.words:
             # Fall back to segment-level assignment if no words
             seg_duration = segment.end - segment.start
@@ -567,7 +592,7 @@ def assign_speakers_to_words(
                 continue
 
             best_speaker_id, max_overlap = _find_best_speaker(
-                segment.start, segment.end, speaker_turns
+                segment.start, segment.end, relevant_turns
             )
             overlap_ratio = max_overlap / seg_duration if seg_duration > 0 else 0.0
 
@@ -588,7 +613,7 @@ def assign_speakers_to_words(
             if word_duration <= 0:
                 continue
 
-            best_speaker_id, max_overlap = _find_best_speaker(word.start, word.end, speaker_turns)
+            best_speaker_id, max_overlap = _find_best_speaker(word.start, word.end, relevant_turns)
             overlap_ratio = max_overlap / word_duration if word_duration > 0 else 0.0
 
             if overlap_ratio >= overlap_threshold and best_speaker_id is not None:
@@ -629,11 +654,23 @@ def assign_speakers_to_words(
 def _find_best_speaker(
     start: float, end: float, speaker_turns: list[SpeakerTurn]
 ) -> tuple[str | None, float]:
-    """Find speaker with maximum overlap for a time range."""
+    """Find speaker with maximum overlap for a time range.
+
+    Assumes speaker_turns is sorted by start time (or is a relevant subset) for optimization.
+    """
     best_speaker_id: str | None = None
     max_overlap_duration = 0.0
 
     for turn in speaker_turns:
+        # Optimization: Since turns are sorted by start time,
+        # if a turn starts after the range ends, all subsequent turns will also start after.
+        if turn.start >= end:
+            break
+
+        # Optimization: Skip turns that end before the range starts
+        if turn.end <= start:
+            continue
+
         overlap_duration = _compute_overlap(start, end, turn.start, turn.end)
 
         if overlap_duration > max_overlap_duration:
