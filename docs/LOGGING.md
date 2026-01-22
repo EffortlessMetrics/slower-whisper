@@ -292,12 +292,12 @@ Common extra fields used across modules:
 | `output` | str | `"interview.wav"` | audio_io |
 | `device` | str | `"cuda"` | asr_engine, service |
 | `compute_type` | str | `"float16"` | asr_engine, service |
-| `index` | int | `1` | audio_enrich_cli |
-| `total` | int | `10` | audio_enrich_cli |
+| `index` | int | `1` | cli |
+| `total` | int | `10` | cli |
 | `request_id` | str | `"550e8400-..."` | service |
 | `status_code` | int | `200` | service |
 | `duration_ms` | float | `1234.56` | service |
-| `error` | str | `"File not found"` | audio_enrich_cli, service |
+| `error` | str | `"File not found"` | cli, service |
 
 ### Examples
 

@@ -133,9 +133,6 @@ FROM base AS runtime
 COPY --link --from=builder /opt/venv /opt/venv
 COPY --link --from=builder /app /app
 
-# Copy legacy entry points for backward compatibility
-COPY scripts/transcribe_pipeline.py scripts/audio_enrich.py /app/
-
 # Create data directories
 # These will typically be mounted as volumes
 RUN mkdir -p /app/raw_audio /app/input_audio /app/transcripts /app/whisper_json && \
@@ -205,12 +202,6 @@ CMD ["--help"]
 # Verify GPU is accessible:
 #   docker run --rm --gpus all slower-whisper:gpu \
 #     python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device count: {torch.cuda.device_count()}')"
-#
-# Using legacy entry point (backward compatibility):
-#   docker run --rm --gpus all \
-#     -v $(pwd)/raw_audio:/app/raw_audio \
-#     slower-whisper:gpu \
-#     python transcribe_pipeline.py --device cuda
 #
 # =============================================================================
 # Development Build:

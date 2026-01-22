@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Security (Argument Injection)**: Hardened dogfood CLI subprocess calls against argument injection attacks (#196)
 
+### Removed
+
+- **Deprecated CLI flag** (#59): Removed `--enrich-config` alias from `slower-whisper enrich` command. Use `--config` instead.
+- **Legacy scripts** (#59): Removed `scripts/transcribe_pipeline.py` and `scripts/audio_enrich.py`. Use `slower-whisper transcribe` and `slower-whisper enrich` CLI commands.
+- **Legacy entry point** (#59): Removed `slower-whisper-enrich` command. Use `slower-whisper enrich` instead.
+- **Legacy module** (#59): Removed `transcription/audio_enrich_cli.py`. The unified CLI in `transcription/cli.py` handles all commands.
+
 ### Developer Experience
 
 - **Test Portability**: Added `normalize_all` mocking to allow tests to pass without ffmpeg installed (#185)

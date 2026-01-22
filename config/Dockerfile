@@ -130,9 +130,6 @@ COPY --chown=appuser:appuser scripts/ /app/scripts/
 COPY --chown=appuser:appuser integrations/ /app/integrations/
 COPY --chown=appuser:appuser pyproject.toml /app/
 
-# Copy legacy entry points for backward compatibility
-COPY --chown=appuser:appuser scripts/transcribe_pipeline.py scripts/audio_enrich.py /app/
-
 # Create data directories
 # These will typically be mounted as volumes
 RUN mkdir -p /app/raw_audio /app/input_audio /app/transcripts /app/whisper_json && \
@@ -191,12 +188,6 @@ CMD ["--help"]
 #     -v $(pwd)/raw_audio:/app/raw_audio \
 #     slower-whisper:cpu \
 #     /bin/bash
-#
-# Using legacy entry point (backward compatibility):
-#   docker run --rm \
-#     -v $(pwd)/raw_audio:/app/raw_audio \
-#     slower-whisper:cpu \
-#     python transcribe_pipeline.py --help
 #
 # =============================================================================
 # Development Build:

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "callhome-english",
+  "track": "diarization",
+  "split": "test",
+  "description": "CALLHOME American English corpus - conversational telephone speech for speaker diarization",
+  "source": {
+    "name": "CALLHOME American English Speech",
+    "url": "https://catalog.ldc.upenn.edu/LDC97S42",
+    "citation": "CALLHOME American English Speech, Linguistic Data Consortium, 1997"
+  },
+  "license": {
+    "id": "LDC",
+    "name": "LDC User Agreement for Non-Members",
+    "url": "https://catalog.ldc.upenn.edu/license/ldc-non-members-agreement.pdf",
+    "notes": "Commercial license required. Academic use may require institutional LDC membership."
+  },
+  "download": {
+    "method": "manual",
+    "instructions_url": "https://catalog.ldc.upenn.edu/LDC97S42",
+    "notes": "CALLHOME requires LDC membership or purchase. Not freely downloadable."
+  },
+  "audio_format": {
+    "sample_rate": 8000,
+    "channels": 2,
+    "encoding": "sphere",
+    "bit_depth": 16,
+    "notes": "Original format is NIST SPHERE. Convert to WAV for processing."
+  },
+  "annotation_format": {
+    "type": "rttm",
+    "source": "manual",
+    "notes": "Reference RTTM derived from CALLHOME transcriptions with speaker labels"
+  },
+  "samples": [],
+  "sample_discovery": {
+    "method": "splits_file",
+    "splits_file": "splits/test.txt",
+    "audio_pattern": "audio/{call_id}.wav",
+    "rttm_pattern": "rttm/{call_id}.rttm",
+    "notes": "Call IDs listed in splits file. Audio and RTTM follow naming convention."
+  },
+  "meta": {
+    "created_at": "2026-01-21T00:00:00Z",
+    "total_duration_hours": 2.5,
+    "sample_count": 20,
+    "speaker_count_per_call": 2,
+    "language": "en",
+    "domain": "telephone",
+    "speech_type": "spontaneous",
+    "quality": "narrowband",
+    "notes": "Telephone conversations between family members or friends. 8kHz narrowband audio. Standard diarization benchmark alongside AMI."
+  }
+}

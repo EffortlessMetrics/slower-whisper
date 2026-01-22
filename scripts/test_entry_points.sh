@@ -73,14 +73,12 @@ echo ""
 echo "📖 Help Output"
 echo "----------------------------------------"
 test_command "slower-whisper --help" "slower-whisper --help"
-test_command "slower-whisper-enrich --help" "slower-whisper-enrich --help"
 echo ""
 
 # Test 4: Verify module imports
 echo "🐍 Python Module Imports"
 echo "----------------------------------------"
 test_command "Import transcription.cli" "python3 -c 'from transcription.cli import main'"
-test_command "Import transcription.audio_enrich_cli" "python3 -c 'from transcription.audio_enrich_cli import main'"
 echo ""
 
 # Test 5: Check dependencies

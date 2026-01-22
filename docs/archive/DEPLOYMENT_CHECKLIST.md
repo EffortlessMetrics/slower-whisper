@@ -101,7 +101,6 @@ This checklist ensures slower-whisper is deployment-ready across all environment
 
 - [ ] **Entry points configured**
   - `slower-whisper` → `transcription.cli:main` (unified CLI)
-  - `slower-whisper-enrich` → `transcription.audio_enrich_cli:main` (legacy)
 
 ### Version Numbers
 

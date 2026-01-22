@@ -35,7 +35,7 @@
 uv run slower-whisper transcribe --config examples/config_examples/transcription_production.json
 
 # Enrichment
-uv run slower-whisper enrich --enrich-config examples/config_examples/enrichment_full.json
+uv run slower-whisper enrich --config examples/config_examples/enrichment_full.json
 
 # Override specific values
 uv run slower-whisper transcribe \
@@ -98,7 +98,7 @@ uv run slower-whisper transcribe \
   --config examples/config_examples/transcription_dev_testing.json
 
 uv run slower-whisper enrich \
-  --enrich-config examples/config_examples/enrichment_dev_testing.json
+  --config examples/config_examples/enrichment_dev_testing.json
 ```
 
 ### Scenario 2: Production Deployment
@@ -110,7 +110,7 @@ uv run slower-whisper transcribe \
   --root /data/production
 
 uv run slower-whisper enrich \
-  --enrich-config examples/config_examples/enrichment_production.json \
+  --config examples/config_examples/enrichment_production.json \
   --root /data/production
 ```
 

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "librispeech-test-clean",
+  "track": "asr",
+  "split": "test",
+  "description": "LibriSpeech test-clean subset - high-quality read English speech from audiobooks",
+  "source": {
+    "name": "LibriSpeech ASR Corpus",
+    "url": "https://www.openslr.org/12/",
+    "citation": "Panayotov et al., LibriSpeech: An ASR Corpus Based on Public Domain Audio Books, ICASSP 2015"
+  },
+  "license": {
+    "id": "CC-BY-4.0",
+    "name": "Creative Commons Attribution 4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "download": {
+    "url": "https://www.openslr.org/resources/12/test-clean.tar.gz",
+    "sha256": "39fde525e59672dc6d1551919b1478f724438a95aa55f874b576be21967e6c23",
+    "size_bytes": 346663984,
+    "format": "tar.gz",
+    "extraction_path": "LibriSpeech/test-clean"
+  },
+  "audio_format": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "encoding": "flac",
+    "bit_depth": 16
+  },
+  "samples": [],
+  "sample_discovery": {
+    "method": "filesystem",
+    "pattern": "**/*.flac",
+    "transcript_pattern": "**/*.trans.txt",
+    "transcript_format": "librispeech",
+    "notes": "Samples are discovered from extracted archive. Each speaker/chapter directory contains .flac files and a .trans.txt file with space-separated ID and normalized transcript."
+  },
+  "meta": {
+    "created_at": "2026-01-21T00:00:00Z",
+    "total_duration_hours": 5.4,
+    "sample_count": 2620,
+    "speaker_count": 40,
+    "language": "en",
+    "domain": "audiobook",
+    "speech_type": "read",
+    "quality": "clean",
+    "notes": "High-quality recordings from volunteer readers of public domain audiobooks. Test-clean contains the cleanest subset of the test data."
+  }
+}

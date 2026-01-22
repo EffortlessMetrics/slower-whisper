@@ -1,7 +1,7 @@
 # Streaming Architecture
 
 **Version:** v1.9.0 (with v2.0.0 planned features)
-**Last Updated:** 2025-12-31
+**Last Updated:** 2026-01-21
 
 This document provides comprehensive documentation for slower-whisper's streaming architecture, covering the real-time transcription pipeline, enrichment layers, and semantic annotation.
 
@@ -19,6 +19,15 @@ This document provides comprehensive documentation for slower-whisper's streamin
 8. [Examples](#examples)
 9. [Integration Patterns](#integration-patterns)
 10. [Monitoring and Metrics](#monitoring-and-metrics)
+11. [Event Envelope Specification (v2.0.0)](#event-envelope-specification-v200)
+    - [Event Envelope Structure](#event-envelope-structure)
+    - [ID Contracts](#id-contracts)
+    - [Event Types Specification](#event-types-specification)
+    - [Ordering Guarantees](#ordering-guarantees)
+    - [Backpressure Contract](#backpressure-contract)
+    - [Resume Contract](#resume-contract-v20--best-effort)
+    - [Security Posture](#security-posture-v20)
+    - [JSON Schema Reference](#json-schema-reference)
 
 ---
 
@@ -1759,6 +1768,825 @@ handler.setFormatter(logging.Formatter(
 
 ---
 
+## Event Envelope Specification (v2.0.0)
+
+This section provides the complete protocol specification for WebSocket streaming events. All server-to-client messages use a consistent envelope format that enables reliable event ordering, resumption, and backpressure handling.
+
+**Reference Implementation:** `transcription/streaming_ws.py`
+
+---
+
+### Event Envelope Structure
+
+Every server-to-client message is wrapped in an `EventEnvelope` that provides consistent metadata:
+
+```json
+{
+  "event_id": 42,
+  "stream_id": "str-550e8400-e29b-41d4-a716-446655440000",
+  "segment_id": "seg-007",
+  "type": "FINALIZED",
+  "ts_server": 1736251200123,
+  "ts_audio_start": 10.5,
+  "ts_audio_end": 14.2,
+  "payload": {
+    "segment": {
+      "start": 10.5,
+      "end": 14.2,
+      "text": "Hello, how can I help you today?",
+      "speaker_id": "spk_0",
+      "audio_state": null
+    }
+  }
+}
+```
+
+#### Field Reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `event_id` | integer | yes | Monotonically increasing counter per stream |
+| `stream_id` | string | yes | Unique stream identifier (format: `str-{uuid4}`) |
+| `segment_id` | string | no | Segment identifier (format: `seg-{seq}`), null for non-segment events |
+| `type` | string | yes | Event type (see [Event Types](#event-types-specification)) |
+| `ts_server` | integer | yes | Server timestamp in Unix epoch milliseconds |
+| `ts_audio_start` | float | no | Audio timestamp start in seconds, null for non-audio events |
+| `ts_audio_end` | float | no | Audio timestamp end in seconds, null for non-audio events |
+| `payload` | object | yes | Event-type-specific payload data |
+
+---
+
+### ID Contracts
+
+The protocol uses three distinct identifier types with specific guarantees:
+
+#### stream_id
+
+| Property | Specification |
+|----------|---------------|
+| **Format** | `str-{uuid4}` (e.g., `str-550e8400-e29b-41d4-a716-446655440000`) |
+| **Scope** | Per WebSocket connection |
+| **Uniqueness** | Globally unique across all streams |
+| **Lifetime** | Created at `SESSION_STARTED`, immutable for session duration |
+| **Generation** | Server-side only, using UUID v4 |
+
+```python
+# Example generation (from streaming_ws.py)
+stream_id = f"str-{uuid.uuid4()}"
+```
+
+#### event_id
+
+| Property | Specification |
+|----------|---------------|
+| **Format** | Positive integer starting at 1 |
+| **Scope** | Per stream (scoped to `stream_id`) |
+| **Uniqueness** | Unique within a single stream |
+| **Ordering** | Strictly monotonically increasing |
+| **Reset** | Never resets within a stream session |
+| **Guarantees** | If `event_id=N` is received, all events 1 to N-1 have been sent |
+
+```python
+# Example counter increment (from streaming_ws.py)
+def _next_event_id(self) -> int:
+    """Generate next monotonically increasing event ID."""
+    self._event_id_counter += 1
+    return self._event_id_counter
+```
+
+#### segment_id
+
+| Property | Specification |
+|----------|---------------|
+| **Format** | `seg-{seq}` where seq is a zero-indexed sequence number (e.g., `seg-0`, `seg-007`) |
+| **Scope** | Per stream |
+| **Uniqueness** | Unique within a single stream |
+| **Stability** | Same `segment_id` used for all PARTIAL events until FINALIZED |
+| **Correlation** | Links PARTIAL events to their final FINALIZED event |
+
+```python
+# Example generation (from streaming_ws.py)
+def _next_segment_id(self) -> str:
+    """Generate next segment ID."""
+    seg_id = f"seg-{self._segment_seq}"
+    self._segment_seq += 1
+    return seg_id
+```
+
+**Segment ID Lifecycle:**
+
+```
+PARTIAL  (segment_id: seg-0)  → text: "Hello"
+PARTIAL  (segment_id: seg-0)  → text: "Hello world"
+FINALIZED (segment_id: seg-0) → text: "Hello world, how are you?"
+PARTIAL  (segment_id: seg-1)  → text: "I'm"
+...
+```
+
+---
+
+### Event Types Specification
+
+The server emits five event types, each with a specific purpose and payload schema:
+
+#### PARTIAL
+
+Emitted when ASR produces an intermediate transcription result for an in-progress segment.
+
+```json
+{
+  "event_id": 5,
+  "stream_id": "str-abc123",
+  "segment_id": "seg-2",
+  "type": "PARTIAL",
+  "ts_server": 1736251200123,
+  "ts_audio_start": 4.5,
+  "ts_audio_end": 6.2,
+  "payload": {
+    "segment": {
+      "start": 4.5,
+      "end": 6.2,
+      "text": "Thank you for",
+      "speaker_id": "spk_0"
+    },
+    "confidence": 0.85
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `segment.start` | float | yes | Segment start time (seconds) |
+| `segment.end` | float | yes | Current segment end time (seconds) |
+| `segment.text` | string | yes | Current transcribed text (may change) |
+| `segment.speaker_id` | string | no | Speaker identifier, null if not available |
+| `confidence` | float | no | ASR confidence score (0.0-1.0) |
+
+**Guarantees:**
+- Text may grow or change with subsequent PARTIAL events
+- Same `segment_id` may emit multiple PARTIAL events
+- Always followed by exactly one FINALIZED event with same `segment_id`
+- Can be dropped under backpressure (see [Backpressure Contract](#backpressure-contract))
+
+---
+
+#### FINALIZED
+
+Emitted when a segment is complete and will not change.
+
+```json
+{
+  "event_id": 8,
+  "stream_id": "str-abc123",
+  "segment_id": "seg-2",
+  "type": "FINALIZED",
+  "ts_server": 1736251203456,
+  "ts_audio_start": 4.5,
+  "ts_audio_end": 8.3,
+  "payload": {
+    "segment": {
+      "start": 4.5,
+      "end": 8.3,
+      "text": "Thank you for calling customer support.",
+      "speaker_id": "spk_0",
+      "audio_state": {
+        "prosody": {
+          "pitch": {"level": "neutral", "mean_hz": 185.2},
+          "energy": {"level": "moderate", "mean_db": -22.5}
+        },
+        "emotion": {
+          "valence": {"level": "neutral", "score": 0.45}
+        },
+        "rendering": "[audio: neutral pitch, moderate volume]"
+      }
+    }
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `segment.start` | float | yes | Final segment start time (seconds) |
+| `segment.end` | float | yes | Final segment end time (seconds) |
+| `segment.text` | string | yes | Final transcribed text (immutable) |
+| `segment.speaker_id` | string | no | Speaker identifier |
+| `segment.audio_state` | object | no | Audio enrichment data (if enabled) |
+
+**Guarantees:**
+- Text is final and will not change
+- Exactly one FINALIZED event per `segment_id`
+- `audio_state` populated if enrichment was enabled and succeeded
+- Never dropped under backpressure (see [Backpressure Contract](#backpressure-contract))
+
+---
+
+#### SPEAKER_TURN
+
+Emitted when a speaker turn boundary is detected (speaker change or significant pause).
+
+```json
+{
+  "event_id": 12,
+  "stream_id": "str-abc123",
+  "segment_id": null,
+  "type": "SPEAKER_TURN",
+  "ts_server": 1736251210789,
+  "ts_audio_start": 0.0,
+  "ts_audio_end": 15.5,
+  "payload": {
+    "turn": {
+      "id": "turn-3",
+      "speaker_id": "spk_1",
+      "start": 0.0,
+      "end": 15.5,
+      "segment_ids": ["seg-0", "seg-1", "seg-2"],
+      "text": "Hello, thank you for calling. How can I help you today?"
+    },
+    "previous_speaker": "spk_0"
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `turn.id` | string | yes | Turn identifier (format: `turn-{seq}`) |
+| `turn.speaker_id` | string | yes | Speaker identifier for this turn |
+| `turn.start` | float | yes | Turn start time (seconds) |
+| `turn.end` | float | yes | Turn end time (seconds) |
+| `turn.segment_ids` | array | yes | List of segment IDs comprising this turn |
+| `turn.text` | string | yes | Concatenated text from all segments |
+| `previous_speaker` | string | no | Previous speaker ID (null for first turn) |
+
+**Guarantees:**
+- Emitted after the FINALIZED event that closed the turn
+- Contains references to all segment IDs in the turn
+- Never dropped under backpressure
+
+---
+
+#### SEMANTIC_UPDATE
+
+Emitted when semantic annotation completes for a finalized turn.
+
+```json
+{
+  "event_id": 15,
+  "stream_id": "str-abc123",
+  "segment_id": null,
+  "type": "SEMANTIC_UPDATE",
+  "ts_server": 1736251215000,
+  "ts_audio_start": 0.0,
+  "ts_audio_end": 15.5,
+  "payload": {
+    "turn_id": "turn-3",
+    "keywords": ["customer support", "help", "inquiry"],
+    "risk_tags": [],
+    "actions": [
+      {
+        "text": "provide assistance",
+        "pattern": "imperative",
+        "confidence": 0.78
+      }
+    ],
+    "question_count": 1,
+    "intent": "greeting",
+    "sentiment": "neutral",
+    "context_size": 3
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `turn_id` | string | yes | Reference to the annotated turn |
+| `keywords` | array | yes | Extracted keywords/phrases |
+| `risk_tags` | array | yes | Risk indicators (e.g., "churn_risk", "escalation") |
+| `actions` | array | yes | Detected action items |
+| `question_count` | integer | yes | Number of questions in turn |
+| `intent` | string | no | Classified intent (if available) |
+| `sentiment` | string | no | Sentiment classification |
+| `context_size` | integer | yes | Current context window size |
+
+**Guarantees:**
+- Only emitted for finalized turns (not segments)
+- Emitted after corresponding SPEAKER_TURN event
+- May be dropped under extreme backpressure (after PARTIAL events)
+
+---
+
+#### ERROR
+
+Emitted when a recoverable or fatal error occurs during processing.
+
+```json
+{
+  "event_id": 20,
+  "stream_id": "str-abc123",
+  "segment_id": "seg-5",
+  "type": "ERROR",
+  "ts_server": 1736251220000,
+  "ts_audio_start": 25.0,
+  "ts_audio_end": 27.5,
+  "payload": {
+    "code": "ASR_TIMEOUT",
+    "message": "ASR processing timed out for audio segment",
+    "recoverable": true,
+    "details": {
+      "timeout_ms": 5000,
+      "audio_duration_sec": 2.5
+    }
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `code` | string | yes | Error code identifier |
+| `message` | string | yes | Human-readable error description |
+| `recoverable` | boolean | yes | Whether the client can continue |
+| `details` | object | no | Additional error-specific context |
+
+**Standard Error Codes:**
+
+| Code | Recoverable | Description |
+|------|-------------|-------------|
+| `ASR_TIMEOUT` | yes | ASR processing exceeded timeout |
+| `ASR_FAILURE` | yes | ASR engine returned an error |
+| `ENRICHMENT_FAILURE` | yes | Audio enrichment failed |
+| `SEQUENCE_ERROR` | no | Chunk sequence violation |
+| `BUFFER_OVERFLOW` | yes | Event buffer overflow (events dropped) |
+| `RESUME_GAP` | yes | Resume failed, gap in event history |
+| `SESSION_ERROR` | no | Unrecoverable session error |
+| `INVALID_MESSAGE` | yes | Client message parsing failed |
+
+**Guarantees:**
+- Never dropped under backpressure
+- `recoverable: false` indicates client should close connection
+
+---
+
+### Ordering Guarantees
+
+The protocol provides five specific ordering guarantees that clients can rely on:
+
+#### Guarantee 1: Monotonic event_id
+
+> `event_id` is monotonically increasing per stream
+
+```
+event_id=1 → event_id=2 → event_id=3 → ...
+```
+
+- Clients will never receive `event_id=N` after receiving `event_id=M` where M > N
+- Gaps in `event_id` indicate dropped events (PARTIAL under backpressure)
+- No event with `event_id` < previously received `event_id` will ever arrive
+
+#### Guarantee 2: PARTIAL before FINALIZED
+
+> `PARTIAL` events for a segment arrive before its `FINALIZED` event
+
+```
+PARTIAL  (seg-0) → PARTIAL  (seg-0) → FINALIZED (seg-0)
+```
+
+- Zero or more PARTIAL events precede each FINALIZED
+- Same `segment_id` used throughout the segment lifecycle
+- Clients can safely replace partial text when FINALIZED arrives
+
+#### Guarantee 3: Monotonic FINALIZED audio timestamps
+
+> `FINALIZED` events are monotonic in `ts_audio_start`
+
+```
+FINALIZED (ts_audio_start=0.0) → FINALIZED (ts_audio_start=4.5) → FINALIZED (ts_audio_start=10.2)
+```
+
+- Audio timeline progresses forward
+- Enables correct transcript ordering even if network reorders packets
+- Exception: End-of-stream may finalize buffered audio retroactively
+
+#### Guarantee 4: SPEAKER_TURN after closing FINALIZED
+
+> `SPEAKER_TURN` events arrive after the `FINALIZED` event that closed the turn
+
+```
+FINALIZED (seg-2) → SPEAKER_TURN (turn-1, segment_ids=[seg-0, seg-1, seg-2])
+```
+
+- SPEAKER_TURN references only finalized segments
+- All `segment_ids` in the turn have been finalized
+- Enables reliable turn aggregation
+
+#### Guarantee 5: No out-of-order event_id
+
+> No event arrives with `event_id` < previously received `event_id`
+
+- The server guarantees strict ordering at the protocol level
+- Network-level reordering is resolved before delivery
+- If detected client-side, indicates protocol violation
+
+**Client Implementation Pattern:**
+
+```python
+class OrderedEventProcessor:
+    def __init__(self):
+        self.last_event_id = 0
+        self.pending_partials: dict[str, dict] = {}
+
+    def process_event(self, event: dict) -> None:
+        event_id = event["event_id"]
+
+        # Validate ordering guarantee #5
+        if event_id <= self.last_event_id:
+            raise ProtocolError(f"Out-of-order event: {event_id} <= {self.last_event_id}")
+
+        # Detect dropped events (gap in event_id)
+        if event_id > self.last_event_id + 1:
+            dropped_count = event_id - self.last_event_id - 1
+            self.on_events_dropped(dropped_count)
+
+        self.last_event_id = event_id
+
+        # Route by type
+        event_type = event["type"]
+        if event_type == "PARTIAL":
+            self.pending_partials[event["segment_id"]] = event
+        elif event_type == "FINALIZED":
+            # Clear any pending partials for this segment
+            self.pending_partials.pop(event["segment_id"], None)
+            self.on_segment_finalized(event)
+```
+
+---
+
+### Backpressure Contract
+
+When the server produces events faster than the client can consume them, the backpressure contract governs what happens:
+
+#### Configuration
+
+| Parameter | Default | Configurable | Description |
+|-----------|---------|--------------|-------------|
+| `buffer_size` | 100 | yes | Maximum events buffered before drop policy activates |
+| `drop_policy` | `partial_first` | yes | Strategy for dropping events when buffer full |
+| `finalized_drop` | `never` | no | FINALIZED events are never dropped |
+
+#### Drop Priority
+
+When the event buffer reaches `buffer_size`, events are dropped in this priority order:
+
+1. **Drop oldest `PARTIAL` events first** — Partials are superseded by FINALIZED anyway
+2. **Drop oldest `SEMANTIC_UPDATE` events second** — Semantic data is supplementary
+3. **`FINALIZED` and `ERROR` are never dropped** — Critical for correctness
+
+```
+Buffer: [P1, P2, F1, S1, P3, E1, F2, P4]
+         ↑                              ↑
+       oldest                        newest
+
+On overflow:
+  - Drop P1 first (oldest PARTIAL)
+  - Then P2 (next PARTIAL)
+  - Then S1 (oldest SEMANTIC_UPDATE)
+  - F1, E1, F2 are protected
+```
+
+#### Backpressure Signals
+
+The server signals backpressure conditions via ERROR events:
+
+```json
+{
+  "type": "ERROR",
+  "payload": {
+    "code": "BUFFER_OVERFLOW",
+    "message": "Event buffer overflow: 15 PARTIAL events dropped",
+    "recoverable": true,
+    "details": {
+      "dropped_count": 15,
+      "dropped_types": {"PARTIAL": 12, "SEMANTIC_UPDATE": 3},
+      "buffer_size": 100
+    }
+  }
+}
+```
+
+#### Client Mitigation Strategies
+
+1. **Faster consumption** — Process events asynchronously, don't block on I/O
+2. **Request larger buffer** — Negotiate higher `buffer_size` at session start
+3. **Accept partial loss** — Design UI to handle missing intermediate updates
+4. **Implement flow control** — Pause audio submission if consistently dropping
+
+---
+
+### Resume Contract (v2.0 — Best Effort)
+
+The resume protocol enables clients to recover from brief disconnections without losing events:
+
+#### Resume Flow
+
+```
+Client                                          Server
+   │                                               │
+   │  WS DISCONNECT (network blip)                 │
+   │× ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ×│
+   │                                               │
+   │  WS RECONNECT                                 │
+   │──────────────────────────────────────────────▶│
+   │                                               │
+   │  RESUME_SESSION {stream_id, last_event_id}   │
+   │──────────────────────────────────────────────▶│
+   │                                               │
+   │  (Option A: Events in buffer)                 │
+   │  Events 43, 44, 45... (replayed)             │
+   │◀──────────────────────────────────────────────│
+   │                                               │
+   │  (Option B: Gap in buffer)                    │
+   │  ERROR {code: RESUME_GAP}                     │
+   │◀──────────────────────────────────────────────│
+   │                                               │
+```
+
+#### Resume Request
+
+```json
+{
+  "type": "RESUME_SESSION",
+  "stream_id": "str-abc123",
+  "last_event_id": 42
+}
+```
+
+#### Successful Resume Response
+
+If `last_event_id` is within the server's replay buffer, events are replayed:
+
+```json
+{"event_id": 43, "type": "PARTIAL", ...}
+{"event_id": 44, "type": "FINALIZED", ...}
+{"event_id": 45, "type": "SPEAKER_TURN", ...}
+```
+
+#### Resume Gap Error
+
+If `last_event_id` is not in buffer (too old), the server signals a gap:
+
+```json
+{
+  "event_id": 100,
+  "type": "ERROR",
+  "payload": {
+    "code": "RESUME_GAP",
+    "message": "Cannot resume: events 43-99 not in buffer",
+    "recoverable": true,
+    "details": {
+      "missing_from": 43,
+      "missing_to": 99,
+      "buffer_oldest": 100,
+      "recommendation": "re-request audio or accept gap"
+    }
+  }
+}
+```
+
+#### Client Gap Handling
+
+When a `RESUME_GAP` occurs, clients should:
+
+1. **Accept the gap** — Continue from current point, UI shows "[gap in transcript]"
+2. **Re-request audio window** — If audio is available, resubmit the gap period
+3. **Start new session** — If gap is unacceptable, close and restart
+
+```python
+def handle_resume_gap(self, error: dict) -> None:
+    missing_from = error["details"]["missing_from"]
+    missing_to = error["details"]["missing_to"]
+
+    if self.can_resubmit_audio(missing_from, missing_to):
+        # Option 2: Re-request the audio window
+        self.resubmit_audio_range(missing_from, missing_to)
+    else:
+        # Option 1: Accept the gap
+        self.insert_gap_marker(missing_from, missing_to)
+        logger.warning(f"Accepted transcript gap: events {missing_from}-{missing_to}")
+```
+
+#### Resume Buffer Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `replay_buffer_size` | 1000 | Maximum events kept for replay |
+| `replay_buffer_ttl_sec` | 300 | Maximum age of events in replay buffer |
+
+---
+
+### Security Posture (v2.0)
+
+The v2.0 streaming protocol includes a security roadmap for production deployment:
+
+#### v2.0 Skeleton (Current)
+
+| Aspect | Status | Notes |
+|--------|--------|-------|
+| Authentication | None | Development/testing only |
+| Authorization | None | All operations permitted |
+| Encryption | TLS recommended | Use `wss://` in production |
+| Rate limiting | Basic | 10 streams/IP default |
+
+#### v2.1+ Planned Authentication
+
+**Bearer Token (Header-based):**
+
+```
+GET /stream HTTP/1.1
+Upgrade: websocket
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+**WebSocket Subprotocol Auth:**
+
+```
+GET /stream HTTP/1.1
+Upgrade: websocket
+Sec-WebSocket-Protocol: transcription.v2, auth.bearer.eyJhbGciOiJIUzI1NiIs...
+```
+
+**First-Message Auth (Fallback):**
+
+```json
+{
+  "type": "AUTHENTICATE",
+  "token": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+#### Rate Limiting
+
+| Limit | Default | Scope | Configurable |
+|-------|---------|-------|--------------|
+| Streams per IP | 10 | IP address | yes |
+| Chunks per second | 50 | Per stream | yes |
+| Bytes per second | 1 MB | Per stream | yes |
+| Concurrent sessions | 100 | Server-wide | yes |
+
+**Rate Limit Error:**
+
+```json
+{
+  "type": "ERROR",
+  "payload": {
+    "code": "RATE_LIMITED",
+    "message": "Rate limit exceeded: 10 streams per IP",
+    "recoverable": false,
+    "details": {
+      "limit": 10,
+      "current": 11,
+      "retry_after_sec": 60
+    }
+  }
+}
+```
+
+#### Security Recommendations
+
+1. **Always use TLS** — Deploy behind TLS termination (`wss://`)
+2. **Validate origins** — Configure allowed CORS origins
+3. **Implement authentication** — Add Bearer token validation before production
+4. **Monitor abuse** — Log rate limit violations and unusual patterns
+5. **Segment audio storage** — If storing audio, encrypt at rest
+
+---
+
+### JSON Schema Reference
+
+Complete JSON Schema definitions for validation:
+
+#### EventEnvelope Schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slower-whisper.dev/schemas/event-envelope.json",
+  "title": "EventEnvelope",
+  "description": "Server-to-client event envelope for WebSocket streaming",
+  "type": "object",
+  "required": ["event_id", "stream_id", "type", "ts_server", "payload"],
+  "properties": {
+    "event_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing event ID per stream"
+    },
+    "stream_id": {
+      "type": "string",
+      "pattern": "^str-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "Unique stream identifier (str-{uuid4})"
+    },
+    "segment_id": {
+      "type": ["string", "null"],
+      "pattern": "^seg-\\d+$",
+      "description": "Segment identifier (seg-{seq}), null for non-segment events"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["PARTIAL", "FINALIZED", "SPEAKER_TURN", "SEMANTIC_UPDATE", "ERROR", "SESSION_STARTED", "SESSION_ENDED", "PONG"],
+      "description": "Event type"
+    },
+    "ts_server": {
+      "type": "integer",
+      "description": "Server timestamp in Unix epoch milliseconds"
+    },
+    "ts_audio_start": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Audio timestamp start in seconds"
+    },
+    "ts_audio_end": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Audio timestamp end in seconds"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-type-specific payload"
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+#### Client Message Schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slower-whisper.dev/schemas/client-message.json",
+  "title": "ClientMessage",
+  "description": "Client-to-server message for WebSocket streaming",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["START_SESSION", "AUDIO_CHUNK", "END_SESSION", "PING", "RESUME_SESSION"],
+      "description": "Client message type"
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"type": {"const": "AUDIO_CHUNK"}}},
+      "then": {
+        "required": ["type", "data", "sequence"],
+        "properties": {
+          "data": {"type": "string", "description": "Base64-encoded audio data"},
+          "sequence": {"type": "integer", "minimum": 1, "description": "Chunk sequence number"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"type": {"const": "START_SESSION"}}},
+      "then": {
+        "properties": {
+          "config": {
+            "type": "object",
+            "properties": {
+              "max_gap_sec": {"type": "number", "default": 1.0},
+              "enable_prosody": {"type": "boolean", "default": false},
+              "enable_emotion": {"type": "boolean", "default": false},
+              "sample_rate": {"type": "integer", "default": 16000},
+              "audio_format": {"type": "string", "default": "pcm_s16le"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"type": {"const": "RESUME_SESSION"}}},
+      "then": {
+        "required": ["type", "stream_id", "last_event_id"],
+        "properties": {
+          "stream_id": {"type": "string"},
+          "last_event_id": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  ]
+}
+```
+
+---
+
 ## Related Documentation
 
 - [ROADMAP.md](/ROADMAP.md) - v1.9.0 and v2.0.0 streaming features
@@ -1777,3 +2605,4 @@ handler.setFormatter(logging.Formatter(
 | v1.8.0 | Word-level alignment support in segments |
 | v1.9.0 | Event callback API with StreamCallbacks protocol, StreamingError dataclass, invoke_callback_safely helper |
 | v2.0.0 | WebSocket protocol, LLM-backed semantics, async callbacks (planned) |
+| v2.0.0 (#133) | Event Envelope Specification: ID contracts, ordering guarantees, backpressure contract, resume protocol, security posture |

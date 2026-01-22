@@ -213,8 +213,6 @@ uv run slower-whisper enrich \
 
 ### Files Preserved
 
-- `transcription/cli_legacy_transcribe.py` - Backup of old transcribe CLI
-- `transcription/audio_enrich_cli.py` - Legacy enrich CLI (still functional)
 - All internal modules unchanged
 
 ## Test Results

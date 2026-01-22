@@ -109,6 +109,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [PROSODY_QUICK_REFERENCE.md](PROSODY_QUICK_REFERENCE.md) | Quick reference for prosody features | API, thresholds, examples |
 | [SPEAKER_DIARIZATION.md](SPEAKER_DIARIZATION.md) | Speaker diarization design and implementation | Who spoke when, turn structure |
 | [STREAMING_ARCHITECTURE.md](STREAMING_ARCHITECTURE.md) | Streaming transcription design | Callbacks, events, v2.0 protocol |
+| [STREAMING_API.md](STREAMING_API.md) | Streaming API reference | WebSocket API, REST SSE, Python client |
 | [LLM_PROMPT_PATTERNS.md](LLM_PROMPT_PATTERNS.md) | Reference prompts for LLM conversation analysis | Prompts, rendering, use cases |
 | [MODEL_CACHE.md](MODEL_CACHE.md) | Model cache management | Cache location, cleanup, troubleshooting |
 
@@ -248,6 +249,11 @@ These documents are historical artifacts from the development process and transf
 2. [LLM Integration Examples](../examples/llm_integration/README.md) - Working scripts (summarization, QA scoring, coaching)
 3. [README Python API](../README.md#llm-integration-analyze-conversations) - Quick API example with speaker labels
 4. [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Understand the prosody/emotion features
+
+### "I want to stream audio in real-time"
+1. [Streaming API Reference](STREAMING_API.md) - WebSocket and SSE endpoints
+2. [Streaming Architecture](STREAMING_ARCHITECTURE.md) - Internal design
+3. [API Service](API_SERVICE.md) - REST API setup
 
 ### "I want to deploy this in production"
 1. [Docker Guide](DOCKER.md) - Containerization

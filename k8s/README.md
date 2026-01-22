@@ -56,7 +56,6 @@ WORKDIR /app
 # Copy project files
 COPY pyproject.toml uv.lock ./
 COPY transcription/ ./transcription/
-COPY transcribe_pipeline.py audio_enrich.py ./
 
 # Install dependencies
 RUN uv sync --extra full

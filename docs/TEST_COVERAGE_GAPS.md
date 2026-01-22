@@ -69,8 +69,6 @@ This document identifies modules in the `transcription/` package that lack dedic
 |--------|---------|-----------------|-------------------|
 | `__init__.py` | Package exports | Indirect | N/A - export verification |
 | `_import_guards.py` | Import safety guards | None | Import failure tests |
-| `audio_enrich_cli.py` | Legacy enrich CLI | Covered by CLI integration | N/A - deprecated |
-| `cli_legacy_transcribe.py` | Legacy transcribe CLI | None | N/A - deprecated |
 | `benchmarks.py` | Benchmark utilities | None | Benchmark validation tests |
 | `dogfood.py` | Internal testing utilities | None | N/A - test infrastructure |
 | `dogfood_utils.py` | Internal testing utilities | None | N/A - test infrastructure |

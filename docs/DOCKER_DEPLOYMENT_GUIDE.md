@@ -145,17 +145,6 @@ docker run --rm --gpus all slower-whisper:gpu \
   python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device count: {torch.cuda.device_count()}')"
 ```
 
-### Using Legacy Entry Points
-
-For backward compatibility, legacy scripts are still available:
-
-```bash
-docker run --rm \
-  -v $(pwd)/raw_audio:/app/raw_audio \
-  slower-whisper:cpu \
-  python transcribe_pipeline.py --help
-```
-
 ## Docker Compose Usage
 
 The project includes a comprehensive `docker-compose.yml` file for easy orchestration.

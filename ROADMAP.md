@@ -547,7 +547,7 @@ class SemanticProvider(Protocol):
 
 | Issue | Deliverable | Status |
 |-------|-------------|--------|
-| [#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59) | Remove deprecated APIs (`--enrich-config`, legacy scripts) | ⬜ |
+| [#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59) | Remove deprecated APIs (`--enrich-config`, legacy scripts) | ✅ |
 | [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) | Expanded benchmark datasets (AMI, CALLHOME, LibriSpeech) | ⬜ |
 
 ---
@@ -709,10 +709,12 @@ nix-clean flake check        # Nix checks
 - Warnings logged during usage
 - Removed only in major versions
 
-**Current deprecations (removal: v2.0.0):**
-- `--enrich-config` → `--config`
-- `transcribe_pipeline.py` → `slower-whisper transcribe`
-- `audio_enrich.py` → `slower-whisper enrich`
+**Removed in v2.0.0 (#59):**
+- `--enrich-config` (use `--config`)
+- `transcribe_pipeline.py` (use `slower-whisper transcribe`)
+- `audio_enrich.py` (use `slower-whisper enrich`)
+- `slower-whisper-enrich` entry point (use `slower-whisper enrich`)
+- `transcription/audio_enrich_cli.py` module
 
 ### Stability Guarantees
 

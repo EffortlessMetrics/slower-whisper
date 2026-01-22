@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "asr-smoke",
+  "track": "asr",
+  "split": "smoke",
+  "description": "Minimal ASR test set for quick validation - synthetic TTS audio covering common scenarios",
+  "source": {
+    "name": "slower-whisper synthetic smoke tests",
+    "url": "https://github.com/EffortlessMetrics/slower-whisper",
+    "citation": null
+  },
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "url": "https://opensource.org/licenses/MIT"
+  },
+  "download": null,
+  "audio_format": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "encoding": "pcm_s16le",
+    "bit_depth": 16
+  },
+  "samples": [
+    {
+      "id": "call_center_narrowband",
+      "audio": "../../../data/asr/audio/call_center_narrowband.wav",
+      "sha256": "89bb3a54cc80e54110165d9015943d3c7fbcb5b03aee72f9dcd939ce03949bd6",
+      "duration_s": 6.96,
+      "language": "en",
+      "reference_transcript": "Thanks for calling support. I can help you reset your password; I just sent a code to your email.",
+      "license": "MIT",
+      "source": "synthetic-tts",
+      "profile": "call_center",
+      "notes": "8 kHz narrowband TTS; short phone-style support interaction"
+    },
+    {
+      "id": "team_sync_meeting",
+      "audio": "../../../data/asr/audio/team_sync_meeting.wav",
+      "sha256": "9e89522c73969b0256b6ee34927f052512ea5d4e368a82e2fa6804bd57f92cfc",
+      "duration_s": 6.50,
+      "language": "en",
+      "reference_transcript": "In today's check-in we agreed the release will slip one week and QA will own the regression list.",
+      "license": "MIT",
+      "source": "synthetic-tts",
+      "profile": "meeting",
+      "notes": "Clean 16 kHz TTS; meeting recap with ownership"
+    },
+    {
+      "id": "status_update_clean",
+      "audio": "../../../data/asr/audio/status_update_clean.wav",
+      "sha256": "2c108895e248ca8740b3198d5c44bac11989ade5afc35b606e5c8b2d23131db8",
+      "duration_s": 7.68,
+      "language": "en",
+      "reference_transcript": "Let's wrap with next steps. Priya owns the rollout plan and Jordan will confirm the budget by Friday.",
+      "license": "MIT",
+      "source": "synthetic-tts",
+      "profile": "meeting",
+      "notes": "Clean 16 kHz TTS; action-oriented status update"
+    }
+  ],
+  "meta": {
+    "created_at": "2026-01-21T00:00:00Z",
+    "total_duration_s": 21.14,
+    "sample_count": 3,
+    "language": "en",
+    "domain": "business",
+    "speech_type": "synthetic",
+    "quality": "mixed",
+    "notes": "Committed to repository for fast smoke testing. Covers call center and meeting scenarios with varying audio quality."
+  }
+}

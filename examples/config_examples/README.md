@@ -9,7 +9,7 @@ Configuration values are loaded in the following order (highest to lowest priori
 ```
 1. CLI flags (highest priority)
    ↓
-2. Config file (--config or --enrich-config)
+2. Config file (--config)
    ↓
 3. Environment variables (SLOWER_WHISPER_*)
    ↓
@@ -42,11 +42,11 @@ config = TranscriptionConfig.from_file("transcription_basic.json")
 
 ```bash
 # Use a config file
-uv run slower-whisper enrich --enrich-config examples/config_examples/enrichment_full.json
+uv run slower-whisper enrich --config examples/config_examples/enrichment_full.json
 
 # Override specific values
 uv run slower-whisper enrich \
-  --enrich-config examples/config_examples/enrichment_full.json \
+  --config examples/config_examples/enrichment_full.json \
   --device cpu \
   --no-enable-categorical-emotion
 
@@ -250,7 +250,7 @@ uv run slower-whisper transcribe \
 
 # Stage 2: Production enrichment
 uv run slower-whisper enrich \
-  --enrich-config examples/config_examples/enrichment_production.json \
+  --config examples/config_examples/enrichment_production.json \
   --root /data/production
 ```
 

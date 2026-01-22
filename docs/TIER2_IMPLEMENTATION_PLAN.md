@@ -84,7 +84,7 @@
 ### 3.2 Convert print() to logger (11 Modules)
 - **Impact**: Structured logging for CLI operations
 - **Effort**: Medium (4-5 hours)
-- **Files**: `audio_enrich_cli.py`, `cli_legacy_transcribe.py`, `dogfood.py`, etc.
+- **Files**: `cli.py`, `dogfood.py`, etc.
 - **Action**: Replace ~50 print statements with appropriate logger calls
 
 ### 3.3 Add exc_info=True to Error Logs

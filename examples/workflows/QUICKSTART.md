@@ -6,12 +6,12 @@ Get started with the most common workflow examples in under 5 minutes.
 
 1. **Complete base transcription** for your audio files:
    ```bash
-   python transcribe_pipeline.py
+   slower-whisper transcribe
    ```
 
 2. **Enrich with audio features** (recommended):
    ```bash
-   python audio_enrich.py
+   slower-whisper enrich
    ```
 
 3. Your enriched transcripts should now be in `whisper_json/`
@@ -170,10 +170,10 @@ python examples/workflows/batch_research_processing.py \
 
 ```bash
 # 1. Transcribe
-python transcribe_pipeline.py
+slower-whisper transcribe
 
 # 2. Enrich with audio features
-python audio_enrich.py
+slower-whisper enrich
 
 # 3. Run workflow
 python examples/workflows/meeting_transcription.py \
@@ -225,7 +225,7 @@ python examples/workflows/batch_research_processing.py \
 **Solution:**
 ```bash
 # Make sure you've run transcription first
-python transcribe_pipeline.py
+slower-whisper transcribe
 
 # Check if JSON exists
 ls whisper_json/
@@ -243,7 +243,7 @@ python examples/workflows/meeting_transcription.py \
 **Solution:**
 ```bash
 # Run enrichment on the transcript
-python audio_enrich.py --file whisper_json/meeting.json
+slower-whisper enrich --file whisper_json/meeting.json
 ```
 
 ### Performance Too Slow
@@ -253,10 +253,10 @@ python audio_enrich.py --file whisper_json/meeting.json
 **Solution:**
 ```bash
 # Use faster model for drafts
-python transcribe_pipeline.py --model medium
+slower-whisper transcribe --model medium
 
 # Use int8 compute type
-python transcribe_pipeline.py --compute-type int8_float16
+slower-whisper transcribe --compute-type int8_float16
 
 # For podcasts: use highlights-only mode
 python examples/workflows/podcast_processing.py \

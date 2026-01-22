@@ -117,7 +117,7 @@ ls raw_audio/
 ls raw_audio/*.{mp3,wav,m4a}
 
 # If using custom root, specify it
-python transcribe_pipeline.py --root /path/to/project
+slower-whisper transcribe --root /path/to/project
 ```
 
 ---
@@ -148,12 +148,12 @@ file raw_audio/yourfile.mp3
 
 **1. Force language:**
 ```bash
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --language en
 ```
 
 **2. Use larger model:**
 ```bash
-python transcribe_pipeline.py --model large-v3
+slower-whisper transcribe --model large-v3
 ```
 
 **3. Check audio quality:**
@@ -165,10 +165,10 @@ python transcribe_pipeline.py --model large-v3
 **4. Adjust VAD settings:**
 ```bash
 # More aggressive VAD (shorter silences)
-python transcribe_pipeline.py --vad-min-silence-ms 300
+slower-whisper transcribe --vad-min-silence-ms 300
 
 # Less aggressive (longer silences)
-python transcribe_pipeline.py --vad-min-silence-ms 800
+slower-whisper transcribe --vad-min-silence-ms 800
 ```
 
 ---
@@ -181,17 +181,17 @@ python transcribe_pipeline.py --vad-min-silence-ms 800
 
 **1. Use GPU:**
 ```bash
-python transcribe_pipeline.py --device cuda
+slower-whisper transcribe --device cuda
 ```
 
 **2. Use smaller model:**
 ```bash
-python transcribe_pipeline.py --model base
+slower-whisper transcribe --model base
 ```
 
 **3. Use int8 quantization:**
 ```bash
-python transcribe_pipeline.py --compute-type int8_float16
+slower-whisper transcribe --compute-type int8_float16
 ```
 
 ---
@@ -210,7 +210,7 @@ python transcribe_pipeline.py --compute-type int8_float16
 **Solutions:**
 - Ignore warning (not an error)
 - Adjust VAD settings in Stage 1 to create longer segments
-- Disable emotion if not needed: `python audio_enrich.py --no-enable-emotion`
+- Disable emotion if not needed: `slower-whisper enrich --no-enable-emotion`
 
 ---
 
@@ -269,22 +269,22 @@ Interpretation: Sarcastic or frustrated
 
 **1. Use GPU:**
 ```bash
-python audio_enrich.py --device cuda
+slower-whisper enrich --device cuda
 ```
 
 **2. Disable emotion (prosody-only is 10x faster):**
 ```bash
-python audio_enrich.py --no-enable-emotion
+slower-whisper enrich --no-enable-emotion
 ```
 
 **3. Process single file to test:**
 ```bash
-python audio_enrich.py --file whisper_json/test.json
+slower-whisper enrich --file whisper_json/test.json
 ```
 
 **4. Skip existing:**
 ```bash
-python audio_enrich.py --skip-existing
+slower-whisper enrich --skip-existing
 ```
 
 ---
@@ -300,22 +300,22 @@ python audio_enrich.py --skip-existing
 **Stage 1 (Transcription):**
 ```bash
 # Use smaller model
-python transcribe_pipeline.py --model medium
+slower-whisper transcribe --model medium
 
 # Use CPU
-python transcribe_pipeline.py --device cpu
+slower-whisper transcribe --device cpu
 
 # Use quantized weights
-python transcribe_pipeline.py --compute-type int8
+slower-whisper transcribe --compute-type int8
 ```
 
 **Stage 2 (Enrichment):**
 ```bash
 # Use CPU
-python audio_enrich.py --device cpu
+slower-whisper enrich --device cpu
 
 # Skip emotion (saves 2-3 GB VRAM)
-python audio_enrich.py --no-enable-emotion
+slower-whisper enrich --no-enable-emotion
 ```
 
 ---
@@ -356,7 +356,7 @@ python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, Device: {tor
 
 **1. Fallback to CPU:**
 ```bash
-python audio_enrich.py --device cpu
+slower-whisper enrich --device cpu
 ```
 
 **2. Update CUDA drivers**
@@ -386,13 +386,13 @@ nvidia-smi dmon
 ```bash
 export HTTP_PROXY=http://proxy.example.com:8080
 export HTTPS_PROXY=http://proxy.example.com:8080
-python transcribe_pipeline.py
+slower-whisper transcribe
 ```
 
 **3. Custom cache directory:**
 ```bash
 export HF_HOME=/path/to/cache
-python audio_enrich.py
+slower-whisper enrich
 ```
 
 **4. Manual download:**
@@ -412,7 +412,7 @@ model = WhisperModel("large-v3", device="cpu", download_root="/path/to/cache")
 
 **1. Use smaller model:**
 ```bash
-python transcribe_pipeline.py --model base  # ~150 MB instead of ~3 GB
+slower-whisper transcribe --model base  # ~150 MB instead of ~3 GB
 ```
 
 **2. Download overnight (first-time only)**
@@ -420,7 +420,7 @@ python transcribe_pipeline.py --model base  # ~150 MB instead of ~3 GB
 **3. Use different mirror:**
 ```bash
 export HF_ENDPOINT=https://hf-mirror.com
-python transcribe_pipeline.py
+slower-whisper transcribe
 ```
 
 ---
@@ -440,7 +440,7 @@ python transcribe_pipeline.py
 
 **2. Use smaller model:**
 ```bash
-python transcribe_pipeline.py --model tiny  # Fastest
+slower-whisper transcribe --model tiny  # Fastest
 ```
 
 **3. Reduce audio quality:**
@@ -465,17 +465,17 @@ python transcribe_pipeline.py --model tiny  # Fastest
 
 **1. Disable categorical emotion (default):**
 ```bash
-python audio_enrich.py  # Dimensional only
+slower-whisper enrich  # Dimensional only
 ```
 
 **2. Prosody only (fastest):**
 ```bash
-python audio_enrich.py --no-enable-emotion
+slower-whisper enrich --no-enable-emotion
 ```
 
 **3. Use GPU:**
 ```bash
-python audio_enrich.py --device cuda
+slower-whisper enrich --device cuda
 ```
 
 ---
@@ -489,14 +489,14 @@ python audio_enrich.py --device cuda
 **1. Process fewer files at once:**
 ```bash
 # Process single file
-python audio_enrich.py --file whisper_json/file1.json
+slower-whisper enrich --file whisper_json/file1.json
 ```
 
 **2. Close other applications**
 
 **3. Use smaller Whisper model:**
 ```bash
-python transcribe_pipeline.py --model base
+slower-whisper transcribe --model base
 ```
 
 ---
@@ -517,7 +517,7 @@ python -m json.tool whisper_json/file.json
 **2. Re-transcribe file:**
 ```bash
 rm whisper_json/file.json
-python transcribe_pipeline.py
+slower-whisper transcribe
 ```
 
 **3. Check disk space:**
@@ -536,7 +536,7 @@ df -h
 **1. Check VAD settings:**
 ```bash
 # Longer minimum silence (fewer, longer segments)
-python transcribe_pipeline.py --vad-min-silence-ms 800
+slower-whisper transcribe --vad-min-silence-ms 800
 ```
 
 **2. Verify audio normalization:**
@@ -569,7 +569,7 @@ with open('whisper_json/file.json') as f:
 
 **3. Re-run enrichment with overwrite:**
 ```bash
-python audio_enrich.py --file whisper_json/file.json
+slower-whisper enrich --file whisper_json/file.json
 # (overwrites by default unless --skip-existing used)
 ```
 
@@ -596,7 +596,7 @@ export LC_ALL=en_US.UTF-8
 
 **3. Specify language:**
 ```bash
-python transcribe_pipeline.py --language en
+slower-whisper transcribe --language en
 ```
 
 ---
@@ -622,8 +622,8 @@ python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
 
 ```bash
 # Run with verbose output
-python transcribe_pipeline.py 2>&1 | tee transcribe.log
-python audio_enrich.py 2>&1 | tee enrich.log
+slower-whisper transcribe 2>&1 | tee transcribe.log
+slower-whisper enrich 2>&1 | tee enrich.log
 ```
 
 ### Report an issue

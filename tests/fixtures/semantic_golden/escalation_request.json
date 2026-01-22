@@ -1,0 +1,25 @@
+{
+  "description": "Customer escalation request with churn risk",
+  "input": {
+    "text": "This is unacceptable! I want to speak with a supervisor and if this isn't resolved, I will cancel my subscription.",
+    "context": {
+      "speaker_id": "customer",
+      "language": "en",
+      "start": 15.2,
+      "end": 22.8
+    }
+  },
+  "expected_normalized": {
+    "topics": [],
+    "intent": null,
+    "sentiment": null,
+    "action_items": [],
+    "risk_tags": ["churn_risk", "escalation"]
+  },
+  "allow_partial_match": {
+    "topics": true,
+    "action_items": false,
+    "risk_tags": true
+  },
+  "notes": "Local adapter detects 'unacceptable', 'supervisor' (escalation) and 'cancel' (churn_risk)"
+}
