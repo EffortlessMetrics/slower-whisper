@@ -861,6 +861,11 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
         if len(failures) > 5:
             print(f"  ... and {len(failures) - 5} more")
 
+    # Suggest next steps if any files were successfully processed
+    if result.processed > 0 or result.skipped > 0:
+        print(f"\n{Colors.bold('Next steps:')}")
+        print(f"  Run stage 2 enrichment:  {Colors.cyan('slower-whisper enrich')}")
+
     if result.failed > 0:
         return 1
     return 0
@@ -966,6 +971,11 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
             print(f"  - {Colors.bold(file_name)}: {error_msg}")
         if len(failures) > 5:
             print(f"  ... and {len(failures) - 5} more")
+
+    # Suggest next steps
+    if enriched_count > 0 or skipped_count > 0:
+        print(f"\n{Colors.bold('Next steps:')}")
+        print(f"  Export transcripts:      {Colors.cyan('slower-whisper export <path_to_transcript>')}")
 
     if failed_count > 0:
         return 1
