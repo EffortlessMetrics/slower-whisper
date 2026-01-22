@@ -27,14 +27,44 @@ import json
 import logging
 import re
 import time
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 if TYPE_CHECKING:
     from .models import Segment
     from .semantic import KeywordSemanticAnnotator
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+
+def _run_async_safely(coro: Coroutine[Any, Any, _T]) -> _T:
+    """Run an async coroutine safely from both sync and async contexts.
+
+    This handles the case where asyncio.run() would fail because there's
+    already a running event loop (e.g., when called from FastAPI endpoints
+    or other async code).
+
+    Args:
+        coro: Coroutine to execute.
+
+    Returns:
+        Result of the coroutine.
+    """
+    import asyncio
+    import concurrent.futures
+
+    try:
+        asyncio.get_running_loop()
+        # Already in async context - run in a thread to avoid blocking
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(asyncio.run, coro)
+            return future.result()
+    except RuntimeError:
+        # No running loop - use asyncio.run directly
+        return asyncio.run(coro)
 
 
 # -----------------------------------------------------------------------------
@@ -990,13 +1020,12 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
         Returns:
             Tuple of (response_text, latency_ms).
         """
-        import asyncio
 
         async def _make_request() -> tuple[str, int]:
             response = await self._guarded_provider.complete(system, user)
             return response.text, response.duration_ms
 
-        return asyncio.run(_make_request())
+        return _run_async_safely(_make_request())
 
     def _check_health_impl(self) -> ProviderHealth:
         """Check OpenAI API availability.
@@ -1122,13 +1151,12 @@ class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
         Returns:
             Tuple of (response_text, latency_ms).
         """
-        import asyncio
 
         async def _make_request() -> tuple[str, int]:
             response = await self._guarded_provider.complete(system, user)
             return response.text, response.duration_ms
 
-        return asyncio.run(_make_request())
+        return _run_async_safely(_make_request())
 
     def _check_health_impl(self) -> ProviderHealth:
         """Check Anthropic API availability.
@@ -1673,9 +1701,7 @@ class LocalLLMSemanticAdapter:
 
         # Call LLM
         try:
-            import asyncio
-
-            response = asyncio.run(self._provider.complete(system_prompt, prompt))
+            response = _run_async_safely(self._provider.complete(system_prompt, prompt))
             raw_output = response.text
         except Exception as e:
             logger.warning(f"LocalLLMSemanticAdapter: LLM call failed: {e}")

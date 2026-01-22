@@ -144,7 +144,14 @@ class WebSocketSessionConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WebSocketSessionConfig:
-        """Create config from dictionary (e.g., from client message)."""
+        """Create config from dictionary (e.g., from client message).
+
+        Raises:
+            ValueError: If sample_rate is not a positive integer.
+        """
+        sample_rate = int(data.get("sample_rate", 16000))
+        if sample_rate <= 0:
+            raise ValueError(f"sample_rate must be positive, got {sample_rate}")
         return cls(
             max_gap_sec=float(data.get("max_gap_sec", 1.0)),
             enable_prosody=bool(data.get("enable_prosody", False)),
@@ -152,7 +159,7 @@ class WebSocketSessionConfig:
             enable_categorical_emotion=bool(data.get("enable_categorical_emotion", False)),
             enable_diarization=bool(data.get("enable_diarization", False)),
             diarization_interval_sec=float(data.get("diarization_interval_sec", 30.0)),
-            sample_rate=int(data.get("sample_rate", 16000)),
+            sample_rate=sample_rate,
             audio_format=str(data.get("audio_format", "pcm_s16le")),
         )
 
