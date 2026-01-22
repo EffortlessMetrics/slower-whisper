@@ -460,8 +460,8 @@ def assign_speakers(
     # Per-speaker aggregates for building speakers[] array
     speaker_stats: dict[str, dict[str, Any]] = {}
 
-    # Sort turns by start time for optimized search
-    speaker_turns.sort(key=lambda t: t.start)
+    # Sort turns by start time for optimized search (copy to avoid mutating caller's list)
+    sorted_turns = sorted(speaker_turns, key=lambda t: t.start)
 
     # Assign speakers to each segment
     for segment in transcript.segments:
@@ -478,7 +478,7 @@ def assign_speakers(
         best_speaker_id: str | None = None
         max_overlap_duration = 0.0
 
-        for turn in speaker_turns:
+        for turn in sorted_turns:
             # Optimization: Since turns are sorted by start time,
             # if a turn starts after the segment ends, all subsequent turns also will.
             if turn.start >= seg_end:
@@ -570,15 +570,15 @@ def assign_speakers_to_words(
     # Per-speaker aggregates
     speaker_stats: dict[str, dict[str, Any]] = {}
 
-    # Sort turns by start time for optimized search
-    speaker_turns.sort(key=lambda t: t.start)
+    # Sort turns by start time for optimized search (copy to avoid mutating caller's list)
+    sorted_turns = sorted(speaker_turns, key=lambda t: t.start)
 
     for segment in transcript.segments:
         # Optimization: Filter turns relevant to this segment once
         # This drastically reduces the number of turns checked for each word.
-        # Since speaker_turns is sorted, we can use early break in iteration.
+        # Since sorted_turns is sorted, we can use early break in iteration.
         relevant_turns: list[SpeakerTurn] = []
-        for t in speaker_turns:
+        for t in sorted_turns:
             if t.start >= segment.end:
                 break
             if t.end > segment.start:
