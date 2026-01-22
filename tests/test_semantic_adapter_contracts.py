@@ -338,20 +338,26 @@ class TestGoldFileIntegration:
         )
 
     def test_local_adapter_detects_risks_in_ami_002(self, load_gold_file) -> None:
-        """Test local adapter against ami_meeting_002 gold file."""
+        """Test local adapter against ami_meeting_002 gold file.
+
+        Note: LocalKeywordAdapter uses rule-based keyword matching, not semantic
+        understanding. Test text must contain actual keywords from the annotator's
+        vocabulary (e.g., 'escalate', 'supervisor', 'cancel', 'competitor').
+        """
         _gold = load_gold_file("ami_meeting_002")  # noqa: F841 - validates fixture
         adapter = LocalKeywordAdapter()
         context = ChunkContext(speaker_id="spk_customer", language="en")
 
-        # Build input text with escalation and churn signals
+        # Build input text with keywords that LocalKeywordAdapter detects
+        # Uses actual escalation keywords (unacceptable, complaint) and churn keywords (switch)
         text = (
-            "This bug has been blocking our production deployment for three days. "
-            "If this isn't resolved soon, we may need to evaluate alternative solutions."
+            "This situation is unacceptable - the bug has been blocking production for three days. "
+            "If this isn't resolved soon, we may need to switch to a competitor solution."
         )
 
         result = adapter.annotate_chunk(text, context)
 
-        # Should detect escalation or churn signals
+        # Should detect escalation or churn signals via keyword matching
         has_risk_signal = (
             "escalation" in result.normalized.risk_tags
             or "churn_risk" in result.normalized.risk_tags
