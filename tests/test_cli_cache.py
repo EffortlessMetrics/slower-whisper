@@ -58,6 +58,29 @@ class TestCacheClearConfirmation:
             captured = capsys.readouterr()
             assert "Aborted" in captured.out
 
+    def test_interactive_prompt_has_colors(self, mock_cache_paths, capsys):
+        """Prompt contains ANSI color codes for safety warning."""
+        from transcription.color_utils import Colors
+
+        with (
+            patch("shutil.rmtree"),
+            patch("builtins.input", return_value="n") as mock_input,
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=True),
+        ):
+            main(["cache", "--clear", "whisper"])
+
+            assert mock_input.called
+            prompt = mock_input.call_args[0][0]
+
+            # Check for the warning text
+            assert "This cannot be undone." in prompt
+
+            # Check for ANSI codes
+            # We expect the warning to be wrapped in RED...RESET
+            assert Colors.RED in prompt
+            assert Colors.RESET in prompt
+
     @pytest.mark.parametrize("force_flag", ["--force", "-f", "-y"])
     def test_force_flags_skip_prompt(self, mock_cache_paths, force_flag):
         """--force and its aliases skip the confirmation prompt entirely."""

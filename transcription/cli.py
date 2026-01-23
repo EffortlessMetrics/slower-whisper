@@ -662,7 +662,11 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
             # Only calculate size when prompting (skip expensive traversal when --force)
             total_size = sum(_get_cache_size(path) for _, path in targets)
             size_str = _format_size(total_size)
-            confirm = input(f"Clear {args.clear} cache ({size_str})? This cannot be undone. [y/N] ")
+
+            warning = Colors.red("This cannot be undone.")
+            question = Colors.bold(f"Clear {args.clear} cache ({size_str})?")
+            confirm = input(f"{question} {warning} [y/N] ")
+
             if confirm.lower() not in ("y", "yes"):
                 print("Aborted.")
                 return 0
