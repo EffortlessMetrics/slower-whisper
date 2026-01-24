@@ -462,6 +462,9 @@ def assign_speakers(
 
     # Sort turns by start time for optimized search (copy to avoid mutating caller's list)
     sorted_turns = sorted(speaker_turns, key=lambda t: t.start)
+    n_turns = len(sorted_turns)
+    turn_idx = 0
+    last_segment_start = -1.0
 
     # Assign speakers to each segment
     for segment in transcript.segments:
@@ -474,17 +477,29 @@ def assign_speakers(
             segment.speaker = None
             continue
 
+        # Optimization: Advance sliding window for sorted segments
+        if seg_start < last_segment_start:
+            # Segments out of order, reset search
+            turn_idx = 0
+        last_segment_start = seg_start
+
+        while turn_idx < n_turns and sorted_turns[turn_idx].end <= seg_start:
+            turn_idx += 1
+
         # Find best speaker by max overlap
         best_speaker_id: str | None = None
         max_overlap_duration = 0.0
 
-        for turn in sorted_turns:
+        for i in range(turn_idx, n_turns):
+            turn = sorted_turns[i]
+
             # Optimization: Since turns are sorted by start time,
             # if a turn starts after the segment ends, all subsequent turns also will.
             if turn.start >= seg_end:
                 break
 
             # Optimization: Skip turns that end before the segment starts
+            # (Should be handled by sliding window, but kept for safety/unsorted cases)
             if turn.end <= seg_start:
                 continue
 
@@ -572,13 +587,26 @@ def assign_speakers_to_words(
 
     # Sort turns by start time for optimized search (copy to avoid mutating caller's list)
     sorted_turns = sorted(speaker_turns, key=lambda t: t.start)
+    n_turns = len(sorted_turns)
+    turn_idx = 0
+    last_segment_start = -1.0
 
     for segment in transcript.segments:
+        # Optimization: Advance sliding window for sorted segments
+        if segment.start < last_segment_start:
+            # Segments out of order, reset search
+            turn_idx = 0
+        last_segment_start = segment.start
+
+        while turn_idx < n_turns and sorted_turns[turn_idx].end <= segment.start:
+            turn_idx += 1
+
         # Optimization: Filter turns relevant to this segment once
         # This drastically reduces the number of turns checked for each word.
         # Since sorted_turns is sorted, we can use early break in iteration.
         relevant_turns: list[SpeakerTurn] = []
-        for t in sorted_turns:
+        for i in range(turn_idx, n_turns):
+            t = sorted_turns[i]
             if t.start >= segment.end:
                 break
             if t.end > segment.start:
