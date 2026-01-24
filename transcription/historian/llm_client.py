@@ -27,6 +27,25 @@ class LLMConfig:
     temperature: float = 0.3
     max_tokens: int = 4096
 
+    def __repr__(self) -> str:
+        """Secure representation that masks the API key."""
+        masked_key = "***"
+        if self.api_key:
+            # Show first 3 chars if key is long enough, else just ***
+            if len(self.api_key) > 6:
+                masked_key = f"{self.api_key[:3]}...***"
+            else:
+                masked_key = "***"
+
+        return (
+            f"LLMConfig(provider={self.provider!r}, "
+            f"model={self.model!r}, "
+            f"api_key={masked_key!r}, "
+            f"base_url={self.base_url!r}, "
+            f"temperature={self.temperature!r}, "
+            f"max_tokens={self.max_tokens!r})"
+        )
+
 
 @dataclass
 class LLMResponse:
