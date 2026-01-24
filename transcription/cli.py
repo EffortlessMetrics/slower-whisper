@@ -976,8 +976,17 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
     # Suggest next steps
     if enriched_count > 0 or skipped_count > 0:
         print(f"\n{Colors.bold('Next steps:')}")
+
+        # Find a valid file to use in the example (first one from the list)
+        example_file = json_files[0] if json_files else Path("path/to/transcript.json")
+        try:
+            # Try to make path relative to CWD for shorter, cleaner output
+            example_path = example_file.relative_to(Path.cwd())
+        except (ValueError, OSError):
+            example_path = example_file
+
         print(
-            f"  Export transcripts:      {Colors.cyan('slower-whisper export path/to/transcript.json --format csv')}"
+            f"  Export transcripts:      {Colors.cyan(f'slower-whisper export {example_path} --format csv')}"
         )
 
     if failed_count > 0:
