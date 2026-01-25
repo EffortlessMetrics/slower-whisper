@@ -122,6 +122,7 @@ class SchemaValidator:
             return True
 
         # Perform validation
+        assert self._Draft7Validator is not None  # guarded by _jsonschema_available
         errors = list(self._Draft7Validator(schema_info.content).iter_errors(data))
 
         if errors:
@@ -198,6 +199,7 @@ class SchemaValidator:
             return []
 
         # Perform validation and collect errors
+        assert self._Draft7Validator is not None  # guarded by _jsonschema_available
         errors = list(self._Draft7Validator(schema_info.content).iter_errors(data))
 
         return [
