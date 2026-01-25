@@ -1,24 +1,41 @@
-# Pre-commit hooks configuration
-# Install: pip install pre-commit && pre-commit install
-# Run manually: pre-commit run --all-files
+# Pre-commit hooks configuration (GitHub Actions reference)
+# Main config is at repo root: .pre-commit-config.yaml
+#
+# This file is kept for CI reference but the root config is authoritative.
 
 repos:
   # Ruff - Fast Python linter and formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.14.5
     hooks:
-      # Run the linter
       - id: ruff
-        args: [--fix]
-      # Run the formatter
+        args: [--fix, --quiet]
       - id: ruff-format
+        args: [--quiet]
 
-  # Basic file checks
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+  # Silent auto-fixers (fix and pass)
+  - repo: local
     hooks:
       - id: trailing-whitespace
+        name: trailing-whitespace
+        entry: bash -c 'sed -i "s/[[:space:]]*$//" "$@" 2>/dev/null; exit 0' --
+        language: system
+        types: [text]
       - id: end-of-file-fixer
+        name: end-of-file-fixer
+        entry: bash -c 'for f in "$@"; do [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; done; exit 0' --
+        language: system
+        types: [text]
+      - id: mixed-line-ending
+        name: mixed-line-ending
+        entry: bash -c 'sed -i "s/\r$//" "$@" 2>/dev/null; exit 0' --
+        language: system
+        types: [text]
+
+  # Validation checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
       - id: check-yaml
       - id: check-added-large-files
         args: ['--maxkb=1000']
@@ -26,24 +43,11 @@ repos:
       - id: check-toml
       - id: check-merge-conflict
       - id: debug-statements
-      - id: mixed-line-ending
-        args: ['--fix=lf']
-
-  # Type checking with mypy
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
-    hooks:
-      - id: mypy
-        additional_dependencies:
-          - types-setuptools
-        args: [--ignore-missing-imports, --show-error-codes]
-        # Only check transcription package, not tests
-        files: ^transcription/
 
 # Configuration
 default_language_version:
-  python: python3.11
+  python: python3.12
 
-# Skip these hooks in CI (already run by GitHub Actions)
 ci:
-  skip: [mypy]
+  autofix_prs: true
+  autofix_commit_msg: "chore: pre-commit autofix"

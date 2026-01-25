@@ -117,6 +117,24 @@ python examples/word_timestamps_example.py podcast.mp3 --device cpu --search hel
 
 ---
 
+### 10. chunking_example.py (New)
+**Purpose**: Demonstrates turn-aware chunking for RAG applications.
+
+**Key Features**:
+- Configurable chunking strategies (`ChunkingConfig`)
+- Speaker turn preservation (avoids mid-turn splits)
+- Detection of conversation patterns (rapid turn-taking, overlaps)
+- Metadata-rich chunks for vector search
+
+**Best For**: RAG pipelines, long-form summarization, conversation analytics
+
+**Example Usage**:
+```bash
+python examples/chunking_example.py
+```
+
+---
+
 ## Quick Navigation
 
 ### I want to...
