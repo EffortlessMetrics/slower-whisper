@@ -590,7 +590,9 @@ def assign_speakers_to_words(
 
     for segment in transcript.segments:
         # Prune turns that end before this segment starts.
-        while search_start_index < num_turns and sorted_turns[search_start_index].end <= segment.start:
+        while (
+            search_start_index < num_turns and sorted_turns[search_start_index].end <= segment.start
+        ):
             search_start_index += 1
 
         # Optimization: Filter turns relevant to this segment once
