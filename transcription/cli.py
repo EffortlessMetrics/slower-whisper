@@ -662,7 +662,8 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
             # Only calculate size when prompting (skip expensive traversal when --force)
             total_size = sum(_get_cache_size(path) for _, path in targets)
             size_str = _format_size(total_size)
-            confirm = input(f"Clear {args.clear} cache ({size_str})? This cannot be undone. [y/N] ")
+            warning = Colors.red("This cannot be undone.")
+            confirm = input(f"Clear {args.clear} cache ({size_str})? {warning} [y/N] ")
             if confirm.lower() not in ("y", "yes"):
                 print("Aborted.")
                 return 0
@@ -976,8 +977,18 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
     # Suggest next steps
     if enriched_count > 0 or skipped_count > 0:
         print(f"\n{Colors.bold('Next steps:')}")
+
+        # Pick an example file for the suggestion
+        example_file = "path/to/transcript.json"
+        if json_files:
+            target = json_files[0]
+            try:
+                example_file = str(target.relative_to(Path.cwd()))
+            except ValueError:
+                example_file = str(target)
+
         print(
-            f"  Export transcripts:      {Colors.cyan('slower-whisper export path/to/transcript.json --format csv')}"
+            f"  Export transcripts:      {Colors.cyan(f'slower-whisper export {example_file} --format csv')}"
         )
 
     if failed_count > 0:
