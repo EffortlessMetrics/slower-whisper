@@ -2124,6 +2124,9 @@ async def websocket_stream(websocket: WebSocket) -> None:
             # Receive message from client
             try:
                 data = await websocket.receive_json()
+            except WebSocketDisconnect:
+                # Re-raise to be handled by outer exception handler
+                raise
             except Exception as e:
                 logger.warning("Failed to receive/parse WebSocket message: %s", e)
                 if session:

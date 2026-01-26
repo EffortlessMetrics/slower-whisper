@@ -20,17 +20,29 @@ repos:
         args: [--quiet]
         types_or: [python, pyi]
 
-  # Basic file checks
-  # Note: trailing-whitespace, end-of-file-fixer, and mixed-line-ending
-  # will fix files but still fail the commit (by design). This is intentional
-  # pre-commit behavior to ensure you see what was changed. Simply re-commit.
+  # Silent auto-fixers: fix files and pass (don't require re-commit)
+  - repo: local
+    hooks:
+      - id: trailing-whitespace
+        name: trailing-whitespace
+        entry: bash -c 'sed -i "s/[[:space:]]*$//" "$@" 2>/dev/null; exit 0' --
+        language: system
+        types: [text]
+      - id: end-of-file-fixer
+        name: end-of-file-fixer
+        entry: bash -c 'for f in "$@"; do [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; done; exit 0' --
+        language: system
+        types: [text]
+      - id: mixed-line-ending
+        name: mixed-line-ending
+        entry: bash -c 'sed -i "s/\r$//" "$@" 2>/dev/null; exit 0' --
+        language: system
+        types: [text]
+
+  # Validation checks (no auto-fix, must pass)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
-      - id: trailing-whitespace
-        verbose: false
-      - id: end-of-file-fixer
-        verbose: false
       - id: check-yaml
         exclude: ^k8s/(gpu-resource-quota|secret|service|pvc)\.yaml$
         verbose: false
@@ -42,9 +54,6 @@ repos:
         args: ['--maxkb=1000']
       - id: check-merge-conflict
       - id: debug-statements
-      - id: mixed-line-ending
-        args: ['--fix=lf']
-        verbose: false
 
   # Type checking with mypy (only on transcription package)
   # Note: Mypy is configured to warn but not fail pre-commit

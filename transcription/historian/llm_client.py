@@ -27,6 +27,21 @@ class LLMConfig:
     temperature: float = 0.3
     max_tokens: int = 4096
 
+    def __repr__(self) -> str:
+        """Secure repr that masks API key."""
+        key_repr = "None"
+        if self.api_key:
+            if len(self.api_key) > 6:
+                key_repr = f"'{self.api_key[:3]}...'"
+            else:
+                key_repr = "'***'"
+
+        return (
+            f"LLMConfig(provider={self.provider!r}, model={self.model!r}, "
+            f"api_key={key_repr}, base_url={self.base_url!r}, "
+            f"temperature={self.temperature!r}, max_tokens={self.max_tokens!r})"
+        )
+
 
 @dataclass
 class LLMResponse:

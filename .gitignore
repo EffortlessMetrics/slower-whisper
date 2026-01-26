@@ -184,3 +184,5 @@ result-*
 .direnv/
 
 # Note: flake.nix and flake.lock should be committed
+
+/.runs/pr_glass_cockpit/
