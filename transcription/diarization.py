@@ -573,16 +573,27 @@ def assign_speakers_to_words(
     # Sort turns by start time for optimized search (copy to avoid mutating caller's list)
     sorted_turns = sorted(speaker_turns, key=lambda t: t.start)
 
+    # Sliding window state
+    next_turn_idx = 0
+    num_turns = len(sorted_turns)
+    active_turns: list[SpeakerTurn] = []
+
     for segment in transcript.segments:
-        # Optimization: Filter turns relevant to this segment once
-        # This drastically reduces the number of turns checked for each word.
-        # Since sorted_turns is sorted, we can use early break in iteration.
-        relevant_turns: list[SpeakerTurn] = []
-        for t in sorted_turns:
+        # Optimization (O(N)): Maintain a sliding window of active turns.
+        # 1. Remove turns that have ended before this segment starts
+        active_turns = [t for t in active_turns if t.end > segment.start]
+
+        # 2. Add new turns that start before this segment ends
+        while next_turn_idx < num_turns:
+            t = sorted_turns[next_turn_idx]
             if t.start >= segment.end:
                 break
+            # Only add if it overlaps (ends after segment start)
             if t.end > segment.start:
-                relevant_turns.append(t)
+                active_turns.append(t)
+            next_turn_idx += 1
+
+        relevant_turns = active_turns
 
         if not segment.words:
             # Fall back to segment-level assignment if no words

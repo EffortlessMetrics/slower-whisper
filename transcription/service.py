@@ -1019,22 +1019,8 @@ async def transcribe_audio(
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
 
-        # Read and validate uploaded audio file
-        try:
-            content = await audio.read()
-        except Exception as e:
-            logger.error("Failed to read uploaded audio file", exc_info=e)
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to read uploaded audio file",
-            ) from e
-
-        # Validate file size before processing
-        validate_file_size(content, MAX_AUDIO_SIZE_MB, file_type="audio")
-
-        # Security fix: Generate random filename to prevent directory traversal
-        # Only preserve the file extension from the original filename
-        # Sanitize the extension to prevent path traversal
+        # Security fix: Stream file to disk to prevent DoS (memory exhaustion)
+        # Determine filename first
         safe_suffix = ""
         if audio.filename:
             # Extract and sanitize the file extension
@@ -1049,14 +1035,32 @@ async def transcribe_audio(
                 if ext.lower() in allowed_extensions:
                     safe_suffix = ext
 
-        # Generate a secure random filename with the sanitized extension
         import secrets
 
         random_id = secrets.token_hex(16)
         audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
 
         try:
-            audio_path.write_bytes(content)
+            total_size = 0
+            # 1MB chunks
+            CHUNK_SIZE = 1024 * 1024
+            MAX_BYTES = MAX_AUDIO_SIZE_MB * 1024 * 1024
+
+            with open(audio_path, "wb") as f:
+                while True:
+                    chunk = await audio.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    total_size += len(chunk)
+                    if total_size > MAX_BYTES:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"File too large: >{MAX_AUDIO_SIZE_MB} MB",
+                        )
+                    f.write(chunk)
+
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error("Failed to save uploaded audio file", exc_info=e)
             # Security fix: Do not leak exception details to client
