@@ -141,7 +141,7 @@ def validate_file_size(
             file_type,
         )
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=(
                 f"{file_type.capitalize()} file too large: {file_size_mb:.2f} MB. "
                 f"Maximum allowed size is {max_size_mb} MB."
@@ -390,7 +390,10 @@ async def log_requests(request: Request, call_next):
     - Measures request duration
     - Logs response status and timing
     - Attaches request_id to request.state for use in exception handlers
+    - Records metrics for Prometheus endpoint
     """
+    from .telemetry import get_metrics
+
     request_id = str(uuid.uuid4())
     request.state.request_id = request_id
 
@@ -426,6 +429,12 @@ async def log_requests(request: Request, call_next):
             "duration_ms": duration_ms,
         },
     )
+
+    # Record metrics for Prometheus
+    # Skip metrics endpoint to avoid recursive counting
+    if request.url.path != "/metrics":
+        metrics = get_metrics()
+        metrics.record_request(request.url.path, response.status_code, duration_ms)
 
     # Add request_id to response headers
     response.headers["X-Request-ID"] = request_id
@@ -475,7 +484,7 @@ async def validation_exception_handler(
     ]
 
     return create_error_response(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         error_type="validation_error",
         message="Request validation failed",
         request_id=request_id,
@@ -796,6 +805,42 @@ async def health_readiness() -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
         content=response_body,
+    )
+
+
+# =============================================================================
+# Metrics Endpoint
+# =============================================================================
+
+
+@app.get(
+    "/metrics",
+    summary="Prometheus metrics",
+    description="Export metrics in Prometheus text format for monitoring and alerting.",
+    tags=["System"],
+    response_class=JSONResponse,
+)
+async def prometheus_metrics() -> JSONResponse:
+    """
+    Export metrics in Prometheus text format.
+
+    This endpoint provides operational metrics compatible with Prometheus scraping:
+    - Request counts by endpoint and status code
+    - Request latency histograms
+    - Active streaming session count
+    - Error counts by type
+
+    Returns:
+        Plain text response in Prometheus exposition format
+    """
+    from .telemetry import get_metrics
+
+    metrics = get_metrics()
+    prometheus_text = metrics.to_prometheus_format()
+
+    return JSONResponse(
+        content={"metrics": prometheus_text},
+        headers={"Content-Type": "text/plain; charset=utf-8"},
     )
 
 
@@ -2200,6 +2245,16 @@ async def websocket_stream(websocket: WebSocket) -> None:
 
                 try:
                     audio_bytes, sequence = decode_audio_chunk(payload)
+
+                    # Check backpressure before processing
+                    if session.check_backpressure():
+                        # Drop partial events when under backpressure
+                        dropped = session.drop_partial_events()
+                        if dropped > 0:
+                            # Emit buffer overflow error to inform client
+                            overflow_event = session.create_buffer_overflow_error()
+                            await websocket.send_json(overflow_event.to_dict())
+
                     events = await session.process_audio_chunk(audio_bytes, sequence)
                     for event in events:
                         await websocket.send_json(event.to_dict())
@@ -2250,6 +2305,57 @@ async def websocket_stream(websocket: WebSocket) -> None:
 
                 # Close connection after END_SESSION
                 break
+
+            elif msg_type == ClientMessageType.RESUME_SESSION:
+                # Handle session resume after reconnection
+                requested_session_id = payload.get("session_id")
+                last_event_id = payload.get("last_event_id", 0)
+
+                if session is None:
+                    temp_session = WebSocketStreamingSession()
+                    error_event = temp_session.create_error_event(
+                        code="no_session",
+                        message="No active session to resume. Send START_SESSION first.",
+                        recoverable=True,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                    continue
+
+                # Validate session ID matches current session
+                if requested_session_id != session.stream_id:
+                    error_event = session.create_error_event(
+                        code="session_mismatch",
+                        message=(
+                            f"Session ID mismatch: requested '{requested_session_id}' "
+                            f"but current session is '{session.stream_id}'"
+                        ),
+                        recoverable=False,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                    await websocket.close()
+                    break
+
+                # Get events for resume
+                events_to_replay, gap_detected = session.get_events_for_resume(last_event_id)
+
+                if gap_detected:
+                    # Cannot resume - gap in event buffer
+                    gap_error = session.create_resume_gap_error(last_event_id)
+                    await websocket.send_json(gap_error.to_dict())
+                    await websocket.close()
+                    break
+
+                # Replay missed events
+                logger.info(
+                    "Replaying %d events for resume: stream_id=%s, from_event_id=%d",
+                    len(events_to_replay),
+                    session.stream_id,
+                    last_event_id,
+                )
+                for event in events_to_replay:
+                    await websocket.send_json(event.to_dict())
+
+                # Continue normal operation after replay
 
             elif msg_type == ClientMessageType.PING:
                 if session is None:
@@ -2341,6 +2447,199 @@ async def get_stream_config() -> JSONResponse:
             },
         },
     )
+
+
+# =============================================================================
+# REST Session Management Endpoints (Issue #85)
+# =============================================================================
+
+
+@app.get(
+    "/stream/sessions",
+    summary="List active streaming sessions",
+    description="Returns a list of all registered streaming sessions and their status.",
+    tags=["Streaming"],
+)
+async def list_sessions() -> JSONResponse:
+    """
+    List all registered streaming sessions.
+
+    Returns session info including status, config, and stats for each session.
+    This endpoint provides visibility into active WebSocket sessions via REST.
+
+    Returns:
+        JSONResponse with list of sessions.
+    """
+    from .session_registry import get_registry
+
+    registry = get_registry()
+    sessions = registry.list_sessions()
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "sessions": [s.to_dict() for s in sessions],
+            "count": len(sessions),
+            "registry_stats": registry.get_stats(),
+        },
+    )
+
+
+@app.post(
+    "/stream/sessions",
+    summary="Create a new streaming session",
+    description="Creates a new streaming session for subsequent WebSocket connection.",
+    tags=["Streaming"],
+)
+async def create_session(
+    max_gap_sec: float = Query(default=1.0, ge=0.1, le=10.0),
+    enable_prosody: bool = Query(default=False),
+    enable_emotion: bool = Query(default=False),
+    enable_diarization: bool = Query(default=False),
+    sample_rate: int = Query(default=16000, ge=8000, le=48000),
+) -> JSONResponse:
+    """
+    Create a new streaming session.
+
+    Creates a session that can be connected to via WebSocket at /stream.
+    The session_id returned should be passed in the WebSocket connection.
+
+    Args:
+        max_gap_sec: Gap threshold to finalize segment (0.1-10.0 seconds)
+        enable_prosody: Extract prosodic features from audio
+        enable_emotion: Extract dimensional emotion features
+        enable_diarization: Enable incremental speaker diarization
+        sample_rate: Expected audio sample rate (8000-48000 Hz)
+
+    Returns:
+        JSONResponse with session_id and WebSocket URL.
+    """
+    from .session_registry import get_registry
+    from .streaming_ws import WebSocketSessionConfig, WebSocketStreamingSession
+
+    config = WebSocketSessionConfig(
+        max_gap_sec=max_gap_sec,
+        enable_prosody=enable_prosody,
+        enable_emotion=enable_emotion,
+        enable_diarization=enable_diarization,
+        sample_rate=sample_rate,
+    )
+
+    session = WebSocketStreamingSession(config=config)
+    registry = get_registry()
+    session_id = registry.register(session)
+
+    logger.info("Created session via REST: %s", session_id)
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "session_id": session_id,
+            "websocket_url": f"/stream?session_id={session_id}",
+            "config": {
+                "max_gap_sec": config.max_gap_sec,
+                "enable_prosody": config.enable_prosody,
+                "enable_emotion": config.enable_emotion,
+                "enable_diarization": config.enable_diarization,
+                "sample_rate": config.sample_rate,
+                "audio_format": config.audio_format,
+            },
+        },
+    )
+
+
+@app.get(
+    "/stream/sessions/{session_id}",
+    summary="Get streaming session status",
+    description="Returns detailed status and statistics for a specific session.",
+    tags=["Streaming"],
+)
+async def get_session_status(session_id: str) -> JSONResponse:
+    """
+    Get status of a specific streaming session.
+
+    Returns detailed information about the session including:
+    - Current state (created, active, ending, ended, error, disconnected)
+    - Configuration used
+    - Runtime statistics
+    - Last event ID (for resume)
+
+    Args:
+        session_id: Session ID to look up
+
+    Returns:
+        JSONResponse with session info.
+
+    Raises:
+        HTTPException: 404 if session not found.
+    """
+    from .session_registry import get_registry
+
+    registry = get_registry()
+    info = registry.get_info(session_id)
+
+    if info is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session not found: {session_id}",
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content=info.to_dict(),
+    )
+
+
+@app.delete(
+    "/stream/sessions/{session_id}",
+    summary="Close streaming session",
+    description="Force closes a streaming session and cleans up resources.",
+    tags=["Streaming"],
+)
+async def close_session(session_id: str) -> JSONResponse:
+    """
+    Force close a streaming session.
+
+    Ends the session if active, closes the WebSocket connection if connected,
+    and removes the session from the registry.
+
+    Args:
+        session_id: Session ID to close
+
+    Returns:
+        JSONResponse confirming closure.
+
+    Raises:
+        HTTPException: 404 if session not found.
+    """
+    from .session_registry import get_registry
+
+    registry = get_registry()
+
+    # Check if session exists first
+    info = registry.get_info(session_id)
+    if info is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session not found: {session_id}",
+        )
+
+    success = await registry.close_session(session_id)
+
+    if success:
+        logger.info("Closed session via REST: %s", session_id)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": f"Session {session_id} closed",
+                "session_id": session_id,
+            },
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to close session: {session_id}",
+        )
 
 
 # =============================================================================

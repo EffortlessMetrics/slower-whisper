@@ -181,7 +181,7 @@ Repository = "https://github.com/EffortlessMetrics/slower-whisper"
 Issues = "https://github.com/EffortlessMetrics/slower-whisper/issues"
 
 [tool.setuptools]
-packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "scripts", "integrations"]
+packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "transcription.integrations", "scripts", "integrations"]
 
 [tool.setuptools.package-data]
 transcription = ["py.typed"]
@@ -236,6 +236,7 @@ module = [
     "soundfile.*",
     "torch.*",
     "torchcodec.*",
+    "torchaudio.*",
     "fastapi.*",
     "uvicorn.*",
     "pyannote.*",
@@ -243,6 +244,11 @@ module = [
     "anthropic.*",
     "openai.*",
     "sklearn.*",
+    "spacy.*",
+    "speechbrain.*",
+    "resemblyzer.*",
+    "pyarrow.*",
+    "sentence_transformers.*",
 ]
 ignore_missing_imports = true
 

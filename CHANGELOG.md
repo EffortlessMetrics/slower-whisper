@@ -9,50 +9,131 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Semantic Adapter Protocol** (#88): New `SemanticAdapter` protocol and annotation schema for pluggable semantic analysis backends
-  - `SemanticAdapter` protocol defining standard interface for annotation providers
-  - `SemanticAnnotation` dataclass with versioning, provenance, and latency tracking
-  - `NormalizedAnnotation` dataclass for provider-agnostic annotation structure (topics, intent, sentiment, action_items, risk_tags)
-  - `ActionItem` dataclass for individual action item representation with speaker attribution
-  - `ChunkContext` dataclass for context-aware annotation with speaker, timing, and conversation history
-  - `ProviderHealth` dataclass for health checks and quota monitoring
-  - `LocalKeywordAdapter` wrapping existing `KeywordSemanticAnnotator` for protocol compliance
-  - `NoOpSemanticAdapter` placeholder for disabled semantic annotation
-  - `create_adapter()` factory function for provider instantiation
-  - `SEMANTIC_SCHEMA_VERSION` constant (`0.1.0`) for forward compatibility
-  - Foundation for Track 3 cloud LLM integration work
-- **Benchmark Evaluation Framework**: Complete evaluation infrastructure for all benchmark tracks
-  - **ASR Evaluation** (`ASRBenchmarkRunner`): WER/CER computation using jiwer with proper text normalization (#186)
-  - **Diarization Evaluation** (`DiarizationBenchmarkRunner`): DER/JER/speaker count metrics using pyannote.metrics (#189)
-  - **Emotion Evaluation** (`EmotionBenchmarkRunner`): Accuracy, F1, and confusion matrix for categorical emotions (#187)
-  - **Streaming Evaluation** (`StreamingBenchmarkRunner`): P50/P95/P99 latency, RTF, and first-token timing (#190)
-- **Benchmark Baselines** (#137): Baseline file format and comparison infrastructure for regression testing
-  - New `benchmarks/baselines/` directory structure with JSON baseline files per track/dataset
-  - `BaselineFile`, `BaselineMetric`, `BaselineReceipt` data structures for provenance tracking
-  - `benchmark save-baseline` CLI command to create baselines from evaluation results
-  - `benchmark compare` CLI command with report and gate modes for regression detection
-  - `benchmark baselines` CLI command to list stored baselines
-  - Configurable regression thresholds per metric (default: 10%)
-  - Comprehensive test coverage for baseline serialization and comparison logic
-- **Benchmark CI Integration Phase 2** (#99): Automated PR comments with regression summaries
-  - GitHub Actions workflow posts benchmark comparison results to pull requests
-  - Markdown table format showing track, metric, current/baseline values, regression %, threshold, and pass/fail status
-  - Comment updates on subsequent runs (uses `peter-evans/find-comment` + `create-or-update-comment` actions)
-  - Graceful handling of missing baselines and skipped benchmarks
-  - Collapsible details section with workflow run link and artifacts reference
-  - Report-only mode: regressions inform but do not block merges
-- **Anthropic LLM Provider**: New `AnthropicProvider` in `llm_client` module for Claude API integration with streaming support (#188)
-- **Colorized CLI Output**: Enhanced CLI with ANSI colors for status messages and errors, respects `NO_COLOR` environment variable (#191)
-- **Cache Clear Confirmation**: Interactive confirmation prompt for `slower-whisper cache clear` to prevent accidental data loss (#198)
+- (v2.0.1+)
 
 ### Changed
 
-- **Parallel Audio Normalization**: `normalize_all()` now uses `ThreadPoolExecutor` for parallel ffmpeg invocations, significantly improving batch processing throughput (#192)
-- **Optimized Path Resolution**: Audio normalization loop now resolves paths more efficiently, reducing overhead on large directories (#197)
+- (v2.0.1+)
 
 ### Fixed
 
-- **Security (Argument Injection)**: Hardened dogfood CLI subprocess calls against argument injection attacks (#196)
+- (v2.0.1+)
+
+## [2.0.0] - 2026-01-26
+
+This is a major release introducing **WebSocket streaming**, **REST session management**, **benchmark infrastructure**, and the **semantic adapter protocol**.
+
+### Highlights
+
+- **WebSocket Streaming API**: Real-time transcription with bidirectional communication
+- **REST Session Management**: Create, monitor, and manage streaming sessions via REST endpoints
+- **Resume Protocol**: Recover from network interruptions without losing events
+- **Backpressure Handling**: Graceful handling of slow consumers with guaranteed delivery of finalized events
+- **Reference Python Client**: Official streaming client with async iteration and callbacks
+- **Benchmark Infrastructure**: Complete evaluation framework for ASR, diarization, emotion, and streaming
+- **Semantic Adapter Protocol**: Pluggable semantic analysis backends with unified interface
+- **LLM Providers**: OpenAI and Anthropic integration with guardrails (rate limits, cost tracking, PII detection)
+
+### Added
+
+#### WebSocket Streaming (Track 2)
+
+- **`WebSocketStreamingSession`**: Server-side session manager for WebSocket streams with full lifecycle management
+- **`WebSocketSessionConfig`**: Configuration for streaming sessions (sample rate, enrichment flags, backpressure thresholds)
+- **`EventEnvelope`**: Event wrapper with monotonic IDs, stream correlation, and audio timestamps
+- **`ClientMessageType`/`ServerMessageType`**: Enum-based message protocol for type-safe communication
+- **`SessionState`**: Lifecycle state tracking (created, active, ending, ended, error, disconnected)
+- **`SessionStats`**: Statistics tracking (chunks, bytes, segments, events, errors, backpressure)
+- **Resume Protocol** (#223): Client reconnection with event replay from circular buffer
+  - `RESUME_SESSION` message with `last_event_id` for seamless reconnection
+  - `RESUME_GAP` error when requested events no longer in buffer
+  - Configurable `replay_buffer_size` (default: 100 events)
+- **Backpressure Handling**: Drop policy with guaranteed delivery of critical events
+  - `PARTIAL` events dropped first under pressure
+  - `FINALIZED`, `SESSION_ENDED`, `ERROR` events never dropped
+  - `BUFFER_OVERFLOW` warning sent to clients
+
+#### REST Session Management (#85)
+
+- **`GET /stream/sessions`**: List all registered streaming sessions with stats
+- **`POST /stream/sessions`**: Create new session via REST, get WebSocket URL
+- **`GET /stream/sessions/{session_id}`**: Get detailed session status
+- **`DELETE /stream/sessions/{session_id}`**: Force close session and cleanup resources
+
+#### Reference Python Streaming Client (#134)
+
+- **`StreamingClient`**: Async client with context manager support
+- **`StreamingConfig`**: Client configuration (URL, reconnection, ping/pong)
+- **`ClientState`**: Client state machine (disconnected, connecting, connected, session_active)
+- **`ClientStats`**: Client-side statistics tracking
+- **`create_client()`**: Factory function for quick client creation
+- **Async iteration**: `async for event in client.events()` pattern
+- **Callback support**: `on_partial`, `on_finalized`, `on_error`, `on_session_ended` callbacks
+
+#### Semantic Adapter Protocol (#88)
+
+- **`SemanticAdapter`** protocol: Standard interface for annotation providers
+- **`SemanticAnnotation`** dataclass: Versioning, provenance, and latency tracking
+- **`NormalizedAnnotation`**: Provider-agnostic structure (topics, intent, sentiment, action_items, risk_tags)
+- **`ActionItem`** dataclass: Individual action item with speaker attribution
+- **`ChunkContext`** dataclass: Context-aware annotation with speaker, timing, and conversation history
+- **`ProviderHealth`** dataclass: Health checks and quota monitoring
+- **`LocalKeywordAdapter`**: Wraps `KeywordSemanticAnnotator` for protocol compliance
+- **`NoOpSemanticAdapter`**: Placeholder for disabled semantic annotation
+- **`create_adapter()`**: Factory function for provider instantiation
+- **`SEMANTIC_SCHEMA_VERSION`** constant: `0.1.0` for forward compatibility
+
+#### LLM Provider Infrastructure (#90)
+
+- **`AnthropicProvider`**: Claude API integration with streaming support (#188)
+- **`OpenAIProvider`**: GPT-4/GPT-4o integration with function calling
+- **`LLMGuardrails`** (#89): Configurable guardrails for LLM providers
+  - Rate limiting (requests per minute)
+  - Cost budget tracking (USD per session)
+  - PII detection with configurable patterns
+  - Request timeout enforcement
+- **`GuardedLLMProvider`**: Wrapper that enforces guardrails on any provider
+- **`GuardrailStats`**: Statistics tracked by guardrails
+- **`PIIMatch`**: Detected PII pattern match details
+- **`RateLimitExceeded`/`CostBudgetExceeded`/`RequestTimeout`**: Guardrail exceptions
+- **`create_guarded_provider()`**: Factory function for creating guarded providers
+
+#### Benchmark Evaluation Framework (Track 1)
+
+- **`ASRBenchmarkRunner`** (#186): WER/CER computation using jiwer with proper text normalization
+- **`DiarizationBenchmarkRunner`** (#189): DER/JER/speaker count metrics using pyannote.metrics
+- **`EmotionBenchmarkRunner`** (#187): Accuracy, F1, and confusion matrix for categorical emotions
+- **`StreamingBenchmarkRunner`** (#190): P50/P95/P99 latency, RTF, and first-token timing
+
+#### Benchmark Baselines (#137)
+
+- `benchmarks/baselines/` directory structure with JSON baseline files per track/dataset
+- `BaselineFile`, `BaselineMetric`, `BaselineReceipt` data structures for provenance tracking
+- `benchmark save-baseline` CLI command to create baselines from evaluation results
+- `benchmark compare` CLI command with report and gate modes for regression detection
+- `benchmark baselines` CLI command to list stored baselines
+- Configurable regression thresholds per metric (default: 10%)
+
+#### Benchmark CI Integration (#99)
+
+- GitHub Actions workflow posts benchmark comparison results to pull requests
+- Markdown table format with track, metric, current/baseline values, regression %, threshold, and pass/fail
+- Comment updates on subsequent runs (uses `peter-evans/find-comment` + `create-or-update-comment`)
+- Report-only mode: regressions inform but do not block merges
+
+#### CLI Enhancements
+
+- **Colorized CLI Output** (#191): ANSI colors for status messages and errors, respects `NO_COLOR`
+- **Cache Clear Confirmation** (#198): Interactive confirmation prompt to prevent accidental data loss
+
+### Changed
+
+- **Parallel Audio Normalization** (#192): `normalize_all()` now uses `ThreadPoolExecutor` for parallel ffmpeg invocations
+- **Optimized Path Resolution** (#197): Audio normalization loop resolves paths more efficiently
+
+### Fixed
+
+- **Security (Argument Injection)** (#196): Hardened dogfood CLI subprocess calls against argument injection attacks
 
 ### Removed
 
@@ -63,7 +144,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Developer Experience
 
-- **Test Portability**: Added `normalize_all` mocking to allow tests to pass without ffmpeg installed (#185)
+- **Test Portability** (#185): Added `normalize_all` mocking to allow tests to pass without ffmpeg installed
+- **Streaming Contract Tests**: Comprehensive test suite for WebSocket protocol compliance
+- **Session Registry Tests**: Unit tests for session lifecycle management
 
 ## [1.9.2] - 2026-01-05
 
@@ -793,7 +876,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
 - [Issue Tracker](https://github.com/EffortlessMetrics/slower-whisper/issues)
 - [Releases](https://github.com/EffortlessMetrics/slower-whisper/releases)
 
-[Unreleased]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.9.2...HEAD
+[Unreleased]: https://github.com/EffortlessMetrics/slower-whisper/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.9.2...v2.0.0
 [1.9.2]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.8.0...v1.9.0

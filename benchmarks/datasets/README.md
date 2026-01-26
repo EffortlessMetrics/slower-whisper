@@ -2,6 +2,8 @@
 
 This directory contains manifest files that describe benchmark datasets for slower-whisper evaluation.
 
+All manifests follow the schema defined in `../manifest_schema.json`.
+
 ## Directory Structure
 
 ```
@@ -22,6 +24,28 @@ datasets/
 │   └── smoke/                    # Quick smoke tests (committed to repo)
 │       └── manifest.json
 └── README.md
+```
+
+## Quick Start
+
+```bash
+# List all datasets and their status
+python scripts/fetch_datasets.py list
+
+# Verify smoke datasets (always available)
+python scripts/fetch_datasets.py verify --dataset asr-smoke
+
+# Fetch all smoke datasets (no download needed)
+python scripts/fetch_datasets.py fetch --smoke
+
+# Fetch a specific full dataset
+python scripts/fetch_datasets.py fetch --dataset librispeech-test-clean
+
+# Show license info
+python scripts/fetch_datasets.py license --dataset commonvoice_en_smoke
+
+# Validate all manifests against schema
+python scripts/fetch_datasets.py validate
 ```
 
 ## Manifest Schema

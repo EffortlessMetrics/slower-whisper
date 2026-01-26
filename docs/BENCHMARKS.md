@@ -40,7 +40,7 @@ Evaluates transcription accuracy using Word Error Rate (WER) and Character Error
 | `cer`  | Character Error Rate (lower is better) |
 | `rtf`  | Real-time factor (processing speed) |
 
-**Supported datasets:** LibriSpeech
+**Supported datasets:** LibriSpeech, CommonVoice (smoke test)
 
 ```bash
 # Quick WER check on dev-clean
@@ -48,6 +48,9 @@ slower-whisper benchmark run --track asr --dataset librispeech --split dev-clean
 
 # Full test-clean evaluation
 slower-whisper benchmark run --track asr --dataset librispeech --split test-clean
+
+# Quick smoke test with CommonVoice subset
+slower-whisper benchmark run --track asr --dataset commonvoice_en_smoke --limit 10
 ```
 
 ### Diarization Track
@@ -757,6 +760,7 @@ class CustomBenchmarkRunner(BenchmarkRunner):
 
 ## Related Documentation
 
+- [Dataset Manifest Infrastructure](DATASET_MANIFEST.md) - Manifest schema, smoke datasets, fetch script
 - [Semantic Benchmark Reference](SEMANTIC_BENCHMARK.md) - Gold labels, metrics, and labeling workflow
 - [AMI Setup Guide](AMI_SETUP.md) - Setting up AMI corpus
 - [IEMOCAP Setup Guide](IEMOCAP_SETUP.md) - Setting up IEMOCAP
