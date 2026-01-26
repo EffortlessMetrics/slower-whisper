@@ -463,11 +463,20 @@ def assign_speakers(
     # Sort turns by start time for optimized search (copy to avoid mutating caller's list)
     sorted_turns = sorted(speaker_turns, key=lambda t: t.start)
 
+    # Sliding window state
+    search_start_index = 0
+    last_seg_start = -1.0
+
     # Assign speakers to each segment
     for segment in transcript.segments:
         seg_start = segment.start
         seg_end = segment.end
         seg_duration = seg_end - seg_start
+
+        # Reset sliding window if segments are out of order
+        if seg_start < last_seg_start:
+            search_start_index = 0
+        last_seg_start = seg_start
 
         if seg_duration <= 0:
             # Zero or negative duration → skip assignment
@@ -478,7 +487,9 @@ def assign_speakers(
         best_speaker_id: str | None = None
         max_overlap_duration = 0.0
 
-        for turn in sorted_turns:
+        for i in range(search_start_index, len(sorted_turns)):
+            turn = sorted_turns[i]
+
             # Optimization: Since turns are sorted by start time,
             # if a turn starts after the segment ends, all subsequent turns also will.
             if turn.start >= seg_end:
@@ -486,6 +497,11 @@ def assign_speakers(
 
             # Optimization: Skip turns that end before the segment starts
             if turn.end <= seg_start:
+                # If this turn is at the start of our search window, we can safely
+                # advance the window because this turn will also end before
+                # any future segment (assuming segments are sorted).
+                if i == search_start_index:
+                    search_start_index += 1
                 continue
 
             overlap_duration = _compute_overlap(seg_start, seg_end, turn.start, turn.end)
@@ -573,16 +589,32 @@ def assign_speakers_to_words(
     # Sort turns by start time for optimized search (copy to avoid mutating caller's list)
     sorted_turns = sorted(speaker_turns, key=lambda t: t.start)
 
+    # Sliding window state
+    search_start_index = 0
+    last_seg_start = -1.0
+
     for segment in transcript.segments:
+        # Reset sliding window if segments are out of order
+        if segment.start < last_seg_start:
+            search_start_index = 0
+        last_seg_start = segment.start
+
         # Optimization: Filter turns relevant to this segment once
         # This drastically reduces the number of turns checked for each word.
         # Since sorted_turns is sorted, we can use early break in iteration.
         relevant_turns: list[SpeakerTurn] = []
-        for t in sorted_turns:
+        for i in range(search_start_index, len(sorted_turns)):
+            t = sorted_turns[i]
             if t.start >= segment.end:
                 break
-            if t.end > segment.start:
-                relevant_turns.append(t)
+            if t.end <= segment.start:
+                # If this turn is at the start of our search window, we can safely
+                # advance the window because this turn will also end before
+                # any future segment (assuming segments are sorted).
+                if i == search_start_index:
+                    search_start_index += 1
+                continue
+            relevant_turns.append(t)
 
         if not segment.words:
             # Fall back to segment-level assignment if no words
