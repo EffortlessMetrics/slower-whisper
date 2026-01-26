@@ -54,8 +54,8 @@ This is a facts-only status page. Plan and strategy live in [ROADMAP.md](../ROAD
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 1 | [#133](https://github.com/EffortlessMetrics/slower-whisper/issues/133) | Event envelope spec | Not created |
-| 2 | [#134](https://github.com/EffortlessMetrics/slower-whisper/issues/134) | Reference Python client | Not created |
+| 1 | [#222](https://github.com/EffortlessMetrics/slower-whisper/issues/222) | Event envelope spec | Open |
+| 2 | [#223](https://github.com/EffortlessMetrics/slower-whisper/issues/223) | Reference Python client | Open |
 | 3 | [#84](https://github.com/EffortlessMetrics/slower-whisper/issues/84) | WebSocket endpoint | Partial (skeleton in #201) |
 | 4 | [#85](https://github.com/EffortlessMetrics/slower-whisper/issues/85) | REST streaming endpoints | Open |
 | 5 | [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55) | Streaming API docs | Partial (STREAMING_ARCHITECTURE.md) |

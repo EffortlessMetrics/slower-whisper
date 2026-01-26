@@ -201,8 +201,8 @@ print('All message types present')
 
 | Item | Priority | Blocks |
 |------|----------|--------|
-| Create issue #133 (event envelope formal spec) | High | Contract tests |
-| Create issue #134 (reference client) | High | User adoption |
+| Create issue #222 (event envelope formal spec) | High | Contract tests |
+| Create issue #223 (reference client) | High | User adoption |
 | Complete `streaming_client.py` | High | Examples |
 | Contract test suite for ordering | High | v2.0 release |
 | REST streaming endpoints (#85) | Medium | Broad adoption |
@@ -210,8 +210,8 @@ print('All message types present')
 
 ### Issues Status
 
-- [ ] #133 — Event envelope spec (issue not yet created)
-- [ ] #134 — Reference Python client (issue not yet created)
+- [ ] #222 — Event envelope spec (created)
+- [ ] #223 — Reference Python client (created)
 - [x] #84 — WebSocket endpoint (skeleton shipped)
 - [ ] #85 — REST streaming endpoints
 - [x] #55 — Streaming API docs (partial)
@@ -369,8 +369,8 @@ uv run slower-whisper benchmark compare --track diarization
 
 | Issue | Purpose | DoD |
 |-------|---------|-----|
-| #133 | Event envelope formal spec | Spec document + contract tests |
-| #134 | Reference Python streaming client | Working client + examples + contract tests |
+| #222 | Event envelope formal spec | Spec document + contract tests |
+| #223 | Reference Python streaming client | Working client + examples + contract tests |
 
 ---
 
@@ -379,7 +379,7 @@ uv run slower-whisper benchmark compare --track diarization
 ### Immediate (unblocks everything)
 
 1. **Close shipped issues** — 12 issues listed above need GitHub closure with receipts
-2. **Create #133, #134** — streaming contract issues need to exist
+2. **Create #222, #223** — streaming contract issues need to exist
 3. **Update CURRENT_STATUS.md** — reconcile with reality
 
 ### This Week
