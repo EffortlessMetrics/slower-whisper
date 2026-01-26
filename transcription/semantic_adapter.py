@@ -15,6 +15,13 @@ Key components:
 - OpenAISemanticAdapter: Cloud LLM adapter using OpenAI API (#90)
 - AnthropicSemanticAdapter: Cloud LLM adapter using Anthropic API (#90)
 
+Cloud adapter features (#90):
+- Retry logic with exponential backoff for transient errors
+- Configurable timeout handling (default: 30 seconds)
+- Rate limit error detection and retry
+- Error classification (rate_limit, timeout, transient, malformed, fatal)
+- Graceful degradation on API failures
+
 Schema version: 0.1.0
 
 See docs/SEMANTIC_BENCHMARK.md for evaluation methodology.
@@ -23,8 +30,10 @@ See ROADMAP.md Track 3 for design rationale.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import random
 import re
 import time
 from collections.abc import Coroutine
@@ -728,18 +737,61 @@ class CloudLLMSemanticAdapter:
     - JSON response parsing
     - Error handling with graceful degradation
     - Guardrails integration
+    - Retry logic with exponential backoff
+    - Timeout handling
+    - Rate limit retry
 
     Subclasses must implement:
     - _get_provider_name() -> str
     - _get_model_name() -> str
-    - _make_request_sync(system: str, user: str) -> tuple[str, int]
+    - _make_request_async(system: str, user: str) -> tuple[str, int]
     - _check_health_impl() -> ProviderHealth
     """
+
+    # Default retry configuration
+    DEFAULT_MAX_RETRIES = 3
+    DEFAULT_INITIAL_BACKOFF_MS = 1000
+    DEFAULT_MAX_BACKOFF_MS = 32000
+    DEFAULT_TIMEOUT_MS = 30000
+
+    # Error patterns for classification
+    RATE_LIMIT_PATTERNS = (
+        "rate limit",
+        "rate_limit",
+        "ratelimit",
+        "too many requests",
+        "429",
+        "quota exceeded",
+    )
+
+    TIMEOUT_PATTERNS = (
+        "timeout",
+        "timed out",
+        "time out",
+        "deadline exceeded",
+        "request timeout",
+    )
+
+    TRANSIENT_PATTERNS = (
+        "connection",
+        "network",
+        "temporary",
+        "unavailable",
+        "server error",
+        "500",
+        "502",
+        "503",
+        "504",
+    )
 
     def __init__(
         self,
         guardrails: Any | None = None,
         context_window: int = 3,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        initial_backoff_ms: int = DEFAULT_INITIAL_BACKOFF_MS,
+        max_backoff_ms: int = DEFAULT_MAX_BACKOFF_MS,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
     ) -> None:
         """Initialize the cloud adapter.
 
@@ -747,11 +799,19 @@ class CloudLLMSemanticAdapter:
             guardrails: Optional LLMGuardrails for rate limiting, cost tracking, PII.
                        If None, a default guardrails instance is created.
             context_window: Number of previous chunks to include for context.
+            max_retries: Maximum number of retry attempts for transient errors.
+            initial_backoff_ms: Initial backoff delay in milliseconds.
+            max_backoff_ms: Maximum backoff delay in milliseconds.
+            timeout_ms: Request timeout in milliseconds.
         """
         from .llm_guardrails import LLMGuardrails
 
         self._guardrails = guardrails or LLMGuardrails()
         self._context_window = context_window
+        self._max_retries = max_retries
+        self._initial_backoff_ms = initial_backoff_ms
+        self._max_backoff_ms = max_backoff_ms
+        self._timeout_ms = timeout_ms
 
     def _build_prompt(self, text: str, context: ChunkContext) -> tuple[str, str]:
         """Build system and user prompts for semantic extraction.
@@ -831,6 +891,83 @@ class CloudLLMSemanticAdapter:
             risk_tags=list(data.get("risk_tags", [])),
         )
 
+    def _classify_error(self, error: Exception) -> str:
+        """Classify an error for retry decision.
+
+        Args:
+            error: The exception to classify.
+
+        Returns:
+            Error type: "rate_limit", "timeout", "transient", "malformed", or "fatal".
+        """
+        error_str = str(error).lower()
+        error_type = type(error).__name__.lower()
+
+        # Check for rate limit errors
+        if any(pattern in error_str for pattern in self.RATE_LIMIT_PATTERNS):
+            return "rate_limit"
+
+        # Check for timeout errors
+        if any(pattern in error_str for pattern in self.TIMEOUT_PATTERNS):
+            return "timeout"
+        if "asyncio.timeout" in error_type or "TimeoutError" in type(error).__name__:
+            return "timeout"
+
+        # Check for transient/connection errors
+        if any(pattern in error_str for pattern in self.TRANSIENT_PATTERNS):
+            return "transient"
+
+        # Check for JSON parsing errors (malformed response)
+        if isinstance(error, json.JSONDecodeError):
+            return "malformed"
+        if "json" in error_str and ("decode" in error_str or "parse" in error_str):
+            return "malformed"
+
+        # Default to fatal (non-recoverable)
+        return "fatal"
+
+    def _should_retry(self, error_type: str, attempt: int) -> bool:
+        """Determine if a request should be retried.
+
+        Args:
+            error_type: The classified error type.
+            attempt: Current attempt number (0-indexed).
+
+        Returns:
+            True if the request should be retried.
+        """
+        if attempt >= self._max_retries:
+            return False
+
+        # Retry on rate limit, timeout, and transient errors
+        return error_type in ("rate_limit", "timeout", "transient")
+
+    def _calculate_backoff(self, attempt: int, error_type: str) -> float:
+        """Calculate backoff delay with jitter.
+
+        Args:
+            attempt: Current attempt number (0-indexed).
+            error_type: The classified error type.
+
+        Returns:
+            Backoff delay in seconds.
+        """
+        # Exponential backoff: initial * 2^attempt
+        base_delay_ms = self._initial_backoff_ms * (2**attempt)
+
+        # Rate limit errors get longer initial delay
+        if error_type == "rate_limit":
+            base_delay_ms = max(base_delay_ms, 5000)  # At least 5 seconds
+
+        # Cap at max backoff
+        delay_ms = min(base_delay_ms, self._max_backoff_ms)
+
+        # Add jitter (0-25% of delay)
+        jitter = random.uniform(0, 0.25) * delay_ms
+        delay_ms += jitter
+
+        return float(delay_ms / 1000.0)  # Return seconds
+
     def _get_provider_name(self) -> str:
         """Return provider identifier (e.g., 'openai', 'anthropic')."""
         raise NotImplementedError
@@ -839,8 +976,23 @@ class CloudLLMSemanticAdapter:
         """Return model identifier (e.g., 'gpt-4o', 'claude-3-5-sonnet')."""
         raise NotImplementedError
 
+    async def _make_request_async(self, system: str, user: str) -> tuple[str, int]:
+        """Make async LLM request.
+
+        Args:
+            system: System prompt.
+            user: User prompt.
+
+        Returns:
+            Tuple of (response_text, latency_ms).
+
+        Raises:
+            Exception: On API failure.
+        """
+        raise NotImplementedError
+
     def _make_request_sync(self, system: str, user: str) -> tuple[str, int]:
-        """Make synchronous LLM request.
+        """Make synchronous LLM request (deprecated, use _make_request_with_retry).
 
         Args:
             system: System prompt.
@@ -862,8 +1014,80 @@ class CloudLLMSemanticAdapter:
         """
         raise NotImplementedError
 
+    async def _make_request_with_retry(
+        self, system: str, user: str
+    ) -> tuple[str, int, list[dict[str, Any]]]:
+        """Make LLM request with retry logic and timeout handling.
+
+        Implements exponential backoff with jitter for rate limit,
+        timeout, and transient errors.
+
+        Args:
+            system: System prompt.
+            user: User prompt.
+
+        Returns:
+            Tuple of (response_text, latency_ms, retry_history).
+            retry_history contains details of any retry attempts.
+
+        Raises:
+            Exception: On non-recoverable failure after all retries exhausted.
+        """
+        retry_history: list[dict[str, Any]] = []
+        last_error: Exception | None = None
+
+        for attempt in range(self._max_retries + 1):
+            try:
+                # Apply timeout to the request
+                timeout_seconds = self._timeout_ms / 1000.0
+                response_text, latency_ms = await asyncio.wait_for(
+                    self._make_request_async(system, user),
+                    timeout=timeout_seconds,
+                )
+                return response_text, latency_ms, retry_history
+
+            except TimeoutError as e:
+                last_error = e
+                error_type = "timeout"
+            except Exception as e:
+                last_error = e
+                error_type = self._classify_error(e)
+
+            # Record retry attempt
+            retry_info = {
+                "attempt": attempt,
+                "error_type": error_type,
+                "error_message": str(last_error),
+            }
+
+            # Decide whether to retry
+            if not self._should_retry(error_type, attempt):
+                retry_info["action"] = "give_up"
+                retry_history.append(retry_info)
+                logger.warning(
+                    f"{self._get_provider_name()} request failed (attempt {attempt + 1}): "
+                    f"{error_type} - {last_error}"
+                )
+                raise last_error
+
+            # Calculate and apply backoff
+            backoff_seconds = self._calculate_backoff(attempt, error_type)
+            retry_info["backoff_seconds"] = backoff_seconds
+            retry_info["action"] = "retry"
+            retry_history.append(retry_info)
+
+            logger.info(
+                f"{self._get_provider_name()} request failed (attempt {attempt + 1}), "
+                f"retrying in {backoff_seconds:.2f}s: {error_type} - {last_error}"
+            )
+
+            await asyncio.sleep(backoff_seconds)
+
+        # Should not reach here, but just in case
+        raise last_error if last_error else RuntimeError("Unexpected retry loop exit")
+
     def annotate_chunk(self, text: str, context: ChunkContext) -> SemanticAnnotation:
-        """Annotate text using cloud LLM.
+        """Annotate text using cloud LLM with retry logic.
 
         Args:
             text: The text to annotate.
@@ -882,8 +1106,14 @@ class CloudLLMSemanticAdapter:
             # Build prompts
             system_prompt, user_prompt = self._build_prompt(text, context)
 
-            # Make request
-            response_text, _ = self._make_request_sync(system_prompt, user_prompt)
+            # Make request with retry
+            async def _annotate() -> tuple[str, list[dict[str, Any]]]:
+                response_text, _, retry_history = await self._make_request_with_retry(
+                    system_prompt, user_prompt
+                )
+                return response_text, retry_history
+
+            response_text, retry_history = _run_async_safely(_annotate())
 
             # Parse response
             normalized = self._parse_response(response_text)
@@ -892,6 +1122,10 @@ class CloudLLMSemanticAdapter:
             end_time = time.perf_counter_ns()
             latency_ms = (end_time - start_time) // 1_000_000
 
+            raw_output: dict[str, Any] = {"response": response_text}
+            if retry_history:
+                raw_output["retry_history"] = retry_history
+
             return SemanticAnnotation(
                 schema_version=SEMANTIC_SCHEMA_VERSION,
                 provider=self._get_provider_name(),
@@ -899,13 +1133,16 @@ class CloudLLMSemanticAdapter:
                 normalized=normalized,
                 confidence=0.85,  # Cloud LLMs have good but not perfect accuracy
                 latency_ms=latency_ms,
-                raw_model_output={"response": response_text},
+                raw_model_output=raw_output,
             )
 
         except Exception as e:
+            # Classify the error for better reporting
+            error_type = self._classify_error(e)
+
             # Log error and return low-confidence annotation
             logger.warning(
-                f"{self._get_provider_name()} annotation failed: {e}",
+                f"{self._get_provider_name()} annotation failed ({error_type}): {e}",
                 exc_info=True,
             )
 
@@ -919,7 +1156,10 @@ class CloudLLMSemanticAdapter:
                 normalized=NormalizedAnnotation(),  # Empty annotation
                 confidence=0.0,  # No confidence on error
                 latency_ms=latency_ms,
-                raw_model_output={"error": str(e)},
+                raw_model_output={
+                    "error": str(e),
+                    "error_type": error_type,
+                },
             )
 
     def health_check(self) -> ProviderHealth:
@@ -953,6 +1193,8 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
     - Applies guardrails (rate limit, cost budget, PII detection)
     - Builds prompts for semantic extraction
     - Parses JSON responses into SemanticAnnotation
+    - Implements retry logic with exponential backoff
+    - Handles timeout, rate limit, and transient errors
 
     Example:
         >>> adapter = OpenAISemanticAdapter(
@@ -972,6 +1214,10 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
         temperature: float = 0.3,
         max_tokens: int = 1024,
         context_window: int = 3,
+        max_retries: int = CloudLLMSemanticAdapter.DEFAULT_MAX_RETRIES,
+        initial_backoff_ms: int = CloudLLMSemanticAdapter.DEFAULT_INITIAL_BACKOFF_MS,
+        max_backoff_ms: int = CloudLLMSemanticAdapter.DEFAULT_MAX_BACKOFF_MS,
+        timeout_ms: int = CloudLLMSemanticAdapter.DEFAULT_TIMEOUT_MS,
     ) -> None:
         """Initialize OpenAI semantic adapter.
 
@@ -983,16 +1229,32 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
             temperature: Sampling temperature (default: 0.3 for consistency).
             max_tokens: Maximum tokens in response (default: 1024).
             context_window: Number of previous chunks to include for context.
+            max_retries: Maximum number of retry attempts for transient errors.
+            initial_backoff_ms: Initial backoff delay in milliseconds.
+            max_backoff_ms: Maximum backoff delay in milliseconds.
+            timeout_ms: Request timeout in milliseconds.
         """
+        import os
+
         from .historian.llm_client import LLMConfig, OpenAIProvider
         from .llm_guardrails import GuardedLLMProvider
 
-        super().__init__(guardrails=guardrails, context_window=context_window)
+        super().__init__(
+            guardrails=guardrails,
+            context_window=context_window,
+            max_retries=max_retries,
+            initial_backoff_ms=initial_backoff_ms,
+            max_backoff_ms=max_backoff_ms,
+            timeout_ms=timeout_ms,
+        )
+
+        # Resolve API key from parameter or environment
+        self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
 
         config = LLMConfig(
             provider="openai",
             model=model,
-            api_key=api_key,
+            api_key=self._api_key,
             base_url=base_url,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -1001,6 +1263,7 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
         self._provider = OpenAIProvider(config)
         self._guarded_provider = GuardedLLMProvider(self._provider, self._guardrails)
         self._model = model
+        self._base_url = base_url
 
     def _get_provider_name(self) -> str:
         """Return 'openai' provider identifier."""
@@ -1010,8 +1273,8 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
         """Return configured model name."""
         return self._model
 
-    def _make_request_sync(self, system: str, user: str) -> tuple[str, int]:
-        """Make synchronous request via guarded provider.
+    async def _make_request_async(self, system: str, user: str) -> tuple[str, int]:
+        """Make async request via guarded provider.
 
         Args:
             system: System prompt.
@@ -1020,12 +1283,20 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
         Returns:
             Tuple of (response_text, latency_ms).
         """
+        response = await self._guarded_provider.complete(system, user)
+        return response.text, response.duration_ms
 
-        async def _make_request() -> tuple[str, int]:
-            response = await self._guarded_provider.complete(system, user)
-            return response.text, response.duration_ms
+    def _make_request_sync(self, system: str, user: str) -> tuple[str, int]:
+        """Make synchronous request via guarded provider (legacy).
 
-        return _run_async_safely(_make_request())
+        Args:
+            system: System prompt.
+            user: User prompt.
+
+        Returns:
+            Tuple of (response_text, latency_ms).
+        """
+        return _run_async_safely(self._make_request_async(system, user))
 
     def _check_health_impl(self) -> ProviderHealth:
         """Check OpenAI API availability.
@@ -1035,11 +1306,8 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
         Returns:
             ProviderHealth with availability status.
         """
-        import os
-
-        # Check API key is available
-        api_key = self._provider.config.api_key or os.environ.get("OPENAI_API_KEY")
-        if not api_key:
+        # Check API key is available (already resolved in __init__)
+        if not self._api_key:
             return ProviderHealth(
                 available=False,
                 error="OpenAI API key not configured",
@@ -1059,7 +1327,11 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
         try:
             import openai
 
-            client = openai.OpenAI(api_key=api_key)
+            client_kwargs: dict[str, Any] = {"api_key": self._api_key}
+            if self._base_url:
+                client_kwargs["base_url"] = self._base_url
+
+            client = openai.OpenAI(**client_kwargs)
             # Just check if we can list models - lightweight health check
             list(client.models.list())
 
@@ -1105,6 +1377,10 @@ class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
         temperature: float = 0.3,
         max_tokens: int = 1024,
         context_window: int = 3,
+        max_retries: int = CloudLLMSemanticAdapter.DEFAULT_MAX_RETRIES,
+        initial_backoff_ms: int = CloudLLMSemanticAdapter.DEFAULT_INITIAL_BACKOFF_MS,
+        max_backoff_ms: int = CloudLLMSemanticAdapter.DEFAULT_MAX_BACKOFF_MS,
+        timeout_ms: int = CloudLLMSemanticAdapter.DEFAULT_TIMEOUT_MS,
     ) -> None:
         """Initialize Anthropic semantic adapter.
 
@@ -1115,16 +1391,32 @@ class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
             temperature: Sampling temperature (default: 0.3 for consistency).
             max_tokens: Maximum tokens in response (default: 1024).
             context_window: Number of previous chunks to include for context.
+            max_retries: Maximum number of retry attempts for transient errors.
+            initial_backoff_ms: Initial backoff delay in milliseconds.
+            max_backoff_ms: Maximum backoff delay in milliseconds.
+            timeout_ms: Request timeout in milliseconds.
         """
+        import os
+
         from .historian.llm_client import AnthropicProvider, LLMConfig
         from .llm_guardrails import GuardedLLMProvider
 
-        super().__init__(guardrails=guardrails, context_window=context_window)
+        super().__init__(
+            guardrails=guardrails,
+            context_window=context_window,
+            max_retries=max_retries,
+            initial_backoff_ms=initial_backoff_ms,
+            max_backoff_ms=max_backoff_ms,
+            timeout_ms=timeout_ms,
+        )
+
+        # Resolve API key from parameter or environment
+        self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
 
         config = LLMConfig(
             provider="anthropic",
             model=model,
-            api_key=api_key,
+            api_key=self._api_key,
             temperature=temperature,
             max_tokens=max_tokens,
         )
@@ -1141,8 +1433,8 @@ class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
         """Return configured model name."""
         return self._model
 
-    def _make_request_sync(self, system: str, user: str) -> tuple[str, int]:
-        """Make synchronous request via guarded provider.
+    async def _make_request_async(self, system: str, user: str) -> tuple[str, int]:
+        """Make async request via guarded provider.
 
         Args:
             system: System prompt.
@@ -1151,12 +1443,20 @@ class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
         Returns:
             Tuple of (response_text, latency_ms).
         """
+        response = await self._guarded_provider.complete(system, user)
+        return response.text, response.duration_ms
 
-        async def _make_request() -> tuple[str, int]:
-            response = await self._guarded_provider.complete(system, user)
-            return response.text, response.duration_ms
+    def _make_request_sync(self, system: str, user: str) -> tuple[str, int]:
+        """Make synchronous request via guarded provider (legacy).
 
-        return _run_async_safely(_make_request())
+        Args:
+            system: System prompt.
+            user: User prompt.
+
+        Returns:
+            Tuple of (response_text, latency_ms).
+        """
+        return _run_async_safely(self._make_request_async(system, user))
 
     def _check_health_impl(self) -> ProviderHealth:
         """Check Anthropic API availability.
@@ -1166,11 +1466,8 @@ class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
         Returns:
             ProviderHealth with availability status.
         """
-        import os
-
-        # Check API key is available
-        api_key = self._provider.config.api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
+        # Check API key is available (already resolved in __init__)
+        if not self._api_key:
             return ProviderHealth(
                 available=False,
                 error="Anthropic API key not configured",
@@ -1190,7 +1487,7 @@ class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
         try:
             import anthropic
 
-            client = anthropic.Anthropic(api_key=api_key)
+            client = anthropic.Anthropic(api_key=self._api_key)
             # Count tokens is a lightweight way to verify API access
             client.messages.count_tokens(
                 model=self._model,
@@ -1266,13 +1563,17 @@ class LocalLLMSemanticAdapter:
     without requiring cloud API access.
 
     Features:
+    - Optional dependency handling (torch/transformers not required at import)
     - Lazy model loading (only loads model on first use)
     - Structured JSON output parsing with validation
     - Graceful error handling for malformed LLM responses
     - Configurable extraction modes (topics, risks, actions, or combined)
+    - Deterministic output normalization with validation
 
-    The adapter uses the LocalLLMProvider from historian/llm_client.py for
-    actual model inference.
+    The adapter uses the LocalLLMProvider from local_llm_provider.py for
+    actual model inference. If torch/transformers are not installed,
+    health_check() returns unavailable and annotate_chunk() returns
+    an empty annotation with confidence 0.
 
     Attributes:
         model: Model identifier (e.g., "Qwen/Qwen2.5-7B-Instruct").
@@ -1349,17 +1650,24 @@ class LocalLLMSemanticAdapter:
             return self._provider_available
 
         try:
-            from .historian.llm_client import LLMConfig, LocalLLMProvider
+            # Use dedicated local_llm_provider module with proper optional dep handling
+            from .local_llm_provider import LocalLLMProvider, is_available
 
-            config = LLMConfig(
-                provider="local",
-                model=self.model,
+            if not is_available():
+                logger.warning(
+                    "LocalLLMSemanticAdapter: torch/transformers not installed. "
+                    "Install with: pip install 'slower-whisper[emotion]'"
+                )
+                self._provider_available = False
+                return False
+
+            self._provider = LocalLLMProvider(
+                model_name=self.model,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )
-            self._provider = LocalLLMProvider(config)
             self._provider_available = True
-            logger.info(f"LocalLLMSemanticAdapter: Loaded provider with model {self.model}")
+            logger.info(f"LocalLLMSemanticAdapter: Provider ready with model {self.model}")
             return True
         except ImportError as e:
             logger.warning(f"LocalLLMSemanticAdapter: Failed to import LLM provider: {e}")
@@ -1699,9 +2007,9 @@ class LocalLLMSemanticAdapter:
             "Always respond with ONLY valid JSON - no explanations or other text."
         )
 
-        # Call LLM
+        # Call LLM - use synchronous generate for the local provider
         try:
-            response = _run_async_safely(self._provider.complete(system_prompt, prompt))
+            response = self._provider.generate(prompt, system_prompt=system_prompt)
             raw_output = response.text
         except Exception as e:
             logger.warning(f"LocalLLMSemanticAdapter: LLM call failed: {e}")

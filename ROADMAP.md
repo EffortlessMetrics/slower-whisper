@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
-**Current Version:** v1.9.2
-**Last Updated:** 2026-01-21
+**Current Version:** v1.9.2 (v2.0.0 release pending)
+**Last Updated:** 2026-01-26
 <!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
 Roadmap = forward-looking execution plan.

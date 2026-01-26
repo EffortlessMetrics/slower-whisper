@@ -2,24 +2,24 @@
 # Benchmark CI Workflow (#99)
 # =============================================================================
 #
-# This workflow runs benchmark evaluations in report-only mode. It NEVER fails
-# the CI - benchmark results are informational only.
+# This workflow runs benchmark evaluations with optional gate mode.
 #
 # Triggers:
-#   - Pull requests to main (automatic)
-#   - Manual dispatch with optional baseline save
+#   - Pull requests to main (automatic, report-only by default)
+#   - Manual dispatch with optional gate mode and baseline save
 #
 # What it does:
 #   1. Runs ASR benchmark with small sample limit (smoke test)
 #   2. Runs semantic benchmark in tags mode (deterministic, no LLM required)
 #   3. Compares results against baselines if they exist
 #   4. Uploads all results as artifacts
-#   5. Posts PR comment with regression summary (Phase 2)
-#   6. (Optional) Saves new baselines on manual trigger with save_baseline=true
+#   5. Posts PR comment with regression summary
+#   6. (Optional) Gate mode: fails CI if regression exceeds threshold
+#   7. (Optional) Saves new baselines on manual trigger with save_baseline=true
 #
 # Phase 1: Report-only benchmarks (completed)
-# Phase 2: PR comments with regression summary (current)
-# Phase 3: Gate mode with --gate flag for critical regressions (future)
+# Phase 2: PR comments with regression summary (completed)
+# Phase 3: Gate mode with --gate flag for critical regressions (current)
 #
 # =============================================================================
 
@@ -34,6 +34,10 @@ on:
         description: 'Save results as new baseline (maintainers only)'
         type: boolean
         default: false
+      gate_mode:
+        description: 'Fail CI if regression exceeds threshold'
+        type: boolean
+        default: false
       track:
         description: 'Benchmark track to run (or "all" for all tracks)'
         type: choice
@@ -43,12 +47,13 @@ on:
           - semantic
         default: all
       dataset:
-        description: 'ASR dataset to use (default: librispeech)'
+        description: 'ASR dataset to use (default: smoke for CI)'
         type: choice
         options:
+          - smoke
           - librispeech
           - commonvoice_en_smoke
-        default: librispeech
+        default: smoke
       limit:
         description: 'Sample limit per benchmark (default: 5)'
         type: number
@@ -64,6 +69,8 @@ env:
   BENCHMARK_LIMIT: ${{ github.event.inputs.limit || '5' }}
   # Results directory
   RESULTS_DIR: benchmark-results
+  # Gate mode: if true, fail CI on regression
+  GATE_MODE: ${{ github.event.inputs.gate_mode || 'false' }}
 
 jobs:
   # ===========================================================================
@@ -72,8 +79,8 @@ jobs:
   benchmark:
     name: Run Benchmarks
     runs-on: ubuntu-latest
-    # Report-only mode: NEVER fail CI on benchmark issues
-    continue-on-error: true
+    # Report-only mode by default, unless gate_mode is explicitly enabled
+    continue-on-error: ${{ github.event.inputs.gate_mode != 'true' }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -127,6 +134,15 @@ jobs:
           cat ${{ env.RESULTS_DIR }}/baselines.md
 
       # -----------------------------------------------------------------------
+      # Verify Smoke Dataset (always available, committed to repo)
+      # -----------------------------------------------------------------------
+      - name: Verify smoke datasets
+        run: |
+          echo "Verifying smoke datasets are available..."
+          python scripts/fetch_datasets.py verify --dataset asr-smoke || true
+          python scripts/fetch_datasets.py verify --dataset diarization-smoke || true
+
+      # -----------------------------------------------------------------------
       # ASR Benchmark
       # -----------------------------------------------------------------------
       - name: Run ASR Benchmark (smoke test)
@@ -134,12 +150,15 @@ jobs:
         if: github.event.inputs.track == 'all' || github.event.inputs.track == 'asr' || github.event_name == 'pull_request'
         continue-on-error: true
         env:
-          ASR_DATASET: ${{ github.event.inputs.dataset || 'librispeech' }}
+          # Use smoke dataset by default for PRs (always available, no download)
+          # Manual dispatch can override to use full datasets
+          ASR_DATASET: ${{ github.event.inputs.dataset || 'smoke' }}
         run: |
           echo "Running ASR benchmark with limit=${{ env.BENCHMARK_LIMIT }}, dataset=${{ env.ASR_DATASET }}..."
 
           # Run benchmark and capture result
-          # Note: This may fail if dataset is not staged - that's OK
+          # Smoke dataset is always available (committed to repo)
+          # Other datasets may fail if not staged - that's OK
           uv run slower-whisper benchmark run \
             --track asr \
             --dataset ${{ env.ASR_DATASET }} \
@@ -156,21 +175,34 @@ jobs:
         if: |
           (github.event.inputs.track == 'all' || github.event.inputs.track == 'asr' || github.event_name == 'pull_request') &&
           hashFiles('benchmarks/baselines/asr/*.json') != ''
-        continue-on-error: true
+        continue-on-error: ${{ github.event.inputs.gate_mode != 'true' }}
         env:
-          ASR_DATASET: ${{ github.event.inputs.dataset || 'librispeech' }}
+          ASR_DATASET: ${{ github.event.inputs.dataset || 'smoke' }}
         run: |
           echo "Comparing ASR results against baseline..."
+          echo "Gate mode: ${{ env.GATE_MODE }}"
 
-          # Compare with baseline (report mode - never fails)
+          # Build compare command - add --gate flag if gate mode enabled
+          COMPARE_FLAGS=""
+          if [ "${{ env.GATE_MODE }}" = "true" ]; then
+            COMPARE_FLAGS="--gate"
+            echo "Running in GATE mode - will fail on regression"
+          fi
+
+          # Compare with baseline
           uv run slower-whisper benchmark compare \
             --track asr \
             --dataset ${{ env.ASR_DATASET }} \
             --limit ${{ env.BENCHMARK_LIMIT }} \
             --output ${{ env.RESULTS_DIR }}/asr-comparison.json \
             --verbose \
+            $COMPARE_FLAGS \
             2>&1 | tee ${{ env.RESULTS_DIR }}/asr-compare.log || {
-              echo "ASR comparison did not complete"
+              echo "ASR comparison did not complete or regression detected"
+              if [ "${{ env.GATE_MODE }}" = "true" ]; then
+                echo "GATE MODE: Failing due to regression"
+                exit 1
+              fi
               echo '{"status": "skipped", "reason": "comparison_failed"}' > ${{ env.RESULTS_DIR }}/asr-comparison.json
             }
 
@@ -201,9 +233,17 @@ jobs:
         if: |
           (github.event.inputs.track == 'all' || github.event.inputs.track == 'semantic' || github.event_name == 'pull_request') &&
           hashFiles('benchmarks/baselines/semantic/*.json') != ''
-        continue-on-error: true
+        continue-on-error: ${{ github.event.inputs.gate_mode != 'true' }}
         run: |
           echo "Comparing Semantic results against baseline..."
+          echo "Gate mode: ${{ env.GATE_MODE }}"
+
+          # Build compare command - add --gate flag if gate mode enabled
+          COMPARE_FLAGS=""
+          if [ "${{ env.GATE_MODE }}" = "true" ]; then
+            COMPARE_FLAGS="--gate"
+            echo "Running in GATE mode - will fail on regression"
+          fi
 
           uv run slower-whisper benchmark compare \
             --track semantic \
@@ -211,8 +251,13 @@ jobs:
             --limit ${{ env.BENCHMARK_LIMIT }} \
             --output ${{ env.RESULTS_DIR }}/semantic-comparison.json \
             --verbose \
+            $COMPARE_FLAGS \
             2>&1 | tee ${{ env.RESULTS_DIR }}/semantic-compare.log || {
-              echo "Semantic comparison did not complete"
+              echo "Semantic comparison did not complete or regression detected"
+              if [ "${{ env.GATE_MODE }}" = "true" ]; then
+                echo "GATE MODE: Failing due to regression"
+                exit 1
+              fi
               echo '{"status": "skipped", "reason": "comparison_failed"}' > ${{ env.RESULTS_DIR }}/semantic-comparison.json
             }
 
@@ -571,6 +616,43 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Note:** This is a report-only benchmark run. Results do not affect CI status." >> $GITHUB_STEP_SUMMARY
+          if [ "${{ env.GATE_MODE }}" = "true" ]; then
+            echo "**Mode:** Gate mode enabled - regressions will fail CI" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Note:** This is a report-only benchmark run. Results do not affect CI status." >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download the \`benchmark-results-${{ github.run_id }}\` artifact for full details." >> $GITHUB_STEP_SUMMARY
+
+      # -----------------------------------------------------------------------
+      # Gate Mode Check (Phase 3)
+      # -----------------------------------------------------------------------
+      - name: Check gate mode results
+        id: gate-check
+        if: github.event.inputs.gate_mode == 'true'
+        run: |
+          echo "Checking gate mode results..."
+          GATE_FAILED=false
+
+          # Check ASR comparison
+          if [ -f "${{ env.RESULTS_DIR }}/asr-comparison.json" ]; then
+            if grep -q '"overall_passed": false' "${{ env.RESULTS_DIR }}/asr-comparison.json" 2>/dev/null; then
+              echo "GATE FAILED: ASR benchmark regression detected"
+              GATE_FAILED=true
+            fi
+          fi
+
+          # Check Semantic comparison
+          if [ -f "${{ env.RESULTS_DIR }}/semantic-comparison.json" ]; then
+            if grep -q '"overall_passed": false' "${{ env.RESULTS_DIR }}/semantic-comparison.json" 2>/dev/null; then
+              echo "GATE FAILED: Semantic benchmark regression detected"
+              GATE_FAILED=true
+            fi
+          fi
+
+          if [ "$GATE_FAILED" = true ]; then
+            echo "::error::Gate mode check failed - benchmark regression detected"
+            exit 1
+          else
+            echo "Gate mode check passed - all metrics within thresholds"
+          fi

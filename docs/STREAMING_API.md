@@ -11,11 +11,15 @@ This document provides comprehensive API documentation for slower-whisper's stre
 
 1. [Overview](#overview)
 2. [WebSocket API](#websocket-api)
-3. [REST SSE API](#rest-sse-api)
-4. [Python Client](#python-client)
-5. [Code Examples](#code-examples)
-6. [Error Handling](#error-handling)
-7. [Best Practices](#best-practices)
+3. [REST Session Management](#rest-session-management)
+4. [REST SSE API](#rest-sse-api)
+5. [Resume Protocol](#resume-protocol)
+6. [Backpressure Handling](#backpressure-handling)
+7. [Python Client](#python-client)
+8. [Code Examples](#code-examples)
+9. [Error Handling](#error-handling)
+10. [Best Practices](#best-practices)
+11. [Quick Start](#quick-start)
 
 ---
 
@@ -127,6 +131,7 @@ The WebSocket API uses JSON messages for bidirectional communication.
 | `AUDIO_CHUNK` | `{data: string, sequence: int}` | Base64-encoded audio chunk |
 | `END_SESSION` | `{}` | Finalize and close session |
 | `PING` | `{timestamp: int}` | Heartbeat request |
+| `RESUME_SESSION` | `{session_id: string, last_event_id: int}` | Resume session after reconnection |
 
 #### Server to Client Messages
 
@@ -137,6 +142,7 @@ The WebSocket API uses JSON messages for bidirectional communication.
 | `FINALIZED` | `{segment: Segment}` | Final segment (will not change) |
 | `SPEAKER_TURN` | `{turn: Turn}` | Speaker change detected |
 | `SEMANTIC_UPDATE` | `{payload: SemanticPayload}` | Semantic annotation complete |
+| `DIARIZATION_UPDATE` | `{assignments: [...], num_speakers: int, ...}` | Incremental diarization result |
 | `ERROR` | `{code: string, message: string, recoverable: bool}` | Error notification |
 | `SESSION_ENDED` | `{stats: SessionStats}` | Session statistics |
 | `PONG` | `{timestamp: int, server_timestamp: int}` | Heartbeat response |
@@ -153,6 +159,8 @@ Configuration is sent with the `START_SESSION` message:
     "enable_prosody": false,
     "enable_emotion": false,
     "enable_categorical_emotion": false,
+    "enable_diarization": false,
+    "diarization_interval_sec": 30.0,
     "sample_rate": 16000,
     "audio_format": "pcm_s16le"
   }
@@ -165,8 +173,12 @@ Configuration is sent with the `START_SESSION` message:
 | `enable_prosody` | bool | false | Extract prosodic features (pitch, energy, rate) |
 | `enable_emotion` | bool | false | Extract dimensional emotion (valence, arousal) |
 | `enable_categorical_emotion` | bool | false | Extract categorical emotion labels |
+| `enable_diarization` | bool | false | Enable incremental speaker diarization |
+| `diarization_interval_sec` | float | 30.0 | Interval for diarization updates (seconds) |
 | `sample_rate` | int | 16000 | Expected audio sample rate in Hz |
 | `audio_format` | string | "pcm_s16le" | Audio encoding format |
+| `replay_buffer_size` | int | 100 | Size of event replay buffer for resume |
+| `backpressure_threshold` | int | 80 | Queue size threshold for backpressure
 
 ### Audio Format Requirements
 
@@ -237,9 +249,141 @@ Response:
     "client": ["START_SESSION", "AUDIO_CHUNK", "END_SESSION", "PING"],
     "server": [
       "SESSION_STARTED", "PARTIAL", "FINALIZED", "SPEAKER_TURN",
-      "SEMANTIC_UPDATE", "ERROR", "SESSION_ENDED", "PONG"
+      "SEMANTIC_UPDATE", "DIARIZATION_UPDATE", "ERROR", "SESSION_ENDED", "PONG"
     ]
   }
+}
+```
+
+---
+
+## REST Session Management
+
+REST endpoints for managing streaming sessions (Issue #85). These endpoints enable session lifecycle management without requiring an active WebSocket connection.
+
+### List Sessions
+
+```
+GET /stream/sessions
+```
+
+Returns all registered streaming sessions.
+
+**Response:**
+
+```json
+{
+  "sessions": [
+    {
+      "session_id": "str-a1b2c3d4-...",
+      "status": "active",
+      "created_at": "2024-01-26T12:00:00+00:00",
+      "last_activity": "2024-01-26T12:05:00+00:00",
+      "config": {
+        "max_gap_sec": 1.0,
+        "enable_prosody": false,
+        "enable_diarization": false,
+        "sample_rate": 16000
+      },
+      "stats": {
+        "chunks_received": 100,
+        "bytes_received": 3200000,
+        "segments_finalized": 5
+      },
+      "last_event_id": 15
+    }
+  ],
+  "count": 1,
+  "registry_stats": {
+    "total_sessions": 1,
+    "by_status": {"active": 1}
+  }
+}
+```
+
+### Create Session
+
+```
+POST /stream/sessions
+```
+
+Creates a new session that can be connected via WebSocket.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `max_gap_sec` | float | 1.0 | Gap threshold (0.1-10.0 seconds) |
+| `enable_prosody` | bool | false | Extract prosodic features |
+| `enable_emotion` | bool | false | Extract emotion features |
+| `enable_diarization` | bool | false | Enable speaker diarization |
+| `sample_rate` | int | 16000 | Audio sample rate (8000-48000 Hz) |
+
+**Response (201 Created):**
+
+```json
+{
+  "session_id": "str-a1b2c3d4-...",
+  "websocket_url": "/stream?session_id=str-a1b2c3d4-...",
+  "config": {
+    "max_gap_sec": 1.0,
+    "enable_prosody": false,
+    "enable_emotion": false,
+    "enable_diarization": false,
+    "sample_rate": 16000,
+    "audio_format": "pcm_s16le"
+  }
+}
+```
+
+### Get Session Status
+
+```
+GET /stream/sessions/{session_id}
+```
+
+Returns detailed status for a specific session.
+
+**Response:**
+
+```json
+{
+  "session_id": "str-a1b2c3d4-...",
+  "status": "active",
+  "created_at": "2024-01-26T12:00:00+00:00",
+  "last_activity": "2024-01-26T12:05:00+00:00",
+  "config": {...},
+  "stats": {...},
+  "last_event_id": 15,
+  "error": null
+}
+```
+
+**Session Status Values:**
+
+| Status | Description |
+|--------|-------------|
+| `created` | Session created, not yet started |
+| `active` | Session active, processing audio |
+| `ending` | Session ending, finalizing segments |
+| `ended` | Session complete |
+| `error` | Session encountered fatal error |
+| `disconnected` | WebSocket disconnected but session exists |
+
+### Close Session
+
+```
+DELETE /stream/sessions/{session_id}
+```
+
+Force closes a session and cleans up resources.
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Session str-a1b2c3d4-... closed",
+  "session_id": "str-a1b2c3d4-..."
 }
 ```
 
@@ -336,6 +480,153 @@ Cache-Control: no-cache
 Connection: keep-alive
 X-Accel-Buffering: no
 ```
+
+---
+
+## Resume Protocol
+
+The streaming API supports session resume after client reconnection (Issue #223). This enables clients to recover from network interruptions without losing events.
+
+### How It Works
+
+1. **Event Replay Buffer:** The server maintains a circular buffer of recent events (configurable via `replay_buffer_size`, default 100).
+
+2. **Last Event ID Tracking:** Clients track the `last_event_id` they received.
+
+3. **Resume on Reconnect:** On reconnection, clients send `RESUME_SESSION` with their last event ID.
+
+4. **Server Replays Events:** Server replays any events newer than the client's last event ID.
+
+### Resume Message
+
+```json
+{
+  "type": "RESUME_SESSION",
+  "session_id": "str-a1b2c3d4-...",
+  "last_event_id": 15
+}
+```
+
+### Resume Response
+
+If resume succeeds, server replays missed events followed by normal operation:
+
+```
+[Event 16] → [Event 17] → ... → [Live events continue]
+```
+
+### Resume Gap Error
+
+If the client's `last_event_id` is too old (events have been evicted from the buffer), the server sends a `RESUME_GAP` error:
+
+```json
+{
+  "event_id": 42,
+  "stream_id": "str-...",
+  "type": "ERROR",
+  "ts_server": 1706123456789,
+  "payload": {
+    "code": "RESUME_GAP",
+    "message": "Cannot resume from event 5. Oldest available event is 20. Client must restart session.",
+    "recoverable": false,
+    "details": {
+      "requested_event_id": 5,
+      "oldest_available": 20,
+      "current_event_id": 41
+    }
+  }
+}
+```
+
+### Client Implementation
+
+```python
+# Track last received event
+last_event_id = 0
+
+async for event in client.events():
+    last_event_id = event.event_id
+    # Process event...
+
+# On reconnect
+await client.resume_session(session_id, last_event_id)
+```
+
+---
+
+## Backpressure Handling
+
+The streaming API implements backpressure to prevent memory exhaustion when clients consume events slower than the server produces them.
+
+### Backpressure Mechanism
+
+1. **Event Queue:** Server maintains a bounded event queue (max 100 events).
+
+2. **Threshold:** When queue reaches `backpressure_threshold` (default 80), backpressure activates.
+
+3. **Drop Policy:** Under backpressure:
+   - `PARTIAL` events may be dropped (these are superseded by later updates anyway)
+   - `FINALIZED` events are **never** dropped
+   - `SESSION_ENDED` events are **never** dropped
+   - `ERROR` events are **never** dropped
+
+4. **Recovery:** Backpressure deactivates when queue drains to 50% of threshold.
+
+### Buffer Overflow Error
+
+If the queue is critically full, server sends a `BUFFER_OVERFLOW` warning:
+
+```json
+{
+  "event_id": 50,
+  "stream_id": "str-...",
+  "type": "ERROR",
+  "ts_server": 1706123456789,
+  "payload": {
+    "code": "BUFFER_OVERFLOW",
+    "message": "Event buffer overflow - client is not consuming events fast enough. Some PARTIAL events have been dropped.",
+    "recoverable": true,
+    "details": {
+      "events_dropped": 15,
+      "queue_size": 100
+    }
+  }
+}
+```
+
+### Client Recommendations
+
+1. **Process events asynchronously:** Don't block the event loop.
+2. **Prioritize FINALIZED events:** These are the source of truth.
+3. **Handle dropped PARTIALs gracefully:** UI may jump to final text.
+4. **Monitor `events_dropped` in stats:** High numbers indicate performance issues.
+
+### Session Statistics
+
+The `SESSION_ENDED` event includes backpressure statistics:
+
+```json
+{
+  "stats": {
+    "chunks_received": 100,
+    "bytes_received": 3200000,
+    "segments_partial": 45,
+    "segments_finalized": 10,
+    "events_sent": 60,
+    "events_dropped": 5,
+    "errors": 0,
+    "backpressure_events": 2,
+    "resume_attempts": 0,
+    "duration_sec": 30.5
+  }
+}
+```
+
+| Stat | Description |
+|------|-------------|
+| `events_dropped` | Number of events dropped due to backpressure |
+| `backpressure_events` | Number of times backpressure activated |
+| `resume_attempts` | Number of resume requests received |
 
 ---
 
@@ -941,8 +1232,17 @@ The WebSocket API uses structured error events:
 | `invalid_message_type` | Yes | Unknown message type |
 | `session_already_started` | Yes | Session already active |
 | `no_session` | Yes | No active session |
+| `session_mismatch` | No | Resume requested for different session ID |
 | `invalid_audio_chunk` | Yes | Invalid audio data or sequence |
 | `processing_error` | Yes | Error processing audio |
+| `BUFFER_OVERFLOW` | Yes | Event queue overflow, some PARTIALs dropped |
+| `RESUME_GAP` | No | Cannot resume, events lost from buffer |
+| `ASR_TIMEOUT` | Yes | ASR processing timed out |
+| `ASR_FAILURE` | Yes | ASR processing failed |
+| `ENRICHMENT_FAILURE` | Yes | Audio enrichment failed |
+| `SEQUENCE_ERROR` | Yes | Audio chunk sequence error |
+| `DIARIZATION_FAILURE` | Yes | Diarization processing failed |
+| `RATE_LIMITED` | Yes | Request rate limited |
 | `session_start_failed` | No | Failed to initialize session |
 | `end_session_error` | No | Error ending session |
 | `internal_error` | No | Unexpected server error |
@@ -1008,12 +1308,99 @@ config = StreamingConfig(
 
 ---
 
+## Quick Start
+
+The fastest way to try the streaming API is with the included demo script.
+
+### Prerequisites
+
+```bash
+# Install websockets package
+pip install websockets
+
+# Start the development server
+uvicorn transcription.service:app --port 8000
+```
+
+### Run the Demo
+
+```bash
+# Stream a test audio file
+python examples/streaming_demo.py tests/fixtures/synthetic_2speaker.wav
+
+# With verbose output (shows all events)
+python examples/streaming_demo.py audio.wav --verbose
+
+# Auto-start server and stream
+python examples/streaming_demo.py audio.wav --start-server
+
+# Enable optional features
+python examples/streaming_demo.py audio.wav --enable-prosody --enable-diarization
+```
+
+### Generate Test Audio
+
+If you don't have an audio file:
+
+```bash
+# Create a 5-second test tone (requires ffmpeg)
+ffmpeg -f lavfi -i "sine=frequency=440:duration=5" -ar 16000 test_audio.wav
+
+# Or use bundled test fixtures
+ls tests/fixtures/*.wav
+ls benchmarks/test_audio/*.wav
+```
+
+### Example Output
+
+```
+WEBSOCKET STREAMING DEMO (v2.0)
+============================================================
+
+Audio: tests/fixtures/synthetic_2speaker.wav
+Server: ws://localhost:8000/stream
+Config: {
+  "max_gap_sec": 1.0,
+  "sample_rate": 16000,
+  "audio_format": "pcm_s16le"
+}
+
+Connecting to ws://localhost:8000/stream...
+Connected!
+
+Sending START_SESSION...
+Session started: str-a1b2c3d4-...
+
+Streaming audio (320,000 bytes)...
+  [FINALIZED #3] [0.00s - 2.56s] Hello, this is a test recording.
+  [FINALIZED #6] [2.80s - 5.12s] The audio streaming is working correctly.
+
+Sending END_SESSION...
+Server stats: {'chunks_received': 79, 'segments_finalized': 2, ...}
+
+============================================================
+SESSION SUMMARY
+============================================================
+Duration: 1.23s
+Chunks sent: 79
+Bytes sent: 320,000
+Finalized events: 2
+```
+
+---
+
 ## Related Documentation
 
 - [STREAMING_ARCHITECTURE.md](STREAMING_ARCHITECTURE.md) - Internal streaming architecture
 - [API_SERVICE.md](API_SERVICE.md) - REST API service setup
 - [CONFIGURATION.md](CONFIGURATION.md) - Configuration options
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common issues and solutions
+
+### Examples
+
+- **[examples/streaming_demo.py](../examples/streaming_demo.py)** - Complete WebSocket streaming demo
+- **[examples/streaming/callback_demo.py](../examples/streaming/callback_demo.py)** - Streaming with callbacks
+- **[examples/streaming/live_semantics_demo.py](../examples/streaming/live_semantics_demo.py)** - Streaming with semantic annotations
 
 ---
 
@@ -1022,6 +1409,8 @@ config = StreamingConfig(
 | Version | Changes |
 |---------|---------|
 | v2.0.0 | Initial WebSocket API, REST SSE streaming, Python client |
+| v2.0.1 | REST session management (#85), resume protocol (#223), backpressure handling |
+| v2.0.2 | Added streaming_demo.py example with Quick Start guide |
 
 ---
 

@@ -64,6 +64,26 @@
       "notes": "Longer alternating call-style pattern with short pauses; minimal overlap"
     }
   ],
+  "expected_baseline": {
+    "der": {
+      "value": 15.0,
+      "tolerance": 10.0,
+      "unit": "%",
+      "notes": "Synthetic tones should be well-separated; DER may vary with diarization model."
+    },
+    "jer": {
+      "value": 20.0,
+      "tolerance": 15.0,
+      "unit": "%",
+      "notes": "JER higher than DER due to boundary sensitivity."
+    },
+    "speaker_count_accuracy": {
+      "value": 100.0,
+      "tolerance": 0.0,
+      "unit": "%",
+      "notes": "2-speaker synthetic audio should always detect 2 speakers."
+    }
+  },
   "meta": {
     "created_at": "2026-01-21T00:00:00Z",
     "total_duration_s": 34.1,

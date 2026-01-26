@@ -534,15 +534,35 @@ class TestCloudAdapterContracts:
     def test_anthropic_adapter_available(self) -> None:
         """Test that Anthropic adapter is available when key is set."""
         # This test runs only when ANTHROPIC_API_KEY is set
-        # Verify the adapter can be created (implementation pending)
-        pytest.skip("Anthropic adapter not yet implemented")
+        adapter = create_adapter("anthropic")
+        assert adapter is not None
+
+        # Verify it implements the protocol
+        context = ChunkContext(speaker_id="test", language="en")
+        result = adapter.annotate_chunk("Test text for Anthropic", context)
+        assert isinstance(result, SemanticAnnotation)
+        assert result.provider == "anthropic"
+
+        # Verify health check
+        health = adapter.health_check()
+        assert isinstance(health, ProviderHealth)
 
     @requires_openai_key
     def test_openai_adapter_available(self) -> None:
         """Test that OpenAI adapter is available when key is set."""
         # This test runs only when OPENAI_API_KEY is set
-        # Verify the adapter can be created (implementation pending)
-        pytest.skip("OpenAI adapter not yet implemented")
+        adapter = create_adapter("openai")
+        assert adapter is not None
+
+        # Verify it implements the protocol
+        context = ChunkContext(speaker_id="test", language="en")
+        result = adapter.annotate_chunk("Test text for OpenAI", context)
+        assert isinstance(result, SemanticAnnotation)
+        assert result.provider == "openai"
+
+        # Verify health check
+        health = adapter.health_check()
+        assert isinstance(health, ProviderHealth)
 
     def test_missing_api_key_skips_gracefully(self) -> None:
         """Test that missing API keys result in graceful skip, not crash."""
@@ -707,3 +727,323 @@ class TestGoldFileConsistency:
                     assert speaker_id.startswith("spk_"), (
                         f"speaker_id should follow 'spk_*' format: {speaker_id}"
                     )
+
+
+# -----------------------------------------------------------------------------
+# OpenAI Adapter Mocked Tests (#90)
+# -----------------------------------------------------------------------------
+
+
+class TestOpenAIAdapterMocked:
+    """Test OpenAI semantic adapter with mocked responses.
+
+    These tests verify error handling and retry behavior without
+    requiring actual API calls.
+    """
+
+    def test_openai_adapter_success_with_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test successful annotation with mocked OpenAI response."""
+        from unittest.mock import MagicMock
+
+        from transcription.semantic_adapter import (
+            ChunkContext,
+            OpenAISemanticAdapter,
+            SemanticAnnotation,
+        )
+
+        # Create a mock response
+        mock_response_text = """{
+            "topics": ["pricing", "contract_terms"],
+            "intent": "objection",
+            "sentiment": "negative",
+            "action_items": [
+                {"text": "Send revised proposal", "speaker_id": "agent", "confidence": 0.9}
+            ],
+            "risk_tags": ["pricing_objection"]
+        }"""
+
+        # Mock the guarded provider's complete method
+        mock_response = MagicMock()
+        mock_response.text = mock_response_text
+        mock_response.duration_ms = 150
+
+        async def mock_complete(system: str, user: str):
+            return mock_response
+
+        # Create adapter with mocked internals
+        adapter = OpenAISemanticAdapter(api_key="test-key-123")
+        adapter._guarded_provider.complete = mock_complete
+
+        # Test annotation
+        context = ChunkContext(speaker_id="customer", language="en")
+        result = adapter.annotate_chunk("The price is too high", context)
+
+        # Verify result
+        assert isinstance(result, SemanticAnnotation)
+        assert result.provider == "openai"
+        assert result.confidence == 0.85
+        assert "pricing" in result.normalized.topics
+        assert result.normalized.intent == "objection"
+        assert result.normalized.sentiment == "negative"
+        assert len(result.normalized.action_items) == 1
+        assert result.normalized.action_items[0].text == "Send revised proposal"
+
+    def test_openai_adapter_timeout_handling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that timeout errors are handled gracefully."""
+
+        from transcription.semantic_adapter import (
+            ChunkContext,
+            OpenAISemanticAdapter,
+            SemanticAnnotation,
+        )
+
+        # Create adapter with short timeout and no retries for fast test
+        adapter = OpenAISemanticAdapter(
+            api_key="test-key-123",
+            timeout_ms=100,
+            max_retries=0,
+        )
+
+        # Mock the guarded provider to raise timeout
+        async def mock_complete_timeout(system: str, user: str):
+            raise TimeoutError("Request timed out")
+
+        adapter._guarded_provider.complete = mock_complete_timeout
+
+        # Test annotation
+        context = ChunkContext(speaker_id="test", language="en")
+        result = adapter.annotate_chunk("Test text", context)
+
+        # Verify graceful degradation
+        assert isinstance(result, SemanticAnnotation)
+        assert result.provider == "openai"
+        assert result.confidence == 0.0
+        assert result.normalized.topics == []
+        assert "error" in result.raw_model_output
+        assert result.raw_model_output.get("error_type") == "timeout"
+
+    def test_openai_adapter_rate_limit_handling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that rate limit errors are handled gracefully."""
+
+        from transcription.semantic_adapter import (
+            ChunkContext,
+            OpenAISemanticAdapter,
+            SemanticAnnotation,
+        )
+
+        # Create adapter with no retries for fast test
+        adapter = OpenAISemanticAdapter(
+            api_key="test-key-123",
+            max_retries=0,
+        )
+
+        # Mock the guarded provider to raise rate limit error
+        async def mock_complete_rate_limit(system: str, user: str):
+            raise RuntimeError("Rate limit exceeded: 429 Too Many Requests")
+
+        adapter._guarded_provider.complete = mock_complete_rate_limit
+
+        # Test annotation
+        context = ChunkContext(speaker_id="test", language="en")
+        result = adapter.annotate_chunk("Test text", context)
+
+        # Verify graceful degradation
+        assert isinstance(result, SemanticAnnotation)
+        assert result.provider == "openai"
+        assert result.confidence == 0.0
+        assert "error" in result.raw_model_output
+        assert result.raw_model_output.get("error_type") == "rate_limit"
+
+    def test_openai_adapter_malformed_response_handling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that malformed JSON responses are handled gracefully."""
+        from unittest.mock import MagicMock
+
+        from transcription.semantic_adapter import (
+            ChunkContext,
+            OpenAISemanticAdapter,
+            SemanticAnnotation,
+        )
+
+        # Create adapter
+        adapter = OpenAISemanticAdapter(
+            api_key="test-key-123",
+            max_retries=0,
+        )
+
+        # Mock response with invalid JSON
+        mock_response = MagicMock()
+        mock_response.text = "This is not valid JSON { broken"
+        mock_response.duration_ms = 100
+
+        async def mock_complete_malformed(system: str, user: str):
+            return mock_response
+
+        adapter._guarded_provider.complete = mock_complete_malformed
+
+        # Test annotation
+        context = ChunkContext(speaker_id="test", language="en")
+        result = adapter.annotate_chunk("Test text", context)
+
+        # Verify graceful degradation (malformed is not retried)
+        assert isinstance(result, SemanticAnnotation)
+        assert result.provider == "openai"
+        assert result.confidence == 0.0
+        assert "error" in result.raw_model_output
+        # Malformed responses are classified as fatal since they indicate
+        # a parsing issue, not a transient API error
+        assert result.raw_model_output.get("error_type") in ("malformed", "fatal")
+
+    def test_openai_adapter_missing_api_key_health_check(self) -> None:
+        """Test health check returns unavailable when API key is missing."""
+        import os
+        from unittest.mock import patch
+
+        from transcription.semantic_adapter import OpenAISemanticAdapter, ProviderHealth
+
+        # Ensure no env var is set
+        with patch.dict(os.environ, {}, clear=True):
+            # Remove OPENAI_API_KEY if present
+            env_without_key = {k: v for k, v in os.environ.items() if k != "OPENAI_API_KEY"}
+            with patch.dict(os.environ, env_without_key, clear=True):
+                adapter = OpenAISemanticAdapter(api_key=None)
+
+                health = adapter.health_check()
+
+                assert isinstance(health, ProviderHealth)
+                assert health.available is False
+                assert "API key not configured" in (health.error or "")
+
+    def test_openai_adapter_retry_with_backoff(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that transient errors are retried with backoff."""
+        from unittest.mock import MagicMock
+
+        from transcription.semantic_adapter import (
+            ChunkContext,
+            OpenAISemanticAdapter,
+            SemanticAnnotation,
+        )
+
+        call_count = 0
+        call_times = []
+
+        # Create adapter with retries enabled but short backoff
+        adapter = OpenAISemanticAdapter(
+            api_key="test-key-123",
+            max_retries=2,
+            initial_backoff_ms=10,  # Very short for test
+            max_backoff_ms=50,
+        )
+
+        # Mock that fails twice then succeeds
+        mock_success_response = MagicMock()
+        mock_success_response.text = '{"topics": ["test"], "intent": null, "sentiment": null, "action_items": [], "risk_tags": []}'
+        mock_success_response.duration_ms = 100
+
+        import time
+
+        async def mock_complete_flaky(system: str, user: str):
+            nonlocal call_count
+            call_count += 1
+            call_times.append(time.time())
+            if call_count < 3:
+                raise RuntimeError("Connection error: temporary failure")
+            return mock_success_response
+
+        adapter._guarded_provider.complete = mock_complete_flaky
+
+        # Test annotation
+        context = ChunkContext(speaker_id="test", language="en")
+        result = adapter.annotate_chunk("Test text", context)
+
+        # Verify retries happened and eventually succeeded
+        assert call_count == 3  # 2 failures + 1 success
+        assert isinstance(result, SemanticAnnotation)
+        assert result.confidence == 0.85  # Success
+        assert "test" in result.normalized.topics
+
+        # Verify retry history is recorded
+        assert "retry_history" in result.raw_model_output
+        assert len(result.raw_model_output["retry_history"]) == 2  # 2 retries
+
+    def test_openai_adapter_error_classification(self) -> None:
+        """Test that errors are classified correctly."""
+        from transcription.semantic_adapter import OpenAISemanticAdapter
+
+        adapter = OpenAISemanticAdapter(api_key="test-key-123")
+
+        # Test rate limit classification
+        assert adapter._classify_error(RuntimeError("Rate limit exceeded")) == "rate_limit"
+        assert adapter._classify_error(RuntimeError("429 Too Many Requests")) == "rate_limit"
+        assert adapter._classify_error(RuntimeError("quota exceeded")) == "rate_limit"
+
+        # Test timeout classification
+        assert adapter._classify_error(RuntimeError("Request timed out")) == "timeout"
+        assert adapter._classify_error(RuntimeError("timeout error")) == "timeout"
+
+        # Test transient error classification
+        assert adapter._classify_error(RuntimeError("Connection refused")) == "transient"
+        assert adapter._classify_error(RuntimeError("503 Service Unavailable")) == "transient"
+        assert adapter._classify_error(RuntimeError("Network error")) == "transient"
+
+        # Test malformed classification
+        import json
+
+        try:
+            json.loads("invalid json {")
+        except json.JSONDecodeError as e:
+            assert adapter._classify_error(e) == "malformed"
+
+        # Test fatal classification (unknown error)
+        assert adapter._classify_error(ValueError("Unknown error")) == "fatal"
+
+    def test_openai_adapter_backoff_calculation(self) -> None:
+        """Test that backoff delay is calculated correctly."""
+        from transcription.semantic_adapter import OpenAISemanticAdapter
+
+        adapter = OpenAISemanticAdapter(
+            api_key="test-key-123",
+            initial_backoff_ms=1000,
+            max_backoff_ms=32000,
+        )
+
+        # Test exponential backoff (base delay + jitter)
+        delay_0 = adapter._calculate_backoff(0, "transient")
+        assert 1.0 <= delay_0 <= 1.25  # 1000ms + up to 25% jitter
+
+        delay_1 = adapter._calculate_backoff(1, "transient")
+        assert 2.0 <= delay_1 <= 2.5  # 2000ms + up to 25% jitter
+
+        delay_2 = adapter._calculate_backoff(2, "transient")
+        assert 4.0 <= delay_2 <= 5.0  # 4000ms + up to 25% jitter
+
+        # Test rate limit gets longer delay
+        delay_rate_limit = adapter._calculate_backoff(0, "rate_limit")
+        assert delay_rate_limit >= 5.0  # At least 5 seconds for rate limit
+
+        # Test max backoff cap
+        delay_max = adapter._calculate_backoff(10, "transient")
+        assert delay_max <= 40.0  # 32000ms + 25% jitter max
+
+    def test_openai_adapter_should_retry_logic(self) -> None:
+        """Test that retry decisions are correct."""
+        from transcription.semantic_adapter import OpenAISemanticAdapter
+
+        adapter = OpenAISemanticAdapter(
+            api_key="test-key-123",
+            max_retries=3,
+        )
+
+        # Should retry transient, rate limit, and timeout errors
+        assert adapter._should_retry("rate_limit", 0) is True
+        assert adapter._should_retry("timeout", 0) is True
+        assert adapter._should_retry("transient", 0) is True
+
+        # Should not retry fatal or malformed errors
+        assert adapter._should_retry("fatal", 0) is False
+        assert adapter._should_retry("malformed", 0) is False
+
+        # Should not retry if max retries exceeded
+        assert adapter._should_retry("rate_limit", 3) is False
+        assert adapter._should_retry("transient", 4) is False

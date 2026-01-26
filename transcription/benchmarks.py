@@ -690,6 +690,90 @@ def _iter_commonvoice_from_selection(
             count += 1
 
 
+def iter_smoke_asr(
+    limit: int | None = None,
+) -> Iterable[EvalSample]:
+    """Iterate over ASR smoke test samples.
+
+    Smoke tests are minimal datasets committed to the repository for quick CI
+    validation. They use synthetic TTS audio and are always available.
+
+    The samples are defined in:
+        benchmarks/datasets/asr/smoke/manifest.json
+
+    Args:
+        limit: Maximum number of samples to return (None = all)
+
+    Yields:
+        EvalSample objects with:
+            - dataset="smoke"
+            - id=sample["id"]
+            - audio_path: Path to audio file
+            - reference_transcript: Ground truth text
+
+    Raises:
+        FileNotFoundError: If manifest or audio files not found
+
+    Example:
+        >>> for sample in iter_smoke_asr(limit=2):
+        ...     print(f"{sample.id}: {sample.reference_transcript[:40]}...")
+    """
+    # Manifest is in the project benchmarks directory
+    module_dir = Path(__file__).parent.parent
+    manifest_path = module_dir / "benchmarks" / "datasets" / "asr" / "smoke" / "manifest.json"
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"ASR smoke manifest not found at {manifest_path}.\n"
+            f"This should be committed to the repository."
+        )
+
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    samples = manifest.get("samples", [])
+    if not samples:
+        logger.warning(f"No samples found in ASR smoke manifest: {manifest_path}")
+        return
+
+    count = 0
+    for sample in samples:
+        if limit and count >= limit:
+            return
+
+        sample_id = sample.get("id")
+        audio_rel = sample.get("audio")
+        reference = sample.get("reference_transcript")
+
+        if not sample_id or not audio_rel:
+            logger.debug(f"Skipping sample with missing id or audio: {sample}")
+            continue
+
+        # Resolve audio path relative to manifest directory
+        audio_path = (manifest_path.parent / audio_rel).resolve()
+
+        if not audio_path.exists():
+            logger.warning(
+                f"Audio file not found for sample '{sample_id}': {audio_path}. Skipping."
+            )
+            continue
+
+        yield EvalSample(
+            dataset="smoke",
+            id=sample_id,
+            audio_path=audio_path,
+            reference_transcript=reference,
+            metadata={
+                "language": sample.get("language", "en"),
+                "duration_s": sample.get("duration_s"),
+                "source": sample.get("source"),
+                "profile": sample.get("profile"),
+                "notes": sample.get("notes"),
+            },
+        )
+        count += 1
+
+
 def list_available_benchmarks() -> dict[str, dict[str, Any]]:
     """List available benchmark datasets with status.
 
@@ -759,6 +843,20 @@ def list_available_benchmarks() -> dict[str, dict[str, Any]]:
             ).exists(),
             "setup_doc": "Manifest-based dataset",
             "description": "Common Voice English smoke test subset for quick ASR evaluation",
+            "tasks": ["asr"],
+        },
+        "smoke": {
+            "path": str(Path(__file__).parent.parent / "benchmarks" / "datasets" / "asr" / "smoke"),
+            "available": (
+                Path(__file__).parent.parent
+                / "benchmarks"
+                / "datasets"
+                / "asr"
+                / "smoke"
+                / "manifest.json"
+            ).exists(),
+            "setup_doc": "Committed to repository - always available",
+            "description": "Minimal ASR smoke tests for CI (synthetic TTS audio)",
             "tasks": ["asr"],
         },
     }

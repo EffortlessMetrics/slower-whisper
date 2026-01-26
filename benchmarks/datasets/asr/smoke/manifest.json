@@ -59,6 +59,20 @@
       "notes": "Clean 16 kHz TTS; action-oriented status update"
     }
   ],
+  "expected_baseline": {
+    "wer": {
+      "value": 5.0,
+      "tolerance": 5.0,
+      "unit": "%",
+      "notes": "TTS audio is clean; WER should be low. Tolerance accounts for model/device variance."
+    },
+    "cer": {
+      "value": 2.0,
+      "tolerance": 3.0,
+      "unit": "%",
+      "notes": "CER typically lower than WER for clean audio."
+    }
+  },
   "meta": {
     "created_at": "2026-01-21T00:00:00Z",
     "total_duration_s": 21.14,
