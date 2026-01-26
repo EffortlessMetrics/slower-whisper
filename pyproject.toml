@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "slower-whisper"
 version = "1.9.2"
-description = "Local-first conversation signal engine: transform audio into LLM-ready structured data with speaker diarization, prosody, and emotion"
+description = "Audio to receipts. Local-first conversation ETL: schema-versioned transcripts with speakers, timestamps, prosody, and a stable JSON contract for LLM pipelines."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 license = {text = "Apache-2.0"}
@@ -13,16 +13,20 @@ authors = [
     {name = "Effortless Metrics", email = "opensource@effortlessmetrics.com"}
 ]
 keywords = [
+    "asr",
     "whisper",
+    "faster-whisper",
     "transcription",
-    "audio",
-    "speech-to-text",
-    "prosody",
-    "emotion",
     "diarization",
-    "speaker-identification",
+    "streaming",
+    "prosody",
+    "emotion-recognition",
+    "local-first",
+    "privacy",
+    "json-schema",
     "conversation-intelligence",
-    "llm-integration",
+    "llm",
+    "rag",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

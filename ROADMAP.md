@@ -15,10 +15,10 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 | Track | Status | Next Action |
 |-------|--------|-------------|
 | v1.9.x Closeout | ✅ Complete | — |
-| API Polish Bundle | 📋 Ready to Start | Begin #70 |
-| Track 1: Benchmarks | 🔄 In Progress | Complete #99 (CI integration) |
-| Track 2: Streaming | 📋 Ready to Start | Begin #133 |
-| Track 3: Semantics | 🔄 In Progress | Begin #90 (cloud LLM interface) |
+| API Polish Bundle | ✅ Complete | Close issues with receipts |
+| Track 1: Benchmarks | ✅ Complete | Phase 3 gate mode (future) |
+| Track 2: Streaming | ✅ Complete | Docs polish, incremental diarization (#86) |
+| Track 3: Semantics | ✅ Complete | Semantic quality benchmark (#98) |
 
 ---
 
@@ -71,18 +71,18 @@ All v1.9.x deliverables shipped:
 
 P95 latency harness moves to Track 1 ([#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97)).
 
-### B) API Polish Bundle — 📋 Ready to Start
+### B) API Polish Bundle — ✅ Complete
 
-Ship as **one coherent PR** (high adoption value, low risk):
+All features implemented:
 
 | Issue | Feature | Status |
 |-------|---------|--------|
-| [#70](https://github.com/EffortlessMetrics/slower-whisper/issues/70) | `transcribe_bytes()` API | ⬜ |
-| [#71](https://github.com/EffortlessMetrics/slower-whisper/issues/71) | `word_timestamps` REST parameter | ⬜ |
-| [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72) | Word-level timestamps example | ⬜ |
-| [#78](https://github.com/EffortlessMetrics/slower-whisper/issues/78) | `Transcript` convenience methods | ⬜ |
+| [#70](https://github.com/EffortlessMetrics/slower-whisper/issues/70) | `transcribe_bytes()` API | ✅ `transcription/api.py` |
+| [#71](https://github.com/EffortlessMetrics/slower-whisper/issues/71) | `word_timestamps` REST parameter | ✅ `transcription/service.py` |
+| [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72) | Word-level timestamps example | ✅ `examples/word_timestamps_*.py` |
+| [#78](https://github.com/EffortlessMetrics/slower-whisper/issues/78) | `Transcript` convenience methods | ✅ `get_segments_by_speaker()`, `get_segment_at_time()`, `full_text`, `duration` |
 
-**DoD:** CLI + API + REST + example all consistent. Local gate passes.
+**Action:** Close issues with receipts pointing to implementation.
 
 ### C) Issue Cleanup
 
@@ -141,10 +141,10 @@ Every transcript and benchmark artifact includes `meta.receipt`:
 
 | Criterion | Status |
 |-----------|--------|
-| API polish PR merged | ⬜ |
-| Issue tracker reconciled | ⬜ |
-| Infrastructure issues exist (#135–#137) | ⬜ |
-| Streaming contract issues exist (#133, #134) | ⬜ |
+| API polish implemented | ✅ All features in codebase |
+| Issue tracker reconciled | ⬜ Close completed issues with receipts |
+| Infrastructure issues exist (#135–#137) | ✅ Receipt + baseline infrastructure complete |
+| Streaming contract issues exist (#133, #134) | ✅ Event envelope + client implemented |
 
 ### Recommended Execution Path
 
@@ -162,15 +162,20 @@ Track 2: Streaming (#133 → #134 → #84)
 
 ---
 
-## Next (v2.0): Real-Time + Governance
+## v2.0: Ready for Release
 
-**Theme:** Streaming is the new mode. Benchmarks are the new gate.
+**Theme:** ETL for conversations. Audio in, receipts out.
+
+**What v2.0 delivers:**
+- **Streaming protocol** — WebSocket + SSE with event envelope, backpressure, resume
+- **Semantic adapters** — 5 providers (local keywords, local LLM, OpenAI, Anthropic, noop)
+- **Benchmark infrastructure** — ASR/DER/emotion/streaming runners with baselines
+- **Schema stability** — v2 JSON with receipts and provenance
 
 **Design principles:**
 - **Benchmarks are artifacts** — JSON schemas with comparison rules, not just scripts
 - **Streaming is a protocol** — envelope spec with ordering guarantees and backpressure
-
-**Prerequisite order:** Benchmarks → Streaming → Semantics
+- **Semantics are pluggable** — adapter protocol, not hardcoded providers
 
 ---
 
@@ -368,24 +373,20 @@ fail_if: regression > threshold_percent (default: 10%)
 
 </details>
 
-### Track 2: Streaming Skeleton
+### Track 2: Streaming — ✅ Core Complete
 
-**Status:** ⏳ Blocked on Track 1 (latency measurement must exist)
-
-**Approach:** Protocol-first — define contracts before implementation.
+**Status:** Core streaming infrastructure complete. Incremental diarization remaining.
 
 | Order | Issue | Deliverable | Status |
 |-------|-------|-------------|--------|
-| 1 | #133 | Event envelope spec (IDs, ordering, backpressure) | ⬜ |
-| 2 | #134 | Reference Python client + contract tests | ⬜ |
-| 3 | [#84](https://github.com/EffortlessMetrics/slower-whisper/issues/84) | WebSocket endpoint (partial/final events) | ⬜ |
-| 4 | [#85](https://github.com/EffortlessMetrics/slower-whisper/issues/85) | REST streaming endpoints | ⬜ |
-| 5 | [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55) | Streaming API docs | ⬜ |
-| 6 | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) | Incremental diarization hook | ⬜ |
+| 1 | #133 | Event envelope spec (IDs, ordering, backpressure) | ✅ `streaming_ws.py:EventEnvelope` |
+| 2 | #134 | Reference Python client + contract tests | ✅ `streaming_client.py` |
+| 3 | [#84](https://github.com/EffortlessMetrics/slower-whisper/issues/84) | WebSocket endpoint (partial/final events) | ✅ `streaming_ws.py` |
+| 4 | [#85](https://github.com/EffortlessMetrics/slower-whisper/issues/85) | REST streaming endpoints (SSE) | ✅ `service.py` |
+| 5 | [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55) | Streaming API docs | ✅ `docs/STREAMING_ARCHITECTURE.md` |
+| 6 | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) | Incremental diarization hook | ⬜ Future |
 
-**Prerequisite:** Create #133 and #134 if they don't exist.
-
-**Done when:** Reference client passes contract tests against WS server.
+**Remaining:** Incremental diarization (#86), docs polish.
 
 <details>
 <summary><strong>Track 2 Design Notes: Event Envelope Specification</strong></summary>
@@ -461,24 +462,20 @@ All streaming events share this envelope:
 
 </details>
 
-### Track 3: Semantics Adapter Skeleton
+### Track 3: Semantics Adapter — ✅ Core Complete
 
-**Status:** 🔄 In Progress — annotation schema and adapter protocol complete, cloud LLM interface next
-
-**Approach:** Contract-first — interfaces before backends.
+**Status:** Full semantic adapter infrastructure complete. Benchmark runner remaining.
 
 | Order | Issue | Deliverable | Status |
 |-------|-------|-------------|--------|
 | 1 | [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88) | LLM annotation schema + versioning | ✅ `SemanticAdapter` protocol + `SemanticAnnotation` schema |
-| 2 | [#90](https://github.com/EffortlessMetrics/slower-whisper/issues/90) | Cloud LLM interface (OpenAI/Anthropic) | ⬜ |
-| 3 | [#91](https://github.com/EffortlessMetrics/slower-whisper/issues/91) | Guardrails (rate limits, cost, PII) | ⬜ |
-| 4 | [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92) | Golden files + contract tests | ⬜ |
-| 5 | [#89](https://github.com/EffortlessMetrics/slower-whisper/issues/89) | Local LLM backend (qwen2.5-7b/smollm) | ⬜ |
-| 6 | [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98) | Semantic quality benchmark (Topic F1) | ⬜ |
+| 2 | [#90](https://github.com/EffortlessMetrics/slower-whisper/issues/90) | Cloud LLM interface (OpenAI/Anthropic) | ✅ `OpenAISemanticAdapter`, `AnthropicSemanticAdapter` |
+| 3 | [#91](https://github.com/EffortlessMetrics/slower-whisper/issues/91) | Guardrails (rate limits, cost, PII) | ✅ `llm_guardrails.py` |
+| 4 | [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92) | Golden files + contract tests | ✅ `tests/fixtures/semantic_golden/` |
+| 5 | [#89](https://github.com/EffortlessMetrics/slower-whisper/issues/89) | Local LLM backend | ✅ `LocalLLMSemanticAdapter` |
+| 6 | [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98) | Semantic quality benchmark (Topic F1) | ⬜ Future |
 
-**Why this order:** Schema + interface + guardrails + golden files must land before any backend to avoid "LLM integration sprawl."
-
-**Done when:** Local backend populates deterministic fields; golden files enforce contracts.
+**Remaining:** Semantic quality benchmark (#98) for Topic F1 measurement.
 
 <details>
 <summary><strong>Track 3 Design Notes: Semantics Contract</strong></summary>
@@ -628,19 +625,19 @@ Placeholders, not commitments.
 
 ---
 
-## Issues to Create
+## Issues to Close
 
-Before starting a track, ensure these issues exist:
+These issues are implemented but may not be formally closed:
 
-| Issue | Track | Purpose |
-|-------|-------|---------|
-| #133 | 2 | Event envelope spec |
-| #134 | 2 | Reference Python client |
-| #135 | 1 | Receipt contract |
-| #136 | 2 | Stable run/event IDs |
-| #137 | 1 | Baseline file format |
+| Issue | Track | Status | Implementation |
+|-------|-------|--------|----------------|
+| #133 | 2 | ✅ Implemented | `streaming_ws.py:EventEnvelope` |
+| #134 | 2 | ✅ Implemented | `streaming_client.py` |
+| #135 | 1 | ✅ Implemented | Receipt provenance in benchmark results |
+| #136 | 2 | ✅ Implemented | `stream_id`, `event_id` in envelope |
+| #137 | 1 | ✅ Implemented | `benchmarks/baselines/` infrastructure |
 
-Use the contract specs in `<details>` sections above as issue DoD.
+**Action:** Close with receipts pointing to implementation files.
 
 ---
 

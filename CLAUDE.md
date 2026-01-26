@@ -1,8 +1,8 @@
 # CLAUDE.md — Repo Guide (slower-whisper)
 
-**Status:** v1.9.2 — benchmark evaluation framework + baseline infrastructure (#137) + semantic adapter protocol (#88)
-**Current focus:** Track 1 benchmark completion (CI integration #99) + Track 3 semantics (cloud LLM interface #90)
-**Next arc:** Track 2 streaming protocol
+**Status:** v2.0.0-ready — ETL for conversations with streaming, semantic adapters, benchmarks
+**Current focus:** v2.0 release prep, issue tracker reconciliation, docs polish
+**What it is:** Audio → receipts. Schema-versioned JSON with speakers, timestamps, enrichment, and a stable contract for LLM pipelines.
 
 If this doc disagrees with code, update it.
 
@@ -52,6 +52,16 @@ nix-clean run .#verify -- --quick
    - Results emit JSON with `receipt` for provenance tracking
    - Missing datasets → skip with clear message, not crash
 
+8. **Semantic adapters are pluggable**
+   - All adapters implement `SemanticAdapter` protocol
+   - Factory pattern: `create_adapter(provider="local|openai|anthropic|noop")`
+   - Cheap triage first (local keywords), expensive reasoning optional
+
+9. **Streaming uses event envelope**
+   - All events wrapped in `EventEnvelope` with `event_id`, `stream_id`, `ts_server`
+   - `event_id` is monotonically increasing per stream
+   - FINALIZED events never dropped; PARTIAL can be dropped under backpressure
+
 ---
 
 ## Key Surfaces
@@ -69,8 +79,12 @@ nix-clean run .#verify -- --quick
 | Benchmark baselines | `benchmarks/baselines/` |
 | Manifest schema | `benchmarks/manifest_schema.json` |
 | Semantic adapters | `transcription/semantic_adapter.py` |
+| LLM guardrails | `transcription/llm_guardrails.py` |
+| WebSocket streaming | `transcription/streaming_ws.py` |
+| Streaming client | `transcription/streaming_client.py` |
 | Session registry | `transcription/session_registry.py` |
 | API service | `transcription/service.py` |
+| Public API | `transcription/api.py` |
 
 ---
 

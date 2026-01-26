@@ -1,20 +1,25 @@
 # Documentation Index
 
-Welcome to the **slower-whisper** documentation -- your guide to local-first conversation intelligence infrastructure.
+Welcome to the **slower-whisper** documentation -- ETL for conversations, audio in, receipts out.
 
 ---
 
 ## What is slower-whisper?
 
-slower-whisper is a **local conversation signal engine** that turns audio into **LLM-ready structured data**, capturing not just *what* was said, but ***how*** it was said (prosody, emotion, speaker dynamics, interaction patterns).
+**slower-whisper is ETL for conversations.** It transforms raw audio into schema-versioned structured data that captures not just *what* was said, but *who* said it, *when*, and *how*.
 
-**Key differentiators:**
+**Why it exists:**
 
-- **Local-first** -- runs entirely on your machine, no cloud dependency
-- **Stable JSON schema** -- versioned contracts for production use
-- **Modular architecture** -- use only the features you need
-- **Contract-driven** -- BDD scenarios enforce behavioral stability
-- **LLM-native** -- designed for RAG, summarization, analysis
+- **FinOps for LLMs** -- cheap deterministic triage (rules, DSP, speaker math) before expensive model inference
+- **Truth layer** -- acoustic ground truth (timestamps, speakers, prosody) that LLMs can't hallucinate
+- **Local-first** -- all processing runs on your hardware, data never leaves
+
+**Key properties:**
+
+- **Schema-versioned JSON** (v2) with stability tiers and backward compatibility
+- **5 semantic adapters** -- local keywords, local LLM, OpenAI, Anthropic, or bring your own
+- **Streaming built-in** -- WebSocket + SSE for real-time pipelines
+- **Receipt provenance** -- config hash, run IDs, git commit for reproducibility
 
 See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROADMAP.md) for development timeline.
 
