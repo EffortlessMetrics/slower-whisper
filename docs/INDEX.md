@@ -265,6 +265,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 | Document | Description |
 |----------|-------------|
+| [RELEASE_READINESS.md](RELEASE_READINESS.md) | **v2.0 release readiness board** — milestones, exit criteria, validation commands |
 | [CURRENT_STATUS.md](CURRENT_STATUS.md) | Current development status |
 | [EVAL_STATUS.md](EVAL_STATUS.md) | Evaluation status |
 | [EVALUATION_LOG.md](EVALUATION_LOG.md) | Evaluation log entries |
