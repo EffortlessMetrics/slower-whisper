@@ -63,10 +63,14 @@ nix-clean run .#verify -- --quick
 | Streaming | `transcription/streaming*.py` |
 | Device resolution | `transcription/device.py` |
 | JSON I/O | `transcription/writers.py` |
-| Benchmark runners | `transcription/benchmark_runners.py` |
 | Benchmark CLI | `transcription/benchmark_cli.py` |
-| LLM providers | `transcription/llm_client.py` |
+| Benchmarks (datasets) | `transcription/benchmarks.py` |
+| Dataset manifests | `benchmarks/datasets/*/manifest.json` |
+| Benchmark baselines | `benchmarks/baselines/` |
+| Manifest schema | `benchmarks/manifest_schema.json` |
 | Semantic adapters | `transcription/semantic_adapter.py` |
+| Session registry | `transcription/session_registry.py` |
+| API service | `transcription/service.py` |
 
 ---
 
@@ -89,6 +93,7 @@ nix-clean run .#verify -- --quick
 | Type policy | [docs/TYPING_POLICY.md](docs/TYPING_POLICY.md) |
 | Configuration | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
 | Benchmarks | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) |
+| Dataset manifests | [docs/DATASET_MANIFEST.md](docs/DATASET_MANIFEST.md) |
 | Semantic benchmark | [docs/SEMANTIC_BENCHMARK.md](docs/SEMANTIC_BENCHMARK.md) |
 | LLM semantic annotator | [docs/LLM_SEMANTIC_ANNOTATOR.md](docs/LLM_SEMANTIC_ANNOTATOR.md) |
 | AMI dataset setup | [docs/AMI_SETUP.md](docs/AMI_SETUP.md) |

@@ -151,14 +151,47 @@ from .models import (
     TurnMeta,
     Word,
 )
+
+# Evidence-grade outcomes extraction
+from .outcomes import (
+    OUTCOMES_SCHEMA_VERSION,
+    BaselineOutcomeExtractor,
+    Citation,
+    LLMOutcomeExtractor,
+    Outcome,
+    OutcomeExtractionResult,
+    OutcomeProcessor,
+    format_outcomes_json,
+    format_outcomes_pretty,
+)
+
+# Privacy pack for PII detection, redaction, and safe exports
+from .privacy import (
+    EncryptedStore,
+    EncryptionError,
+    ExportMode,
+    PIIDetector,
+    PIIType,
+    PrivacyError,
+    RedactedText,
+    RedactedTranscript,
+    RedactionMode,
+    RedactionReport,
+    Redactor,
+    SafeExporter,
+)
+from .privacy import (
+    PIIMatch as PrivacyPIIMatch,
+)
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
 
-# Track 3: Semantic adapter protocol (#88)
+# Track 3: Semantic adapter protocol (#88, #89)
 from .semantic_adapter import (
     SEMANTIC_SCHEMA_VERSION,
     ActionItem,
     ChunkContext,
     LocalKeywordAdapter,
+    LocalLLMSemanticAdapter,
     NoOpSemanticAdapter,
     NormalizedAnnotation,
     ProviderHealth,
@@ -167,7 +200,25 @@ from .semantic_adapter import (
     create_adapter,
 )
 from .speaker_id import get_speaker_id, get_speaker_label_or_id
+
+# Speaker identity system for cross-session recognition
+from .speaker_identity import (
+    MappedTranscript,
+    Speaker,
+    SpeakerEmbedder,
+    SpeakerMatch,
+    SpeakerRegistry,
+    apply_identity_mapping,
+    get_available_backend,
+    map_diarization_to_identity,
+)
 from .streaming import StreamChunk, StreamConfig, StreamEvent, StreamingSession
+
+# v2.0.0 Streaming ASR adapter for real-time transcription
+from .streaming_asr import (
+    StreamingASRAdapter,
+    StreamingASRConfig,
+)
 
 # v1.9.0 streaming callbacks
 from .streaming_callbacks import StreamCallbacks, StreamingError
@@ -197,6 +248,21 @@ from .streaming_ws import (
     SessionStats,
     WebSocketSessionConfig,
     WebSocketStreamingSession,
+)
+
+# Telemetry system
+from .telemetry import (
+    CheckStatus,
+    DoctorCheck,
+    DoctorReport,
+    PrometheusMetrics,
+    TelemetryCollector,
+    Timer,
+    add_telemetry_to_receipt,
+    format_doctor_report,
+    get_metrics,
+    reset_metrics,
+    run_doctor,
 )
 from .turn_helpers import turn_to_dict
 from .types_audio import AudioState, EmotionState, ExtractionStatus, ProsodyState
@@ -232,17 +298,28 @@ __all__ = [
     "SemanticAnnotator",
     "NoOpSemanticAnnotator",
     "KeywordSemanticAnnotator",
-    # Track 3: Semantic adapter protocol (#88)
+    # Track 3: Semantic adapter protocol (#88, #89)
     "SEMANTIC_SCHEMA_VERSION",
     "ActionItem",
     "ChunkContext",
     "LocalKeywordAdapter",
+    "LocalLLMSemanticAdapter",
     "NoOpSemanticAdapter",
     "NormalizedAnnotation",
     "ProviderHealth",
     "SemanticAdapter",
     "SemanticAnnotation",
     "create_adapter",
+    # Evidence-grade outcomes extraction
+    "OUTCOMES_SCHEMA_VERSION",
+    "Citation",
+    "Outcome",
+    "OutcomeExtractionResult",
+    "BaselineOutcomeExtractor",
+    "LLMOutcomeExtractor",
+    "OutcomeProcessor",
+    "format_outcomes_json",
+    "format_outcomes_pretty",
     # Public configuration
     "TranscriptionConfig",
     "EnrichmentConfig",
@@ -288,6 +365,9 @@ __all__ = [
     "EventEnvelope",
     "WebSocketSessionConfig",
     "WebSocketStreamingSession",
+    # v2.0.0: Streaming ASR adapter
+    "StreamingASRAdapter",
+    "StreamingASRConfig",
     # v2.0.0: Reference Python streaming client (#134)
     "StreamingClient",
     "StreamingConfig",
@@ -308,6 +388,15 @@ __all__ = [
     "turn_to_dict",
     "get_speaker_id",
     "get_speaker_label_or_id",
+    # Speaker identity system for cross-session recognition
+    "Speaker",
+    "SpeakerMatch",
+    "SpeakerEmbedder",
+    "SpeakerRegistry",
+    "MappedTranscript",
+    "get_available_backend",
+    "map_diarization_to_identity",
+    "apply_identity_mapping",
     # Device detection (v1.9.1+)
     "ResolvedDevice",
     "resolve_device",
@@ -323,4 +412,30 @@ __all__ = [
     "AsrConfig",
     "Paths",
     "run_pipeline",
+    # Telemetry system
+    "Timer",
+    "TelemetryCollector",
+    "CheckStatus",
+    "DoctorCheck",
+    "DoctorReport",
+    "PrometheusMetrics",
+    "run_doctor",
+    "format_doctor_report",
+    "get_metrics",
+    "reset_metrics",
+    "add_telemetry_to_receipt",
+    # Privacy pack for PII detection, redaction, and safe exports
+    "PIIDetector",
+    "PIIType",
+    "PrivacyPIIMatch",
+    "Redactor",
+    "RedactionMode",
+    "RedactedText",
+    "RedactedTranscript",
+    "RedactionReport",
+    "SafeExporter",
+    "ExportMode",
+    "EncryptedStore",
+    "PrivacyError",
+    "EncryptionError",
 ]

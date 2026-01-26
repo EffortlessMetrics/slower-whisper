@@ -46,6 +46,7 @@ from .benchmarks import (
     iter_commonvoice,
     iter_iemocap_clips,
     iter_librispeech,
+    iter_smoke_asr,
     list_available_benchmarks,
 )
 from .semantic import KeywordSemanticAnnotator
@@ -74,9 +75,9 @@ BENCHMARK_TRACKS: dict[str, TrackConfig] = {
     "asr": TrackConfig(
         name="ASR (Automatic Speech Recognition)",
         description="Evaluate transcription accuracy using WER/CER metrics",
-        supported_datasets=["librispeech", "commonvoice_en_smoke"],
+        supported_datasets=["smoke", "librispeech", "commonvoice_en_smoke"],
         metrics=["wer", "cer", "rtf"],
-        default_dataset="librispeech",
+        default_dataset="smoke",
     ),
     "diarization": TrackConfig(
         name="Speaker Diarization",
@@ -711,6 +712,8 @@ class ASRBenchmarkRunner(BenchmarkRunner):
             return list(iter_librispeech(split=self.split, limit=limit))
         elif self.dataset == "commonvoice_en_smoke":
             return list(iter_commonvoice(subset="en_smoke", limit=limit))
+        elif self.dataset == "smoke":
+            return list(iter_smoke_asr(limit=limit))
         raise ValueError(f"Dataset {self.dataset} not supported for ASR track")
 
     def _normalize_text(self, text: str) -> str:

@@ -638,6 +638,7 @@ class TestHelpText:
         assert "export" in captured.out
         assert "validate" in captured.out
         assert "benchmark" in captured.out
+        assert "doctor" in captured.out
 
     def test_transcribe_help_shows_options(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Transcribe help shows all options."""
@@ -721,6 +722,52 @@ class TestHelpText:
         assert "streaming" in captured.out
         assert "semantic" in captured.out
         assert "emotion" in captured.out
+
+    def test_doctor_help_shows_options(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Doctor help shows available options."""
+        with pytest.raises(SystemExit) as exc_info:
+            main(["doctor", "--help"])
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+
+        assert "--json" in captured.out
+        assert "diagnostics" in captured.out.lower()
+
+
+class TestDoctorCommand:
+    """Test doctor command functionality."""
+
+    def test_doctor_runs_successfully(self) -> None:
+        """Doctor command should run and return 0 or 1 based on checks."""
+        # Run doctor and verify it returns a valid exit code
+        exit_code = main(["doctor"])
+        assert exit_code in (0, 1)  # 0 for pass, 1 for fail
+
+    def test_doctor_json_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Doctor --json should output valid JSON."""
+        import json
+
+        main(["doctor", "--json"])
+
+        captured = capsys.readouterr()
+        # Parse the output as JSON to verify it's valid
+        result = json.loads(captured.out)
+
+        assert "overall_status" in result
+        assert result["overall_status"] in ("pass", "warn", "fail")
+        assert "summary" in result
+        assert "checks" in result
+        assert isinstance(result["checks"], list)
+
+    def test_doctor_human_readable_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Doctor without --json should output human-readable text."""
+        main(["doctor"])
+
+        captured = capsys.readouterr()
+        # Should contain formatted output markers
+        assert "slower-whisper doctor" in captured.out
+        assert "Pass:" in captured.out or "[PASS]" in captured.out
 
 
 # ============================================================================

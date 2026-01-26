@@ -86,7 +86,8 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | Document | Description |
 |----------|-------------|
 | [releases/RELEASE.md](releases/RELEASE.md) | Release playbook and checklist pointers |
-| [releases/RELEASE_CHECKLIST.md](releases/RELEASE_CHECKLIST.md) | Full release checklist |
+| [releases/RELEASE_CHECKLIST_v2.0.0.md](releases/RELEASE_CHECKLIST_v2.0.0.md) | **v2.0.0 release checklist (current)** |
+| [releases/RELEASE_CHECKLIST.md](releases/RELEASE_CHECKLIST.md) | v1.1.0 release checklist (reference) |
 | [releases/PRE_RELEASE_TEST_PLAN.md](releases/PRE_RELEASE_TEST_PLAN.md) | Pre-release validation steps |
 | [releases/FINAL_VERIFICATION_CHECKLIST.md](releases/FINAL_VERIFICATION_CHECKLIST.md) | Final verification before tagging |
 | [releases/PACKAGING.md](releases/PACKAGING.md) | Packaging and distribution guide |
@@ -105,6 +106,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | Document | Description | Use When |
 |----------|-------------|----------|
 | [QUICKSTART.md](QUICKSTART.md) | 5-minute tutorial for first transcription | Starting from scratch |
+| [ADVANTAGE_LAYER_QUICKSTART.md](ADVANTAGE_LAYER_QUICKSTART.md) | **End-to-end workflow: store, outcomes, privacy, webhooks, RAG** | Using the full advantage layer |
 | [CONFIGURATION.md](CONFIGURATION.md) | Complete configuration guide | Setting up options, using config files, understanding precedence |
 | [QUICKSTART_AUDIO_ENRICHMENT.md](QUICKSTART_AUDIO_ENRICHMENT.md) | Quick guide to audio enrichment | Adding audio features |
 | [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) | Migration guide for version upgrades | Upgrading between versions |
@@ -120,6 +122,13 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [SPEAKER_DIARIZATION.md](SPEAKER_DIARIZATION.md) | Speaker diarization design and implementation | Who spoke when, turn structure |
 | [MODEL_CACHE.md](MODEL_CACHE.md) | Model cache management | Cache location, cleanup, troubleshooting |
 | [REDACTION.md](REDACTION.md) | PII redaction capabilities | Privacy, data handling |
+
+### Advantage Layer (v2.0)
+
+| Document | Description | Topics |
+|----------|-------------|--------|
+| [ADVANTAGE_LAYER_QUICKSTART.md](ADVANTAGE_LAYER_QUICKSTART.md) | **Complete end-to-end workflow** | Store, outcomes, privacy, webhooks, RAG |
+| [DATASET_MANIFEST.md](DATASET_MANIFEST.md) | Dataset manifest schema | Benchmark datasets, CI validation |
 
 ### Streaming
 
@@ -344,6 +353,16 @@ These documents are historical artifacts from the development process and transf
 1. [Streaming API Reference](STREAMING_API.md) - WebSocket and SSE endpoints
 2. [Streaming Architecture](STREAMING_ARCHITECTURE.md) - Internal design
 3. [API Service](API_SERVICE.md) - REST API setup
+
+### "I want to use the advantage layer (store, outcomes, webhooks, RAG)"
+1. [Advantage Layer Quickstart](ADVANTAGE_LAYER_QUICKSTART.md) - Complete end-to-end workflow
+2. CLI: `slower-whisper store` - Conversation store commands
+3. CLI: `slower-whisper outcomes` - Outcomes extraction
+4. CLI: `slower-whisper privacy` - Privacy/redaction tools
+5. CLI: `slower-whisper webhook` - Webhook delivery
+6. CLI: `slower-whisper rag` - RAG bundle export
+7. CLI: `slower-whisper speakers` - Speaker identity management
+8. CLI: `slower-whisper doctor` - System diagnostics
 
 ### "I want to run benchmarks and evaluate quality"
 1. [Benchmarks](BENCHMARKS.md) - Benchmark CLI reference

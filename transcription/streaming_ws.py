@@ -25,7 +25,11 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from .asr_engine import WhisperModelProtocol
+    from .streaming_asr import StreamingASRAdapter, StreamingASRConfig
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +46,7 @@ class ClientMessageType(str, Enum):
     AUDIO_CHUNK = "AUDIO_CHUNK"
     END_SESSION = "END_SESSION"
     PING = "PING"
+    RESUME_SESSION = "RESUME_SESSION"  # Resume after reconnection
 
 
 class ServerMessageType(str, Enum):
@@ -131,6 +136,8 @@ class WebSocketSessionConfig:
         diarization_interval_sec: Interval for diarization updates in seconds (default: 30.0)
         sample_rate: Expected audio sample rate (default: 16000 Hz)
         audio_format: Audio encoding format (default: "pcm_s16le")
+        replay_buffer_size: Size of event replay buffer for resume (default: 100)
+        backpressure_threshold: Queue size threshold for backpressure (default: 80)
     """
 
     max_gap_sec: float = 1.0
@@ -141,6 +148,8 @@ class WebSocketSessionConfig:
     diarization_interval_sec: float = 30.0
     sample_rate: int = 16000
     audio_format: str = "pcm_s16le"
+    replay_buffer_size: int = 100
+    backpressure_threshold: int = 80
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WebSocketSessionConfig:
@@ -161,6 +170,8 @@ class WebSocketSessionConfig:
             diarization_interval_sec=float(data.get("diarization_interval_sec", 30.0)),
             sample_rate=sample_rate,
             audio_format=str(data.get("audio_format", "pcm_s16le")),
+            replay_buffer_size=int(data.get("replay_buffer_size", 100)),
+            backpressure_threshold=int(data.get("backpressure_threshold", 80)),
         )
 
 
@@ -190,6 +201,8 @@ class SessionStats:
     events_sent: int = 0
     events_dropped: int = 0
     errors: int = 0
+    backpressure_events: int = 0
+    resume_attempts: int = 0
     start_time: float = field(default_factory=time.time)
     end_time: float | None = None
 
@@ -204,8 +217,62 @@ class SessionStats:
             "events_sent": self.events_sent,
             "events_dropped": self.events_dropped,
             "errors": self.errors,
+            "backpressure_events": self.backpressure_events,
+            "resume_attempts": self.resume_attempts,
             "duration_sec": round(duration, 3),
         }
+
+
+@dataclass
+class ReplayBuffer:
+    """
+    Circular buffer for storing events for resume capability.
+
+    The replay buffer stores recent events so clients can resume
+    after reconnection by replaying missed events.
+
+    Attributes:
+        max_size: Maximum number of events to store
+        events: List of stored events (most recent last)
+        oldest_event_id: Oldest event ID in buffer (for gap detection)
+    """
+
+    max_size: int = 100
+    events: list[EventEnvelope] = field(default_factory=list)
+    oldest_event_id: int = 0
+
+    def add(self, event: EventEnvelope) -> None:
+        """Add an event to the buffer."""
+        self.events.append(event)
+        if len(self.events) > self.max_size:
+            removed = self.events.pop(0)
+            self.oldest_event_id = self.events[0].event_id if self.events else removed.event_id + 1
+
+    def get_events_since(self, last_event_id: int) -> tuple[list[EventEnvelope], bool]:
+        """
+        Get events since the given event ID.
+
+        Args:
+            last_event_id: Last event ID client received
+
+        Returns:
+            Tuple of (events to replay, gap_detected).
+            gap_detected is True if some events were lost (not in buffer).
+        """
+        if not self.events:
+            return [], False
+
+        # Check for gap (client's last_event_id is older than our buffer)
+        gap_detected = last_event_id < self.oldest_event_id
+
+        # Find events to replay
+        replay = [e for e in self.events if e.event_id > last_event_id]
+        return replay, gap_detected
+
+    def clear(self) -> None:
+        """Clear the buffer."""
+        self.events.clear()
+        self.oldest_event_id = 0
 
 
 # =============================================================================
@@ -326,6 +393,8 @@ class WebSocketStreamingSession:
         self,
         config: WebSocketSessionConfig | None = None,
         diarization_hook: DiarizationHook | None = None,
+        asr_model: WhisperModelProtocol | None = None,
+        asr_config: StreamingASRConfig | None = None,
     ) -> None:
         """
         Initialize a new WebSocket streaming session.
@@ -335,6 +404,10 @@ class WebSocketStreamingSession:
             diarization_hook: Optional async callback for incremental diarization.
                              When provided and enable_diarization is True, the hook
                              is called periodically with accumulated audio.
+            asr_model: Optional faster-whisper model instance for real transcription.
+                      If not provided, the session will emit mock transcription events.
+            asr_config: Optional StreamingASRConfig for ASR adapter behavior.
+                       Only used when asr_model is provided.
         """
         self.stream_id = f"str-{uuid.uuid4()}"
         self.config = config or WebSocketSessionConfig()
@@ -356,8 +429,19 @@ class WebSocketStreamingSession:
         # Queue for outgoing events (for backpressure management)
         self._event_queue: asyncio.Queue[EventEnvelope] = asyncio.Queue(maxsize=100)
 
+        # Replay buffer for resume capability
+        self._replay_buffer = ReplayBuffer(max_size=self.config.replay_buffer_size)
+
+        # Backpressure state
+        self._backpressure_active = False
+
         # Internal streaming session (lazy initialized on start)
         self._streaming_session: Any = None
+
+        # ASR adapter for real transcription (lazy initialized on start)
+        self._asr_model = asr_model
+        self._asr_config = asr_config
+        self._asr_adapter: StreamingASRAdapter | None = None
 
         # Incremental diarization state
         self._diarization_hook = diarization_hook
@@ -366,10 +450,11 @@ class WebSocketStreamingSession:
         self._diarization_update_count = 0
 
         logger.info(
-            "Created WebSocket session: stream_id=%s, config=%s, diarization_hook=%s",
+            "Created WebSocket session: stream_id=%s, config=%s, diarization_hook=%s, asr=%s",
             self.stream_id,
             self.config,
             "enabled" if diarization_hook else "disabled",
+            "enabled" if asr_model else "mock",
         )
 
     def _next_event_id(self) -> int:
@@ -396,7 +481,7 @@ class WebSocketStreamingSession:
         ts_audio_end: float | None = None,
     ) -> EventEnvelope:
         """Create an event envelope with current metadata."""
-        return EventEnvelope(
+        envelope = EventEnvelope(
             event_id=self._next_event_id(),
             stream_id=self.stream_id,
             type=msg_type,
@@ -405,6 +490,177 @@ class WebSocketStreamingSession:
             segment_id=segment_id,
             ts_audio_start=ts_audio_start,
             ts_audio_end=ts_audio_end,
+        )
+        # Add to replay buffer for resume capability
+        self._replay_buffer.add(envelope)
+        return envelope
+
+    def check_backpressure(self) -> bool:
+        """
+        Check if backpressure should be applied.
+
+        Returns True if the event queue is approaching capacity.
+        Clients should slow down audio submission when this returns True.
+
+        Returns:
+            True if backpressure is active, False otherwise.
+        """
+        queue_size = self._event_queue.qsize()
+        threshold = self.config.backpressure_threshold
+
+        if queue_size >= threshold:
+            if not self._backpressure_active:
+                self._backpressure_active = True
+                self.stats.backpressure_events += 1
+                logger.warning(
+                    "Backpressure activated: stream_id=%s, queue_size=%d",
+                    self.stream_id,
+                    queue_size,
+                )
+            return True
+
+        if self._backpressure_active and queue_size < threshold * 0.5:
+            self._backpressure_active = False
+            logger.info(
+                "Backpressure deactivated: stream_id=%s, queue_size=%d",
+                self.stream_id,
+                queue_size,
+            )
+
+        return self._backpressure_active
+
+    def drop_partial_events(self) -> int:
+        """
+        Drop PARTIAL events from queue under backpressure.
+
+        Implements the drop policy: PARTIAL events can be dropped,
+        FINALIZED events are never dropped.
+
+        Returns:
+            Number of events dropped.
+        """
+        if self._event_queue.empty():
+            return 0
+
+        # Drain queue, keeping non-droppable events
+        events_to_keep: list[EventEnvelope] = []
+        dropped = 0
+
+        while not self._event_queue.empty():
+            try:
+                event = self._event_queue.get_nowait()
+                # Never drop FINALIZED, SESSION_ENDED, or ERROR events
+                if event.type in (
+                    ServerMessageType.FINALIZED,
+                    ServerMessageType.SESSION_ENDED,
+                    ServerMessageType.ERROR,
+                ):
+                    events_to_keep.append(event)
+                else:
+                    dropped += 1
+            except asyncio.QueueEmpty:
+                break
+
+        # Re-add kept events
+        for event in events_to_keep:
+            try:
+                self._event_queue.put_nowait(event)
+            except asyncio.QueueFull:
+                # Should not happen as we just drained, but be safe
+                dropped += 1
+
+        if dropped > 0:
+            self.stats.events_dropped += dropped
+            logger.warning(
+                "Dropped %d PARTIAL events due to backpressure: stream_id=%s",
+                dropped,
+                self.stream_id,
+            )
+
+        return dropped
+
+    def get_events_for_resume(self, last_event_id: int) -> tuple[list[EventEnvelope], bool]:
+        """
+        Get events for resume after reconnection.
+
+        Args:
+            last_event_id: Last event ID client received before disconnect.
+
+        Returns:
+            Tuple of (events to replay, gap_detected).
+            If gap_detected is True, some events were lost and cannot be replayed.
+        """
+        self.stats.resume_attempts += 1
+        events, gap_detected = self._replay_buffer.get_events_since(last_event_id)
+
+        if gap_detected:
+            logger.warning(
+                "Resume gap detected: stream_id=%s, last_event_id=%d, oldest_in_buffer=%d",
+                self.stream_id,
+                last_event_id,
+                self._replay_buffer.oldest_event_id,
+            )
+
+        logger.info(
+            "Resume request: stream_id=%s, last_event_id=%d, replaying=%d events, gap=%s",
+            self.stream_id,
+            last_event_id,
+            len(events),
+            gap_detected,
+        )
+
+        return events, gap_detected
+
+    def create_resume_gap_error(self, last_event_id: int) -> EventEnvelope:
+        """
+        Create a RESUME_GAP error when replay buffer cannot satisfy resume.
+
+        Args:
+            last_event_id: Client's last event ID that caused the gap.
+
+        Returns:
+            EventEnvelope with ERROR type and RESUME_GAP code.
+        """
+        return self._create_envelope(
+            ServerMessageType.ERROR,
+            {
+                "code": "RESUME_GAP",
+                "message": (
+                    f"Cannot resume from event {last_event_id}. "
+                    f"Oldest available event is {self._replay_buffer.oldest_event_id}. "
+                    "Client must restart session."
+                ),
+                "recoverable": False,
+                "details": {
+                    "requested_event_id": last_event_id,
+                    "oldest_available": self._replay_buffer.oldest_event_id,
+                    "current_event_id": self._event_id_counter,
+                },
+            },
+        )
+
+    def create_buffer_overflow_error(self) -> EventEnvelope:
+        """
+        Create a BUFFER_OVERFLOW error when backpressure is critical.
+
+        Returns:
+            EventEnvelope with ERROR type and BUFFER_OVERFLOW code.
+        """
+        self.stats.errors += 1
+        return self._create_envelope(
+            ServerMessageType.ERROR,
+            {
+                "code": "BUFFER_OVERFLOW",
+                "message": (
+                    "Event buffer overflow - client is not consuming events fast enough. "
+                    "Some PARTIAL events have been dropped."
+                ),
+                "recoverable": True,
+                "details": {
+                    "events_dropped": self.stats.events_dropped,
+                    "queue_size": self._event_queue.qsize(),
+                },
+            },
         )
 
     async def start(self) -> EventEnvelope:
@@ -429,6 +685,18 @@ class WebSocketStreamingSession:
         stream_config = StreamConfig(max_gap_sec=self.config.max_gap_sec)
         self._streaming_session = StreamingSession(stream_config)
 
+        # Initialize ASR adapter if model is provided
+        if self._asr_model is not None:
+            from .streaming_asr import StreamingASRAdapter, StreamingASRConfig
+
+            # Use provided config or create default with session sample rate
+            asr_config = self._asr_config or StreamingASRConfig(sample_rate=self.config.sample_rate)
+            self._asr_adapter = StreamingASRAdapter(self._asr_model, asr_config)
+            logger.info(
+                "Initialized ASR adapter for session: stream_id=%s",
+                self.stream_id,
+            )
+
         self.state = SessionState.ACTIVE
         logger.info("Started WebSocket session: stream_id=%s", self.stream_id)
 
@@ -448,6 +716,9 @@ class WebSocketStreamingSession:
         This method decodes the audio chunk, feeds it through the ASR pipeline,
         and generates PARTIAL or FINALIZED events based on the streaming session
         state machine.
+
+        When an ASR model is configured, the adapter performs VAD-triggered
+        chunked transcription. Otherwise, mock events are generated for testing.
 
         Args:
             audio_data: Raw audio bytes (base64 decoded by caller)
@@ -475,12 +746,113 @@ class WebSocketStreamingSession:
         self.stats.chunks_received += 1
         self.stats.bytes_received += len(audio_data)
 
-        # Accumulate audio data
+        # Accumulate audio data (for diarization and fallback)
         self._audio_buffer.extend(audio_data)
 
-        # For now, we'll generate mock events since we don't have real-time ASR
-        # In production, this would feed into faster-whisper's streaming API
-        # or a VAD + chunked transcription approach
+        events: list[EventEnvelope] = []
+
+        # Use real ASR if adapter is available
+        if self._asr_adapter is not None:
+            events.extend(await self._process_audio_with_asr(audio_data))
+        else:
+            # Mock transcription for testing
+            events.extend(self._generate_mock_events())
+
+        # Check if we should trigger incremental diarization
+        diarization_event = await self._maybe_trigger_diarization()
+        if diarization_event:
+            events.append(diarization_event)
+
+        self.stats.events_sent += len(events)
+        return events
+
+    async def _process_audio_with_asr(self, audio_data: bytes) -> list[EventEnvelope]:
+        """Process audio through the real ASR adapter.
+
+        Args:
+            audio_data: Raw PCM audio bytes.
+
+        Returns:
+            List of EventEnvelope objects from transcription results.
+        """
+        if self._asr_adapter is None or self._streaming_session is None:
+            return []
+
+        events: list[EventEnvelope] = []
+
+        try:
+            # Feed audio to ASR adapter
+            chunks = await self._asr_adapter.ingest_audio(audio_data)
+
+            # Process each transcription chunk through the streaming session
+            for chunk in chunks:
+                stream_events = self._streaming_session.ingest_chunk(chunk)
+
+                for stream_event in stream_events:
+                    segment = stream_event.segment
+                    segment_id = self._next_segment_id()
+
+                    # Determine event type based on stream event type
+                    from .streaming import StreamEventType
+
+                    if stream_event.type == StreamEventType.FINAL_SEGMENT:
+                        self.stats.segments_finalized += 1
+                        events.append(
+                            self._create_envelope(
+                                ServerMessageType.FINALIZED,
+                                {
+                                    "segment": {
+                                        "start": segment.start,
+                                        "end": segment.end,
+                                        "text": segment.text,
+                                        "speaker_id": segment.speaker_id,
+                                        "audio_state": None,
+                                    }
+                                },
+                                segment_id=segment_id,
+                                ts_audio_start=segment.start,
+                                ts_audio_end=segment.end,
+                            )
+                        )
+                    else:
+                        # PARTIAL_SEGMENT
+                        self.stats.segments_partial += 1
+                        events.append(
+                            self._create_envelope(
+                                ServerMessageType.PARTIAL,
+                                {
+                                    "segment": {
+                                        "start": segment.start,
+                                        "end": segment.end,
+                                        "text": segment.text,
+                                        "speaker_id": segment.speaker_id,
+                                    }
+                                },
+                                segment_id=segment_id,
+                                ts_audio_start=segment.start,
+                                ts_audio_end=segment.end,
+                            )
+                        )
+
+        except Exception as e:
+            # Log error but don't crash the pipeline (invariant 3)
+            logger.warning(
+                "ASR processing error (stream_id=%s): %s",
+                self.stream_id,
+                e,
+            )
+            self.stats.errors += 1
+
+        return events
+
+    def _generate_mock_events(self) -> list[EventEnvelope]:
+        """Generate mock transcription events for testing.
+
+        Used when no ASR model is configured.
+
+        Returns:
+            List of mock EventEnvelope objects.
+        """
         events: list[EventEnvelope] = []
 
         # Calculate approximate audio timestamps based on buffer size
@@ -510,12 +882,6 @@ class WebSocketStreamingSession:
                 )
             )
 
-        # Check if we should trigger incremental diarization
-        diarization_event = await self._maybe_trigger_diarization()
-        if diarization_event:
-            events.append(diarization_event)
-
-        self.stats.events_sent += len(events)
         return events
 
     def _should_trigger_diarization(self) -> bool:
@@ -703,6 +1069,9 @@ class WebSocketStreamingSession:
         Finalizes any pending segments, computes session statistics,
         and returns final events including SESSION_ENDED.
 
+        When ASR is enabled, flushes the ASR adapter to process any
+        remaining buffered audio.
+
         Returns:
             List of EventEnvelope objects including final segments and SESSION_ENDED.
 
@@ -720,8 +1089,11 @@ class WebSocketStreamingSession:
         if final_diarization:
             events.append(final_diarization)
 
-        # Finalize any pending audio in buffer
-        if len(self._audio_buffer) > 0:
+        # Flush ASR adapter if enabled
+        if self._asr_adapter is not None:
+            events.extend(await self._flush_asr_adapter())
+        elif len(self._audio_buffer) > 0:
+            # Mock finalization when no ASR
             bytes_per_second = self.config.sample_rate * 2
             buffer_duration = len(self._audio_buffer) / bytes_per_second
 
@@ -766,6 +1138,82 @@ class WebSocketStreamingSession:
             self.stream_id,
             self.stats.to_dict(),
         )
+
+        return events
+
+    async def _flush_asr_adapter(self) -> list[EventEnvelope]:
+        """Flush the ASR adapter and finalize remaining audio.
+
+        Returns:
+            List of EventEnvelope objects from flushed transcription.
+        """
+        if self._asr_adapter is None or self._streaming_session is None:
+            return []
+
+        events: list[EventEnvelope] = []
+
+        try:
+            # Flush any remaining audio from the adapter
+            final_chunks = await self._asr_adapter.flush()
+
+            # Process each chunk through the streaming session
+            for chunk in final_chunks:
+                stream_events = self._streaming_session.ingest_chunk(chunk)
+                for stream_event in stream_events:
+                    segment = stream_event.segment
+                    segment_id = self._next_segment_id()
+                    self.stats.segments_finalized += 1
+
+                    events.append(
+                        self._create_envelope(
+                            ServerMessageType.FINALIZED,
+                            {
+                                "segment": {
+                                    "start": segment.start,
+                                    "end": segment.end,
+                                    "text": segment.text,
+                                    "speaker_id": segment.speaker_id,
+                                    "audio_state": None,
+                                }
+                            },
+                            segment_id=segment_id,
+                            ts_audio_start=segment.start,
+                            ts_audio_end=segment.end,
+                        )
+                    )
+
+            # Finalize any remaining partial in the streaming session
+            end_stream_events = self._streaming_session.end_of_stream()
+            for stream_event in end_stream_events:
+                segment = stream_event.segment
+                segment_id = self._next_segment_id()
+                self.stats.segments_finalized += 1
+
+                events.append(
+                    self._create_envelope(
+                        ServerMessageType.FINALIZED,
+                        {
+                            "segment": {
+                                "start": segment.start,
+                                "end": segment.end,
+                                "text": segment.text,
+                                "speaker_id": segment.speaker_id,
+                                "audio_state": None,
+                            }
+                        },
+                        segment_id=segment_id,
+                        ts_audio_start=segment.start,
+                        ts_audio_end=segment.end,
+                    )
+                )
+
+        except Exception as e:
+            logger.warning(
+                "ASR flush error (stream_id=%s): %s",
+                self.stream_id,
+                e,
+            )
+            self.stats.errors += 1
 
         return events
 
@@ -896,6 +1344,7 @@ __all__ = [
     "WebSocketSessionConfig",
     "SessionStats",
     "SpeakerAssignment",
+    "ReplayBuffer",
     # Diarization types
     "DiarizationHook",
     "DiarizationHookProtocol",

@@ -1,0 +1,419 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EffortlessMetrics/slower-whisper/benchmarks/manifest_schema.json",
+  "title": "Benchmark Dataset Manifest",
+  "description": "Schema for slower-whisper benchmark dataset manifest files",
+  "type": "object",
+  "required": ["schema_version", "id", "track", "split", "source", "license", "meta"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Manifest schema version"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "description": "Unique dataset identifier (lowercase, alphanumeric with hyphens/underscores)"
+    },
+    "track": {
+      "type": "string",
+      "enum": ["asr", "diarization", "streaming", "semantic", "emotion"],
+      "description": "Benchmark track this dataset supports"
+    },
+    "split": {
+      "type": "string",
+      "enum": ["train", "dev", "test", "smoke"],
+      "description": "Dataset split. 'smoke' indicates minimal CI-friendly subset"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the dataset"
+    },
+    "source": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Dataset source name"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to dataset homepage or documentation"
+        },
+        "citation": {
+          "type": ["string", "null"],
+          "description": "Academic citation for the dataset"
+        }
+      }
+    },
+    "license": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "SPDX license identifier (e.g., MIT, CC-BY-4.0, CC0-1.0)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable license name"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to full license text"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional license notes or restrictions"
+        }
+      }
+    },
+    "download": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": ["http", "huggingface", "manual"],
+              "description": "Download method"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Direct download URL (for http method)"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$",
+              "description": "SHA256 hash of the download archive"
+            },
+            "size_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Download size in bytes"
+            },
+            "format": {
+              "type": "string",
+              "enum": ["tar.gz", "zip", "tar", "gz"],
+              "description": "Archive format"
+            },
+            "extraction_path": {
+              "type": "string",
+              "description": "Subdirectory within archive to extract"
+            },
+            "dataset": {
+              "type": "string",
+              "description": "Hugging Face dataset identifier (for huggingface method)"
+            },
+            "config": {
+              "type": "string",
+              "description": "Hugging Face dataset config name"
+            },
+            "requires_auth": {
+              "type": "boolean",
+              "description": "Whether download requires authentication"
+            },
+            "instructions_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL to manual download instructions"
+            },
+            "notes": {
+              "type": "string",
+              "description": "Additional download notes"
+            }
+          }
+        }
+      ],
+      "description": "Download configuration. Null for committed smoke datasets"
+    },
+    "audio_format": {
+      "type": "object",
+      "properties": {
+        "sample_rate": {
+          "type": "integer",
+          "minimum": 8000,
+          "maximum": 96000,
+          "description": "Audio sample rate in Hz"
+        },
+        "channels": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Number of audio channels"
+        },
+        "encoding": {
+          "type": "string",
+          "enum": ["pcm_s16le", "pcm_f32le", "flac", "mp3", "wav", "ogg", "sphere", "sph"],
+          "description": "Audio encoding format"
+        },
+        "bit_depth": {
+          "type": "integer",
+          "enum": [8, 16, 24, 32],
+          "description": "Bits per sample"
+        }
+      }
+    },
+    "text_normalization": {
+      "type": "object",
+      "properties": {
+        "lowercase": {
+          "type": "boolean",
+          "description": "Whether to lowercase text"
+        },
+        "remove_punctuation": {
+          "type": "boolean",
+          "description": "Whether to remove punctuation"
+        },
+        "expand_contractions": {
+          "type": "boolean",
+          "description": "Whether to expand contractions"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional normalization notes"
+        }
+      },
+      "description": "Text normalization rules for reference transcripts"
+    },
+    "annotation_format": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["rttm", "ctm", "json", "txt"],
+          "description": "Annotation file format"
+        },
+        "source": {
+          "type": "string",
+          "description": "Annotation source (e.g., manual, automatic, synthetic)"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional annotation notes"
+        }
+      },
+      "description": "Annotation format for diarization/emotion tracks"
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique sample identifier"
+          },
+          "audio": {
+            "type": "string",
+            "description": "Path or URL to audio file"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA256 hash of audio file"
+          },
+          "audio_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA256 hash of audio file (alternate field name)"
+          },
+          "duration_s": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Audio duration in seconds"
+          },
+          "language": {
+            "type": "string",
+            "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+            "description": "ISO 639-1 language code"
+          },
+          "reference_transcript": {
+            "type": "string",
+            "description": "Ground truth transcript text"
+          },
+          "reference_rttm": {
+            "type": "string",
+            "description": "Path to reference RTTM file (diarization)"
+          },
+          "rttm_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA256 hash of RTTM file"
+          },
+          "expected_speaker_count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Expected number of speakers (diarization)"
+          },
+          "license": {
+            "type": "string",
+            "description": "Sample-level license identifier"
+          },
+          "source": {
+            "type": "string",
+            "description": "Sample provenance"
+          },
+          "profile": {
+            "type": "string",
+            "description": "Audio profile (e.g., call_center, meeting)"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Additional sample notes"
+          }
+        }
+      },
+      "description": "Explicit sample definitions (for smoke datasets)"
+    },
+    "sample_source": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["selection_file", "filesystem"],
+          "description": "How to discover samples"
+        },
+        "file": {
+          "type": "string",
+          "description": "Selection file name (for selection_file method)"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes about sample source"
+        }
+      },
+      "description": "Sample discovery configuration (alternative to explicit samples)"
+    },
+    "sample_discovery": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["filesystem", "splits_file"],
+          "description": "Discovery method: filesystem (glob patterns) or splits_file (list of IDs)"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Glob pattern for audio files (filesystem method)"
+        },
+        "transcript_pattern": {
+          "type": "string",
+          "description": "Glob pattern for transcript files (filesystem method)"
+        },
+        "transcript_format": {
+          "type": "string",
+          "description": "Transcript file format"
+        },
+        "splits_file": {
+          "type": "string",
+          "description": "Path to splits file containing sample IDs (splits_file method)"
+        },
+        "audio_pattern": {
+          "type": "string",
+          "description": "Audio file naming pattern with {meeting_id} placeholder"
+        },
+        "rttm_pattern": {
+          "type": "string",
+          "description": "RTTM file naming pattern with {meeting_id} placeholder"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional discovery notes"
+        }
+      },
+      "description": "Sample discovery configuration"
+    },
+    "expected_baseline": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "number",
+            "description": "Expected baseline metric value"
+          },
+          "tolerance": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Acceptable deviation from baseline"
+          },
+          "unit": {
+            "type": "string",
+            "description": "Metric unit"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notes about this baseline"
+          }
+        },
+        "required": ["value"]
+      },
+      "description": "Expected baseline results for this dataset (for smoke tests)"
+    },
+    "meta": {
+      "type": "object",
+      "required": ["created_at", "sample_count"],
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when manifest was created"
+        },
+        "total_duration_s": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total audio duration in seconds"
+        },
+        "total_duration_hours": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total audio duration in hours"
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of samples in the dataset"
+        },
+        "speaker_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of unique speakers"
+        },
+        "language": {
+          "type": ["string", "null"],
+          "description": "Primary language of the dataset"
+        },
+        "domain": {
+          "type": "string",
+          "description": "Domain/topic area (e.g., audiobook, business, synthetic)"
+        },
+        "speech_type": {
+          "type": "string",
+          "enum": ["read", "spontaneous", "scripted", "synthetic", "synthetic-tones"],
+          "description": "Type of speech in the dataset"
+        },
+        "quality": {
+          "type": "string",
+          "enum": ["clean", "noisy", "mixed", "narrowband"],
+          "description": "Overall audio quality"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional dataset notes"
+        },
+        "pinned_cv_version": {
+          "type": "string",
+          "description": "Pinned Common Voice version for reproducibility"
+        }
+      }
+    }
+  }
+}

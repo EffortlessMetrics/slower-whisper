@@ -35,7 +35,16 @@ from .config import (
 from .device import DeviceChoice, format_preflight_banner, resolve_device
 from .exceptions import ConfigurationError, EnrichmentError, SlowerWhisperError
 from .exporters import SUPPORTED_EXPORT_FORMATS, export_transcript
+from .integrations.cli import build_integrations_parser, handle_integrations_command
 from .models import Transcript
+from .outcomes import (
+    OutcomeProcessor,
+    format_outcomes_json,
+    format_outcomes_pretty,
+)
+from .privacy import build_privacy_parser, handle_privacy_command
+from .speaker_identity import build_speakers_parser, handle_speakers_command
+from .store.cli import build_store_parser, handle_store_command
 from .validation import DEFAULT_SCHEMA_PATH, validate_many
 
 logger = logging.getLogger(__name__)
@@ -223,6 +232,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="Minimum overlap ratio (0.0-1.0) required to assign a speaker to a segment (default: 0.3).",
+    )
+    p_trans.add_argument(
+        "--telemetry",
+        action="store_true",
+        default=False,
+        help="Include timing telemetry in output summary.",
     )
 
     # ============================================================================
@@ -471,6 +486,116 @@ def build_parser() -> argparse.ArgumentParser:
     # benchmark subcommand
     # ============================================================================
     build_benchmark_parser(subparsers)
+
+    # ============================================================================
+    # store subcommand
+    # ============================================================================
+    build_store_parser(subparsers)
+
+    # ============================================================================
+    # outcomes subcommand
+    # ============================================================================
+    p_outcomes = subparsers.add_parser(
+        "outcomes",
+        help="Extract decisions, action items, risks from transcripts.",
+    )
+
+    outcomes_subparsers = p_outcomes.add_subparsers(dest="outcomes_action", required=True)
+
+    # outcomes extract
+    p_outcomes_extract = outcomes_subparsers.add_parser(
+        "extract",
+        help="Extract outcomes from a transcript JSON file.",
+    )
+    p_outcomes_extract.add_argument(
+        "transcript",
+        type=Path,
+        help="Path to transcript JSON file.",
+    )
+    p_outcomes_extract.add_argument(
+        "--backend",
+        choices=["baseline", "llm"],
+        default="baseline",
+        help="Extraction backend (default: baseline).",
+    )
+    p_outcomes_extract.add_argument(
+        "--provider",
+        choices=["openai", "anthropic", "local-llm"],
+        default="openai",
+        help="LLM provider for --backend llm (default: openai).",
+    )
+    p_outcomes_extract.add_argument(
+        "--model",
+        default=None,
+        help="Model to use for LLM backend (e.g., gpt-4o, claude-sonnet-4-20250514).",
+    )
+    p_outcomes_extract.add_argument(
+        "--no-dedupe",
+        action="store_true",
+        help="Disable deduplication of similar outcomes.",
+    )
+    p_outcomes_extract.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output JSON file path (default: print to stdout).",
+    )
+    p_outcomes_extract.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON (default if --output specified).",
+    )
+
+    # outcomes list
+    p_outcomes_list = outcomes_subparsers.add_parser(
+        "list",
+        help="Pretty print outcomes from a transcript JSON file.",
+    )
+    p_outcomes_list.add_argument(
+        "transcript",
+        type=Path,
+        help="Path to transcript JSON file.",
+    )
+    p_outcomes_list.add_argument(
+        "--type",
+        choices=["decision", "action_item", "risk", "commitment", "question", "all"],
+        default="all",
+        help="Filter by outcome type (default: all).",
+    )
+    p_outcomes_list.add_argument(
+        "--backend",
+        choices=["baseline", "llm"],
+        default="baseline",
+        help="Extraction backend (default: baseline).",
+    )
+
+    # ============================================================================
+    # doctor subcommand
+    # ============================================================================
+    p_doctor = subparsers.add_parser(
+        "doctor",
+        help="Run system diagnostics and check environment.",
+    )
+    p_doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="Output diagnostics as JSON (machine-readable).",
+    )
+
+    # ============================================================================
+    # privacy subcommand
+    # ============================================================================
+    build_privacy_parser(subparsers)
+
+    # ============================================================================
+    # speakers subcommand
+    # ============================================================================
+    build_speakers_parser(subparsers)
+
+    # ============================================================================
+    # integrations subcommands (rag, webhook)
+    # ============================================================================
+    build_integrations_parser(subparsers)
 
     return parser
 
@@ -1009,6 +1134,124 @@ def _handle_validate_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_doctor_command(args: argparse.Namespace) -> int:
+    """Handle doctor command: run system diagnostics."""
+    import json
+
+    from .telemetry import CheckStatus, format_doctor_report, run_doctor
+
+    report = run_doctor()
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print(format_doctor_report(report))
+
+    # Exit code: 0 if all pass, 1 if any fail
+    if report.overall_status == CheckStatus.FAIL:
+        return 1
+    return 0
+
+
+def _handle_outcomes_command(args: argparse.Namespace) -> int:
+    """Handle outcomes subcommand: extract or list outcomes from transcripts."""
+    from .writers import load_transcript_from_json
+
+    # Load transcript
+    transcript_path = Path(args.transcript)
+    if not transcript_path.exists():
+        print(f"Error: Transcript file not found: {transcript_path}", file=sys.stderr)
+        return 1
+
+    try:
+        transcript = load_transcript_from_json(transcript_path)
+    except Exception as e:
+        print(f"Error loading transcript: {e}", file=sys.stderr)
+        return 1
+
+    if args.outcomes_action == "extract":
+        return _handle_outcomes_extract(args, transcript)
+    elif args.outcomes_action == "list":
+        return _handle_outcomes_list(args, transcript)
+    else:
+        print(f"Unknown outcomes action: {args.outcomes_action}", file=sys.stderr)
+        return 1
+
+
+def _handle_outcomes_extract(args: argparse.Namespace, transcript: Transcript) -> int:
+    """Handle outcomes extract subcommand."""
+    backend = args.backend or "baseline"
+    deduplicate = not args.no_dedupe
+
+    # Create processor
+    if backend == "llm":
+        try:
+            from .semantic_adapter import create_adapter
+
+            provider = args.provider or "openai"
+            model_kwargs = {}
+            if args.model:
+                model_kwargs["model"] = args.model
+
+            adapter = create_adapter(provider, **model_kwargs)
+            processor = OutcomeProcessor(
+                backend="llm",
+                adapter=adapter,
+                deduplicate=deduplicate,
+            )
+        except Exception as e:
+            print(f"Error initializing LLM backend: {e}", file=sys.stderr)
+            print("Falling back to baseline backend...", file=sys.stderr)
+            processor = OutcomeProcessor(backend="baseline", deduplicate=deduplicate)
+    else:
+        processor = OutcomeProcessor(backend="baseline", deduplicate=deduplicate)
+
+    # Extract outcomes
+    result = processor.extract(transcript)
+
+    # Output
+    if args.output:
+        # Write to file as JSON
+        output_path = Path(args.output)
+        output_path.write_text(format_outcomes_json(result), encoding="utf-8")
+        print(f"[done] Wrote {len(result.outcomes)} outcomes to {output_path}")
+    elif args.json:
+        # Print JSON to stdout
+        print(format_outcomes_json(result))
+    else:
+        # Pretty print
+        print(format_outcomes_pretty(result))
+
+    return 0
+
+
+def _handle_outcomes_list(args: argparse.Namespace, transcript: Transcript) -> int:
+    """Handle outcomes list subcommand."""
+    backend = args.backend or "baseline"
+
+    # Create processor
+    if backend == "llm":
+        print(
+            "Note: Using baseline extractor for list command (use extract --backend llm for LLM)",
+            file=sys.stderr,
+        )
+
+    processor = OutcomeProcessor(backend="baseline", deduplicate=True)
+
+    # Extract outcomes
+    result = processor.extract(transcript)
+
+    # Filter by type if specified
+    outcome_type = args.type
+    if outcome_type != "all":
+        result.outcomes = [o for o in result.outcomes if o.outcome_type == outcome_type]
+
+    # Pretty print
+    print(format_outcomes_pretty(result))
+
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """
     Main CLI entry point.
@@ -1040,6 +1283,24 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         elif args.command == "benchmark":
             return handle_benchmark_command(args)
+
+        elif args.command == "store":
+            return handle_store_command(args)
+
+        elif args.command == "outcomes":
+            return _handle_outcomes_command(args)
+
+        elif args.command == "doctor":
+            return _handle_doctor_command(args)
+
+        elif args.command == "privacy":
+            return handle_privacy_command(args)
+
+        elif args.command == "speakers":
+            return handle_speakers_command(args)
+
+        elif args.command in ("rag", "webhook"):
+            return handle_integrations_command(args)
 
         else:
             parser.error(f"Unknown command: {args.command}")
