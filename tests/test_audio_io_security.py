@@ -9,8 +9,10 @@ import pytest
 
 from transcription.audio_io import (
     ensure_within_dir,
+    get_safe_audio_extension,
     sanitize_filename,
     unique_path,
+    validate_path_safety,
 )
 
 
@@ -187,3 +189,71 @@ class TestUniquePath:
 
         result = unique_path(target)
         assert not result.exists()
+
+
+class TestGetSafeAudioExtension:
+    """Tests for get_safe_audio_extension helper."""
+
+    def test_valid_extensions(self) -> None:
+        """Valid extensions are returned."""
+        assert get_safe_audio_extension("file.wav") == ".wav"
+        assert get_safe_audio_extension("song.mp3") == ".mp3"
+        assert get_safe_audio_extension("audio.m4a") == ".m4a"
+        assert get_safe_audio_extension("track.flac") == ".flac"
+        assert get_safe_audio_extension("voice.ogg") == ".ogg"
+        assert get_safe_audio_extension("sound.aac") == ".aac"
+        assert get_safe_audio_extension("windows.wma") == ".wma"
+
+    def test_case_insensitive(self) -> None:
+        """Extensions are case-insensitive."""
+        assert get_safe_audio_extension("FILE.WAV") == ".WAV"
+        assert get_safe_audio_extension("Song.Mp3") == ".Mp3"
+
+    def test_invalid_extensions(self) -> None:
+        """Invalid extensions return empty string."""
+        assert get_safe_audio_extension("script.sh") == ""
+        assert get_safe_audio_extension("image.png") == ""
+        assert get_safe_audio_extension("data.json") == ""
+        assert get_safe_audio_extension("archive.zip") == ""
+        assert get_safe_audio_extension("program.exe") == ""
+
+    def test_no_extension(self) -> None:
+        """Filenames without extension return empty string."""
+        assert get_safe_audio_extension("README") == ""
+        assert get_safe_audio_extension("makefile") == ""
+
+    def test_double_extension(self) -> None:
+        """Only the last extension matters."""
+        assert get_safe_audio_extension("archive.tar.gz") == ""
+        assert get_safe_audio_extension("recording.wav.bak") == ""
+        assert get_safe_audio_extension("backup.old.wav") == ".wav"
+
+
+class TestValidatePathSafety:
+    """Tests for validate_path_safety helper."""
+
+    def test_safe_path(self) -> None:
+        """Safe paths pass validation."""
+        validate_path_safety("file.wav")
+        validate_path_safety("path/to/file.wav")
+        validate_path_safety(Path("file.wav"))
+
+    def test_shell_injection_chars(self) -> None:
+        """Paths with shell metacharacters raise ValueError."""
+        unsafe_chars = ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
+        for char in unsafe_chars:
+            with pytest.raises(ValueError, match="Invalid characters"):
+                validate_path_safety(f"file{char}.wav")
+
+    def test_option_injection(self) -> None:
+        """Paths starting with dash raise ValueError."""
+        with pytest.raises(ValueError, match="cannot start with '-'"):
+            validate_path_safety("-option.wav")
+
+        with pytest.raises(ValueError, match="cannot start with '-'"):
+            validate_path_safety(Path("-file.wav"))
+
+    def test_safe_dash_in_middle(self) -> None:
+        """Dash in middle of filename is safe."""
+        validate_path_safety("my-file.wav")
+        validate_path_safety("dir/-file.wav")

@@ -47,6 +47,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from . import __version__
 from .api import enrich_transcript as _enrich_transcript
 from .api import load_transcript, transcribe_file
+from .audio_io import get_safe_audio_extension, validate_path_safety
 from .config import EnrichmentConfig, TranscriptionConfig, WhisperTask, validate_compute_type
 from .exceptions import ConfigurationError, EnrichmentError, TranscriptionError
 from .models import SCHEMA_VERSION, Transcript
@@ -166,6 +167,9 @@ def validate_audio_format(audio_path: Path) -> None:
     import subprocess
 
     try:
+        # Security check: ensure path is safe for subprocess
+        validate_path_safety(audio_path)
+
         # Use ffprobe to check if file is valid audio
         # -v error: only show errors
         # -show_entries format=format_name: show format info
@@ -220,6 +224,12 @@ def validate_audio_format(audio_path: Path) -> None:
                 detail="Invalid audio file: unable to parse audio duration.",
             ) from e
 
+    except ValueError as e:
+        logger.warning("Invalid audio path safety check: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid audio file path.",
+        ) from e
     except subprocess.TimeoutExpired as e:
         logger.error("Audio validation timeout")
         raise HTTPException(
@@ -1023,17 +1033,7 @@ async def transcribe_audio(
         # Determine filename first
         safe_suffix = ""
         if audio.filename:
-            # Extract and sanitize the file extension
-            import re
-
-            # Match only the last extension after the final dot
-            ext_match = re.search(r"(\.[^.]+)$", audio.filename)
-            if ext_match:
-                ext = ext_match.group(1)
-                # Only allow common audio extensions
-                allowed_extensions = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
-                if ext.lower() in allowed_extensions:
-                    safe_suffix = ext
+            safe_suffix = get_safe_audio_extension(audio.filename)
 
         import secrets
 
@@ -1595,7 +1595,6 @@ async def transcribe_audio_streaming(
         422: Validation error in request parameters
         500: Internal transcription error
     """
-    import re
     import secrets
 
     from .audio_io import normalize_single
@@ -1659,12 +1658,7 @@ async def transcribe_audio_streaming(
         # Security: Generate random filename with sanitized extension
         safe_suffix = ""
         if audio.filename:
-            ext_match = re.search(r"(\.[^.]+)$", audio.filename)
-            if ext_match:
-                ext = ext_match.group(1)
-                allowed_extensions = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
-                if ext.lower() in allowed_extensions:
-                    safe_suffix = ext
+            safe_suffix = get_safe_audio_extension(audio.filename)
 
         random_id = secrets.token_hex(16)
         audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
@@ -1894,17 +1888,9 @@ async def enrich_audio(
         # Sanitize the extension to prevent path traversal
         safe_suffix = ".wav"  # Default to .wav for audio files
         if audio.filename:
-            # Extract and sanitize the file extension
-            import re
-
-            # Match only the last extension after the final dot
-            ext_match = re.search(r"(\.[^.]+)$", audio.filename)
-            if ext_match:
-                ext = ext_match.group(1)
-                # Only allow common audio extensions
-                allowed_extensions = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
-                if ext.lower() in allowed_extensions:
-                    safe_suffix = ext
+            ext = get_safe_audio_extension(audio.filename)
+            if ext:
+                safe_suffix = ext
 
         # Generate a secure random filename with the sanitized extension
         import secrets
