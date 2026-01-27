@@ -235,6 +235,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [IEMOCAP_QUICKREF.md](IEMOCAP_QUICKREF.md) | IEMOCAP quick reference |
 | [IEMOCAP_LABEL_MAPPING.md](IEMOCAP_LABEL_MAPPING.md) | IEMOCAP emotion label mapping |
 | [IEMOCAP_INTEGRATION_SUMMARY.md](IEMOCAP_INTEGRATION_SUMMARY.md) | IEMOCAP integration summary |
+| [LIBRICSS_SETUP.md](LIBRICSS_SETUP.md) | LibriCSS overlapping speech / diarization setup |
 
 ### Benchmark Cache & Strategy
 

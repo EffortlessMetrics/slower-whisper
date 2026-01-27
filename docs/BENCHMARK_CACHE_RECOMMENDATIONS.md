@@ -62,114 +62,12 @@ benchmarks/temp/
 
 ---
 
-### 2. Create Stub Documentation for Missing Datasets (Medium Priority)
+### 2. Dataset Setup Docs (Resolved)
 
-**Issue:** Code references non-existent documentation files:
-- `docs/IEMOCAP_SETUP.md` (referenced in `transcription/benchmarks.py:214`)
-- `docs/LIBRICSS_SETUP.md` (referenced in `transcription/benchmarks.py:342`)
+Setup guides are now available:
 
-**Impact:** Users following error messages hit dead links.
-
-**Recommended Action:** Create minimal stub files to prevent user confusion.
-
-**Example Stub (`docs/IEMOCAP_SETUP.md`):**
-
-```markdown
-# IEMOCAP Setup (Coming Soon)
-
-**Status:** Documentation in progress
-
-The IEMOCAP dataset iterator is implemented in `transcription/benchmarks.py`,
-but detailed setup instructions are pending.
-
-## Quick Start
-
-1. **Obtain IEMOCAP** from USC SAIL (requires license agreement):
-   - Visit: https://sail.usc.edu/iemocap/
-   - Complete license agreement
-   - Download Sessions 1-5
-
-2. **Stage under benchmarks cache:**
-   ```bash
-   BENCH_ROOT=$(uv run python -c "from transcription.benchmarks import get_benchmarks_root; print(get_benchmarks_root())")
-   mkdir -p "$BENCH_ROOT/iemocap"
-   ```
-
-3. **Expected structure:**
-   ```
-   benchmarks/iemocap/
-   ├── Session1/
-   │   ├── sentences/wav/...
-   │   └── dialog/EmoEvaluation/...
-   ├── Session2/
-   ├── Session3/
-   ├── Session4/
-   └── Session5/
-   ```
-
-## Verification
-
-```python
-from transcription.benchmarks import iter_iemocap_clips
-
-for sample in iter_iemocap_clips(session="Session1", limit=3):
-    print(f"{sample.id}: {sample.audio_path}")
-```
-
-## Reference
-
-See [`docs/AMI_SETUP.md`](AMI_SETUP.md) for a detailed setup guide pattern.
-
-**TODO:** Full setup guide with:
-- Emotion annotation conversion scripts
-- Label mapping (categorical vs dimensional)
-- Train/dev/test split recommendations
-```
-
-**Example Stub (`docs/LIBRICSS_SETUP.md`):**
-
-```markdown
-# LibriCSS Setup (Coming Soon)
-
-**Status:** Documentation in progress
-
-LibriCSS (LibriSpeech Continuous Speech Separation) is a dataset for evaluating
-overlapping speech and speaker diarization in realistic multi-talker scenarios.
-
-## Quick Start
-
-1. **Download LibriCSS** from official source:
-   - Visit: https://github.com/chenzhuo1011/libri_css
-   - Download audio files and annotations
-
-2. **Stage under benchmarks cache:**
-   ```bash
-   BENCH_ROOT=$(uv run python -c "from transcription.benchmarks import get_benchmarks_root; print(get_benchmarks_root())")
-   mkdir -p "$BENCH_ROOT/libricss"
-   ```
-
-3. **Expected structure:**
-   ```
-   benchmarks/libricss/
-   ├── audio/
-   │   └── *.wav
-   ├── annotations/
-   │   └── *.json
-   └── splits/
-       ├── 0L/
-       ├── 0S/
-       └── OV/  # Overlapping speech scenarios
-   ```
-
-## Reference
-
-See [`docs/AMI_SETUP.md`](AMI_SETUP.md) for a detailed setup guide pattern.
-
-**TODO:** Full setup guide with:
-- Overlap ratio filtering
-- Diarization ground truth conversion
-- Multi-channel vs single-channel guidance
-```
+- [`docs/IEMOCAP_SETUP.md`](IEMOCAP_SETUP.md)
+- [`docs/LIBRICSS_SETUP.md`](LIBRICSS_SETUP.md)
 
 ---
 
@@ -360,18 +258,15 @@ for name, info in benchmarks.items():
 
 - [x] **Add benchmark results to `.gitignore`** — Done: `benchmarks/results/` excluded
 - [x] **Create `docs/IEMOCAP_SETUP.md`** — Done: Full setup guide with label mapping
-- [ ] **Create `docs/LIBRICSS_SETUP.md` stub** — Pending (LibriCSS not yet needed)
+- [x] **Create `docs/LIBRICSS_SETUP.md`** — Done: Full setup guide
 - [ ] **Update `CLAUDE.md` with benchmark datasets section** (low priority)
 - [ ] **Consider adding `validate_dataset_structure()` helper** (optional)
 - [ ] **Consider adding `benchmark-datasets` CLI command** (optional)
 
 ## Files to Modify
 
-1. `.gitignore` - Add benchmark results exclusions
-2. `docs/IEMOCAP_SETUP.md` - Create stub (new file)
-3. `docs/LIBRICSS_SETUP.md` - Create stub (new file)
-4. `CLAUDE.md` - Add benchmark datasets section
-5. `transcription/benchmarks.py` - Optionally add validation helper
+1. `CLAUDE.md` - Add benchmark datasets section
+2. `transcription/benchmarks.py` - Optionally add validation helper
 
 ---
 

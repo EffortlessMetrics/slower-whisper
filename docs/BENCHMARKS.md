@@ -357,6 +357,7 @@ slower-whisper benchmark run --track TRACK [OPTIONS]
 | `--limit` | `-n` | Limit number of samples |
 | `--output` | `-o` | Save results to JSON file |
 | `--verbose` | `-v` | Show detailed progress |
+| `--llm-delay` | — | Delay in seconds between LLM API calls (semantic summary only) |
 
 **Examples:**
 

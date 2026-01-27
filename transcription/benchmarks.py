@@ -10,7 +10,7 @@ Datasets are expected to be manually staged under:
     $SLOWER_WHISPER_CACHE_ROOT/benchmarks (default: ~/.cache/slower-whisper/benchmarks)
 
 Each dataset should be placed in its own subdirectory with a documented structure.
-See docs/AMI_SETUP.md, docs/IEMOCAP_SETUP.md for setup instructions.
+See docs/AMI_SETUP.md, docs/IEMOCAP_SETUP.md, docs/LIBRICSS_SETUP.md for setup instructions.
 
 Environment variables respected:
 - SLOWER_WHISPER_CACHE_ROOT: Root cache directory
@@ -987,6 +987,118 @@ def iter_callhome(
             metadata={
                 "split": split,
                 "expected_speaker_count": 2,  # CALLHOME is always 2-speaker
+            },
+        )
+        count += 1
+
+
+def iter_libricss(
+    split: str = "test",
+    limit: int | None = None,
+) -> Iterable[EvalSample]:
+    """Iterate over LibriCSS samples for diarization evaluation.
+
+    LibriCSS is a continuous speech separation dataset derived from LibriSpeech.
+    It should be manually staged under benchmarks_root/libricss/ following the
+    structure documented in docs/LIBRICSS_SETUP.md.
+
+    Expected structure:
+        benchmarks_root/libricss/
+            audio/
+                <recording_id>.wav
+                ...
+            rttm/
+                <recording_id>.rttm
+                ...
+            splits/
+                test.txt
+
+    Args:
+        split: Dataset split ("train", "dev", "test") if split files exist
+        limit: Maximum number of samples to return (None = all)
+
+    Yields:
+        EvalSample objects with LibriCSS audio + RTTM references
+
+    Raises:
+        FileNotFoundError: If LibriCSS directory not found or structure invalid
+    """
+    root = get_benchmarks_root() / "libricss"
+    if not root.exists():
+        raise FileNotFoundError(
+            f"LibriCSS not found at {root}.\n"
+            f"Please see docs/LIBRICSS_SETUP.md for setup instructions."
+        )
+
+    audio_dir = root / "audio"
+    rttm_dir = root / "rttm"
+
+    if not audio_dir.exists():
+        raise FileNotFoundError(
+            f"LibriCSS directory structure invalid. Expected:\n"
+            f"  {audio_dir}/\n"
+            f"See docs/LIBRICSS_SETUP.md for correct structure."
+        )
+
+    audio_exts = (".wav", ".flac", ".mp3", ".ogg", ".m4a")
+
+    # Load split manifest if available
+    split_file = root / "splits" / f"{split}.txt"
+    if split_file.exists():
+        recording_ids = [line.strip() for line in split_file.read_text().splitlines()]
+    else:
+        # Fallback: all audio files with supported extensions
+        recording_ids = [
+            f.stem for f in audio_dir.iterdir() if f.is_file() and f.suffix.lower() in audio_exts
+        ]
+
+    def resolve_audio_path(recording_id: str) -> Path | None:
+        candidate = audio_dir / recording_id
+        if candidate.exists() and candidate.is_file():
+            return candidate
+        # Try common audio extensions
+        for ext in audio_exts:
+            path = audio_dir / f"{recording_id}{ext}"
+            if path.exists():
+                return path
+        # Fallback: any file with matching stem
+        matches = [
+            p
+            for p in audio_dir.glob(f"{recording_id}.*")
+            if p.is_file() and p.suffix.lower() in audio_exts
+        ]
+        if matches:
+            return matches[0]
+        return None
+
+    count = 0
+    for recording_id in recording_ids:
+        if limit and count >= limit:
+            break
+
+        recording_id = recording_id.strip()
+        if not recording_id:
+            continue
+
+        audio_path = resolve_audio_path(recording_id)
+        if audio_path is None:
+            logger.warning(f"Audio file not found for recording {recording_id} in {audio_dir}")
+            continue
+
+        base_id = Path(recording_id).stem
+        rttm_path = rttm_dir / f"{base_id}.rttm"
+
+        reference_speakers = None
+        if rttm_path.exists():
+            reference_speakers = _parse_rttm_file(rttm_path)
+
+        yield EvalSample(
+            dataset="libricss",
+            id=base_id,
+            audio_path=audio_path,
+            reference_speakers=reference_speakers,
+            metadata={
+                "split": split,
             },
         )
         count += 1

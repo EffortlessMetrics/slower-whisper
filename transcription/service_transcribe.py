@@ -221,33 +221,19 @@ async def transcribe_audio(
         audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
 
         try:
-            total_size = 0
-            # 1MB chunks
-            chunk_size = 1024 * 1024
-            max_bytes = MAX_AUDIO_SIZE_MB * 1024 * 1024
-
-            with open(audio_path, "wb") as f:
-                while True:
-                    chunk = await audio.read(chunk_size)
-                    if not chunk:
-                        break
-                    total_size += len(chunk)
-                    if total_size > max_bytes:
-                        raise HTTPException(
-                            status_code=HTTP_413_TOO_LARGE,
-                            detail=f"File too large: >{MAX_AUDIO_SIZE_MB} MB",
-                        )
-                    f.write(chunk)
-
-        except HTTPException:
+            await save_upload_file_streaming(
+                audio,
+                audio_path,
+                max_bytes=MAX_AUDIO_SIZE_MB * 1024 * 1024,
+                file_type="audio",
+            )
+        except HTTPException as exc:
+            if exc.status_code == HTTP_413_TOO_LARGE:
+                raise HTTPException(
+                    status_code=HTTP_413_TOO_LARGE,
+                    detail=f"File too large: >{MAX_AUDIO_SIZE_MB} MB",
+                ) from exc
             raise
-        except Exception as e:
-            logger.error("Failed to save uploaded audio file", exc_info=e)
-            # Security fix: Do not leak exception details to client
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to save uploaded audio file",
-            ) from e
 
         # Validate audio format
         validate_audio_format(audio_path)
