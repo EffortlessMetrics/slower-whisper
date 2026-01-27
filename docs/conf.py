@@ -31,7 +31,9 @@ master_doc = "index"
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "_snippets", "archive"]
 
+# Autosectionlabel: only generate labels for H1/H2 to reduce duplicates.
 autosectionlabel_prefix_document = True
+autosectionlabel_maxdepth = 2
 
 myst_enable_extensions = [
     "colon_fence",
@@ -39,6 +41,20 @@ myst_enable_extensions = [
     "tasklist",
 ]
 myst_heading_anchors = 3
+
+# Suppress warnings that are not actionable:
+# - myst.xref_missing: Links to files outside docs/ (../README.md, etc.)
+# - toc.not_included: Files intentionally not in toctree
+# - myst.header: Non-consecutive header levels (common in Markdown)
+# - misc.highlighting_failure: JSON highlighting on truncated examples
+# - autosectionlabel.*: Duplicate labels from repeated heading names
+suppress_warnings = [
+    "myst.xref_missing",
+    "toc.not_included",
+    "myst.header",
+    "misc.highlighting_failure",
+    "autosectionlabel.*",
+]
 
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
