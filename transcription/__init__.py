@@ -40,6 +40,16 @@ WebSocket Streaming (v2.0.0):
     - ServerMessageType: Enum of server-to-client message types
     - SessionState: Enum of session lifecycle states
     - SessionStats: Statistics tracked for streaming sessions
+    - SpeakerAssignment: Speaker assignment for diarization results
+    - DiarizationHook: Protocol for incremental diarization hooks
+
+Incremental Diarization (v2.0.0):
+    - create_pyannote_hook: Factory for PyAnnote-based diarization hook
+    - create_energy_vad_hook: Factory for energy-based VAD hook
+    - create_mock_hook: Factory for mock diarization hook (testing)
+    - PyAnnoteIncrementalDiarizer: Full-featured pyannote diarization
+    - EnergyVADDiarizer: Lightweight energy-based voice activity detection
+    - MockDiarizationHook: Mock hook for testing
 
 LLM Guardrails (v2.0.0):
     - LLMGuardrails: Configurable guardrails for rate limiting, cost tracking, PII detection
@@ -235,6 +245,18 @@ from .streaming_client import (
     StreamEvent as ClientStreamEvent,
 )
 
+# v2.0.0 Incremental diarization hooks (#86) - must come after streaming_ws
+from .streaming_diarization import (
+    EnergyVADConfig,
+    EnergyVADDiarizer,
+    IncrementalDiarizationConfig,
+    MockDiarizationHook,
+    PyAnnoteIncrementalDiarizer,
+    create_energy_vad_hook,
+    create_mock_hook,
+    create_pyannote_hook,
+)
+
 # v1.7.0 streaming features
 from .streaming_enrich import StreamingEnrichmentConfig, StreamingEnrichmentSession
 from .streaming_semantic import LiveSemanticsConfig, LiveSemanticSession, SemanticUpdatePayload
@@ -242,10 +264,12 @@ from .streaming_semantic import LiveSemanticsConfig, LiveSemanticSession, Semant
 # v2.0.0 WebSocket streaming
 from .streaming_ws import (
     ClientMessageType,
+    DiarizationHook,
     EventEnvelope,
     ServerMessageType,
     SessionState,
     SessionStats,
+    SpeakerAssignment,
     WebSocketSessionConfig,
     WebSocketStreamingSession,
 )
@@ -365,6 +389,17 @@ __all__ = [
     "EventEnvelope",
     "WebSocketSessionConfig",
     "WebSocketStreamingSession",
+    "SpeakerAssignment",
+    "DiarizationHook",
+    # v2.0.0: Incremental diarization hooks (#86)
+    "IncrementalDiarizationConfig",
+    "EnergyVADConfig",
+    "PyAnnoteIncrementalDiarizer",
+    "EnergyVADDiarizer",
+    "MockDiarizationHook",
+    "create_pyannote_hook",
+    "create_energy_vad_hook",
+    "create_mock_hook",
     # v2.0.0: Streaming ASR adapter
     "StreamingASRAdapter",
     "StreamingASRConfig",

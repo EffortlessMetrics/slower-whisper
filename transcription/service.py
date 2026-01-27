@@ -66,6 +66,18 @@ logger = logging.getLogger(__name__)
 MAX_AUDIO_SIZE_MB = 500
 MAX_TRANSCRIPT_SIZE_MB = 10  # JSON transcripts are typically small
 
+# Streaming upload chunk size (1MB)
+STREAMING_CHUNK_SIZE = 1024 * 1024
+
+# Starlette renamed a couple status constants. Keep runtime compatibility
+# without breaking mypy on older/lagging stubs.
+HTTP_413_TOO_LARGE: int = getattr(
+    status, "HTTP_413_CONTENT_TOO_LARGE", status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+)
+HTTP_422_UNPROCESSABLE: int = getattr(
+    status, "HTTP_422_UNPROCESSABLE_CONTENT", status.HTTP_422_UNPROCESSABLE_ENTITY
+)
+
 
 # =============================================================================
 # Error Handling Helpers
@@ -141,12 +153,65 @@ def validate_file_size(
             file_type,
         )
         raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            status_code=HTTP_413_TOO_LARGE,
             detail=(
                 f"{file_type.capitalize()} file too large: {file_size_mb:.2f} MB. "
                 f"Maximum allowed size is {max_size_mb} MB."
             ),
         )
+
+
+async def save_upload_file_streaming(
+    upload: UploadFile,
+    dest: Path,
+    *,
+    max_bytes: int,
+    file_type: str = "file",
+) -> None:
+    """
+    Stream an uploaded file to disk in chunks to prevent memory exhaustion.
+
+    This function writes the uploaded file to disk in chunks rather than reading
+    the entire file into memory first. This prevents DoS attacks via large file uploads.
+
+    Args:
+        upload: The FastAPI UploadFile to read from.
+        dest: Destination path to write the file to.
+        max_bytes: Maximum allowed file size in bytes.
+        file_type: Type of file for error messages (e.g., "audio", "transcript").
+
+    Raises:
+        HTTPException: 413 if file exceeds max_bytes.
+        HTTPException: 500 if file write fails.
+    """
+    total = 0
+    try:
+        with open(dest, "wb") as f:
+            while True:
+                chunk = await upload.read(STREAMING_CHUNK_SIZE)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(
+                        status_code=HTTP_413_TOO_LARGE,
+                        detail=f"{file_type.capitalize()} file too large: >{max_bytes // (1024 * 1024)} MB",
+                    )
+                f.write(chunk)
+    except HTTPException:
+        # Clean up partial file on size error
+        if dest.exists():
+            dest.unlink()
+        raise
+    except Exception as e:
+        # Clean up partial file on other errors
+        if dest.exists():
+            dest.unlink()
+        logger.error("Failed to save uploaded %s file", file_type, exc_info=e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save uploaded {file_type} file",
+        ) from e
 
 
 def validate_audio_format(audio_path: Path) -> None:
@@ -484,7 +549,7 @@ async def validation_exception_handler(
     ]
 
     return create_error_response(
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        status_code=HTTP_422_UNPROCESSABLE,
         error_type="validation_error",
         message="Request validation failed",
         request_id=request_id,
@@ -1054,7 +1119,7 @@ async def transcribe_audio(
                     total_size += len(chunk)
                     if total_size > MAX_BYTES:
                         raise HTTPException(
-                            status_code=413,
+                            status_code=HTTP_413_TOO_LARGE,
                             detail=f"File too large: >{MAX_AUDIO_SIZE_MB} MB",
                         )
                     f.write(chunk)
@@ -1643,19 +1708,6 @@ async def transcribe_audio_streaming(
     tmpdir_path = Path(tmpdir)
 
     try:
-        # Read and validate uploaded audio file
-        try:
-            content = await audio.read()
-        except Exception as e:
-            logger.error("Failed to read uploaded audio file", exc_info=e)
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to read uploaded audio file",
-            ) from e
-
-        # Validate file size before processing
-        validate_file_size(content, MAX_AUDIO_SIZE_MB, file_type="audio")
-
         # Security: Generate random filename with sanitized extension
         safe_suffix = ""
         if audio.filename:
@@ -1669,14 +1721,13 @@ async def transcribe_audio_streaming(
         random_id = secrets.token_hex(16)
         audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
 
-        try:
-            audio_path.write_bytes(content)
-        except Exception as e:
-            logger.error("Failed to save uploaded audio file", exc_info=e)
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to save uploaded audio file",
-            ) from e
+        # Stream file to disk to prevent DoS (memory exhaustion)
+        await save_upload_file_streaming(
+            audio,
+            audio_path,
+            max_bytes=MAX_AUDIO_SIZE_MB * 1024 * 1024,
+            file_type="audio",
+        )
 
         # Validate audio format
         validate_audio_format(audio_path)
@@ -1875,51 +1926,30 @@ async def enrich_audio(
                 detail="Failed to save transcript file",
             ) from e
 
-        # Read and validate uploaded audio
-        try:
-            audio_content = await audio.read()
-        except Exception as e:
-            logger.error("Failed to read audio file", exc_info=e)
-            # Security fix: Do not leak exception details to client
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to read audio file",
-            ) from e
-
-        # Validate audio file size
-        validate_file_size(audio_content, MAX_AUDIO_SIZE_MB, file_type="audio")
-
         # Security fix: Generate random filename to prevent directory traversal
         # Only preserve the file extension from the original filename
-        # Sanitize the extension to prevent path traversal
+        import re
+        import secrets
+
         safe_suffix = ".wav"  # Default to .wav for audio files
         if audio.filename:
-            # Extract and sanitize the file extension
-            import re
-
-            # Match only the last extension after the final dot
             ext_match = re.search(r"(\.[^.]+)$", audio.filename)
             if ext_match:
                 ext = ext_match.group(1)
-                # Only allow common audio extensions
                 allowed_extensions = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
                 if ext.lower() in allowed_extensions:
                     safe_suffix = ext
 
-        # Generate a secure random filename with the sanitized extension
-        import secrets
-
         random_id = secrets.token_hex(16)
         audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
 
-        try:
-            audio_path.write_bytes(audio_content)
-        except Exception as e:
-            logger.error("Failed to save audio file", exc_info=e)
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to save audio file",
-            ) from e
+        # Stream file to disk to prevent DoS (memory exhaustion)
+        await save_upload_file_streaming(
+            audio,
+            audio_path,
+            max_bytes=MAX_AUDIO_SIZE_MB * 1024 * 1024,
+            file_type="audio",
+        )
 
         # Validate audio format
         validate_audio_format(audio_path)

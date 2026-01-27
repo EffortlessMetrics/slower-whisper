@@ -28,6 +28,10 @@ This document provides comprehensive documentation for slower-whisper's streamin
     - [Resume Contract](#resume-contract-v20--best-effort)
     - [Security Posture](#security-posture-v20)
     - [JSON Schema Reference](#json-schema-reference)
+12. [Incremental Diarization (v2.0.0)](#incremental-diarization-v200)
+    - [Hook Architecture](#hook-architecture)
+    - [Available Hooks](#available-hooks)
+    - [Integration with WebSocketStreamingSession](#integration-with-websocketstreamingsession)
 
 ---
 
@@ -2082,6 +2086,85 @@ Emitted when semantic annotation completes for a finalized turn.
 
 ---
 
+#### DIARIZATION_UPDATE
+
+Emitted periodically during streaming when incremental speaker diarization produces new or changed speaker assignments. This event is only emitted when `enable_diarization=true` is set in the session configuration and a diarization hook is registered.
+
+```json
+{
+  "event_id": 18,
+  "stream_id": "str-abc123",
+  "segment_id": null,
+  "type": "DIARIZATION_UPDATE",
+  "ts_server": 1736251217500,
+  "ts_audio_start": 0.0,
+  "ts_audio_end": 30.0,
+  "payload": {
+    "update_number": 1,
+    "audio_duration": 30.0,
+    "num_speakers": 2,
+    "speaker_ids": ["spk_0", "spk_1"],
+    "assignments": [
+      {
+        "start": 0.0,
+        "end": 8.5,
+        "speaker_id": "spk_0",
+        "confidence": 0.92
+      },
+      {
+        "start": 8.5,
+        "end": 18.0,
+        "speaker_id": "spk_1",
+        "confidence": 0.88
+      },
+      {
+        "start": 18.0,
+        "end": 30.0,
+        "speaker_id": "spk_0",
+        "confidence": 0.95
+      }
+    ]
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `update_number` | integer | yes | Sequential update counter (1, 2, 3, ...) |
+| `audio_duration` | float | yes | Total audio duration processed (seconds) |
+| `num_speakers` | integer | yes | Number of unique speakers detected |
+| `speaker_ids` | array | yes | Sorted list of unique speaker IDs |
+| `assignments` | array | yes | List of speaker assignments (see below) |
+
+**Assignment Object Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `start` | float | yes | Segment start time (seconds) |
+| `end` | float | yes | Segment end time (seconds) |
+| `speaker_id` | string | yes | Speaker identifier (e.g., "spk_0") |
+| `confidence` | float | no | Diarization confidence score (0.0-1.0) |
+
+**Guarantees:**
+- Only emitted when speaker assignments change meaningfully
+- Triggered at configurable interval (`diarization_interval_sec`)
+- Final update always emitted at session end
+- May be dropped under extreme backpressure (after PARTIAL events)
+- Speaker IDs are normalized to `spk_N` format
+
+**Configuration:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enable_diarization` | false | Enable incremental diarization |
+| `diarization_interval_sec` | 30.0 | Interval between diarization updates |
+
+See [Incremental Diarization](#incremental-diarization-v200) for implementation details.
+
+---
+
 #### ERROR
 
 Emitted when a recoverable or fatal error occurs during processing.
@@ -2587,6 +2670,234 @@ Complete JSON Schema definitions for validation:
 
 ---
 
+## Incremental Diarization (v2.0.0)
+
+The v2.0.0 release adds incremental speaker diarization for streaming pipelines (#86). This enables periodic speaker identification updates during real-time transcription, providing speaker labels before the stream ends.
+
+### Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    INCREMENTAL DIARIZATION FLOW                          │
+└─────────────────────────────────────────────────────────────────────────┘
+
+ Audio           WebSocket              Diarization           Speaker
+ Chunks          Session                Hook                  Assignments
+   │                │                      │                      │
+   │  AUDIO_CHUNK   │                      │                      │
+   │───────────────▶│                      │                      │
+   │                │                      │                      │
+   │                │  accumulate audio    │                      │
+   │                │──────┐               │                      │
+   │                │      │               │                      │
+   │                │◀─────┘               │                      │
+   │                │                      │                      │
+   │                │ (interval reached)   │                      │
+   │                │  audio_buffer        │                      │
+   │                │─────────────────────▶│                      │
+   │                │                      │                      │
+   │                │                      │  run diarization     │
+   │                │                      │───────┐              │
+   │                │                      │       │              │
+   │                │                      │◀──────┘              │
+   │                │                      │                      │
+   │                │  speaker_assignments │                      │
+   │                │◀─────────────────────│                      │
+   │                │                      │                      │
+   │                │  DIARIZATION_UPDATE  │                      │
+   │◀───────────────│                      │                      │
+   │                │                      │                      │
+```
+
+### Hook Architecture
+
+Diarization hooks implement the `DiarizationHookProtocol`:
+
+```python
+from collections.abc import Awaitable
+
+class DiarizationHookProtocol(Protocol):
+    """Protocol for incremental diarization hooks."""
+
+    def __call__(
+        self,
+        audio_buffer: bytes,
+        sample_rate: int,
+    ) -> Awaitable[list[SpeakerAssignment]]:
+        """
+        Run diarization on accumulated audio.
+
+        Args:
+            audio_buffer: Raw audio bytes (PCM format).
+            sample_rate: Audio sample rate in Hz.
+
+        Returns:
+            List of SpeakerAssignment objects covering the audio duration.
+        """
+        ...
+```
+
+### Available Hooks
+
+The `streaming_diarization` module provides three hook implementations:
+
+#### 1. PyAnnoteIncrementalDiarizer (Production)
+
+Full-featured diarization using pyannote.audio. Re-runs diarization on accumulated audio at each interval.
+
+```python
+from transcription.streaming_diarization import create_pyannote_hook
+
+# Create hook with GPU acceleration
+hook = create_pyannote_hook(
+    device="cuda",
+    min_speakers=2,
+    max_speakers=4,
+    min_audio_duration_sec=5.0,
+)
+```
+
+**Requirements:**
+- Install with: `uv sync --extra diarization`
+- Set `HF_TOKEN` environment variable
+- Accept pyannote model license
+
+**Configuration:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `device` | "auto" | Inference device ("cuda", "cpu", "auto") |
+| `min_speakers` | None | Minimum expected speakers |
+| `max_speakers` | None | Maximum expected speakers |
+| `min_audio_duration_sec` | 5.0 | Minimum audio before running |
+| `use_sliding_window` | False | Only process recent audio window |
+| `window_duration_sec` | 60.0 | Sliding window duration |
+
+#### 2. EnergyVADDiarizer (Lightweight)
+
+Simple energy-based voice activity detection. Detects speech regions but does not identify speakers (all assigned to spk_0).
+
+```python
+from transcription.streaming_diarization import create_energy_vad_hook
+
+hook = create_energy_vad_hook(
+    energy_threshold=0.01,
+    min_speech_duration_sec=0.3,
+)
+```
+
+Use cases:
+- Testing without pyannote dependency
+- Single-speaker scenarios
+- Very low-latency requirements
+
+#### 3. MockDiarizationHook (Testing)
+
+Generates deterministic alternating speaker assignments for testing.
+
+```python
+from transcription.streaming_diarization import create_mock_hook
+
+hook = create_mock_hook(
+    segment_duration=3.0,  # Alternates every 3 seconds
+    num_speakers=2,
+    latency_ms=50.0,       # Simulated processing time
+)
+```
+
+### Integration with WebSocketStreamingSession
+
+```python
+from transcription.streaming_ws import (
+    WebSocketStreamingSession,
+    WebSocketSessionConfig,
+    ServerMessageType,
+)
+from transcription.streaming_diarization import create_pyannote_hook
+
+# Create diarization hook
+diarization_hook = create_pyannote_hook(device="cuda")
+
+# Configure session with diarization enabled
+config = WebSocketSessionConfig(
+    enable_diarization=True,
+    diarization_interval_sec=30.0,  # Update every 30 seconds
+)
+
+# Create session with hook
+session = WebSocketStreamingSession(
+    config=config,
+    diarization_hook=diarization_hook,
+)
+
+# Start session
+await session.start()
+
+# Process audio chunks
+audio_data = get_audio_chunk()
+events = await session.process_audio_chunk(audio_data, sequence=1)
+
+# Handle diarization updates
+for event in events:
+    if event.type == ServerMessageType.DIARIZATION_UPDATE:
+        payload = event.payload
+        print(f"Detected {payload['num_speakers']} speakers")
+        for assignment in payload['assignments']:
+            print(f"  [{assignment['start']:.1f}s - {assignment['end']:.1f}s] "
+                  f"{assignment['speaker_id']}")
+
+# Get current speaker assignments at any time
+assignments = session.get_speaker_assignments()
+
+# End session (triggers final diarization)
+final_events = await session.end()
+```
+
+### Update Behavior
+
+Diarization updates are triggered when:
+
+1. **Interval reached:** New audio exceeds `diarization_interval_sec` since last update
+2. **Session end:** Final diarization always runs on `session.end()`
+
+Updates are only emitted when speaker assignments change meaningfully:
+- Different number of assignments
+- Different speaker IDs
+- Timestamp changes > 0.1 seconds
+
+### Graceful Degradation
+
+The diarization hook follows the codebase invariant "Callbacks never crash pipeline":
+
+- Hook exceptions are caught and logged
+- No DIARIZATION_UPDATE is emitted on failure
+- Pipeline continues with transcription unaffected
+- Missing pyannote dependency → graceful skip with warning
+
+### Performance Characteristics
+
+| Hook Type | Latency (P50) | Memory | Notes |
+|-----------|---------------|--------|-------|
+| PyAnnote (GPU) | ~2s per 30s audio | ~2 GB | Full re-diarization |
+| PyAnnote (CPU) | ~8s per 30s audio | ~1 GB | Slower but functional |
+| EnergyVAD | <10ms | <1 MB | No speaker identification |
+| Mock | <1ms | <1 KB | Testing only |
+
+### Sliding Window Mode
+
+For long streams, sliding window mode processes only recent audio to bound memory and latency:
+
+```python
+hook = create_pyannote_hook(
+    use_sliding_window=True,
+    window_duration_sec=60.0,  # Only process last 60 seconds
+)
+```
+
+Note: Sliding window mode adjusts timestamps to absolute audio time (adds offset).
+
+---
+
 ## Related Documentation
 
 - [ROADMAP.md](/ROADMAP.md) - v1.9.0 and v2.0.0 streaming features
@@ -2606,3 +2917,4 @@ Complete JSON Schema definitions for validation:
 | v1.9.0 | Event callback API with StreamCallbacks protocol, StreamingError dataclass, invoke_callback_safely helper |
 | v2.0.0 | WebSocket protocol, LLM-backed semantics, async callbacks (planned) |
 | v2.0.0 (#133) | Event Envelope Specification: ID contracts, ordering guarantees, backpressure contract, resume protocol, security posture |
+| v2.0.0 (#86) | Incremental diarization hooks: PyAnnoteIncrementalDiarizer, EnergyVADDiarizer, MockDiarizationHook, DIARIZATION_UPDATE event type |

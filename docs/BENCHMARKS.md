@@ -155,74 +155,126 @@ slower-whisper benchmark run --track emotion --dataset iemocap --limit 100
 
 ## Supported Datasets
 
-### LibriSpeech
+### Smoke Datasets (Always Available)
 
-A large corpus of read English speech for ASR evaluation.
+Smoke datasets are minimal test sets committed to the repository for quick CI validation. No download required.
 
-| Split | Description | Samples | Duration |
-|-------|-------------|---------|----------|
-| `dev-clean` | Clean development set | ~2,703 | 5.4 hours |
-| `test-clean` | Clean test set | ~2,620 | 5.4 hours |
-| `dev-other` | Challenging development set | ~2,864 | 5.3 hours |
-| `test-other` | Challenging test set | ~2,939 | 5.1 hours |
+| Dataset | Track | Samples | Duration | Description |
+|---------|-------|---------|----------|-------------|
+| `smoke` | ASR | 3 | 21s | Synthetic TTS audio |
+| `diarization-smoke` | Diarization | 3 | 34s | Synthetic tone patterns |
 
-**Setup:**
 ```bash
-# Download (example for dev-clean)
-wget https://www.openslr.org/resources/12/dev-clean.tar.gz
+# Run smoke tests (always works)
+slower-whisper benchmark run --track asr --dataset smoke
+slower-whisper benchmark run --track diarization --dataset smoke
+```
+
+### LibriSpeech (ASR)
+
+The gold standard benchmark for ASR evaluation. Read English speech from LibriVox audiobooks.
+
+| Split | Description | Samples | Duration | Quality |
+|-------|-------------|---------|----------|---------|
+| `test-clean` | Clean test set | 2,620 | 5.4 hours | High |
+| `dev-clean` | Clean development set | 2,703 | 5.4 hours | High |
+| `test-other` | Challenging test set | 2,939 | 5.1 hours | Challenging |
+| `dev-other` | Challenging dev set | 2,864 | 5.3 hours | Challenging |
+
+**Recommended setup:**
+```bash
+# Use the setup script (recommended)
+python scripts/setup_benchmark_datasets.py setup librispeech-test-clean
+
+# Or download all splits
+python scripts/setup_benchmark_datasets.py setup --all-librispeech
+
+# Check status
+python scripts/setup_benchmark_datasets.py status
+```
+
+**Manual setup:**
+```bash
+# Download test-clean (346 MB)
+wget https://www.openslr.org/resources/12/test-clean.tar.gz
+
+# Verify SHA256
+echo "39fde525e59672dc6d1551919b1478f724438a95aa55f874b576be21967e6c23  test-clean.tar.gz" | sha256sum -c
 
 # Extract to benchmarks directory
-BENCH_ROOT=$(slower-whisper benchmark status | grep "Benchmarks root" | cut -d: -f2 | xargs)
-tar -xzf dev-clean.tar.gz -C "$BENCH_ROOT/librispeech/"
+BENCH_ROOT=~/.cache/slower-whisper/benchmarks
+mkdir -p "$BENCH_ROOT/librispeech"
+tar -xzf test-clean.tar.gz -C "$BENCH_ROOT/librispeech/"
 ```
 
-See the `iter_librispeech()` docstring in `transcription/benchmarks.py` for complete setup instructions.
+See [LIBRISPEECH_SETUP.md](LIBRISPEECH_SETUP.md) for complete instructions.
 
-### AMI Meeting Corpus
+### AMI Meeting Corpus (Diarization)
 
-Multi-party meeting recordings for diarization and summarization evaluation.
+Multi-party meeting recordings for speaker diarization evaluation.
 
-| Split | Description | Meetings |
-|-------|-------------|----------|
-| `train` | Training meetings | ~136 |
-| `dev` | Development meetings | ~18 |
-| `test` | Test meetings | ~16 |
+| Split | Description | Meetings | Duration |
+|-------|-------------|----------|----------|
+| `test` | Test meetings | 16 | ~9 hours |
+| `dev` | Development meetings | 18-20 | ~10 hours |
+| `train` | Training meetings | ~136 | ~75 hours |
+
+**Key characteristics:**
+- 4 speakers per meeting
+- Project design meetings
+- High-quality headset recordings (16kHz)
+- Rich annotations (speakers, topics, summaries)
 
 **Setup:**
-See `docs/AMI_SETUP.md` for complete instructions.
+AMI requires manual download due to license acceptance. See [AMI_SETUP.md](AMI_SETUP.md) for instructions.
 
 ```bash
-# Quick verification
-BENCH_ROOT=~/.cache/slower-whisper/benchmarks
-mkdir -p "$BENCH_ROOT/ami/audio"
-mkdir -p "$BENCH_ROOT/ami/annotations"
-mkdir -p "$BENCH_ROOT/ami/splits"
+# Check if AMI is available
+python scripts/setup_benchmark_datasets.py status
 
-# Download meeting audio and create annotations
-# See docs/AMI_SETUP.md for details
+# Setup RTTM files and split definitions
+python scripts/setup_benchmark_datasets.py setup ami-headset
 ```
 
-### IEMOCAP
+### CALLHOME American English (Diarization)
+
+Telephone speech corpus for 2-speaker diarization.
+
+| Split | Description | Calls | Duration |
+|-------|-------------|-------|----------|
+| `test` | Test calls | 20 | ~2.5 hours |
+
+**Key characteristics:**
+- 2 speakers per call (family/friends)
+- Narrowband (8kHz) telephone audio
+- Casual, spontaneous speech
+- Standard diarization benchmark
+
+**License:** LDC User Agreement (requires purchase or institutional membership)
+
+**Setup:**
+CALLHOME requires LDC access. See [CALLHOME_SETUP.md](CALLHOME_SETUP.md) for instructions.
+
+### IEMOCAP (Emotion)
 
 Interactive emotional dyadic motion capture database for emotion recognition.
 
-| Session | Description |
-|---------|-------------|
-| Session1 | First session pair |
-| Session2 | Second session pair |
-| Session3 | Third session pair |
-| Session4 | Fourth session pair |
-| Session5 | Fifth session pair |
+| Session | Actors | Utterances |
+|---------|--------|------------|
+| Session1-5 | 10 total | ~10,000 |
 
 **Setup:**
-See `docs/IEMOCAP_SETUP.md` for complete instructions.
+IEMOCAP requires registration and signed EULA. See [IEMOCAP_SETUP.md](IEMOCAP_SETUP.md) for instructions.
 
-### LibriCSS
+### Dataset Comparison
 
-LibriSpeech Continuous Speech Separation for overlapping speech evaluation.
-
-**Setup:**
-See `docs/LIBRICSS_SETUP.md` (when available).
+| Dataset | Track | License | Download | Best For |
+|---------|-------|---------|----------|----------|
+| smoke | ASR | MIT | Committed | Quick CI validation |
+| LibriSpeech | ASR | CC-BY-4.0 | Auto | WER evaluation |
+| AMI | Diarization | CC-BY-4.0 | Manual | Meeting diarization |
+| CALLHOME | Diarization | LDC | Manual | Telephone diarization |
+| IEMOCAP | Emotion | EULA | Manual | Emotion recognition |
 
 ## CLI Reference
 

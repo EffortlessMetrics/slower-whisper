@@ -101,6 +101,18 @@ Gate mode (fails on regression):
 slower-whisper benchmark compare --track asr --dataset librispeech --gate
 ```
 
+Run with gate mode (runs benchmark and compares in one step):
+
+```bash
+slower-whisper benchmark run --track asr --gate
+```
+
+With custom thresholds:
+
+```bash
+slower-whisper benchmark run --track asr --gate --threshold wer=0.05 --threshold cer=0.10
+```
+
 ### List All Baselines
 
 ```bash
@@ -109,9 +121,10 @@ slower-whisper benchmark baselines
 
 ## Regression Policy
 
-**Phase 1 (current):** Report-only mode. Comparison prints results but never fails the CLI.
-
-**Phase 2 (future):** Gate mode. Use `--gate` flag to fail if regression exceeds threshold.
+**All phases complete:**
+- Phase 1: Report-only mode (prints comparison without failing)
+- Phase 2: Gate mode on `compare` command
+- Phase 3: Gate mode on `run` command with threshold overrides
 
 ### Regression Formula
 

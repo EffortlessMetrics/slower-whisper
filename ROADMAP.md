@@ -16,7 +16,7 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 |-------|--------|-------------|
 | v1.9.x Closeout | ✅ Complete | — |
 | API Polish Bundle | ✅ Complete | Close issues with receipts |
-| Track 1: Benchmarks | ✅ Complete | Phase 3 gate mode (future) |
+| Track 1: Benchmarks | ✅ Complete | All phases shipped (including Phase 3 gate mode) |
 | Track 2: Streaming | ✅ Complete | Docs polish, incremental diarization (#86) |
 | Track 3: Semantics | ✅ Complete | Semantic quality benchmark (#98) |
 
@@ -181,7 +181,7 @@ Track 2: Streaming (#133 → #134 → #84)
 
 ### Track 1: Benchmark Foundations
 
-**Status:** 🔄 In Progress — all evaluation runners complete, CI integration remaining
+**Status:** ✅ Complete — all phases shipped
 
 Benchmarks must exist before streaming work can be measured.
 
@@ -191,7 +191,7 @@ Benchmarks must exist before streaming work can be measured.
 | 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format + comparator | ✅ Baseline infrastructure complete |
 | 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency (P50/P95/P99, RTF) | ✅ `StreamingBenchmarkRunner` (#190) |
 | 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner (AMI subset) | ✅ `DiarizationBenchmarkRunner` (#189) |
-| 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ✅ Phase 2 complete |
+| 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ✅ All phases complete |
 
 **Also implemented:**
 
@@ -202,13 +202,19 @@ Benchmarks must exist before streaming work can be measured.
 - [#94](https://github.com/EffortlessMetrics/slower-whisper/issues/94): Dataset manifest format
 - [#57](https://github.com/EffortlessMetrics/slower-whisper/issues/57): CLI `slower-whisper benchmark --track asr|diarization|streaming`
 
-**Remaining work:**
+**CI Integration Phases:**
 
-1. ~~CI integration with report-only mode (#99)~~ - ✅ Phase 1 (report-only) and Phase 2 (PR comments) complete
-2. CLI subcommand wiring for `slower-whisper benchmark` (partially complete)
-3. Phase 3: Gate mode with `--gate` flag for critical regressions (future)
+1. ~~Phase 1 (report-only)~~ - ✅ Complete
+2. ~~Phase 2 (PR comments)~~ - ✅ Complete
+3. ~~Phase 3 (gate mode)~~ - ✅ Complete: `--gate` flag on `benchmark run` and `benchmark compare`
 
-**Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline comparison.
+**Gate mode features:**
+- `--gate` flag fails CI when metrics regress beyond thresholds
+- `--threshold METRIC=VALUE` for per-metric threshold overrides
+- Clear regression report showing what regressed and by how much
+- Works on both `benchmark run` (run + compare) and `benchmark compare` commands
+
+**Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline comparison. ✅
 
 <details>
 <summary><strong>Dataset Manifest Contract (for #94)</strong></summary>

@@ -402,8 +402,8 @@
         },
         "quality": {
           "type": "string",
-          "enum": ["clean", "noisy", "mixed", "narrowband"],
-          "description": "Overall audio quality"
+          "enum": ["clean", "noisy", "mixed", "narrowband", "other"],
+          "description": "Overall audio quality. 'other' indicates more challenging acoustic conditions (e.g., LibriSpeech -other splits)"
         },
         "notes": {
           "type": "string",

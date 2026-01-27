@@ -220,18 +220,21 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 | Document | Description |
 |----------|-------------|
+| [DATASET_MANIFEST.md](DATASET_MANIFEST.md) | Dataset manifest infrastructure and schema |
+| [LIBRISPEECH_SETUP.md](LIBRISPEECH_SETUP.md) | **LibriSpeech ASR corpus setup (recommended)** |
+| [LIBRISPEECH_QUICKSTART.md](LIBRISPEECH_QUICKSTART.md) | LibriSpeech ASR evaluation quick start |
+| [LIBRISPEECH_EVAL_RESULTS.md](LIBRISPEECH_EVAL_RESULTS.md) | LibriSpeech evaluation results |
 | [AMI_SETUP.md](AMI_SETUP.md) | AMI Meeting Corpus setup for diarization evaluation |
 | [AMI_DOWNLOAD_GUIDE.md](AMI_DOWNLOAD_GUIDE.md) | AMI dataset download instructions |
 | [AMI_DIRECTORY_LAYOUT.md](AMI_DIRECTORY_LAYOUT.md) | AMI dataset directory structure |
 | [AMI_ANNOTATION_SCHEMA.md](AMI_ANNOTATION_SCHEMA.md) | AMI annotation schema reference |
 | [AMI_INTEGRATION_SUMMARY.md](AMI_INTEGRATION_SUMMARY.md) | AMI integration summary |
 | [AMI_EVAL_SMOKE_TEST_RESULTS.md](AMI_EVAL_SMOKE_TEST_RESULTS.md) | AMI evaluation smoke test results |
+| [CALLHOME_SETUP.md](CALLHOME_SETUP.md) | **CALLHOME telephone diarization setup** |
 | [IEMOCAP_SETUP.md](IEMOCAP_SETUP.md) | IEMOCAP emotion dataset setup |
 | [IEMOCAP_QUICKREF.md](IEMOCAP_QUICKREF.md) | IEMOCAP quick reference |
 | [IEMOCAP_LABEL_MAPPING.md](IEMOCAP_LABEL_MAPPING.md) | IEMOCAP emotion label mapping |
 | [IEMOCAP_INTEGRATION_SUMMARY.md](IEMOCAP_INTEGRATION_SUMMARY.md) | IEMOCAP integration summary |
-| [LIBRISPEECH_QUICKSTART.md](LIBRISPEECH_QUICKSTART.md) | LibriSpeech ASR evaluation quick start |
-| [LIBRISPEECH_EVAL_RESULTS.md](LIBRISPEECH_EVAL_RESULTS.md) | LibriSpeech evaluation results |
 
 ### Benchmark Cache & Strategy
 

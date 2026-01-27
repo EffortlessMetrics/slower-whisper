@@ -578,7 +578,12 @@ def assign_speakers_to_words(
     num_turns = len(sorted_turns)
     active_turns: list[SpeakerTurn] = []
 
-    for segment in transcript.segments:
+    # Sort segments by start time to ensure deterministic speaker assignment.
+    # This guards against out-of-order segments which would break the sliding
+    # window optimization. Mutations happen in-place on the segment objects.
+    sorted_segments = sorted(transcript.segments, key=lambda s: s.start)
+
+    for segment in sorted_segments:
         # Optimization (O(N)): Maintain a sliding window of active turns.
         # 1. Remove turns that have ended before this segment starts
         active_turns = [t for t in active_turns if t.end > segment.start]

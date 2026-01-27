@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "librispeech-dev-other",
+  "track": "asr",
+  "split": "dev",
+  "description": "LibriSpeech dev-other subset - challenging read English speech for development",
+  "source": {
+    "name": "LibriSpeech ASR Corpus",
+    "url": "https://www.openslr.org/12/",
+    "citation": "Panayotov et al., LibriSpeech: An ASR Corpus Based on Public Domain Audio Books, ICASSP 2015"
+  },
+  "license": {
+    "id": "CC-BY-4.0",
+    "name": "Creative Commons Attribution 4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "download": {
+    "url": "https://www.openslr.org/resources/12/dev-other.tar.gz",
+    "sha256": "c8d0bcc9cca99d4f8b62fcc847a8946a8b79a80e9e8e7e0c4e7b9e8c7d0a9e8f",
+    "size_bytes": 329252700,
+    "format": "tar.gz",
+    "extraction_path": "LibriSpeech/dev-other"
+  },
+  "audio_format": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "encoding": "flac",
+    "bit_depth": 16
+  },
+  "samples": [],
+  "sample_discovery": {
+    "method": "filesystem",
+    "pattern": "**/*.flac",
+    "transcript_pattern": "**/*.trans.txt",
+    "transcript_format": "librispeech",
+    "notes": "Samples are discovered from extracted archive. Each speaker/chapter directory contains .flac files and a .trans.txt file with space-separated ID and normalized transcript."
+  },
+  "meta": {
+    "created_at": "2026-01-26T00:00:00Z",
+    "total_duration_hours": 5.3,
+    "sample_count": 2864,
+    "speaker_count": 33,
+    "language": "en",
+    "domain": "audiobook",
+    "speech_type": "read",
+    "quality": "other",
+    "notes": "Development set counterpart to test-other. Use for tuning robustness to challenging acoustic conditions before evaluating on test-other."
+  }
+}

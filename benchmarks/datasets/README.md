@@ -14,6 +14,12 @@ datasets/
 │   │   └── selection.csv
 │   ├── librispeech-test-clean/   # LibriSpeech test-clean subset
 │   │   └── manifest.json
+│   ├── librispeech-dev-clean/    # LibriSpeech dev-clean subset
+│   │   └── manifest.json
+│   ├── librispeech-test-other/   # LibriSpeech test-other subset
+│   │   └── manifest.json
+│   ├── librispeech-dev-other/    # LibriSpeech dev-other subset
+│   │   └── manifest.json
 │   └── smoke/                    # Quick smoke tests (committed to repo)
 │       └── manifest.json
 ├── diarization/                  # Speaker diarization benchmarks
@@ -140,6 +146,36 @@ slower-whisper benchmark --track diarization --dataset smoke
 
 Standard benchmark datasets. Require download and setup.
 
+#### LibriSpeech (ASR) - Recommended
+
+LibriSpeech is the gold standard for ASR evaluation. Multiple splits available:
+
+| Split | Size | Samples | Duration | Quality |
+|-------|------|---------|----------|---------|
+| test-clean | 346 MB | 2,620 | 5.4h | High |
+| dev-clean | 337 MB | 2,703 | 5.4h | High |
+| test-other | 328 MB | 2,939 | 5.1h | Challenging |
+| dev-other | 314 MB | 2,864 | 5.3h | Challenging |
+
+**Setup (recommended):**
+```bash
+# Use the setup script
+python scripts/setup_benchmark_datasets.py setup librispeech-test-clean
+
+# Or download all splits at once
+python scripts/setup_benchmark_datasets.py setup --all-librispeech
+
+# Check status
+python scripts/setup_benchmark_datasets.py status
+```
+
+**Alternative (manual):**
+```bash
+python scripts/download_datasets.py --dataset librispeech-test-clean
+```
+
+See [docs/LIBRISPEECH_SETUP.md](../../docs/LIBRISPEECH_SETUP.md) for complete instructions.
+
 #### Common Voice EN Smoke Slice (ASR)
 
 - **Size:** ~50 MB (15 clips, ~3 minutes total)
@@ -153,34 +189,43 @@ python benchmarks/scripts/stage_commonvoice.py
 
 **Important:** Do not attempt to identify speakers or redistribute the dataset. See [docs/COMMONVOICE_SETUP.md](../../docs/COMMONVOICE_SETUP.md).
 
-#### LibriSpeech test-clean (ASR)
-
-- **Size:** ~350 MB compressed, 5.4 hours of audio
-- **Samples:** 2,620 utterances from 40 speakers
-- **License:** CC-BY-4.0
-- **Download:** Automatic via `scripts/download_datasets.py`
-
-```bash
-python scripts/download_datasets.py --dataset librispeech-test-clean
-```
-
 #### AMI Meeting Corpus (Diarization)
 
 - **Size:** ~5 GB for test set (16 meetings)
-- **Samples:** 16 meetings, ~30-45 minutes each
+- **Samples:** 16 meetings, ~30-45 minutes each, 4 speakers each
 - **License:** CC-BY-4.0 (requires citation)
 - **Download:** Manual (requires license acceptance)
 
-See [docs/AMI_SETUP.md](../../docs/AMI_SETUP.md) for setup instructions.
+**Setup:**
+```bash
+# Create directory structure and split files
+python scripts/setup_benchmark_datasets.py setup ami-headset
+
+# Then download audio manually from:
+# https://groups.inf.ed.ac.uk/ami/download/
+```
+
+See [docs/AMI_SETUP.md](../../docs/AMI_SETUP.md) for complete setup instructions.
 
 #### CALLHOME American English (Diarization)
 
 - **Size:** ~500 MB for test set
 - **Samples:** 20 telephone conversations, 2 speakers each
-- **License:** LDC (commercial license required)
-- **Download:** Manual (requires LDC membership or purchase)
+- **License:** LDC User Agreement (requires purchase or institutional membership)
+- **Download:** Manual from LDC
 
-CALLHOME is a standard diarization benchmark for telephone speech. It provides a different challenge from AMI due to narrowband (8kHz) audio and casual conversational speech.
+CALLHOME provides a different diarization challenge from AMI:
+- Narrowband (8kHz) telephone audio
+- Casual conversational speech between family/friends
+- Only 2 speakers per call (simpler than AMI)
+
+**Setup:**
+```bash
+# Get setup information
+python scripts/setup_benchmark_datasets.py setup callhome-english
+```
+
+See [docs/CALLHOME_SETUP.md](../../docs/CALLHOME_SETUP.md) for complete instructions including LDC access.
 
 ## Using Datasets
 

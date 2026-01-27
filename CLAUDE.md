@@ -110,6 +110,8 @@ nix-clean run .#verify -- --quick
 | Dataset manifests | [docs/DATASET_MANIFEST.md](docs/DATASET_MANIFEST.md) |
 | Semantic benchmark | [docs/SEMANTIC_BENCHMARK.md](docs/SEMANTIC_BENCHMARK.md) |
 | LLM semantic annotator | [docs/LLM_SEMANTIC_ANNOTATOR.md](docs/LLM_SEMANTIC_ANNOTATOR.md) |
+| LibriSpeech dataset setup | [docs/LIBRISPEECH_SETUP.md](docs/LIBRISPEECH_SETUP.md) |
 | AMI dataset setup | [docs/AMI_SETUP.md](docs/AMI_SETUP.md) |
+| CALLHOME dataset setup | [docs/CALLHOME_SETUP.md](docs/CALLHOME_SETUP.md) |
 | IEMOCAP dataset setup | [docs/IEMOCAP_SETUP.md](docs/IEMOCAP_SETUP.md) |
 | Documentation index | [docs/INDEX.md](docs/INDEX.md) |
