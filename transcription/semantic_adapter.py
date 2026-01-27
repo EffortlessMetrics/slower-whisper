@@ -38,7 +38,7 @@ import re
 import time
 from collections.abc import Coroutine
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:
     from .models import Segment
@@ -46,10 +46,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_T = TypeVar("_T")
 
-
-def _run_async_safely(coro: Coroutine[Any, Any, _T]) -> _T:
+def _run_async_safely[T](coro: Coroutine[Any, Any, T]) -> T:
     """Run an async coroutine safely from both sync and async contexts.
 
     This handles the case where asyncio.run() would fail because there's
