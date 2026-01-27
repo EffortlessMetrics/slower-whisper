@@ -166,7 +166,7 @@ class TestHealthCheckHelpers:
 
     def test_check_ffmpeg_helper(self):
         """Test _check_ffmpeg helper function directly."""
-        from transcription.service import _check_ffmpeg
+        from transcription.service_health import _check_ffmpeg
 
         result = _check_ffmpeg()
         assert "status" in result
@@ -178,7 +178,7 @@ class TestHealthCheckHelpers:
 
     def test_check_faster_whisper_helper(self):
         """Test _check_faster_whisper helper function directly."""
-        from transcription.service import _check_faster_whisper
+        from transcription.service_health import _check_faster_whisper
 
         result = _check_faster_whisper()
         assert "status" in result
@@ -188,7 +188,7 @@ class TestHealthCheckHelpers:
 
     def test_check_cuda_helper_cpu_mode(self):
         """Test _check_cuda helper returns ok for cpu mode."""
-        from transcription.service import _check_cuda
+        from transcription.service_health import _check_cuda
 
         result = _check_cuda("cpu")
         assert result["status"] == "ok"
@@ -197,7 +197,7 @@ class TestHealthCheckHelpers:
 
     def test_check_cuda_helper_cuda_mode(self):
         """Test _check_cuda helper checks CUDA for cuda mode."""
-        from transcription.service import _check_cuda
+        from transcription.service_health import _check_cuda
 
         result = _check_cuda("cuda")
         assert "status" in result
@@ -209,7 +209,7 @@ class TestHealthCheckHelpers:
 
     def test_check_disk_space_helper(self):
         """Test _check_disk_space helper function directly."""
-        from transcription.service import _check_disk_space
+        from transcription.service_health import _check_disk_space
 
         result = _check_disk_space()
         assert "status" in result

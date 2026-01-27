@@ -11,19 +11,17 @@ from typing import Annotated, Any, cast
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from .api import transcribe_file
 from .config import TranscriptionConfig, WhisperTask, validate_compute_type
 from .exceptions import ConfigurationError, TranscriptionError
+from .service_serialization import _transcript_to_dict
+from .service_settings import HTTP_413_TOO_LARGE, MAX_AUDIO_SIZE_MB
 from .service_sse import _generate_sse_transcription
+from .service_validation import save_upload_file_streaming, validate_audio_format
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _get_service_module():
-    from . import service as _service
-
-    return _service
 
 
 # =============================================================================
@@ -159,8 +157,6 @@ async def transcribe_audio(
         422: Validation error in request parameters
         500: Internal transcription error
     """
-    service = _get_service_module()
-
     # Validate task
     if task not in ("transcribe", "translate"):
         logger.warning("Invalid task parameter: %s", task)
@@ -228,7 +224,7 @@ async def transcribe_audio(
             total_size = 0
             # 1MB chunks
             chunk_size = 1024 * 1024
-            max_bytes = service.MAX_AUDIO_SIZE_MB * 1024 * 1024
+            max_bytes = MAX_AUDIO_SIZE_MB * 1024 * 1024
 
             with open(audio_path, "wb") as f:
                 while True:
@@ -238,8 +234,8 @@ async def transcribe_audio(
                     total_size += len(chunk)
                     if total_size > max_bytes:
                         raise HTTPException(
-                            status_code=service.HTTP_413_TOO_LARGE,
-                            detail=f"File too large: >{service.MAX_AUDIO_SIZE_MB} MB",
+                            status_code=HTTP_413_TOO_LARGE,
+                            detail=f"File too large: >{MAX_AUDIO_SIZE_MB} MB",
                         )
                     f.write(chunk)
 
@@ -254,7 +250,7 @@ async def transcribe_audio(
             ) from e
 
         # Validate audio format
-        service.validate_audio_format(audio_path)
+        validate_audio_format(audio_path)
 
         # Create transcription config
         try:
@@ -293,7 +289,7 @@ async def transcribe_audio(
                 device,
                 enable_diarization,
             )
-            transcript = service.transcribe_file(
+            transcript = transcribe_file(
                 audio_path=audio_path,
                 root=tmpdir_path,
                 config=config,
@@ -325,7 +321,7 @@ async def transcribe_audio(
 
         # Convert Transcript to JSON-serializable dict
         return JSONResponse(
-            content=service._transcript_to_dict(transcript, include_words=word_timestamps),
+            content=_transcript_to_dict(transcript, include_words=word_timestamps),
             status_code=200,
         )
 
@@ -520,8 +516,6 @@ async def transcribe_audio_streaming(
 
     from .audio_io import normalize_single
 
-    service = _get_service_module()
-
     # Validate task
     if task not in ("transcribe", "translate"):
         logger.warning("Invalid task parameter: %s", task)
@@ -579,15 +573,15 @@ async def transcribe_audio_streaming(
         audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
 
         # Stream file to disk to prevent DoS (memory exhaustion)
-        await service.save_upload_file_streaming(
+        await save_upload_file_streaming(
             audio,
             audio_path,
-            max_bytes=service.MAX_AUDIO_SIZE_MB * 1024 * 1024,
+            max_bytes=MAX_AUDIO_SIZE_MB * 1024 * 1024,
             file_type="audio",
         )
 
         # Validate audio format
-        service.validate_audio_format(audio_path)
+        validate_audio_format(audio_path)
 
         # Normalize audio to 16kHz mono WAV
         norm_path = tmpdir_path / f"norm_{random_id}.wav"

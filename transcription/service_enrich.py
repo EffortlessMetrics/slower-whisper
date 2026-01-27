@@ -10,18 +10,21 @@ from typing import Annotated
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
+from .api import enrich_transcript
 from .config import EnrichmentConfig
 from .exceptions import ConfigurationError, EnrichmentError
+from .service_serialization import _transcript_to_dict
+from .service_settings import MAX_AUDIO_SIZE_MB, MAX_TRANSCRIPT_SIZE_MB
+from .service_validation import (
+    save_upload_file_streaming,
+    validate_audio_format,
+    validate_file_size,
+    validate_transcript_json,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _get_service_module():
-    from . import service as _service
-
-    return _service
 
 
 # =============================================================================
@@ -91,8 +94,6 @@ async def enrich_audio(
         422: Validation error in request parameters
         500: Internal enrichment error
     """
-    service = _get_service_module()
-
     # Validate device
     if device not in ("cuda", "cpu"):
         logger.warning("Invalid device parameter for enrichment: %s", device)
@@ -117,14 +118,10 @@ async def enrich_audio(
             ) from e
 
         # Validate transcript file size
-        service.validate_file_size(
-            transcript_content,
-            service.MAX_TRANSCRIPT_SIZE_MB,
-            file_type="transcript",
-        )
+        validate_file_size(transcript_content, MAX_TRANSCRIPT_SIZE_MB, file_type="transcript")
 
         # Validate transcript JSON structure
-        service.validate_transcript_json(transcript_content)
+        validate_transcript_json(transcript_content)
 
         # Save uploaded transcript
         transcript_path = tmpdir_path / "transcript.json"
@@ -156,19 +153,21 @@ async def enrich_audio(
         audio_path = tmpdir_path / f"audio_{random_id}{safe_suffix}"
 
         # Stream file to disk to prevent DoS (memory exhaustion)
-        await service.save_upload_file_streaming(
+        await save_upload_file_streaming(
             audio,
             audio_path,
-            max_bytes=service.MAX_AUDIO_SIZE_MB * 1024 * 1024,
+            max_bytes=MAX_AUDIO_SIZE_MB * 1024 * 1024,
             file_type="audio",
         )
 
         # Validate audio format
-        service.validate_audio_format(audio_path)
+        validate_audio_format(audio_path)
 
         # Load transcript
         try:
-            transcript_obj = service.load_transcript(transcript_path)
+            from .api import load_transcript
+
+            transcript_obj = load_transcript(transcript_path)
         except Exception as e:
             logger.warning("Invalid transcript JSON", exc_info=e)
             # Security fix: Do not leak exception details to client
@@ -203,7 +202,7 @@ async def enrich_audio(
                 enable_categorical_emotion,
                 device,
             )
-            enriched = service._enrich_transcript(
+            enriched = enrich_transcript(
                 transcript=transcript_obj,
                 audio_path=audio_path,
                 config=config,
@@ -236,6 +235,6 @@ async def enrich_audio(
 
         # Convert to dict and return
         return JSONResponse(
-            content=service._transcript_to_dict(enriched),
+            content=_transcript_to_dict(enriched),
             status_code=200,
         )
