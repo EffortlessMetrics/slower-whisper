@@ -33,7 +33,12 @@ from .config import (
     TranscriptionConfig,
 )
 from .device import DeviceChoice, format_preflight_banner, resolve_device
-from .exceptions import ConfigurationError, EnrichmentError, SlowerWhisperError
+from .exceptions import (
+    ConfigurationError,
+    EnrichmentError,
+    SampleExistsError,
+    SlowerWhisperError,
+)
 from .exporters import SUPPORTED_EXPORT_FORMATS, export_transcript
 from .integrations.cli import build_integrations_parser, handle_integrations_command
 from .models import Transcript
@@ -410,6 +415,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path.cwd(),
         help="Project root directory (default: current directory).",
+    )
+    p_samples_copy.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Overwrite existing files without confirmation.",
     )
 
     # samples generate
@@ -841,7 +852,9 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
     elif args.samples_action == "copy":
         try:
             project_dir = args.root / "raw_audio"
-            copied_files = copy_sample_to_project(args.dataset, project_dir)
+            copied_files = copy_sample_to_project(
+                args.dataset, project_dir, force=args.force
+            )
             print(f"\nCopied {len(copied_files)} files to {project_dir}:")
             for f in copied_files:
                 print(f"  {f.name}")
@@ -849,6 +862,36 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
             print(f"  cd {args.root}")
             print("  uv run slower-whisper transcribe --enable-diarization")
             return 0
+        except SampleExistsError as e:
+            if not sys.stdin.isatty():
+                print(
+                    f"Error: Files already exist. Use --force to overwrite.\n{e}",
+                    file=sys.stderr,
+                )
+                return 1
+
+            print(f"The following files already exist in {project_dir}:")
+            for f in e.existing_files:
+                print(f"  - {f.name}")
+
+            confirm = input(
+                f"\nOverwrite {len(e.existing_files)} files? {Colors.red('[y/N]')} "
+            )
+            if confirm.lower() in ("y", "yes"):
+                copied_files = copy_sample_to_project(
+                    args.dataset, project_dir, force=True
+                )
+                print(f"\nCopied {len(copied_files)} files to {project_dir}:")
+                for f in copied_files:
+                    print(f"  {f.name}")
+                print("\nReady to transcribe with:")
+                print(f"  cd {args.root}")
+                print("  uv run slower-whisper transcribe --enable-diarization")
+                return 0
+
+            print("Aborted.")
+            return 0
+
         except (ValueError, FileNotFoundError) as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Literal
 
 from transcription.cache import CachePaths
+from transcription.exceptions import SampleExistsError
 
 logger = logging.getLogger(__name__)
 
@@ -319,16 +320,20 @@ def get_sample_test_files(dataset_name: SampleDatasetName) -> list[Path]:
 
 
 def copy_sample_to_project(
-    dataset_name: SampleDatasetName, project_raw_audio_dir: Path
+    dataset_name: SampleDatasetName, project_raw_audio_dir: Path, force: bool = False
 ) -> list[Path]:
     """Copy sample dataset test files to a project's raw_audio directory.
 
     Args:
         dataset_name: Name of dataset
         project_raw_audio_dir: Path to project's raw_audio/ directory
+        force: Overwrite existing files without error (default: False)
 
     Returns:
         List of paths to copied files in project directory
+
+    Raises:
+        SampleExistsError: If files exist and force=False
 
     Example:
         >>> from pathlib import Path
@@ -338,12 +343,24 @@ def copy_sample_to_project(
     test_files = get_sample_test_files(dataset_name)
     project_raw_audio_dir.mkdir(parents=True, exist_ok=True)
 
-    copied_files = []
+    # Calculate destinations first
+    destinations: list[tuple[Path, Path]] = []
     for src in test_files:
         # Use dataset name prefix to avoid collisions
         dest_name = f"{dataset_name}_{src.name}"
         dest = project_raw_audio_dir / dest_name
+        destinations.append((src, dest))
 
+    if not force:
+        existing = [d for _, d in destinations if d.exists()]
+        if existing:
+            raise SampleExistsError(
+                f"Sample files already exist in {project_raw_audio_dir}",
+                existing_files=existing,
+            )
+
+    copied_files = []
+    for src, dest in destinations:
         shutil.copy(src, dest)
         copied_files.append(dest)
         logger.info(

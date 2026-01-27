@@ -206,6 +206,20 @@ class TestSamplesSubcommand:
 
         assert args.root == tmp_path
 
+    def test_samples_copy_force_flag(self) -> None:
+        """Samples copy --force flag is parsed correctly."""
+        parser = build_parser()
+        args = parser.parse_args(["samples", "copy", "mini_diarization", "--force"])
+
+        assert args.force is True
+
+    def test_samples_copy_default_force_false(self) -> None:
+        """Samples copy defaults to force=False."""
+        parser = build_parser()
+        args = parser.parse_args(["samples", "copy", "mini_diarization"])
+
+        assert args.force is False
+
     def test_samples_generate_parsing(self) -> None:
         """Samples generate action is parsed correctly."""
         parser = build_parser()
