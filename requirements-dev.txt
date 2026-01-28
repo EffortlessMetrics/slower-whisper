@@ -1845,9 +1845,9 @@ opentelemetry-sdk==1.38.0 \
 opentelemetry-semantic-conventions==0.59b0 \
     --hash=sha256:7a6db3f30d70202d5bf9fa4b69bc866ca6a30437287de6c510fb594878aed6b0 \
     --hash=sha256:35d3b8833ef97d614136e253c1da9342b4c3c083bbaf29ce31d572a1c3825eed
-optuna==4.6.0 \
-    --hash=sha256:89e38c2447c7f793a726617b8043f01e31f0bad54855040db17eb3b49404a369 \
-    --hash=sha256:4c3a9facdef2b2dd7e3e2a8ae3697effa70fae4056fcf3425cfc6f5a40feb069
+optuna==4.7.0 \
+    --hash=sha256:d91817e2079825557bd2e97de2e8c9ae260bfc99b32712502aef8a5095b2d2c0 \
+    --hash=sha256:e41ec84018cecc10eabf28143573b1f0bde0ba56dba8151631a590ecbebc1186
 orjson==3.11.5 ; platform_python_implementation != 'PyPy' \
     --hash=sha256:82393ab47b4fe44ffd0a7659fa9cfaacc717eb617c93cde83795f14af5c2e9d5 \
     --hash=sha256:9c8494625ad60a923af6b2b0bd74107146efe9b55099e20d7740d995f338fcd8 \
