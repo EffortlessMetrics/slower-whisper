@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Literal
 
 from transcription.cache import CachePaths
+from transcription.exceptions import SampleExistsError
 
 logger = logging.getLogger(__name__)
 
@@ -319,16 +320,20 @@ def get_sample_test_files(dataset_name: SampleDatasetName) -> list[Path]:
 
 
 def copy_sample_to_project(
-    dataset_name: SampleDatasetName, project_raw_audio_dir: Path
+    dataset_name: SampleDatasetName, project_raw_audio_dir: Path, overwrite: bool = True
 ) -> list[Path]:
     """Copy sample dataset test files to a project's raw_audio directory.
 
     Args:
         dataset_name: Name of dataset
         project_raw_audio_dir: Path to project's raw_audio/ directory
+        overwrite: Whether to overwrite existing files (default: True)
 
     Returns:
         List of paths to copied files in project directory
+
+    Raises:
+        SampleExistsError: If files exist and overwrite is False
 
     Example:
         >>> from pathlib import Path
@@ -338,12 +343,27 @@ def copy_sample_to_project(
     test_files = get_sample_test_files(dataset_name)
     project_raw_audio_dir.mkdir(parents=True, exist_ok=True)
 
-    copied_files = []
+    # Pre-calculate destinations and check for conflicts
+    conflicts = []
+    destinations = []
+
     for src in test_files:
         # Use dataset name prefix to avoid collisions
         dest_name = f"{dataset_name}_{src.name}"
         dest = project_raw_audio_dir / dest_name
+        destinations.append((src, dest))
 
+        if dest.exists() and not overwrite:
+            conflicts.append(dest)
+
+    if conflicts:
+        raise SampleExistsError(
+            f"Found {len(conflicts)} existing files that would be overwritten",
+            existing_files=conflicts,
+        )
+
+    copied_files = []
+    for src, dest in destinations:
         shutil.copy(src, dest)
         copied_files.append(dest)
         logger.info(
