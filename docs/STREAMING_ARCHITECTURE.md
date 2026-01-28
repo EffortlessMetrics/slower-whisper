@@ -1,6 +1,6 @@
 # Streaming Architecture
 
-**Version:** v1.9.0 (with v2.0.0 planned features)
+**Version:** v2.0.0
 **Last Updated:** 2026-01-21
 
 This document provides comprehensive documentation for slower-whisper's streaming architecture, covering the real-time transcription pipeline, enrichment layers, and semantic annotation.

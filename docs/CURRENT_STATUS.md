@@ -3,7 +3,7 @@
 <!-- Manually maintained. Related: ./scripts/generate-roadmap-status.py updates ROADMAP.md Quick Status -->
 
 **Last generated:** See git commit timestamp
-**Version:** v1.9.2
+**Version:** v2.0.0
 
 This is a facts-only status page. Plan and strategy live in [ROADMAP.md](../ROADMAP.md).
 

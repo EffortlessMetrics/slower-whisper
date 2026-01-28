@@ -1,6 +1,6 @@
 # slower-whisper Roadmap
 
-**Current Version:** v1.9.2 (v2.0.0 release pending)
+**Current Version:** v2.0.0
 **Last Updated:** 2026-01-26
 <!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
@@ -47,7 +47,7 @@ nix-clean flake check        # Nix checks
 
 | Version | Highlights |
 |---------|------------|
-| **Unreleased** | Semantic adapter protocol (#88), benchmark evaluation framework (ASR/DER/emotion/streaming), baseline infrastructure (#137), Anthropic LLM provider, parallel audio normalization |
+| **v2.0.0** | WebSocket streaming API, REST session management, semantic adapter protocol, benchmark evaluation framework (ASR/DER/emotion/streaming), LLM guardrails, baseline infrastructure |
 | **v1.9.2** | Version constant fix (`transcription.__version__` now correct) |
 | **v1.9.1** | GPU UX (`--device auto` default, preflight banner), CI caching fixes |
 | **v1.9.0** | Streaming callbacks (`StreamCallbacks` protocol), safe callback execution |
