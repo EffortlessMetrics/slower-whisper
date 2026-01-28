@@ -134,6 +134,7 @@ temp/
 tmp/
 
 # Benchmark evaluation results (transient)
+benchmark-results/
 benchmarks/results/
 benchmarks/tmp/
 benchmarks/cache/

@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/home/steven/code/Python/slower-whisper/.venv/bin/slower-whisper", line 5, in <module>
-    from transcription.cli import main
-  File "/home/steven/code/Python/slower-whisper/transcription/__init__.py", line 196, in <module>
-    from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
-  File "/home/steven/code/Python/slower-whisper/transcription/semantic/__init__.py", line 24, in <module>
-    from ..semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
-ImportError: cannot import name 'KeywordSemanticAnnotator' from partially initialized module 'transcription.semantic' (most likely due to a circular import) (/home/steven/code/Python/slower-whisper/transcription/semantic/__init__.py)
