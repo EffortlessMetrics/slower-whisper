@@ -73,6 +73,8 @@ class TestEventEnvelope:
 
     def test_envelope_to_dict_minimal(self) -> None:
         """Test envelope serialization without optional fields."""
+        from transcription.streaming_ws import EVENT_ENVELOPE_SCHEMA_VERSION
+
         envelope = EventEnvelope(
             event_id=1,
             stream_id="str-test",
@@ -82,6 +84,7 @@ class TestEventEnvelope:
         )
         d = envelope.to_dict()
         assert d == {
+            "schema_version": EVENT_ENVELOPE_SCHEMA_VERSION,
             "event_id": 1,
             "stream_id": "str-test",
             "type": "PONG",
@@ -95,6 +98,8 @@ class TestEventEnvelope:
 
     def test_envelope_to_dict_complete(self) -> None:
         """Test envelope serialization with all fields."""
+        from transcription.streaming_ws import EVENT_ENVELOPE_SCHEMA_VERSION
+
         envelope = EventEnvelope(
             event_id=10,
             stream_id="str-abc",
@@ -106,6 +111,7 @@ class TestEventEnvelope:
             ts_audio_end=3.5,
         )
         d = envelope.to_dict()
+        assert d["schema_version"] == EVENT_ENVELOPE_SCHEMA_VERSION
         assert d["event_id"] == 10
         assert d["stream_id"] == "str-abc"
         assert d["type"] == "PARTIAL"

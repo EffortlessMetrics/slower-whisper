@@ -6,6 +6,27 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      benchmark_gate:
+        description: 'Run benchmarks in gate mode (fail on regression)'
+        required: false
+        default: 'false'
+        type: boolean
+      benchmark_track:
+        description: 'Benchmark track to run (asr, diarization, streaming, semantic, emotion, all)'
+        required: false
+        default: 'asr'
+        type: choice
+        options:
+          - asr
+          - diarization
+          - streaming
+          - semantic
+          - emotion
+          - all
+  schedule:
+    # Run full benchmarks weekly on Sunday at 2am UTC
+    - cron: '0 2 * * 0'
 
 # Cancel in-progress runs when a new workflow with the same group name is triggered
 concurrency:
@@ -93,7 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v6
@@ -438,6 +459,139 @@ jobs:
           path: benchmark-results/
           retention-days: 30
 
+  # Full benchmark with gate mode (scheduled or manual trigger)
+  benchmark-gate:
+    name: Benchmark (gate mode)
+    runs-on: ubuntu-latest
+    # Only run on schedule, main branch push, or manual trigger with gate enabled
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.benchmark_gate == 'true') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [lint, format, test]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Restore benchmark cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cache/huggingface
+            benchmarks/.cache
+          key: benchmark-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            benchmark-${{ runner.os }}-
+
+      - name: Create benchmark results directory
+        run: mkdir -p benchmark-results
+
+      - name: Determine benchmark track
+        id: track
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TRACK="${{ inputs.benchmark_track || 'asr' }}"
+          else
+            TRACK="asr"
+          fi
+          echo "track=$TRACK" >> $GITHUB_OUTPUT
+          echo "Running benchmark track: $TRACK"
+
+      - name: Run benchmark with gate mode (ASR smoke)
+        id: benchmark-gate-run
+        run: |
+          echo "Running ASR benchmark in gate mode..."
+          uv run slower-whisper benchmark run \
+            --track asr \
+            --dataset smoke \
+            --gate \
+            --threshold wer=0.10 \
+            --threshold cer=0.05 \
+            --output benchmark-results/asr-gate-results.json \
+            2>&1 | tee benchmark-results/gate-output.log
+        continue-on-error: ${{ github.event_name != 'schedule' }}
+
+      - name: Compare with baselines
+        id: baseline-compare
+        run: |
+          echo "Comparing with stored baselines..."
+          uv run slower-whisper benchmark compare \
+            --track asr \
+            --dataset smoke \
+            --output benchmark-results/comparison.json \
+            2>&1 | tee -a benchmark-results/gate-output.log
+        continue-on-error: true
+
+      - name: Generate gate summary
+        if: always()
+        run: |
+          echo "## Benchmark Gate Summary" > benchmark-results/GATE_SUMMARY.md
+          echo "" >> benchmark-results/GATE_SUMMARY.md
+          echo "**Run Date:** $(date -Iseconds)" >> benchmark-results/GATE_SUMMARY.md
+          echo "**Commit:** ${{ github.sha }}" >> benchmark-results/GATE_SUMMARY.md
+          echo "**Trigger:** ${{ github.event_name }}" >> benchmark-results/GATE_SUMMARY.md
+          echo "**Track:** ${{ steps.track.outputs.track }}" >> benchmark-results/GATE_SUMMARY.md
+          echo "" >> benchmark-results/GATE_SUMMARY.md
+
+          if [ "${{ steps.benchmark-gate-run.outcome }}" == "success" ]; then
+            echo "### Result: ✅ PASSED" >> benchmark-results/GATE_SUMMARY.md
+            echo "All benchmarks within regression thresholds." >> benchmark-results/GATE_SUMMARY.md
+          else
+            echo "### Result: ⚠️ ATTENTION NEEDED" >> benchmark-results/GATE_SUMMARY.md
+            echo "Benchmark may have regressed or had issues. Review output below." >> benchmark-results/GATE_SUMMARY.md
+          fi
+
+          echo "" >> benchmark-results/GATE_SUMMARY.md
+          echo "### Output Log" >> benchmark-results/GATE_SUMMARY.md
+          echo '```' >> benchmark-results/GATE_SUMMARY.md
+          cat benchmark-results/gate-output.log 2>/dev/null || echo "No output log available"
+          echo '```' >> benchmark-results/GATE_SUMMARY.md
+
+          cat benchmark-results/GATE_SUMMARY.md
+
+      - name: Save benchmark cache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cache/huggingface
+            benchmarks/.cache
+          key: benchmark-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+
+      - name: Upload gate results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-gate-results
+          path: benchmark-results/
+          retention-days: 90
+
+      - name: Fail on regression (scheduled runs only)
+        if: github.event_name == 'schedule' && steps.benchmark-gate-run.outcome == 'failure'
+        run: |
+          echo "::error::Benchmark regression detected in scheduled run!"
+          exit 1
+
   # Documentation build
   docs:
     name: Build docs
@@ -501,14 +655,14 @@ jobs:
             exit 1
           fi
 
-          # Report benchmark status (informational only, doesn't fail CI)
+          # Report benchmark status (informational only for PR, gated for schedule)
           echo ""
           if [[ "${{ needs.benchmark.result }}" == "failure" ]]; then
-            echo "⚠️ Benchmark job had issues (informational only)"
+            echo "⚠️ Benchmark smoke test had issues (informational only)"
           elif [[ "${{ needs.benchmark.result }}" == "success" ]]; then
             echo "✅ Benchmark smoke test passed"
           else
-            echo "ℹ️ Benchmark job: ${{ needs.benchmark.result }}"
+            echo "ℹ️ Benchmark smoke test: ${{ needs.benchmark.result }}"
           fi
 
           echo ""
@@ -522,3 +676,6 @@ jobs:
           echo "✅ Library BDD contract enforced"
           echo "✅ API BDD contract enforced"
           echo "✅ Documentation builds cleanly"
+          echo ""
+          echo "Note: Benchmark gate mode runs on schedule (weekly) and manual trigger."
+          echo "      Use workflow_dispatch with benchmark_gate=true to test gate mode."

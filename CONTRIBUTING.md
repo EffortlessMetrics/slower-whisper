@@ -263,7 +263,7 @@ See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for complete Nix documentation.
 
 Before you begin, ensure you have:
 
-1. **Python 3.11 or later** - Check with `python --version`
+1. **Python 3.12 or later** - Check with `python --version`
 2. **ffmpeg** - Required for audio processing
    - Ubuntu/Debian: `sudo apt-get install ffmpeg libsndfile1`
    - macOS: `brew install ffmpeg`
@@ -501,39 +501,71 @@ uv run ruff check . \
   && uv run mypy transcription tests
 ```
 
-### Pre-commit Hooks (Recommended)
+### Editor-Based Formatting (Recommended)
 
-Pre-commit hooks automatically run linters before each commit, catching issues
-early:
+**Philosophy: Editor fixes, gate verifies.**
+
+The recommended workflow is to let your editor handle formatting on save, while
+pre-commit hooks serve as validation-only checks to catch issues before they
+reach the repository.
+
+**VS Code setup (recommended):**
+
+```json
+{
+  "editor.formatOnSave": true,
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  }
+}
+```
+
+With this setup, Ruff automatically formats your code and fixes linting issues
+every time you save a file. This provides instant feedback during development.
+
+### Pre-commit Hooks (Validation Only)
+
+Pre-commit hooks are configured as **validation-only** checks. They will fail if
+issues are found but **will not auto-fix** your code. This prevents unexpected
+changes and ensures you're aware of issues before committing.
 
 ```bash
 # Install pre-commit hooks (one-time setup)
 uv run pre-commit install
 
 # Now hooks run automatically on git commit
-
-# Run manually on all files
-uv run pre-commit run --all-files
-
-# Skip hooks for a specific commit (use sparingly)
-git commit --no-verify -m "message"
+# If they fail, fix the issues in your editor (which should auto-format on save)
+# Then stage and commit again
 ```
 
-**What pre-commit checks:**
+**What pre-commit validates:**
 
-- Ruff linting with auto-fix
-- Ruff formatting
+- Ruff linting (check only, no auto-fix)
+- Ruff formatting (check only, no auto-format)
 - Type checking with mypy (warning only)
 - Trailing whitespace
-- End-of-file fixers
-- YAML/JSON/TOML validation
+- End-of-file consistency
+- YAML/JSON/TOML validity
 - Large file detection
 - Merge conflict markers
 - Debug statement detection
 
-Pre-commit.ci will auto-apply fixes on PRs when possible (look for
-`chore: pre-commit autofix`), so fixable lint/format issues shouldn't block you.
-Unfixable findings still need manual fixes.
+**Before pushing, run the verification gate:**
+
+```bash
+# Quick check (minimum before pushing)
+uv run slower-whisper-verify --quick
+
+# Or use the CI script
+./scripts/ci-local.sh fast
+```
+
+This ensures your changes pass all quality checks before they reach the remote
+repository.
 
 ### Code Style Guidelines
 
@@ -721,17 +753,21 @@ If any step fails, **do not push**. Fix the issues first. This verification
 ensures you're not breaking the project's **behavioral contracts** (BDD
 scenarios) or **deployment contracts** (Docker/K8s).
 
-#### 6. Format and lint your code
+#### 6. Ensure code is formatted
+
+Your editor should format on save (see [Editor-Based Formatting](#editor-based-formatting-recommended)).
+If you need to manually format or check:
 
 ```bash
-# Auto-format code
+# Auto-format code (if editor didn't catch it)
 uv run ruff format .
 
-# Auto-fix linting issues
+# Auto-fix linting issues (if editor didn't catch it)
 uv run ruff check --fix .
 
-# Or let pre-commit handle it
-uv run pre-commit run --all-files
+# Check formatting and linting without fixing (what pre-commit does)
+uv run ruff format --check .
+uv run ruff check .
 ```
 
 #### 7. Update documentation
@@ -752,9 +788,8 @@ git add .
 # Commit with a clear message (pre-commit hooks will run automatically)
 git commit -m "Add pause density feature to prosody extraction"
 
-# If pre-commit fixes issues, review and commit again
-git add .
-git commit -m "Add pause density feature to prosody extraction"
+# If pre-commit fails, fix issues in your editor (format on save should help)
+# Then stage the fixed files and commit again
 ```
 
 #### 9. Push and create a pull request
@@ -1033,7 +1068,7 @@ If your changes affect any BDD scenarios (`tests/features/` or `features/`), you
    - Linting (ruff check)
    - Formatting check (ruff format)
    - Type checking (mypy)
-   - Tests on Python 3.11, 3.12
+   - Tests on Python 3.12, 3.13
    - Integration tests
 
 2. **Review by maintainer** - A project maintainer will:
@@ -1267,14 +1302,25 @@ uv sync --reinstall
 
 **Pre-commit hooks failing:**
 
-```bash
-# Update hooks to latest version
-uv run pre-commit autoupdate
+Pre-commit hooks are validation-only and won't auto-fix. If they fail:
 
-# Run hooks manually to debug
+```bash
+# Run hooks manually to see what's wrong
 uv run pre-commit run --all-files --verbose
 
-# Skip hooks temporarily (not recommended)
+# Fix issues in your editor (format on save should catch most)
+# Or manually run formatters:
+uv run ruff format .
+uv run ruff check --fix .
+
+# Then stage and commit again
+git add .
+git commit -m "message"
+
+# Update hooks to latest version (if hooks are outdated)
+uv run pre-commit autoupdate
+
+# Skip hooks temporarily (not recommended, use sparingly)
 git commit --no-verify -m "message"
 ```
 
@@ -1440,7 +1486,8 @@ uv run pytest -k "pitch"
 
 **Q: My pre-commit hooks are slow. Can I skip them?**
 
-A: Pre-commit hooks save time by catching issues early. But for rapid iteration:
+A: Pre-commit hooks are validation-only and catch issues early. With editor
+format-on-save enabled, hooks should rarely fail. For rapid iteration:
 
 ```bash
 # Skip for one commit (not recommended)
@@ -1452,6 +1499,9 @@ uv run pre-commit run
 # Run hooks manually instead of on every commit
 pre-commit uninstall  # Remove hooks
 uv run pre-commit run --all-files  # Run manually when ready
+
+# Better approach: ensure editor formats on save
+# This prevents most pre-commit failures
 ```
 
 **Q: How do I add a dependency?**
@@ -1838,14 +1888,18 @@ Here's a handy cheat sheet for common commands:
 ```bash
 # Setup
 uv sync --extra dev              # Install all dependencies
-uv run pre-commit install        # Set up pre-commit hooks
+uv run pre-commit install        # Set up pre-commit hooks (validation-only)
 
-# Development
+# Development (editor fixes, gate verifies)
 uv run pytest                    # Run all tests
 uv run pytest -m "not slow"      # Run fast tests only
-uv run ruff check --fix .        # Lint and fix
-uv run ruff format .             # Format code
+uv run ruff format .             # Format code (editor should do this on save)
+uv run ruff check --fix .        # Lint and fix (editor should do this on save)
 uv run mypy transcription tests  # Type check
+
+# Before pushing (REQUIRED)
+uv run slower-whisper-verify --quick  # Quick verification gate
+./scripts/ci-local.sh fast            # Alternative quick check
 
 # Running the pipeline
 uv run slower-whisper            # Stage 1: Transcribe
@@ -1858,7 +1912,7 @@ uv run pytest -s                 # Show print statements
 
 # Maintenance
 uv sync --upgrade                # Update dependencies
-uv run pre-commit run --all-files # Run all hooks manually
+uv run pre-commit run --all-files # Run all validation hooks manually
 rm -rf .venv && uv sync --extra dev # Clean reinstall
 ```
 

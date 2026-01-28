@@ -53,7 +53,7 @@ body:
     attributes:
       label: Version
       description: "`slower-whisper --version` (or `pip show slower-whisper` / `uv pip show`)."
-      placeholder: "1.9.2"
+      placeholder: "2.0.0"
     validations:
       required: false
 

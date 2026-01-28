@@ -160,7 +160,7 @@ When baselines are available, prosodic features are normalized relative to the s
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.12+
 - Audio files already transcribed (Stage 1 complete)
 - NVIDIA GPU recommended (emotion models are fast on GPU but work on CPU)
 

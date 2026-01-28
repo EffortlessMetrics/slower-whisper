@@ -1,5 +1,5 @@
 """
-WebSocket streaming protocol for real-time transcription (v2.0.0).
+WebSocket streaming protocol for real-time transcription (v2.1.0).
 
 This module implements the WebSocket-based streaming API for real-time
 audio transcription and enrichment. It provides event-driven communication
@@ -7,10 +7,12 @@ with clients using JSON message envelopes.
 
 Key features:
 - Event envelope with monotonically increasing event_id
-- Client message types: START_SESSION, AUDIO_CHUNK, END_SESSION, PING
+- Client message types: START_SESSION, AUDIO_CHUNK, END_SESSION, PING, TTS_STATE
 - Server message types: SESSION_STARTED, PARTIAL, FINALIZED, ERROR, etc.
+- v2.1 additions: PHYSICS_UPDATE, AUDIO_HEALTH, VAD_ACTIVITY, BARGE_IN, END_OF_TURN_HINT
 - Session lifecycle management with configurable enrichment
 - Backpressure handling: PARTIAL events can be dropped, FINALIZED never dropped
+- TTS state tracking for barge-in detection
 
 See docs/STREAMING_ARCHITECTURE.md section 6 for protocol specification.
 """
@@ -21,15 +23,19 @@ import asyncio
 import base64
 import logging
 import time
-import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
 
+from .ids import EventIdCounter, SegmentIdCounter, generate_stream_id
+
 if TYPE_CHECKING:
     from .asr_engine import WhisperModelProtocol
+    from .audio_health import AudioHealthAggregator
+    from .conversation_physics import ConversationPhysicsTracker
     from .streaming_asr import StreamingASRAdapter, StreamingASRConfig
+    from .streaming_callbacks import StreamCallbacks
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +53,7 @@ class ClientMessageType(str, Enum):
     END_SESSION = "END_SESSION"
     PING = "PING"
     RESUME_SESSION = "RESUME_SESSION"  # Resume after reconnection
+    TTS_STATE = "TTS_STATE"  # Client sends when TTS starts/stops playing
 
 
 class ServerMessageType(str, Enum):
@@ -61,11 +68,21 @@ class ServerMessageType(str, Enum):
     ERROR = "ERROR"
     SESSION_ENDED = "SESSION_ENDED"
     PONG = "PONG"
+    # v2.1 additions
+    PHYSICS_UPDATE = "PHYSICS_UPDATE"
+    AUDIO_HEALTH = "AUDIO_HEALTH"
+    VAD_ACTIVITY = "VAD_ACTIVITY"
+    BARGE_IN = "BARGE_IN"
+    END_OF_TURN_HINT = "END_OF_TURN_HINT"
 
 
 # =============================================================================
 # Event Envelope
 # =============================================================================
+
+
+# Schema version for EventEnvelope (bumped on breaking changes)
+EVENT_ENVELOPE_SCHEMA_VERSION = "2.1.0"
 
 
 @dataclass(slots=True)
@@ -75,16 +92,102 @@ class EventEnvelope:
 
     The envelope provides consistent metadata for all server events,
     enabling clients to track event ordering, timing, and context.
+    This is the canonical wire format for all server-to-client messages
+    in the WebSocket streaming protocol.
 
-    Attributes:
-        event_id: Monotonically increasing ID per stream (never resets within session)
-        stream_id: Unique stream identifier (format: str-{uuid4})
-        segment_id: Segment identifier (format: seg-{seq}, None for non-segment events)
-        type: Server message type
-        ts_server: Server timestamp (Unix epoch milliseconds)
-        ts_audio_start: Audio timestamp start (seconds, None for non-audio events)
-        ts_audio_end: Audio timestamp end (seconds, None for non-audio events)
-        payload: Message-specific payload data
+    Schema Version: 2.1.0 (see EVENT_ENVELOPE_SCHEMA_VERSION)
+    JSON Schema: docs/schemas/event_envelope_v2.json
+
+    Field Semantics
+    ---------------
+
+    event_id : int
+        Monotonically increasing identifier per stream. Starts at 1 for each
+        new session and increments by 1 for each event. NEVER resets or
+        decreases within a session. Gaps in event_id indicate dropped PARTIAL
+        events due to backpressure (FINALIZED events are never dropped).
+        Clients should track this to detect missed events during resume.
+
+    stream_id : str
+        Unique stream identifier in format ``str-{uuid4}`` (e.g.,
+        ``str-a1b2c3d4-e5f6-4789-abcd-ef0123456789``). Globally unique
+        across all streams. Immutable for the entire session duration.
+        Generated server-side on session creation.
+
+    type : ServerMessageType
+        Server message type indicating the event category. Valid values:
+        SESSION_STARTED, PARTIAL, FINALIZED, SPEAKER_TURN, SEMANTIC_UPDATE,
+        DIARIZATION_UPDATE, ERROR, SESSION_ENDED, PONG, and v2.1 additions:
+        PHYSICS_UPDATE, AUDIO_HEALTH, VAD_ACTIVITY, BARGE_IN, END_OF_TURN_HINT.
+
+    ts_server : int
+        Server timestamp in Unix epoch MILLISECONDS (not seconds) when the
+        event was generated. Always positive. Use for latency measurement
+        and event ordering verification.
+
+    payload : dict[str, Any]
+        Event-type-specific payload data. Schema varies by message type.
+        See docs/schemas/event_envelope_v2.json for payload schemas per type.
+
+    segment_id : str | None
+        Segment identifier in format ``seg-{seq}`` (e.g., ``seg-0``, ``seg-42``).
+        Present for segment-related events (PARTIAL, FINALIZED). None for
+        non-segment events (SESSION_STARTED, SESSION_ENDED, PONG, ERROR, etc.).
+        Same segment_id links PARTIAL events to their eventual FINALIZED event.
+
+    ts_audio_start : float | None
+        Audio timestamp start in SECONDS (floating point). Represents the
+        start position in the audio stream that this event relates to.
+        None for non-audio events (PONG, SESSION_STARTED, etc.).
+
+    ts_audio_end : float | None
+        Audio timestamp end in SECONDS (floating point). Represents the
+        end position in the audio stream that this event relates to.
+        None for non-audio events.
+
+    Wire Format
+    -----------
+    The envelope serializes to JSON with the following structure::
+
+        {
+            "schema_version": "2.1.0",
+            "event_id": 1,
+            "stream_id": "str-...",
+            "type": "SESSION_STARTED",
+            "ts_server": 1706300000000,
+            "payload": {...},
+            // Optional fields (omitted when null):
+            "segment_id": "seg-0",
+            "ts_audio_start": 0.0,
+            "ts_audio_end": 2.5
+        }
+
+    Contract Guarantees
+    -------------------
+    1. event_id is strictly monotonically increasing (never repeats, never decreases)
+    2. ts_server is always positive Unix epoch milliseconds
+    3. stream_id format is always str-{uuid4}
+    4. segment_id format (when present) is always seg-{integer}
+    5. FINALIZED events are never dropped (even under backpressure)
+    6. SESSION_ENDED is always the final event in a session
+
+    Example
+    -------
+    >>> envelope = EventEnvelope(
+    ...     event_id=1,
+    ...     stream_id="str-a1b2c3d4-e5f6-4789-abcd-ef0123456789",
+    ...     type=ServerMessageType.SESSION_STARTED,
+    ...     ts_server=1706300000000,
+    ...     payload={"session_id": "str-a1b2c3d4-e5f6-4789-abcd-ef0123456789"},
+    ... )
+    >>> envelope.to_dict()
+    {'schema_version': '2.1.0', 'event_id': 1, 'stream_id': 'str-...', ...}
+
+    See Also
+    --------
+    - docs/STREAMING_API.md: Full API documentation
+    - docs/schemas/event_envelope_v2.json: JSON Schema definition
+    - tests/test_streaming_contracts.py: Contract test suite
     """
 
     event_id: int
@@ -97,8 +200,23 @@ class EventEnvelope:
     ts_audio_end: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert envelope to JSON-serializable dictionary."""
+        """
+        Convert envelope to JSON-serializable dictionary.
+
+        Returns a dictionary suitable for JSON serialization and transmission
+        over WebSocket. Optional fields (segment_id, ts_audio_start, ts_audio_end)
+        are omitted from the output when their value is None, keeping the wire
+        format compact.
+
+        Returns
+        -------
+        dict[str, Any]
+            JSON-serializable dictionary with all required fields and any
+            non-None optional fields. Includes schema_version for forward
+            compatibility.
+        """
         result: dict[str, Any] = {
+            "schema_version": EVENT_ENVELOPE_SCHEMA_VERSION,
             "event_id": self.event_id,
             "stream_id": self.stream_id,
             "type": self.type.value,
@@ -138,6 +256,14 @@ class WebSocketSessionConfig:
         audio_format: Audio encoding format (default: "pcm_s16le")
         replay_buffer_size: Size of event replay buffer for resume (default: 100)
         backpressure_threshold: Queue size threshold for backpressure (default: 80)
+        enable_conversation_physics: Enable conversation physics updates (default: False)
+        enable_audio_health: Enable audio health monitoring (default: False)
+        audio_health_interval_chunks: Interval for audio health updates in chunks (default: 10)
+        enable_reflex_events: Enable reflex events like VAD_ACTIVITY and BARGE_IN (default: False)
+        enable_tts_style: Enable TTS style hints in events (default: False)
+        enable_correction_detection: Enable detection of speaker corrections (default: False)
+        enable_commitment_tracking: Enable tracking of speaker commitments (default: False)
+        correction_similarity_threshold: Similarity threshold for correction detection (default: 0.7)
     """
 
     max_gap_sec: float = 1.0
@@ -150,6 +276,15 @@ class WebSocketSessionConfig:
     audio_format: str = "pcm_s16le"
     replay_buffer_size: int = 100
     backpressure_threshold: int = 80
+    # v2.1 additions
+    enable_conversation_physics: bool = False
+    enable_audio_health: bool = False
+    audio_health_interval_chunks: int = 10
+    enable_reflex_events: bool = False
+    enable_tts_style: bool = False
+    enable_correction_detection: bool = False
+    enable_commitment_tracking: bool = False
+    correction_similarity_threshold: float = 0.7
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WebSocketSessionConfig:
@@ -172,6 +307,15 @@ class WebSocketSessionConfig:
             audio_format=str(data.get("audio_format", "pcm_s16le")),
             replay_buffer_size=int(data.get("replay_buffer_size", 100)),
             backpressure_threshold=int(data.get("backpressure_threshold", 80)),
+            # v2.1 additions
+            enable_conversation_physics=bool(data.get("enable_conversation_physics", False)),
+            enable_audio_health=bool(data.get("enable_audio_health", False)),
+            audio_health_interval_chunks=int(data.get("audio_health_interval_chunks", 10)),
+            enable_reflex_events=bool(data.get("enable_reflex_events", False)),
+            enable_tts_style=bool(data.get("enable_tts_style", False)),
+            enable_correction_detection=bool(data.get("enable_correction_detection", False)),
+            enable_commitment_tracking=bool(data.get("enable_commitment_tracking", False)),
+            correction_similarity_threshold=float(data.get("correction_similarity_threshold", 0.7)),
         )
 
 
@@ -395,6 +539,7 @@ class WebSocketStreamingSession:
         diarization_hook: DiarizationHook | None = None,
         asr_model: WhisperModelProtocol | None = None,
         asr_config: StreamingASRConfig | None = None,
+        callbacks: StreamCallbacks | None = None,
     ) -> None:
         """
         Initialize a new WebSocket streaming session.
@@ -408,17 +553,19 @@ class WebSocketStreamingSession:
                       If not provided, the session will emit mock transcription events.
             asr_config: Optional StreamingASRConfig for ASR adapter behavior.
                        Only used when asr_model is provided.
+            callbacks: Optional callbacks for streaming events (v2.1).
+                      Used to emit physics, audio health, VAD, and barge-in events.
         """
-        self.stream_id = f"str-{uuid.uuid4()}"
+        self.stream_id = generate_stream_id()
         self.config = config or WebSocketSessionConfig()
         self.state = SessionState.CREATED
         self.stats = SessionStats()
 
         # Event ID counter (monotonically increasing per stream)
-        self._event_id_counter = 0
+        self._event_counter = EventIdCounter()
 
-        # Segment sequence counter
-        self._segment_seq = 0
+        # Segment ID counter
+        self._segment_counter = SegmentIdCounter()
 
         # Audio buffer for accumulating chunks
         self._audio_buffer = bytearray()
@@ -448,6 +595,31 @@ class WebSocketStreamingSession:
         self._last_diarization_audio_len = 0  # Track audio length at last diarization
         self._current_speaker_assignments: list[SpeakerAssignment] = []
         self._diarization_update_count = 0
+        self._speaker_turn_count = 0  # Track number of speaker turns emitted
+        self._last_emitted_speaker: str | None = None  # Track last speaker for turn detection
+
+        # TTS state tracking for barge-in detection (v2.1)
+        self._tts_playing: bool = False
+        self._tts_start_time: float | None = None
+
+        # v2.1 feature state (lazy initialized to avoid import cost when disabled)
+        self._callbacks = callbacks
+        self._audio_health_aggregator: AudioHealthAggregator | None = None
+        self._physics_tracker: ConversationPhysicsTracker | None = None
+        self._health_chunk_counter = 0  # Counter for interval-based health updates
+        self._last_vad_is_speech: bool | None = None  # Track VAD state transitions
+        self._silence_start_time: float | None = None  # Track silence duration
+
+        # Initialize v2.1 trackers if features are enabled
+        if self.config.enable_audio_health:
+            from .audio_health import AudioHealthAggregator
+
+            self._audio_health_aggregator = AudioHealthAggregator(window_size=10)
+
+        if self.config.enable_conversation_physics:
+            from .conversation_physics import ConversationPhysicsTracker
+
+            self._physics_tracker = ConversationPhysicsTracker()
 
         logger.info(
             "Created WebSocket session: stream_id=%s, config=%s, diarization_hook=%s, asr=%s",
@@ -459,14 +631,11 @@ class WebSocketStreamingSession:
 
     def _next_event_id(self) -> int:
         """Generate next monotonically increasing event ID."""
-        self._event_id_counter += 1
-        return self._event_id_counter
+        return self._event_counter.next()
 
     def _next_segment_id(self) -> str:
         """Generate next segment ID."""
-        seg_id = f"seg-{self._segment_seq}"
-        self._segment_seq += 1
-        return seg_id
+        return self._segment_counter.next()
 
     def _server_timestamp(self) -> int:
         """Get current server timestamp in milliseconds."""
@@ -634,7 +803,7 @@ class WebSocketStreamingSession:
                 "details": {
                     "requested_event_id": last_event_id,
                     "oldest_available": self._replay_buffer.oldest_event_id,
-                    "current_event_id": self._event_id_counter,
+                    "current_event_id": self._event_counter.current,
                 },
             },
         )
@@ -662,6 +831,36 @@ class WebSocketStreamingSession:
                 },
             },
         )
+
+    def set_tts_state(self, playing: bool) -> None:
+        """
+        Update the TTS playback state.
+
+        Called when client sends TTS_STATE message to indicate TTS has
+        started or stopped playing. This state is used for barge-in detection.
+
+        Args:
+            playing: True if TTS is currently playing, False if stopped.
+        """
+        if playing and not self._tts_playing:
+            # TTS starting
+            self._tts_playing = True
+            self._tts_start_time = time.time()
+            logger.debug(
+                "TTS started: stream_id=%s, start_time=%s",
+                self.stream_id,
+                self._tts_start_time,
+            )
+        elif not playing and self._tts_playing:
+            # TTS stopping
+            duration = time.time() - (self._tts_start_time or time.time())
+            self._tts_playing = False
+            self._tts_start_time = None
+            logger.debug(
+                "TTS stopped: stream_id=%s, duration=%.3fs",
+                self.stream_id,
+                duration,
+            )
 
     async def start(self) -> EventEnvelope:
         """
@@ -759,9 +958,12 @@ class WebSocketStreamingSession:
             events.extend(self._generate_mock_events())
 
         # Check if we should trigger incremental diarization
-        diarization_event = await self._maybe_trigger_diarization()
-        if diarization_event:
-            events.append(diarization_event)
+        diarization_events = await self._maybe_trigger_diarization()
+        events.extend(diarization_events)
+
+        # Process v2.1 features (audio health, physics, reflex events)
+        v21_events = self._process_v21_features(audio_data, events)
+        events.extend(v21_events)
 
         self.stats.events_sent += len(events)
         return events
@@ -884,6 +1086,199 @@ class WebSocketStreamingSession:
 
         return events
 
+    def _process_v21_features(
+        self,
+        audio_data: bytes,
+        transcription_events: list[EventEnvelope],
+    ) -> list[EventEnvelope]:
+        """Process v2.1 features and emit events.
+
+        Handles audio health, VAD activity, barge-in detection, and
+        conversation physics tracking based on config flags.
+
+        Args:
+            audio_data: Raw PCM audio bytes for the current chunk.
+            transcription_events: Events generated by ASR (used for physics tracking).
+
+        Returns:
+            List of v2.1 EventEnvelope objects (may be empty if features disabled).
+        """
+        events: list[EventEnvelope] = []
+
+        # --- Audio Health ---
+        if self.config.enable_audio_health and self._audio_health_aggregator is not None:
+            from .audio_health import analyze_chunk_health
+
+            snapshot = analyze_chunk_health(audio_data, self.config.sample_rate)
+            self._audio_health_aggregator.add_snapshot(snapshot)
+            self._health_chunk_counter += 1
+
+            # Emit at configured interval
+            if self._health_chunk_counter >= self.config.audio_health_interval_chunks:
+                self._health_chunk_counter = 0
+                aggregate = self._audio_health_aggregator.get_aggregate()
+                events.append(
+                    self._create_envelope(
+                        ServerMessageType.AUDIO_HEALTH,
+                        {
+                            "clipping_ratio": aggregate.clipping_ratio,
+                            "rms_energy": aggregate.rms_energy,
+                            "snr_proxy": aggregate.snr_proxy,
+                            "spectral_centroid": aggregate.spectral_centroid,
+                            "quality_score": aggregate.quality_score,
+                            "is_speech_likely": aggregate.is_speech_likely,
+                        },
+                    )
+                )
+                # Invoke callback if available
+                self._invoke_callback_safe("on_audio_health", aggregate)
+
+        # --- VAD Activity & Barge-in ---
+        if self.config.enable_reflex_events:
+            # Use audio health snapshot for VAD if available, otherwise compute
+            if self.config.enable_audio_health and self._audio_health_aggregator is not None:
+                aggregate = self._audio_health_aggregator.get_aggregate()
+                is_speech = aggregate.is_speech_likely
+                energy = aggregate.rms_energy
+            else:
+                # Compute minimal VAD from raw audio
+                from .audio_health import analyze_chunk_health
+
+                snapshot = analyze_chunk_health(audio_data, self.config.sample_rate)
+                is_speech = snapshot.is_speech_likely
+                energy = snapshot.rms_energy
+
+            # Track silence duration
+            current_time = time.time()
+            if is_speech:
+                self._silence_start_time = None
+                silence_duration = 0.0
+            else:
+                if self._silence_start_time is None:
+                    self._silence_start_time = current_time
+                silence_duration = current_time - self._silence_start_time
+
+            # Emit VAD_ACTIVITY on state transition
+            if self._last_vad_is_speech != is_speech:
+                self._last_vad_is_speech = is_speech
+                events.append(
+                    self._create_envelope(
+                        ServerMessageType.VAD_ACTIVITY,
+                        {
+                            "energy_level": energy,
+                            "is_speech": is_speech,
+                            "silence_duration_sec": silence_duration,
+                        },
+                    )
+                )
+                # Invoke callback
+                from .streaming_callbacks import VADActivityPayload
+
+                self._invoke_callback_safe(
+                    "on_vad_activity",
+                    VADActivityPayload(
+                        energy_level=energy,
+                        is_speech=is_speech,
+                        silence_duration_sec=silence_duration,
+                    ),
+                )
+
+            # Check for barge-in (speech detected while TTS playing)
+            if is_speech and self._tts_playing and self._tts_start_time is not None:
+                tts_elapsed = current_time - self._tts_start_time
+                events.append(
+                    self._create_envelope(
+                        ServerMessageType.BARGE_IN,
+                        {
+                            "energy": energy,
+                            "tts_elapsed_sec": tts_elapsed,
+                        },
+                    )
+                )
+                # Invoke callback
+                from .streaming_callbacks import BargeInPayload
+
+                self._invoke_callback_safe(
+                    "on_barge_in",
+                    BargeInPayload(energy=energy, tts_elapsed_sec=tts_elapsed),
+                )
+                # Auto-stop TTS state after barge-in detected
+                self._tts_playing = False
+                self._tts_start_time = None
+
+        # --- Conversation Physics ---
+        if self.config.enable_conversation_physics and self._physics_tracker is not None:
+            # Record finalized segments to physics tracker
+            for event in transcription_events:
+                if event.type == ServerMessageType.FINALIZED:
+                    segment = event.payload.get("segment", {})
+                    start = segment.get("start", 0.0)
+                    end = segment.get("end", 0.0)
+                    speaker_id = segment.get("speaker_id") or "unknown"
+                    self._physics_tracker.record_segment(speaker_id, start, end)
+
+                    # Emit physics update after each finalized segment
+                    physics_snapshot = self._physics_tracker.get_snapshot()
+                    events.append(
+                        self._create_envelope(
+                            ServerMessageType.PHYSICS_UPDATE,
+                            {
+                                "speaker_talk_times": physics_snapshot.speaker_talk_times,
+                                "total_duration_sec": physics_snapshot.total_duration_sec,
+                                "interruption_count": physics_snapshot.interruption_count,
+                                "interruption_rate": physics_snapshot.interruption_rate,
+                                "mean_response_latency_sec": physics_snapshot.mean_response_latency_sec,
+                                "speaker_transitions": physics_snapshot.speaker_transitions,
+                                "overlap_duration_sec": physics_snapshot.overlap_duration_sec,
+                            },
+                        )
+                    )
+                    # Invoke callback
+                    self._invoke_callback_safe("on_physics_update", physics_snapshot)
+
+        return events
+
+    def _invoke_callback_safe(self, method_name: str, payload: Any) -> None:
+        """Invoke a callback method safely, catching exceptions.
+
+        Per invariant #3, callbacks never crash the pipeline.
+
+        Args:
+            method_name: Name of the callback method to invoke.
+            payload: Payload to pass to the callback.
+        """
+        if self._callbacks is None:
+            return
+
+        method = getattr(self._callbacks, method_name, None)
+        if method is None:
+            return
+
+        try:
+            method(payload)
+        except Exception as e:
+            logger.warning(
+                "Callback %s raised exception (stream_id=%s): %s",
+                method_name,
+                self.stream_id,
+                e,
+            )
+            # Try to invoke on_error if available
+            try:
+                from .streaming_callbacks import StreamingError
+
+                error_handler = getattr(self._callbacks, "on_error", None)
+                if error_handler:
+                    error_handler(
+                        StreamingError(
+                            exception=e,
+                            context=f"Callback {method_name} failed",
+                            recoverable=True,
+                        )
+                    )
+            except Exception:
+                pass  # Don't let error handling errors crash us
+
     def _should_trigger_diarization(self) -> bool:
         """
         Check if incremental diarization should be triggered.
@@ -906,19 +1301,21 @@ class WebSocketStreamingSession:
 
         return new_audio_duration >= self.config.diarization_interval_sec
 
-    async def _maybe_trigger_diarization(self) -> EventEnvelope | None:
+    async def _maybe_trigger_diarization(self) -> list[EventEnvelope]:
         """
-        Conditionally trigger incremental diarization and return update event.
+        Conditionally trigger incremental diarization and return update events.
 
         If diarization should be triggered (based on accumulated audio),
-        calls the diarization hook and emits a DIARIZATION_UPDATE event
-        if speaker assignments have changed.
+        calls the diarization hook and emits:
+        - DIARIZATION_UPDATE event if speaker assignments have changed
+        - SPEAKER_TURN events for detected turn boundaries
 
         Returns:
-            EventEnvelope with DIARIZATION_UPDATE type, or None if no update.
+            List of EventEnvelope objects (may include DIARIZATION_UPDATE
+            and SPEAKER_TURN events), or empty list if no update.
         """
         if not self._should_trigger_diarization():
-            return None
+            return []
 
         # _should_trigger_diarization confirms hook is not None
         assert self._diarization_hook is not None
@@ -935,12 +1332,20 @@ class WebSocketStreamingSession:
             self._last_diarization_audio_len = len(self._audio_buffer)
             self._diarization_update_count += 1
 
+            events: list[EventEnvelope] = []
+
             # Check if assignments changed
             if self._assignments_changed(new_assignments):
                 self._current_speaker_assignments = new_assignments
-                return self._create_diarization_update_event(new_assignments)
 
-            return None
+                # Emit DIARIZATION_UPDATE event
+                events.append(self._create_diarization_update_event(new_assignments))
+
+                # Detect and emit SPEAKER_TURN events for turn boundaries
+                turn_events = self._detect_speaker_turns_from_assignments(new_assignments)
+                events.extend(turn_events)
+
+            return events
 
         except Exception as e:
             # Graceful degradation: log error but don't crash pipeline
@@ -949,7 +1354,7 @@ class WebSocketStreamingSession:
                 self.stream_id,
                 e,
             )
-            return None
+            return []
 
     def _assignments_changed(self, new_assignments: list[SpeakerAssignment]) -> bool:
         """
@@ -1009,22 +1414,122 @@ class WebSocketStreamingSession:
             ts_audio_end=audio_duration,
         )
 
-    async def _trigger_final_diarization(self) -> EventEnvelope | None:
+    def _create_speaker_turn_event(
+        self,
+        speaker_id: str,
+        start: float,
+        end: float,
+        text: str | None = None,
+    ) -> EventEnvelope:
+        """
+        Create a SPEAKER_TURN event envelope.
+
+        Emits a SPEAKER_TURN event when a turn boundary is detected. This
+        event indicates that a speaker has completed a turn and another
+        speaker (or the same speaker after a pause) is now speaking.
+
+        Args:
+            speaker_id: The speaker ID for this turn (e.g., "spk_0").
+            start: Start time of the turn in seconds.
+            end: End time of the turn in seconds.
+            text: Optional transcript text for this turn.
+
+        Returns:
+            EventEnvelope with SPEAKER_TURN type.
+        """
+        self._speaker_turn_count += 1
+
+        return self._create_envelope(
+            ServerMessageType.SPEAKER_TURN,
+            {
+                "turn_id": f"turn_{self._speaker_turn_count - 1}",
+                "speaker_id": speaker_id,
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "text": text,
+            },
+            ts_audio_start=start,
+            ts_audio_end=end,
+        )
+
+    def _detect_speaker_turns_from_assignments(
+        self,
+        assignments: list[SpeakerAssignment],
+    ) -> list[EventEnvelope]:
+        """
+        Detect speaker turn boundaries from diarization assignments.
+
+        Compares new assignments with the last emitted speaker to detect
+        turn boundaries. A turn boundary occurs when the speaker changes.
+
+        Args:
+            assignments: List of speaker assignments from diarization.
+
+        Returns:
+            List of SPEAKER_TURN EventEnvelope objects for detected turns.
+        """
+        events: list[EventEnvelope] = []
+
+        if not assignments:
+            return events
+
+        # Group consecutive assignments by speaker into turns
+        current_turn_speaker: str | None = None
+        current_turn_start: float | None = None
+        current_turn_end: float | None = None
+
+        for assignment in assignments:
+            if current_turn_speaker is None:
+                # Start first turn
+                current_turn_speaker = assignment.speaker_id
+                current_turn_start = assignment.start
+                current_turn_end = assignment.end
+            elif assignment.speaker_id == current_turn_speaker:
+                # Continue same speaker's turn
+                current_turn_end = assignment.end
+            else:
+                # Speaker changed - emit turn event for previous speaker
+                # Only emit if this is a new turn we haven't seen before
+                if (
+                    current_turn_speaker != self._last_emitted_speaker
+                    or current_turn_start != 0.0  # New turn at non-zero start
+                ):
+                    events.append(
+                        self._create_speaker_turn_event(
+                            speaker_id=current_turn_speaker,
+                            start=current_turn_start or 0.0,
+                            end=current_turn_end or 0.0,
+                        )
+                    )
+                    self._last_emitted_speaker = current_turn_speaker
+
+                # Start new turn
+                current_turn_speaker = assignment.speaker_id
+                current_turn_start = assignment.start
+                current_turn_end = assignment.end
+
+        # Don't emit the last turn yet - it may still be ongoing
+        # It will be emitted when another speaker takes over or at end of stream
+
+        return events
+
+    async def _trigger_final_diarization(self) -> list[EventEnvelope]:
         """
         Trigger final diarization at end of stream.
 
         Always runs diarization if enabled and hook is available,
-        regardless of interval threshold.
+        regardless of interval threshold. Also emits final SPEAKER_TURN
+        event for the last speaker's turn.
 
         Returns:
-            EventEnvelope with DIARIZATION_UPDATE type, or None if not available.
+            List of EventEnvelope objects (DIARIZATION_UPDATE and SPEAKER_TURN).
         """
         if not self.config.enable_diarization:
-            return None
+            return []
         if self._diarization_hook is None:
-            return None
+            return []
         if len(self._audio_buffer) == 0:
-            return None
+            return []
 
         try:
             audio_bytes = bytes(self._audio_buffer)
@@ -1036,10 +1541,34 @@ class WebSocketStreamingSession:
             self._diarization_update_count += 1
             self._current_speaker_assignments = new_assignments
 
-            if new_assignments:
-                return self._create_diarization_update_event(new_assignments)
+            events: list[EventEnvelope] = []
 
-            return None
+            if new_assignments:
+                # Emit DIARIZATION_UPDATE
+                events.append(self._create_diarization_update_event(new_assignments))
+
+                # Detect and emit SPEAKER_TURN events for all turn boundaries
+                turn_events = self._detect_speaker_turns_from_assignments(new_assignments)
+                events.extend(turn_events)
+
+                # Emit final SPEAKER_TURN for the last speaker (stream is ending)
+                last_assignment = new_assignments[-1]
+                # Find the start of the last turn
+                last_turn_start = last_assignment.start
+                for i in range(len(new_assignments) - 1, -1, -1):
+                    if new_assignments[i].speaker_id != last_assignment.speaker_id:
+                        break
+                    last_turn_start = new_assignments[i].start
+
+                events.append(
+                    self._create_speaker_turn_event(
+                        speaker_id=last_assignment.speaker_id,
+                        start=last_turn_start,
+                        end=last_assignment.end,
+                    )
+                )
+
+            return events
 
         except Exception as e:
             logger.warning(
@@ -1047,7 +1576,7 @@ class WebSocketStreamingSession:
                 self.stream_id,
                 e,
             )
-            return None
+            return []
 
     def get_speaker_assignments(self) -> list[SpeakerAssignment]:
         """
@@ -1085,9 +1614,8 @@ class WebSocketStreamingSession:
         events: list[EventEnvelope] = []
 
         # Trigger final diarization if enabled
-        final_diarization = await self._trigger_final_diarization()
-        if final_diarization:
-            events.append(final_diarization)
+        final_diarization_events = await self._trigger_final_diarization()
+        events.extend(final_diarization_events)
 
         # Flush ASR adapter if enabled
         if self._asr_adapter is not None:
@@ -1335,6 +1863,8 @@ def decode_audio_chunk(payload: dict[str, Any]) -> tuple[bytes, int]:
 # =============================================================================
 
 __all__ = [
+    # Constants
+    "EVENT_ENVELOPE_SCHEMA_VERSION",
     # Enums
     "ClientMessageType",
     "ServerMessageType",

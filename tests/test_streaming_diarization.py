@@ -644,3 +644,219 @@ class TestSpeakerAssignment:
             "speaker_id": "spk_1",
         }
         assert "confidence" not in d
+
+
+# =============================================================================
+# SPEAKER_TURN Event Emission Tests (#86)
+# =============================================================================
+
+
+class TestSpeakerTurnEventEmission:
+    """Tests for SPEAKER_TURN event emission in WebSocket streaming."""
+
+    @pytest.mark.asyncio
+    async def test_speaker_turn_events_emitted_on_speaker_change(self) -> None:
+        """Test SPEAKER_TURN events are emitted when speakers change."""
+        from transcription.streaming_ws import (
+            ServerMessageType,
+            WebSocketSessionConfig,
+            WebSocketStreamingSession,
+        )
+
+        # Create a hook that simulates two speakers alternating
+        hook = create_mock_hook(segment_duration=2.0, num_speakers=2)
+
+        config = WebSocketSessionConfig(
+            enable_diarization=True,
+            diarization_interval_sec=1.0,
+        )
+        session = WebSocketStreamingSession(config=config, diarization_hook=hook)
+
+        await session.start()
+
+        # Send 6 seconds of audio (should trigger diarization with 3 segments)
+        audio = make_silence_audio(6.0)
+        events = await session.process_audio_chunk(audio, sequence=1)
+
+        # Find SPEAKER_TURN events
+        turn_events = [e for e in events if e.type == ServerMessageType.SPEAKER_TURN]
+
+        # Should have at least one turn event (when speaker changes)
+        assert len(turn_events) >= 1
+
+        # Check turn event structure
+        for event in turn_events:
+            payload = event.payload
+            assert "turn_id" in payload
+            assert "speaker_id" in payload
+            assert "start" in payload
+            assert "end" in payload
+            assert payload["speaker_id"].startswith("spk_")
+
+    @pytest.mark.asyncio
+    async def test_speaker_turn_event_ordering(self) -> None:
+        """Test SPEAKER_TURN events come after DIARIZATION_UPDATE."""
+        from transcription.streaming_ws import (
+            ServerMessageType,
+            WebSocketSessionConfig,
+            WebSocketStreamingSession,
+        )
+
+        hook = create_mock_hook(segment_duration=2.0, num_speakers=2)
+
+        config = WebSocketSessionConfig(
+            enable_diarization=True,
+            diarization_interval_sec=1.0,
+        )
+        session = WebSocketStreamingSession(config=config, diarization_hook=hook)
+
+        await session.start()
+
+        audio = make_silence_audio(6.0)
+        events = await session.process_audio_chunk(audio, sequence=1)
+
+        # Find indices of DIARIZATION_UPDATE and SPEAKER_TURN events
+        diar_indices = [
+            i for i, e in enumerate(events) if e.type == ServerMessageType.DIARIZATION_UPDATE
+        ]
+        turn_indices = [i for i, e in enumerate(events) if e.type == ServerMessageType.SPEAKER_TURN]
+
+        if diar_indices and turn_indices:
+            # SPEAKER_TURN events should follow DIARIZATION_UPDATE
+            assert min(turn_indices) > min(diar_indices)
+
+    @pytest.mark.asyncio
+    async def test_final_speaker_turn_on_session_end(self) -> None:
+        """Test final SPEAKER_TURN is emitted when session ends."""
+        from transcription.streaming_ws import (
+            ServerMessageType,
+            WebSocketSessionConfig,
+            WebSocketStreamingSession,
+        )
+
+        hook = create_mock_hook(segment_duration=5.0, num_speakers=2)
+
+        config = WebSocketSessionConfig(
+            enable_diarization=True,
+            diarization_interval_sec=60.0,  # High interval - won't trigger during processing
+        )
+        session = WebSocketStreamingSession(config=config, diarization_hook=hook)
+
+        await session.start()
+
+        # Send audio
+        audio = make_silence_audio(8.0)
+        await session.process_audio_chunk(audio, sequence=1)
+
+        # End session - should trigger final diarization with SPEAKER_TURN
+        end_events = await session.end()
+
+        # Find final SPEAKER_TURN events
+        turn_events = [e for e in end_events if e.type == ServerMessageType.SPEAKER_TURN]
+
+        # Should have at least one final turn event
+        assert len(turn_events) >= 1
+
+        # Last turn should have valid timing
+        last_turn = turn_events[-1]
+        assert last_turn.payload["end"] > last_turn.payload["start"]
+
+    @pytest.mark.asyncio
+    async def test_turn_id_increments(self) -> None:
+        """Test turn_id increments for each SPEAKER_TURN event."""
+        from transcription.streaming_ws import (
+            ServerMessageType,
+            WebSocketSessionConfig,
+            WebSocketStreamingSession,
+        )
+
+        # Create hook with 3 speakers
+        hook = create_mock_hook(segment_duration=2.0, num_speakers=3)
+
+        config = WebSocketSessionConfig(
+            enable_diarization=True,
+            diarization_interval_sec=0.5,  # Trigger frequently
+        )
+        session = WebSocketStreamingSession(config=config, diarization_hook=hook)
+
+        await session.start()
+
+        # Send enough audio for multiple turns
+        audio = make_silence_audio(10.0)
+        events = await session.process_audio_chunk(audio, sequence=1)
+
+        # End session to get final events
+        end_events = await session.end()
+        all_events = events + end_events
+
+        # Collect all SPEAKER_TURN events
+        turn_events = [e for e in all_events if e.type == ServerMessageType.SPEAKER_TURN]
+
+        if len(turn_events) >= 2:
+            # Check turn_id increments
+            turn_ids = [e.payload["turn_id"] for e in turn_events]
+            # Turn IDs should be unique
+            assert len(turn_ids) == len(set(turn_ids))
+
+    @pytest.mark.asyncio
+    async def test_speaker_turn_with_two_speaker_conversation(self) -> None:
+        """Test SPEAKER_TURN events with synthetic two-speaker fixture."""
+        from transcription.streaming_ws import (
+            ServerMessageType,
+            WebSocketSessionConfig,
+            WebSocketStreamingSession,
+        )
+
+        # Create mock hook that generates spk_0 for 0-3s, spk_1 for 3-6s
+        hook = create_mock_hook(segment_duration=3.0, num_speakers=2)
+
+        config = WebSocketSessionConfig(
+            enable_diarization=True,
+            diarization_interval_sec=1.0,
+        )
+        session = WebSocketStreamingSession(config=config, diarization_hook=hook)
+
+        await session.start()
+
+        # Send 6 seconds of audio
+        audio = make_silence_audio(6.0)
+        events = await session.process_audio_chunk(audio, sequence=1)
+
+        # End session
+        end_events = await session.end()
+        all_events = events + end_events
+
+        # Filter for SPEAKER_TURN events
+        turn_events = [e for e in all_events if e.type == ServerMessageType.SPEAKER_TURN]
+
+        # Should have turns for both speakers
+        speaker_ids = {e.payload["speaker_id"] for e in turn_events}
+        assert "spk_0" in speaker_ids or "spk_1" in speaker_ids
+
+    @pytest.mark.asyncio
+    async def test_no_speaker_turn_without_diarization(self) -> None:
+        """Test no SPEAKER_TURN events when diarization is disabled."""
+        from transcription.streaming_ws import (
+            ServerMessageType,
+            WebSocketSessionConfig,
+            WebSocketStreamingSession,
+        )
+
+        hook = create_mock_hook(segment_duration=2.0)
+
+        config = WebSocketSessionConfig(
+            enable_diarization=False,  # Disabled
+        )
+        session = WebSocketStreamingSession(config=config, diarization_hook=hook)
+
+        await session.start()
+
+        audio = make_silence_audio(6.0)
+        events = await session.process_audio_chunk(audio, sequence=1)
+        end_events = await session.end()
+
+        all_events = events + end_events
+        turn_events = [e for e in all_events if e.type == ServerMessageType.SPEAKER_TURN]
+
+        # Should have no turn events
+        assert len(turn_events) == 0

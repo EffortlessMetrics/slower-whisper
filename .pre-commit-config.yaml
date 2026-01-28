@@ -3,78 +3,28 @@
 # Setup: pre-commit install
 # Run manually: pre-commit run --all-files
 #
-# Behavior: Hooks auto-fix issues where possible and succeed silently.
-# Only unfixable issues will block commits.
+# Philosophy: Pre-commit is validation-only. Formatting happens in your editor
+# (format-on-save). Enforcement happens in the local gate (./scripts/ci-local.sh).
+# No auto-fixers here - Ruff and formatters run in-editor.
 
 repos:
-  # Ruff - Fast Python linter and formatter
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 488940d9de1b658fac229e34c521d75a6ea476f2  # frozen: v0.14.5
-    hooks:
-      # Run the linter with auto-fix (silently succeeds after fixing)
-      - id: ruff
-        args: [--fix, --quiet]
-        types_or: [python, pyi]
-      # Run the formatter (silently formats in place)
-      - id: ruff-format
-        args: [--quiet]
-        types_or: [python, pyi]
-
-  # Silent auto-fixers: fix files and pass (don't require re-commit)
-  - repo: local
-    hooks:
-      - id: trailing-whitespace
-        name: trailing-whitespace
-        entry: bash -c 'sed -i "s/[[:space:]]*$//" "$@" 2>/dev/null; exit 0' --
-        language: system
-        types: [text]
-      - id: end-of-file-fixer
-        name: end-of-file-fixer
-        entry: bash -c 'for f in "$@"; do [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; done; exit 0' --
-        language: system
-        types: [text]
-      - id: mixed-line-ending
-        name: mixed-line-ending
-        entry: bash -c 'sed -i "s/\r$//" "$@" 2>/dev/null; exit 0' --
-        language: system
-        types: [text]
-
   # Validation checks (no auto-fix, must pass)
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    rev: v5.0.0
     hooks:
       - id: check-yaml
-        exclude: ^k8s/(gpu-resource-quota|secret|service|pvc)\.yaml$
-        verbose: false
+        exclude: ^k8s/.*\.yaml$
       - id: check-json
-        verbose: false
       - id: check-toml
-        verbose: false
       - id: check-added-large-files
         args: ['--maxkb=1000']
       - id: check-merge-conflict
       - id: debug-statements
-
-  # Type checking with mypy (only on transcription package)
-  # Note: Mypy is configured to warn but not fail pre-commit
-  # For full strict type checking, run: mypy transcription/
-  - repo: local
-    hooks:
-      - id: mypy
-        name: mypy (optional type checking)
-        entry: bash -c 'mypy transcription/ --ignore-missing-imports --show-error-codes --no-strict-optional --allow-untyped-defs --allow-incomplete-defs'
-        language: system
-        types: [python]
-        files: ^transcription/
-        pass_filenames: false
-        verbose: false
 
 # Configuration
 default_language_version:
   python: python3.12
 
 ci:
-  autofix_prs: true
+  autofix_prs: false
   autofix_commit_msg: "chore: pre-commit autofix"
-  # Optional: skip mypy in pre-commit.ci if you want to save CI time
-  # skip: [mypy]

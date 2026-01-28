@@ -187,14 +187,20 @@ Configuration is sent with the `START_SESSION` message:
 - **Channels:** Mono (1 channel)
 - **Encoding:** Base64 for transport over WebSocket
 
-### Event Envelope
+### Event Envelope Specification
 
-All server messages use a consistent envelope format:
+All server messages use a consistent envelope format. This section provides the formal specification for the event envelope structure.
+
+**Schema Version:** 2.1.0
+**JSON Schema:** [`docs/schemas/event_envelope_v2.json`](schemas/event_envelope_v2.json)
+
+#### Wire Format
 
 ```json
 {
+  "schema_version": "2.1.0",
   "event_id": 1,
-  "stream_id": "str-a1b2c3d4-...",
+  "stream_id": "str-a1b2c3d4-e5f6-4789-abcd-ef0123456789",
   "type": "FINALIZED",
   "ts_server": 1706123456789,
   "segment_id": "seg-0",
@@ -212,16 +218,85 @@ All server messages use a consistent envelope format:
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `event_id` | int | Monotonically increasing ID per stream |
-| `stream_id` | string | Unique stream identifier (`str-{uuid4}`) |
-| `type` | string | Message type (see table above) |
-| `ts_server` | int | Server timestamp (Unix epoch milliseconds) |
-| `segment_id` | string | Segment ID (`seg-{n}`) for segment events |
-| `ts_audio_start` | float | Audio timestamp start (seconds) |
-| `ts_audio_end` | float | Audio timestamp end (seconds) |
-| `payload` | object | Message-specific payload |
+#### Field Reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `schema_version` | string | No | Schema version for forward compatibility (semver format, e.g., "2.1.0"). Clients should check this for protocol changes. |
+| `event_id` | int | Yes | Monotonically increasing ID per stream. Starts at 1, never resets or decreases within a session. |
+| `stream_id` | string | Yes | Unique stream identifier in format `str-{uuid4}`. Immutable for session duration. |
+| `type` | string | Yes | Server message type (see [Message Types](#server-to-client-messages)). |
+| `ts_server` | int | Yes | Server timestamp in Unix epoch **milliseconds** (not seconds). |
+| `segment_id` | string | No | Segment ID in format `seg-{n}`. Present only for segment-related events. |
+| `ts_audio_start` | float | No | Audio timestamp start in **seconds**. Null for non-audio events. |
+| `ts_audio_end` | float | No | Audio timestamp end in **seconds**. Null for non-audio events. |
+| `payload` | object | Yes | Event-type-specific payload. Schema varies by message type. |
+
+#### Field Semantics
+
+**event_id**
+- Type: Positive integer (minimum: 1)
+- Starts at 1 for each new session
+- Increments by 1 for each event emitted
+- NEVER resets, decreases, or repeats within a session
+- Gaps indicate dropped PARTIAL events due to backpressure
+- FINALIZED events are never dropped (gaps will not occur for finalized segments)
+- Used by clients for:
+  - Detecting missed events during network issues
+  - Resume protocol (requesting replay from last known event_id)
+  - Ordering verification
+
+**stream_id**
+- Type: String matching pattern `^str-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+- Format: `str-{uuid4}` (e.g., `str-a1b2c3d4-e5f6-4789-abcd-ef0123456789`)
+- Generated server-side on session creation
+- Globally unique across all streams
+- Immutable for the entire session duration
+
+**ts_server**
+- Type: Positive integer (Unix epoch milliseconds)
+- Represents when the server generated the event
+- Always 13+ digits for dates after 2001
+- Used for:
+  - Latency measurement (compare with client timestamp)
+  - Event ordering verification
+  - Debugging and auditing
+
+**segment_id**
+- Type: String matching pattern `^seg-\d+$` or null
+- Format: `seg-{sequence}` (e.g., `seg-0`, `seg-42`)
+- Present for: PARTIAL, FINALIZED events
+- Null for: SESSION_STARTED, SESSION_ENDED, PONG, ERROR, etc.
+- Links PARTIAL events to their eventual FINALIZED event
+
+#### Contract Guarantees
+
+The following invariants are guaranteed by the server implementation:
+
+1. **Monotonic Event IDs:** `event_id` is strictly monotonically increasing within a session
+2. **Timestamp Format:** `ts_server` is always positive Unix epoch milliseconds
+3. **Stream ID Format:** `stream_id` always matches `str-{uuid4}` pattern
+4. **Segment ID Format:** `segment_id` (when present) always matches `seg-{integer}` pattern
+5. **FINALIZED Never Dropped:** FINALIZED events are never dropped, even under backpressure
+6. **SESSION_ENDED Last:** SESSION_ENDED is always the final event in a session
+7. **Required Fields:** All required fields are always present in every envelope
+
+These guarantees are verified by the contract test suite in `tests/test_streaming_contracts.py`.
+
+#### Forward Compatibility
+
+The `schema_version` field enables forward compatibility:
+
+- Clients should parse and store `schema_version` from the first event
+- Unknown fields in the envelope should be ignored (not cause errors)
+- Payload schema changes are indicated by version increments
+- Major version changes indicate breaking changes requiring client updates
+- Minor version changes add new optional fields or message types
+- Patch version changes are documentation or bug fixes only
+
+Version history:
+- `2.0.0`: Initial WebSocket streaming protocol
+- `2.1.0`: Added PHYSICS_UPDATE, AUDIO_HEALTH, VAD_ACTIVITY, BARGE_IN, END_OF_TURN_HINT message types; added schema_version field
 
 ### Configuration Endpoint
 

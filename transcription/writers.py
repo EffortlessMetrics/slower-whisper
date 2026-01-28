@@ -9,15 +9,24 @@ This module provides functions to write transcripts to various formats:
 All writers handle schema versioning, metadata serialization, and graceful
 degradation for complex objects. JSON output is the canonical format and
 includes full metadata, enrichment features, and speaker information.
+
+Receipt support (v2.1+):
+- add_receipt_to_meta: Add provenance receipt to metadata
+- Receipts are stored in meta.receipt when present
 """
+
+from __future__ import annotations
 
 import json
 import logging
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .models import SCHEMA_VERSION, Chunk, Segment, Transcript, Word
+
+if TYPE_CHECKING:
+    from .receipt import Receipt
 
 logger = logging.getLogger(__name__)
 
@@ -219,3 +228,31 @@ def write_srt(transcript: Transcript, out_path: Path) -> None:
             f.write(f"{idx}\n")
             f.write(f"{_fmt_srt_ts(s.start)} --> {_fmt_srt_ts(s.end)}\n")
             f.write(s.text + "\n\n")
+
+
+def add_receipt_to_meta(
+    meta: dict[str, Any] | None,
+    receipt: Receipt,
+) -> dict[str, Any]:
+    """Add a provenance receipt to metadata.
+
+    This function adds a receipt to the meta.receipt field in a
+    backward-compatible way. Existing meta fields are preserved.
+
+    Args:
+        meta: Existing metadata dictionary, or None.
+        receipt: Receipt object to add.
+
+    Returns:
+        Updated metadata dictionary with receipt field.
+
+    Example:
+        >>> from transcription.receipt import build_receipt
+        >>> receipt = build_receipt(model="large-v3", device="cuda", compute_type="float16")
+        >>> meta = {"model_name": "large-v3"}
+        >>> updated = add_receipt_to_meta(meta, receipt)
+        >>> assert "receipt" in updated
+    """
+    result = dict(meta) if meta else {}
+    result["receipt"] = receipt.to_dict()
+    return result

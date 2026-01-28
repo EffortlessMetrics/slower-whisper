@@ -7,9 +7,9 @@ This document identifies modules in the `transcription/` package that lack dedic
 | Category | Count |
 |----------|-------|
 | Total modules in `transcription/` | 42 |
-| Test files in `tests/` | 37 |
-| Modules with dedicated tests | ~25 |
-| Modules with coverage gaps | ~15 |
+| Test files in `tests/` | 38 |
+| Modules with dedicated tests | ~26 |
+| Modules with coverage gaps | ~14 |
 
 ## Coverage Analysis
 
@@ -27,6 +27,7 @@ This document identifies modules in the `transcription/` package that lack dedic
 | `cli.py` | `test_cli_integration.py` | Good - parser and command tests |
 | `config.py` | `test_config.py`, `test_config_sources.py`, `test_config_merge_bug.py` | Excellent |
 | `diarization.py` | `test_diarization_skeleton.py`, `test_diarization_mapping.py` | Moderate |
+| `emotion.py` | `test_emotion.py` | Excellent - 56 tests with mocked dependencies |
 | `exporters.py` | `test_exporters.py` | Good |
 | `llm_utils.py` | `test_llm_utils.py` | Excellent - typed |
 | `meta_utils.py` | `test_meta_utils.py` | Good |
@@ -38,6 +39,7 @@ This document identifies modules in the `transcription/` package that lack dedic
 | `streaming_semantic.py` | `test_streaming_semantics.py` | Good |
 | `turn_helpers.py` | `test_turn_helpers.py` | Excellent - typed |
 | `turns.py` | `test_turns.py` | Good |
+| `speaker_id.py` | `test_speaker_id.py` | Excellent - 72 tests covering all input types |
 | `turns_enrich.py` | `test_turns_enrich.py` | Good |
 | `writers.py` | `test_writers.py` | Excellent - typed |
 
@@ -56,8 +58,6 @@ This document identifies modules in the `transcription/` package that lack dedic
 | Module | Purpose | Current Coverage | Recommended Tests |
 |--------|---------|-----------------|-------------------|
 | `audio_utils.py` | Memory-efficient WAV segment extraction | None | Unit tests for segment extraction |
-| `emotion.py` | Emotion recognition with wav2vec2 | None (heavy dependency) | Mock-based unit tests |
-| `speaker_id.py` | Speaker identification utilities | None | Unit tests for ID normalization |
 | `speaker_stats.py` | Per-speaker analytics computation | Indirect via `test_speaker_analytics_pipeline.py` | Dedicated unit tests |
 | `models_speakers.py` | Speaker-related data models | None | Unit tests for model serialization |
 | `models_turns.py` | Turn-related data models | None | Unit tests for model serialization |
@@ -204,7 +204,6 @@ This document identifies modules in the `transcription/` package that lack dedic
 
 4. **`tests/test_audio_utils.py`** - Audio segment extraction tests
 5. **`tests/test_emotion.py`** - Emotion recognition tests (with mocks)
-6. **`tests/test_speaker_id.py`** - Speaker identification tests
 
 ## Test Markers Reference
 

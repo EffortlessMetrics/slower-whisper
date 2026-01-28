@@ -17,9 +17,11 @@ See docs/STREAMING_ARCHITECTURE.md for integration patterns.
 from __future__ import annotations
 
 import logging
+import re
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from difflib import SequenceMatcher
+from typing import TYPE_CHECKING, Any, Literal
 
 from .models import Turn, TurnMeta
 from .semantic import KeywordSemanticAnnotator
@@ -30,6 +32,70 @@ if TYPE_CHECKING:
     from .streaming_callbacks import StreamCallbacks
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class CorrectionEvent:
+    """Represents a detected correction in conversation.
+
+    Attributes:
+        correction_type: "explicit" (patterns like "no," "actually") or "repetition"
+        corrected_turn_id: ID of the turn being corrected
+        correcting_turn_id: ID of the turn doing the correction
+        trigger_text: The text that triggered detection
+        similarity_score: For repetition type, the similarity score (0.0-1.0)
+    """
+
+    correction_type: Literal["explicit", "repetition"]
+    corrected_turn_id: str
+    correcting_turn_id: str
+    trigger_text: str
+    similarity_score: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "correction_type": self.correction_type,
+            "corrected_turn_id": self.corrected_turn_id,
+            "correcting_turn_id": self.correcting_turn_id,
+            "trigger_text": self.trigger_text,
+        }
+        if self.similarity_score is not None:
+            result["similarity_score"] = self.similarity_score
+        return result
+
+
+@dataclass(slots=True)
+class CommitmentEntry:
+    """Represents a commitment/promise extracted from conversation.
+
+    Attributes:
+        id: Unique commitment ID (e.g., "commit_0")
+        speaker_id: Speaker who made the commitment
+        text: The commitment text
+        turn_id: ID of the turn containing the commitment
+        timestamp: Audio timestamp when commitment was made
+        pattern: Pattern that matched (e.g., "i'll", "we will")
+        status: "active" or "superseded" (when corrected)
+    """
+
+    id: str
+    speaker_id: str
+    text: str
+    turn_id: str
+    timestamp: float
+    pattern: str
+    status: Literal["active", "superseded"] = "active"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "speaker_id": self.speaker_id,
+            "text": self.text,
+            "turn_id": self.turn_id,
+            "timestamp": self.timestamp,
+            "pattern": self.pattern,
+            "status": self.status,
+        }
 
 
 @dataclass(slots=True)
@@ -50,6 +116,12 @@ class LiveSemanticsConfig:
                                   Default: True.
         enable_action_detection: Whether to detect action items in turns.
                                 Default: True.
+        enable_correction_detection: Whether to detect corrections in turns.
+                                    Default: True.
+        correction_similarity_threshold: Similarity threshold for repetition-based
+                                        correction detection. Default: 0.7.
+        enable_commitment_tracking: Whether to track commitments/promises.
+                                   Default: True.
     """
 
     turn_gap_sec: float = 2.0
@@ -57,6 +129,9 @@ class LiveSemanticsConfig:
     context_window_sec: float = 120.0
     enable_question_detection: bool = True
     enable_action_detection: bool = True
+    enable_correction_detection: bool = True
+    correction_similarity_threshold: float = 0.7
+    enable_commitment_tracking: bool = True
 
     def __post_init__(self) -> None:
         """Validate configuration parameters."""
@@ -81,6 +156,9 @@ class SemanticUpdatePayload:
         actions: List of detected action items (each a dict with text, pattern).
         question_count: Number of questions detected in the turn.
         context_size: Current number of turns in the context window.
+        correction: Detected correction event, if any.
+        new_commitments: List of commitments extracted from this turn.
+        commitment_ledger_size: Total number of commitments in the ledger.
     """
 
     turn: Turn
@@ -89,17 +167,24 @@ class SemanticUpdatePayload:
     actions: list[dict[str, Any]] = field(default_factory=list)
     question_count: int = 0
     context_size: int = 0
+    correction: CorrectionEvent | None = None
+    new_commitments: list[CommitmentEntry] = field(default_factory=list)
+    commitment_ledger_size: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize payload to a JSON-serializable dict."""
-        return {
+        result = {
             "turn": self.turn.to_dict(),
             "keywords": list(self.keywords),
             "risk_tags": list(self.risk_tags),
             "actions": list(self.actions),
             "question_count": self.question_count,
             "context_size": self.context_size,
+            "correction": self.correction.to_dict() if self.correction else None,
+            "new_commitments": [c.to_dict() for c in self.new_commitments],
+            "commitment_ledger_size": self.commitment_ledger_size,
         }
+        return result
 
 
 class LiveSemanticSession:
@@ -127,6 +212,8 @@ class LiveSemanticSession:
         - _context_window: Deque of recently finalized annotated turns
         - _turn_counter: Monotonic turn ID counter
         - _annotator: KeywordSemanticAnnotator instance for semantic tagging
+        - _commitment_ledger: List of all commitments extracted from conversation
+        - _commitment_counter: Monotonic commitment ID counter
 
     Finalization Rules:
         A turn is finalized when:
@@ -134,6 +221,29 @@ class LiveSemanticSession:
         2. Time gap >= turn_gap_sec between chunks from same speaker
         3. end_of_stream() is called (flushes remaining buffer)
     """
+
+    # Correction detection patterns
+    _EXPLICIT_CORRECTION_PATTERNS = [
+        r"^no[,.\s]",
+        r"\bactually\b",
+        r"\bi mean\b",
+        r"\blet me rephrase\b",
+        r"\bwhat i meant\b",
+        r"\bsorry,?\s+i\b",
+    ]
+
+    # Commitment patterns
+    _COMMITMENT_PATTERNS = [
+        (r"\bi'll\b", "i'll"),
+        (r"\bi will\b", "i will"),
+        (r"\bwe'll\b", "we'll"),
+        (r"\bwe will\b", "we will"),
+        (r"\bi'm going to\b", "i'm going to"),
+        (r"\bwe're going to\b", "we're going to"),
+        (r"\bi can\b", "i can"),
+        (r"\bwe can\b", "we can"),
+        (r"\bi promise\b", "i promise"),
+    ]
 
     def __init__(
         self,
@@ -166,6 +276,10 @@ class LiveSemanticSession:
 
         # Turn ID tracking
         self._turn_counter: int = 0
+
+        # Commitment tracking
+        self._commitment_ledger: list[CommitmentEntry] = []
+        self._commitment_counter: int = 0
 
     def ingest_chunk(self, chunk: StreamChunk) -> list[StreamEvent]:
         """Consume a chunk and return any semantic update events.
@@ -239,6 +353,14 @@ class LiveSemanticSession:
             lines.append(f"[{timestamp}] {turn.speaker_id}: {turn.text}")
 
         return "\n".join(lines)
+
+    def get_active_commitments(self) -> list[CommitmentEntry]:
+        """Get all active (non-superseded) commitments."""
+        return [c for c in self._commitment_ledger if c.status == "active"]
+
+    def get_commitment_ledger(self) -> list[CommitmentEntry]:
+        """Get the full commitment ledger."""
+        return list(self._commitment_ledger)
 
     def _validate_monotonic(self, chunk: StreamChunk) -> None:
         """Ensure chunk arrives in non-decreasing time order.
@@ -327,6 +449,77 @@ class LiveSemanticSession:
             speaker_id=chunk.get("speaker_id"),
         )
 
+    def _detect_correction(self, turn: Turn) -> CorrectionEvent | None:
+        """Detect if this turn is a correction of a previous turn."""
+        if not self.config.enable_correction_detection:
+            return None
+        if len(self._context_window) < 1:
+            return None
+
+        text_lower = turn.text.lower()
+
+        # Check explicit patterns
+        for pattern in self._EXPLICIT_CORRECTION_PATTERNS:
+            if re.search(pattern, text_lower):
+                # Find most recent turn from same speaker to correct
+                for prev_turn in reversed(list(self._context_window)):
+                    if prev_turn.speaker_id == turn.speaker_id:
+                        return CorrectionEvent(
+                            correction_type="explicit",
+                            corrected_turn_id=prev_turn.id,
+                            correcting_turn_id=turn.id,
+                            trigger_text=pattern,
+                        )
+                break
+
+        # Check repetition similarity (same speaker, high similarity)
+        for prev_turn in reversed(list(self._context_window)):
+            if prev_turn.speaker_id == turn.speaker_id:
+                similarity = SequenceMatcher(None, prev_turn.text.lower(), text_lower).ratio()
+                if similarity >= self.config.correction_similarity_threshold:
+                    return CorrectionEvent(
+                        correction_type="repetition",
+                        corrected_turn_id=prev_turn.id,
+                        correcting_turn_id=turn.id,
+                        trigger_text=turn.text[:50],  # First 50 chars
+                        similarity_score=similarity,
+                    )
+                break  # Only check most recent same-speaker turn
+
+        return None
+
+    def _extract_commitments(self, turn: Turn) -> list[CommitmentEntry]:
+        """Extract commitments from a turn."""
+        if not self.config.enable_commitment_tracking:
+            return []
+
+        commitments = []
+        text_lower = turn.text.lower()
+
+        for pattern, label in self._COMMITMENT_PATTERNS:
+            if re.search(pattern, text_lower):
+                commit_id = f"commit_{self._commitment_counter}"
+                self._commitment_counter += 1
+                commitment = CommitmentEntry(
+                    id=commit_id,
+                    speaker_id=turn.speaker_id,
+                    text=turn.text,
+                    turn_id=turn.id,
+                    timestamp=turn.start,
+                    pattern=label,
+                )
+                commitments.append(commitment)
+                self._commitment_ledger.append(commitment)
+                break  # One commitment per turn
+
+        return commitments
+
+    def _supersede_commitments(self, corrected_turn_id: str) -> None:
+        """Mark commitments from a corrected turn as superseded."""
+        for commitment in self._commitment_ledger:
+            if commitment.turn_id == corrected_turn_id:
+                commitment.status = "superseded"
+
     def _finalize_turn(self) -> StreamEvent | None:
         """Finalize the current turn buffer and emit semantic update event.
 
@@ -349,8 +542,22 @@ class LiveSemanticSession:
         # Add to context window
         self._context_window.append(annotated_turn)
 
+        # Detect correction
+        correction = self._detect_correction(annotated_turn)
+
+        # If correction detected, supersede commitments from corrected turn
+        if correction:
+            self._supersede_commitments(correction.corrected_turn_id)
+
+        # Extract commitments
+        new_commitments = self._extract_commitments(annotated_turn)
+
         # Build semantic payload
-        payload = self._build_semantic_payload(annotated_turn)
+        payload = self._build_semantic_payload(
+            annotated_turn,
+            correction=correction,
+            new_commitments=new_commitments,
+        )
 
         # Invoke on_semantic_update callback if provided
         if self._callbacks:
@@ -521,11 +728,18 @@ class LiveSemanticSession:
         while self._context_window and self._context_window[0].end < cutoff_time:
             self._context_window.popleft()
 
-    def _build_semantic_payload(self, turn: Turn) -> SemanticUpdatePayload:
+    def _build_semantic_payload(
+        self,
+        turn: Turn,
+        correction: CorrectionEvent | None = None,
+        new_commitments: list[CommitmentEntry] | None = None,
+    ) -> SemanticUpdatePayload:
         """Build a SemanticUpdatePayload from an annotated turn.
 
         Args:
             turn: The annotated turn.
+            correction: Detected correction event, if any.
+            new_commitments: List of commitments extracted from this turn.
 
         Returns:
             SemanticUpdatePayload with extracted semantic data.
@@ -544,6 +758,9 @@ class LiveSemanticSession:
             actions=actions,
             question_count=question_count,
             context_size=len(self._context_window),
+            correction=correction,
+            new_commitments=new_commitments or [],
+            commitment_ledger_size=len(self._commitment_ledger),
         )
 
     def _turn_to_segment(self, turn: Turn) -> StreamSegment:

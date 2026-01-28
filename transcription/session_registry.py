@@ -421,7 +421,7 @@ class SessionRegistry:
                 "sample_rate": session.config.sample_rate,
             },
             stats=session.stats.to_dict(),
-            last_event_id=session._event_id_counter,
+            last_event_id=session._event_counter.current,
         )
 
     def list_sessions(self) -> list[SessionInfo]:

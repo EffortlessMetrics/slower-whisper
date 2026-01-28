@@ -193,6 +193,19 @@ from .privacy import (
 from .privacy import (
     PIIMatch as PrivacyPIIMatch,
 )
+
+# Receipt contract for provenance tracking (#135)
+from .receipt import (
+    RECEIPT_CONTRACT_VERSION,
+    RECEIPT_REQUIRED_FIELDS,
+    Receipt,
+    build_receipt,
+    compute_config_hash,
+    generate_run_id,
+    get_git_commit,
+    get_tool_version,
+    validate_receipt,
+)
 from .semantic import KeywordSemanticAnnotator, NoOpSemanticAnnotator, SemanticAnnotator
 
 # Track 3: Semantic adapter protocol (#88, #89)
@@ -291,6 +304,7 @@ from .telemetry import (
 from .turn_helpers import turn_to_dict
 from .types_audio import AudioState, EmotionState, ExtractionStatus, ProsodyState
 from .validation import validate_transcript_json
+from .writers import add_receipt_to_meta
 
 
 def __getattr__(name: str) -> Any:
@@ -473,4 +487,15 @@ __all__ = [
     "EncryptedStore",
     "PrivacyError",
     "EncryptionError",
+    # Receipt contract for provenance tracking (#135)
+    "RECEIPT_CONTRACT_VERSION",
+    "RECEIPT_REQUIRED_FIELDS",
+    "Receipt",
+    "build_receipt",
+    "compute_config_hash",
+    "generate_run_id",
+    "get_git_commit",
+    "get_tool_version",
+    "validate_receipt",
+    "add_receipt_to_meta",
 ]

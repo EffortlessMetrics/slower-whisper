@@ -1,4 +1,4 @@
-"""Callback protocols for streaming event handling (v1.9.0).
+"""Callback protocols for streaming event handling (v2.1.0).
 
 This module defines the callback interface for streaming enrichment sessions,
 enabling real-time event handling for downstream consumers.
@@ -8,6 +8,8 @@ Key features:
 - Sync callbacks (async optional/stretch goal)
 - Error isolation: callback exceptions never kill the pipeline
 - Supports segment finalized, speaker turn, semantic update, and error events
+- v2.1: Conversation physics, audio health, VAD, barge-in, end-of-turn hints,
+  corrections, and commitments
 
 See docs/STREAMING_ARCHITECTURE.md for usage patterns.
 """
@@ -19,8 +21,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from .audio_health import AudioHealthSnapshot
+    from .conversation_physics import ConversationPhysicsSnapshot
     from .streaming import StreamSegment
-    from .streaming_semantic import SemanticUpdatePayload
+    from .streaming_semantic import CommitmentEntry, CorrectionEvent, SemanticUpdatePayload
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +46,59 @@ class StreamingError:
     segment_start: float | None = None
     segment_end: float | None = None
     recoverable: bool = True
+
+
+@dataclass(slots=True)
+class VADActivityPayload:
+    """Payload for VAD (Voice Activity Detection) state change events.
+
+    Attributes:
+        energy_level: Current audio energy level (RMS or dB scale).
+        is_speech: Whether the current frame contains speech.
+        silence_duration_sec: Duration of continuous silence in seconds.
+            Reset to 0 when speech is detected.
+    """
+
+    energy_level: float
+    is_speech: bool
+    silence_duration_sec: float
+
+
+@dataclass(slots=True)
+class BargeInPayload:
+    """Payload for barge-in detection events.
+
+    Barge-in occurs when user speech is detected while TTS audio is
+    being played back. This enables interrupt-driven conversation flow.
+
+    Attributes:
+        energy: Audio energy level that triggered barge-in detection.
+        tts_elapsed_sec: Time elapsed since TTS playback started, in seconds.
+    """
+
+    energy: float
+    tts_elapsed_sec: float
+
+
+@dataclass(slots=True)
+class EndOfTurnHintPayload:
+    """Payload for end-of-turn prediction events.
+
+    End-of-turn hints are predictive signals that the user may have
+    finished speaking, enabling faster response times.
+
+    Attributes:
+        confidence: Confidence score (0.0-1.0) that the turn has ended.
+        silence_duration: Duration of trailing silence in seconds.
+        terminal_punctuation: Whether terminal punctuation was detected
+            (period, question mark, exclamation mark).
+        partial_text: The partial transcript that triggered the hint.
+    """
+
+    confidence: float
+    silence_duration: float
+    terminal_punctuation: bool
+    partial_text: str
 
 
 @runtime_checkable
@@ -147,6 +204,125 @@ class StreamCallbacks(Protocol):
         """
         ...
 
+    def on_physics_update(self, snapshot: ConversationPhysicsSnapshot) -> None:
+        """Called when conversation physics are updated.
+
+        Conversation physics track the dynamics of the conversation,
+        including speaking rates, turn-taking patterns, and overlap
+        statistics.
+
+        Args:
+            snapshot: ConversationPhysicsSnapshot containing:
+                - speaker_stats: Per-speaker statistics (talk time, word count, etc.)
+                - turn_count: Total number of turns so far
+                - overlap_ratio: Ratio of overlapping speech
+                - avg_turn_duration: Average turn duration in seconds
+                - conversation_pace: Words per minute across all speakers
+                - last_update_ts: Timestamp of this snapshot
+        """
+        ...
+
+    def on_audio_health(self, snapshot: AudioHealthSnapshot) -> None:
+        """Called when audio health is computed for a chunk.
+
+        Audio health metrics help detect issues like clipping, low
+        signal levels, excessive noise, or encoding artifacts.
+
+        Args:
+            snapshot: AudioHealthSnapshot containing:
+                - clipping_ratio: Ratio of samples at max amplitude
+                - noise_floor_db: Estimated noise floor in decibels
+                - snr_db: Signal-to-noise ratio in decibels
+                - silence_ratio: Ratio of silence in the chunk
+                - peak_db: Peak amplitude in decibels
+                - rms_db: RMS amplitude in decibels
+                - issues: List of detected issues (e.g., "clipping", "low_signal")
+        """
+        ...
+
+    def on_vad_activity(self, payload: VADActivityPayload) -> None:
+        """Called when VAD state changes.
+
+        Voice Activity Detection (VAD) events indicate transitions
+        between speech and silence, enabling responsive UI and
+        processing logic.
+
+        Args:
+            payload: VADActivityPayload containing:
+                - energy_level: Current audio energy level (RMS or dB scale)
+                - is_speech: Whether the current frame contains speech
+                - silence_duration_sec: Duration of continuous silence in seconds
+        """
+        ...
+
+    def on_barge_in(self, payload: BargeInPayload) -> None:
+        """Called when barge-in is detected during TTS playback.
+
+        Barge-in detection allows the system to interrupt TTS playback
+        when the user starts speaking, enabling natural conversational
+        interruptions.
+
+        Args:
+            payload: BargeInPayload containing:
+                - energy: Audio energy level that triggered barge-in
+                - tts_elapsed_sec: Time since TTS playback started (seconds)
+        """
+        ...
+
+    def on_end_of_turn_hint(self, payload: EndOfTurnHintPayload) -> None:
+        """Called when end-of-turn is predicted.
+
+        End-of-turn hints are predictive signals based on silence
+        duration, terminal punctuation, and other prosodic cues.
+        These enable faster response times by anticipating when
+        the user has finished speaking.
+
+        Args:
+            payload: EndOfTurnHintPayload containing:
+                - confidence: Confidence score (0.0-1.0) that turn ended
+                - silence_duration: Duration of trailing silence (seconds)
+                - terminal_punctuation: Whether terminal punctuation detected
+                - partial_text: The partial transcript that triggered the hint
+        """
+        ...
+
+    def on_correction(self, correction: CorrectionEvent) -> None:
+        """Called when a correction is detected.
+
+        Corrections occur when the ASR model revises previous output,
+        typically due to more context becoming available. Tracking
+        corrections is useful for understanding ASR stability and
+        implementing correction-aware UIs.
+
+        Args:
+            correction: CorrectionEvent containing:
+                - segment_id: ID of the corrected segment
+                - original_text: The text before correction
+                - corrected_text: The text after correction
+                - correction_type: Type of correction (e.g., "substitution", "deletion")
+                - confidence_delta: Change in confidence score
+                - timestamp: When the correction was detected
+        """
+        ...
+
+    def on_commitment(self, commitment: CommitmentEntry) -> None:
+        """Called when a new commitment is extracted.
+
+        Commitments are actionable items extracted from the conversation,
+        such as promises, deadlines, or follow-up tasks.
+
+        Args:
+            commitment: CommitmentEntry containing:
+                - id: Unique commitment identifier
+                - speaker_id: Who made the commitment
+                - text: The commitment text
+                - commitment_type: Type (e.g., "promise", "deadline", "action")
+                - confidence: Extraction confidence score
+                - source_turn_id: The turn this was extracted from
+                - timestamp: When the commitment was detected
+        """
+        ...
+
 
 class NoOpCallbacks:
     """Default no-op callback implementation.
@@ -164,6 +340,27 @@ class NoOpCallbacks:
         pass
 
     def on_error(self, error: StreamingError) -> None:
+        pass
+
+    def on_physics_update(self, snapshot: ConversationPhysicsSnapshot) -> None:
+        pass
+
+    def on_audio_health(self, snapshot: AudioHealthSnapshot) -> None:
+        pass
+
+    def on_vad_activity(self, payload: VADActivityPayload) -> None:
+        pass
+
+    def on_barge_in(self, payload: BargeInPayload) -> None:
+        pass
+
+    def on_end_of_turn_hint(self, payload: EndOfTurnHintPayload) -> None:
+        pass
+
+    def on_correction(self, correction: CorrectionEvent) -> None:
+        pass
+
+    def on_commitment(self, commitment: CommitmentEntry) -> None:
         pass
 
 
@@ -232,6 +429,9 @@ def invoke_callback_safely(
 __all__ = [
     "StreamCallbacks",
     "StreamingError",
+    "VADActivityPayload",
+    "BargeInPayload",
+    "EndOfTurnHintPayload",
     "NoOpCallbacks",
     "invoke_callback_safely",
 ]

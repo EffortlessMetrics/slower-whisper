@@ -6,7 +6,7 @@ Get started with slower-whisper in 5 minutes. This guide covers both Stage 1 (tr
 
 ## Prerequisites
 
-- **Python 3.11+**
+- **Python 3.12+**
 - **ffmpeg** installed and on PATH
 - **NVIDIA GPU** (recommended but optional)
   - Required for fast transcription and emotion recognition

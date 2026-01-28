@@ -280,6 +280,26 @@ async def websocket_stream(websocket: WebSocket) -> None:
                     pong_event = session.create_pong_event(payload.get("timestamp", 0))
                     await websocket.send_json(pong_event.to_dict())
 
+            elif msg_type == ClientMessageType.TTS_STATE:
+                if session is None:
+                    temp_session = WebSocketStreamingSession()
+                    error_event = temp_session.create_error_event(
+                        code="no_session",
+                        message="No active session. Send START_SESSION first.",
+                        recoverable=True,
+                    )
+                    await websocket.send_json(error_event.to_dict())
+                    continue
+
+                # Update TTS playback state (used for barge-in detection)
+                playing = payload.get("playing", False)
+                session.set_tts_state(playing)
+                logger.debug(
+                    "TTS state updated: stream_id=%s, playing=%s",
+                    session.stream_id,
+                    playing,
+                )
+
     except WebSocketDisconnect:
         logger.info(
             "WebSocket disconnected: stream_id=%s",
