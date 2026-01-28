@@ -43,7 +43,8 @@ from transcription.streaming_ws import (
 @pytest.fixture
 def schema_path() -> Path:
     """Return path to the event envelope JSON schema."""
-    return Path(__file__).parent.parent / "docs" / "schemas" / "event_envelope_v2.json"
+    # Use canonical schema location (docs/schemas/event_envelope_v2.json is now a $ref)
+    return Path(__file__).parent.parent / "transcription" / "schemas" / "stream_event.schema.json"
 
 
 @pytest.fixture

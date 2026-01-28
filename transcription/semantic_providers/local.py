@@ -248,7 +248,7 @@ class LocalSemanticProvider:
             config = LocalSemanticConfig(**kwargs)
         elif kwargs:
             # Merge kwargs into config
-            config_dict = {
+            config_dict: dict[str, Any] = {
                 "model_name": config.model_name,
                 "device": config.device,
                 "temperature": config.temperature,
