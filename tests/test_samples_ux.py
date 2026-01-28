@@ -2,11 +2,10 @@
 UX and interaction tests for sample operations.
 """
 
-import sys
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-from pathlib import Path
 
 from transcription.cli import main
 from transcription.exceptions import SampleExistsError

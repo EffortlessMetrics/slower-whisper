@@ -113,6 +113,8 @@ class StreamingSession:
         self._current: StreamSegment | None = None
 
         # ID tracking (v2.0)
+        self._event_counter: EventIdCounter | None
+        self._segment_counter: SegmentIdCounter | None
         if self.config.emit_ids:
             self._stream_id: str | None = generate_stream_id()
             self._event_counter = EventIdCounter()
