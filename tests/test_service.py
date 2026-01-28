@@ -246,6 +246,28 @@ class TestMiddleware:
 
 
 # =============================================================================
+# Test Security Headers
+# =============================================================================
+
+
+class TestSecurityHeaders:
+    """Tests for security headers middleware."""
+
+    def test_security_headers_present(self, client: TestClient) -> None:
+        """Test that security headers are present in responses."""
+        response = client.get("/health")
+
+        assert response.headers.get("X-Content-Type-Options") == "nosniff"
+        assert response.headers.get("X-Frame-Options") == "DENY"
+
+        csp = response.headers.get("Content-Security-Policy", "")
+        assert "default-src 'self'" in csp
+        # Verify we allow CDNs for docs
+        assert "cdn.jsdelivr.net" in csp
+        assert "fastapi.tiangolo.com" in csp
+
+
+# =============================================================================
 # Test File Size Validation
 # =============================================================================
 
