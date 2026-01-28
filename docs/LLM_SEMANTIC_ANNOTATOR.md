@@ -1,22 +1,177 @@
 # LLM-Backed Semantic Annotator Design Document
 
-**Version:** 2.0.0 (Design)
-**Status:** Planned for v2.0.0
-**Last Updated:** 2025-12-31
+**Version:** 2.0.0 (Implemented)
+**Status:** Implemented in v2.0.0
+**Last Updated:** 2026-01-28
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Schema Design](#schema-design)
-4. [Configuration](#configuration)
-5. [Backend Implementations](#backend-implementations)
-6. [Prompt Engineering](#prompt-engineering)
-7. [Safety and Guardrails](#safety-and-guardrails)
-8. [Migration Guide](#migration-guide)
-9. [Performance Considerations](#performance-considerations)
+2. [Quick Start](#quick-start)
+3. [Local Provider Setup](#local-provider-setup)
+4. [Architecture](#architecture)
+5. [Schema Design](#schema-design)
+6. [Configuration](#configuration)
+7. [Backend Implementations](#backend-implementations)
+8. [Prompt Engineering](#prompt-engineering)
+9. [Safety and Guardrails](#safety-and-guardrails)
+10. [Migration Guide](#migration-guide)
+11. [Performance Considerations](#performance-considerations)
+
+---
+
+## Quick Start
+
+### Using the Local Provider (Recommended)
+
+```python
+from transcription.semantic import create_adapter, ChunkContext
+
+# Create local LLM adapter (uses Qwen2.5-7B by default)
+adapter = create_adapter("local-llm")
+
+# Check availability
+health = adapter.health_check()
+if not health.available:
+    print(f"Local LLM not available: {health.error}")
+    # Fall back to keyword-based adapter
+    adapter = create_adapter("local")
+
+# Annotate a chunk
+context = ChunkContext(speaker_id="agent", start=0.0, end=30.0)
+annotation = adapter.annotate_chunk(
+    "I'll send you the pricing proposal by end of day tomorrow.",
+    context,
+)
+
+# Access results
+print(f"Topics: {annotation.normalized.topics}")
+print(f"Risk tags: {annotation.normalized.risk_tags}")
+print(f"Action items: {[a.text for a in annotation.normalized.action_items]}")
+print(f"Confidence: {annotation.confidence}")
+```
+
+### Using the Provider Class (More Control)
+
+```python
+from transcription.semantic_providers.local import (
+    LocalSemanticProvider,
+    LocalSemanticConfig,
+    is_available,
+)
+
+# Check if dependencies are installed
+if not is_available():
+    print("Install torch and transformers: pip install 'slower-whisper[emotion]'")
+    exit(1)
+
+# Configure the provider
+config = LocalSemanticConfig(
+    model_name="Qwen/Qwen2.5-3B-Instruct",  # Faster model
+    device="auto",  # Use GPU if available
+    temperature=0.0,  # Deterministic output
+    extraction_mode="combined",  # Extract topics, risks, and actions
+)
+
+# Create provider
+provider = LocalSemanticProvider(config)
+
+# Run health check
+health = provider.health_check()
+print(f"Available: {health.available}")
+print(f"Latency: {health.latency_ms}ms")
+```
+
+---
+
+## Local Provider Setup
+
+### Installation
+
+The local LLM provider requires `torch` and `transformers`. Install with:
+
+```bash
+# Install with emotion/LLM dependencies
+pip install 'slower-whisper[emotion]'
+
+# Or install directly
+pip install torch transformers
+```
+
+### Resource Requirements
+
+| Model | Parameters | VRAM (GPU) | RAM (CPU) | Quality | Speed |
+|-------|------------|------------|-----------|---------|-------|
+| `Qwen/Qwen2.5-7B-Instruct` | 7B | ~4GB | ~14GB | High | Medium |
+| `Qwen/Qwen2.5-3B-Instruct` | 3B | ~2GB | ~6GB | Medium | Fast |
+| `HuggingFaceTB/SmolLM2-1.7B-Instruct` | 1.7B | ~1GB | ~4GB | Lower | Very Fast |
+| `microsoft/phi-3-mini-4k-instruct` | 3.8B | ~2GB | ~8GB | Medium | Fast |
+
+**Recommendations:**
+- **GPU with 4GB+ VRAM**: Use `Qwen/Qwen2.5-7B-Instruct` (best quality)
+- **GPU with 2GB VRAM**: Use `Qwen/Qwen2.5-3B-Instruct`
+- **CPU only**: Use `HuggingFaceTB/SmolLM2-1.7B-Instruct` (faster) or `Qwen2.5-3B` (better quality)
+
+### Environment Configuration
+
+Configure the local provider via environment variables:
+
+```bash
+# Model selection
+export SLOWER_WHISPER_SEMANTIC_MODEL_NAME="Qwen/Qwen2.5-3B-Instruct"
+
+# Device selection (auto, cuda, cpu)
+export SLOWER_WHISPER_SEMANTIC_DEVICE="auto"
+
+# Generation settings
+export SLOWER_WHISPER_SEMANTIC_TEMPERATURE="0.1"
+export SLOWER_WHISPER_SEMANTIC_MAX_TOKENS="1024"
+
+# Extraction mode (combined, topics, risks, actions)
+export SLOWER_WHISPER_SEMANTIC_EXTRACTION_MODE="combined"
+
+# Caching
+export SLOWER_WHISPER_SEMANTIC_ENABLE_CACHING="true"
+```
+
+### Checking Availability
+
+```python
+from transcription.semantic_providers.local import is_available, get_availability_status
+
+# Quick check
+if is_available():
+    print("Local LLM ready")
+else:
+    print("Dependencies missing")
+
+# Detailed status
+status = get_availability_status()
+print(f"torch: {status['torch']}")
+print(f"transformers: {status['transformers']}")
+print(f"available: {status['available']}")
+```
+
+### Error Handling
+
+The local provider handles errors gracefully:
+
+```python
+from transcription.semantic import create_adapter, ChunkContext
+
+adapter = create_adapter("local-llm")
+context = ChunkContext()
+
+# If model not available, returns empty annotation with confidence 0
+result = adapter.annotate_chunk("Test text", context)
+
+if result.confidence == 0.0:
+    # Check raw_model_output for error details
+    error = result.raw_model_output.get("error") if result.raw_model_output else None
+    print(f"Annotation failed: {error}")
+```
 
 ---
 
@@ -1800,6 +1955,57 @@ class LocalModelManager:
 
 ---
 
+## Testing Cloud Providers
+
+The cloud provider implementations have comprehensive test coverage with mocked API responses.
+
+### Running Tests
+
+```bash
+# Run all cloud provider tests (no API keys required - uses mocks)
+uv run python -m pytest tests/test_semantic_cloud_providers.py -v
+
+# Run with real API keys for integration tests
+OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... \
+uv run python -m pytest tests/test_semantic_cloud_providers.py -v -m external
+```
+
+### Test Coverage
+
+The test suite (`tests/test_semantic_cloud_providers.py`) covers:
+
+| Category | Tests |
+|----------|-------|
+| **Factory Function** | Provider creation, kwarg passing |
+| **OpenAI Adapter** | Success, timeout, rate limit, malformed JSON, health checks |
+| **Anthropic Adapter** | Success, timeout, rate limit, health checks |
+| **Retry Logic** | Error classification, backoff calculation, retry decisions |
+| **Schema Validation** | Annotation structure, serialization roundtrip |
+| **Prompt Building** | Context inclusion, empty context handling |
+| **Provider Comparison** | Consistent behavior across providers |
+
+### Mocking Strategy
+
+Tests use `unittest.mock` to mock the `_guarded_provider.complete` method, allowing full
+testing without actual API calls:
+
+```python
+from unittest.mock import MagicMock
+
+adapter = OpenAISemanticAdapter(api_key="test-key")
+
+mock_response = MagicMock()
+mock_response.text = '{"topics": ["test"], "intent": null, ...}'
+mock_response.duration_ms = 100
+
+async def mock_complete(system: str, user: str):
+    return mock_response
+
+adapter._guarded_provider.complete = mock_complete
+```
+
+---
+
 ## Related Documentation
 
 - [ROADMAP.md](../ROADMAP.md) - v2.0.0 planning and timeline
@@ -1814,13 +2020,15 @@ class LocalModelManager:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.0.0 | 2026-01-28 | Local LLM provider implemented (#89) with LocalSemanticConfig, LocalSemanticProvider |
+| 2.0.0 | 2026-01-28 | Cloud providers implemented (OpenAI, Anthropic) with tests |
 | 2.0.0-draft | 2025-12-31 | Initial design document |
 
 ---
 
 ## Feedback
 
-This is a design document for a planned feature. We welcome feedback via:
+We welcome feedback via:
 
 - GitHub Issues: Tag with `semantic-llm` label
 - GitHub Discussions: v2.0.0 planning thread

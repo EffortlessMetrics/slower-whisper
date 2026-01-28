@@ -219,6 +219,29 @@ class ProtocolError(StreamingClientError):
     pass
 
 
+class ResumeGapError(SessionError):
+    """Raised when session resume fails due to event gap.
+
+    This indicates the server's replay buffer cannot satisfy the resume
+    request because the client's last_event_id is too old. The client
+    must restart the session.
+
+    Attributes:
+        requested_event_id: The event ID the client requested to resume from.
+        oldest_available: The oldest event ID available in the server's buffer.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        requested_event_id: int | None = None,
+        oldest_available: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.requested_event_id = requested_event_id
+        self.oldest_available = oldest_available
+
+
 # =============================================================================
 # Statistics
 # =============================================================================
@@ -336,6 +359,9 @@ class StreamingClient:
         # Sequencing
         self._sequence_counter = 0
 
+        # Event ID tracking for resume support
+        self._last_event_id: int = 0
+
         # Event queue for async iteration
         self._event_queue: asyncio.Queue[StreamEvent | None] = asyncio.Queue()
 
@@ -370,6 +396,14 @@ class StreamingClient:
     def has_active_session(self) -> bool:
         """Check if there is an active session."""
         return self._state == ClientState.SESSION_ACTIVE
+
+    @property
+    def last_event_id(self) -> int:
+        """Get the last received event ID.
+
+        This can be used for resume after reconnection.
+        """
+        return self._last_event_id
 
     async def connect(self) -> None:
         """Establish WebSocket connection.
@@ -470,6 +504,110 @@ class StreamingClient:
                 logger.warning("on_session_started callback raised: %s", e)
 
         return event
+
+    async def resume_session(
+        self,
+        session_id: str,
+        last_event_id: int | None = None,
+    ) -> list[StreamEvent]:
+        """Resume a session after reconnection.
+
+        Attempts to reconnect to an existing session and replay any missed
+        events since the specified last_event_id. If the server cannot provide
+        the missed events (RESUME_GAP error), raises SessionError.
+
+        Args:
+            session_id: The stream_id of the session to resume.
+            last_event_id: Last event ID received. If None, uses self.last_event_id.
+
+        Returns:
+            List of replayed events (may be empty if no events were missed).
+
+        Raises:
+            SessionError: If resume fails (RESUME_GAP or session mismatch).
+            RuntimeError: If not connected.
+        """
+        if self._state != ClientState.CONNECTED:
+            raise RuntimeError(f"Cannot resume session in state {self._state}")
+
+        event_id = last_event_id if last_event_id is not None else self._last_event_id
+
+        # Send RESUME_SESSION
+        message = {
+            "type": "RESUME_SESSION",
+            "session_id": session_id,
+            "last_event_id": event_id,
+        }
+        await self._send_message(message)
+        logger.info(
+            "Sent RESUME_SESSION: session_id=%s, last_event_id=%d",
+            session_id,
+            event_id,
+        )
+
+        # Collect replayed events until we get a non-replay event or error
+        # The server replays events and then continues normal operation
+        replayed_events: list[StreamEvent] = []
+
+        # Give a short window for replayed events
+        timeout = 5.0
+        while True:
+            event = await self._wait_for_event(timeout=timeout)
+            if event is None:
+                # No more events to replay within timeout
+                break
+
+            # Check for errors
+            if event.is_error:
+                error_code = event.payload.get("code", "")
+                error_message = event.payload.get("message", "Unknown error")
+
+                if error_code == "RESUME_GAP":
+                    details = event.payload.get("details", {})
+                    raise ResumeGapError(
+                        f"Cannot resume session: {error_message}. Client must restart session.",
+                        requested_event_id=details.get("requested_event_id"),
+                        oldest_available=details.get("oldest_available"),
+                    )
+                elif error_code == "session_mismatch":
+                    raise SessionError(f"Session mismatch: {error_message}")
+                elif error_code == "no_session":
+                    raise SessionError(f"No session to resume: {error_message}")
+                elif not event.is_recoverable:
+                    raise SessionError(f"Non-recoverable error during resume: {error_message}")
+                else:
+                    # Recoverable error, log and continue
+                    logger.warning("Recoverable error during resume: %s", error_message)
+                    continue
+
+            replayed_events.append(event)
+
+            # If this is a SESSION_STARTED, we're back in session
+            if event.type == EventType.SESSION_STARTED.value:
+                self._state = ClientState.SESSION_ACTIVE
+                self._stream_id = event.stream_id
+                break
+
+            # Use shorter timeout for subsequent events during replay
+            timeout = 1.0
+
+        # Restore session state if we got replayed events
+        if replayed_events and self._state != ClientState.SESSION_ACTIVE:
+            self._state = ClientState.SESSION_ACTIVE
+            self._stream_id = session_id
+
+        # Start ping task if configured and we have an active session
+        if self._state == ClientState.SESSION_ACTIVE and self.config.ping_interval > 0:
+            if self._ping_task is None:
+                self._ping_task = asyncio.create_task(self._ping_loop())
+
+        logger.info(
+            "Resume completed: session_id=%s, replayed=%d events",
+            session_id,
+            len(replayed_events),
+        )
+
+        return replayed_events
 
     async def send_audio(self, audio_bytes: bytes) -> None:
         """Send an audio chunk.
@@ -711,6 +849,9 @@ class StreamingClient:
         """Process a received event."""
         self.stats.events_received += 1
 
+        # Track last event ID for resume capability
+        self._last_event_id = event.event_id
+
         # Update type-specific stats
         if event.type == EventType.PARTIAL.value:
             self.stats.partials_received += 1
@@ -866,6 +1007,7 @@ __all__ = [
     "ConnectionError",
     "SessionError",
     "ProtocolError",
+    "ResumeGapError",
     # Factory function
     "create_client",
 ]

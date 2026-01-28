@@ -23,11 +23,12 @@ import asyncio
 import base64
 import logging
 import time
-import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
+
+from .ids import EventIdCounter, SegmentIdCounter, generate_stream_id
 
 if TYPE_CHECKING:
     from .asr_engine import WhisperModelProtocol
@@ -80,6 +81,10 @@ class ServerMessageType(str, Enum):
 # =============================================================================
 
 
+# Schema version for EventEnvelope (bumped on breaking changes)
+EVENT_ENVELOPE_SCHEMA_VERSION = "2.1.0"
+
+
 @dataclass(slots=True)
 class EventEnvelope:
     """
@@ -87,16 +92,102 @@ class EventEnvelope:
 
     The envelope provides consistent metadata for all server events,
     enabling clients to track event ordering, timing, and context.
+    This is the canonical wire format for all server-to-client messages
+    in the WebSocket streaming protocol.
 
-    Attributes:
-        event_id: Monotonically increasing ID per stream (never resets within session)
-        stream_id: Unique stream identifier (format: str-{uuid4})
-        segment_id: Segment identifier (format: seg-{seq}, None for non-segment events)
-        type: Server message type
-        ts_server: Server timestamp (Unix epoch milliseconds)
-        ts_audio_start: Audio timestamp start (seconds, None for non-audio events)
-        ts_audio_end: Audio timestamp end (seconds, None for non-audio events)
-        payload: Message-specific payload data
+    Schema Version: 2.1.0 (see EVENT_ENVELOPE_SCHEMA_VERSION)
+    JSON Schema: docs/schemas/event_envelope_v2.json
+
+    Field Semantics
+    ---------------
+
+    event_id : int
+        Monotonically increasing identifier per stream. Starts at 1 for each
+        new session and increments by 1 for each event. NEVER resets or
+        decreases within a session. Gaps in event_id indicate dropped PARTIAL
+        events due to backpressure (FINALIZED events are never dropped).
+        Clients should track this to detect missed events during resume.
+
+    stream_id : str
+        Unique stream identifier in format ``str-{uuid4}`` (e.g.,
+        ``str-a1b2c3d4-e5f6-4789-abcd-ef0123456789``). Globally unique
+        across all streams. Immutable for the entire session duration.
+        Generated server-side on session creation.
+
+    type : ServerMessageType
+        Server message type indicating the event category. Valid values:
+        SESSION_STARTED, PARTIAL, FINALIZED, SPEAKER_TURN, SEMANTIC_UPDATE,
+        DIARIZATION_UPDATE, ERROR, SESSION_ENDED, PONG, and v2.1 additions:
+        PHYSICS_UPDATE, AUDIO_HEALTH, VAD_ACTIVITY, BARGE_IN, END_OF_TURN_HINT.
+
+    ts_server : int
+        Server timestamp in Unix epoch MILLISECONDS (not seconds) when the
+        event was generated. Always positive. Use for latency measurement
+        and event ordering verification.
+
+    payload : dict[str, Any]
+        Event-type-specific payload data. Schema varies by message type.
+        See docs/schemas/event_envelope_v2.json for payload schemas per type.
+
+    segment_id : str | None
+        Segment identifier in format ``seg-{seq}`` (e.g., ``seg-0``, ``seg-42``).
+        Present for segment-related events (PARTIAL, FINALIZED). None for
+        non-segment events (SESSION_STARTED, SESSION_ENDED, PONG, ERROR, etc.).
+        Same segment_id links PARTIAL events to their eventual FINALIZED event.
+
+    ts_audio_start : float | None
+        Audio timestamp start in SECONDS (floating point). Represents the
+        start position in the audio stream that this event relates to.
+        None for non-audio events (PONG, SESSION_STARTED, etc.).
+
+    ts_audio_end : float | None
+        Audio timestamp end in SECONDS (floating point). Represents the
+        end position in the audio stream that this event relates to.
+        None for non-audio events.
+
+    Wire Format
+    -----------
+    The envelope serializes to JSON with the following structure::
+
+        {
+            "schema_version": "2.1.0",
+            "event_id": 1,
+            "stream_id": "str-...",
+            "type": "SESSION_STARTED",
+            "ts_server": 1706300000000,
+            "payload": {...},
+            // Optional fields (omitted when null):
+            "segment_id": "seg-0",
+            "ts_audio_start": 0.0,
+            "ts_audio_end": 2.5
+        }
+
+    Contract Guarantees
+    -------------------
+    1. event_id is strictly monotonically increasing (never repeats, never decreases)
+    2. ts_server is always positive Unix epoch milliseconds
+    3. stream_id format is always str-{uuid4}
+    4. segment_id format (when present) is always seg-{integer}
+    5. FINALIZED events are never dropped (even under backpressure)
+    6. SESSION_ENDED is always the final event in a session
+
+    Example
+    -------
+    >>> envelope = EventEnvelope(
+    ...     event_id=1,
+    ...     stream_id="str-a1b2c3d4-e5f6-4789-abcd-ef0123456789",
+    ...     type=ServerMessageType.SESSION_STARTED,
+    ...     ts_server=1706300000000,
+    ...     payload={"session_id": "str-a1b2c3d4-e5f6-4789-abcd-ef0123456789"},
+    ... )
+    >>> envelope.to_dict()
+    {'schema_version': '2.1.0', 'event_id': 1, 'stream_id': 'str-...', ...}
+
+    See Also
+    --------
+    - docs/STREAMING_API.md: Full API documentation
+    - docs/schemas/event_envelope_v2.json: JSON Schema definition
+    - tests/test_streaming_contracts.py: Contract test suite
     """
 
     event_id: int
@@ -109,8 +200,23 @@ class EventEnvelope:
     ts_audio_end: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert envelope to JSON-serializable dictionary."""
+        """
+        Convert envelope to JSON-serializable dictionary.
+
+        Returns a dictionary suitable for JSON serialization and transmission
+        over WebSocket. Optional fields (segment_id, ts_audio_start, ts_audio_end)
+        are omitted from the output when their value is None, keeping the wire
+        format compact.
+
+        Returns
+        -------
+        dict[str, Any]
+            JSON-serializable dictionary with all required fields and any
+            non-None optional fields. Includes schema_version for forward
+            compatibility.
+        """
         result: dict[str, Any] = {
+            "schema_version": EVENT_ENVELOPE_SCHEMA_VERSION,
             "event_id": self.event_id,
             "stream_id": self.stream_id,
             "type": self.type.value,
@@ -450,16 +556,16 @@ class WebSocketStreamingSession:
             callbacks: Optional callbacks for streaming events (v2.1).
                       Used to emit physics, audio health, VAD, and barge-in events.
         """
-        self.stream_id = f"str-{uuid.uuid4()}"
+        self.stream_id = generate_stream_id()
         self.config = config or WebSocketSessionConfig()
         self.state = SessionState.CREATED
         self.stats = SessionStats()
 
         # Event ID counter (monotonically increasing per stream)
-        self._event_id_counter = 0
+        self._event_counter = EventIdCounter()
 
-        # Segment sequence counter
-        self._segment_seq = 0
+        # Segment ID counter
+        self._segment_counter = SegmentIdCounter()
 
         # Audio buffer for accumulating chunks
         self._audio_buffer = bytearray()
@@ -489,6 +595,8 @@ class WebSocketStreamingSession:
         self._last_diarization_audio_len = 0  # Track audio length at last diarization
         self._current_speaker_assignments: list[SpeakerAssignment] = []
         self._diarization_update_count = 0
+        self._speaker_turn_count = 0  # Track number of speaker turns emitted
+        self._last_emitted_speaker: str | None = None  # Track last speaker for turn detection
 
         # TTS state tracking for barge-in detection (v2.1)
         self._tts_playing: bool = False
@@ -523,14 +631,11 @@ class WebSocketStreamingSession:
 
     def _next_event_id(self) -> int:
         """Generate next monotonically increasing event ID."""
-        self._event_id_counter += 1
-        return self._event_id_counter
+        return self._event_counter.next()
 
     def _next_segment_id(self) -> str:
         """Generate next segment ID."""
-        seg_id = f"seg-{self._segment_seq}"
-        self._segment_seq += 1
-        return seg_id
+        return self._segment_counter.next()
 
     def _server_timestamp(self) -> int:
         """Get current server timestamp in milliseconds."""
@@ -698,7 +803,7 @@ class WebSocketStreamingSession:
                 "details": {
                     "requested_event_id": last_event_id,
                     "oldest_available": self._replay_buffer.oldest_event_id,
-                    "current_event_id": self._event_id_counter,
+                    "current_event_id": self._event_counter.current,
                 },
             },
         )
@@ -853,9 +958,8 @@ class WebSocketStreamingSession:
             events.extend(self._generate_mock_events())
 
         # Check if we should trigger incremental diarization
-        diarization_event = await self._maybe_trigger_diarization()
-        if diarization_event:
-            events.append(diarization_event)
+        diarization_events = await self._maybe_trigger_diarization()
+        events.extend(diarization_events)
 
         # Process v2.1 features (audio health, physics, reflex events)
         v21_events = self._process_v21_features(audio_data, events)
@@ -1197,19 +1301,21 @@ class WebSocketStreamingSession:
 
         return new_audio_duration >= self.config.diarization_interval_sec
 
-    async def _maybe_trigger_diarization(self) -> EventEnvelope | None:
+    async def _maybe_trigger_diarization(self) -> list[EventEnvelope]:
         """
-        Conditionally trigger incremental diarization and return update event.
+        Conditionally trigger incremental diarization and return update events.
 
         If diarization should be triggered (based on accumulated audio),
-        calls the diarization hook and emits a DIARIZATION_UPDATE event
-        if speaker assignments have changed.
+        calls the diarization hook and emits:
+        - DIARIZATION_UPDATE event if speaker assignments have changed
+        - SPEAKER_TURN events for detected turn boundaries
 
         Returns:
-            EventEnvelope with DIARIZATION_UPDATE type, or None if no update.
+            List of EventEnvelope objects (may include DIARIZATION_UPDATE
+            and SPEAKER_TURN events), or empty list if no update.
         """
         if not self._should_trigger_diarization():
-            return None
+            return []
 
         # _should_trigger_diarization confirms hook is not None
         assert self._diarization_hook is not None
@@ -1226,12 +1332,20 @@ class WebSocketStreamingSession:
             self._last_diarization_audio_len = len(self._audio_buffer)
             self._diarization_update_count += 1
 
+            events: list[EventEnvelope] = []
+
             # Check if assignments changed
             if self._assignments_changed(new_assignments):
                 self._current_speaker_assignments = new_assignments
-                return self._create_diarization_update_event(new_assignments)
 
-            return None
+                # Emit DIARIZATION_UPDATE event
+                events.append(self._create_diarization_update_event(new_assignments))
+
+                # Detect and emit SPEAKER_TURN events for turn boundaries
+                turn_events = self._detect_speaker_turns_from_assignments(new_assignments)
+                events.extend(turn_events)
+
+            return events
 
         except Exception as e:
             # Graceful degradation: log error but don't crash pipeline
@@ -1240,7 +1354,7 @@ class WebSocketStreamingSession:
                 self.stream_id,
                 e,
             )
-            return None
+            return []
 
     def _assignments_changed(self, new_assignments: list[SpeakerAssignment]) -> bool:
         """
@@ -1300,22 +1414,122 @@ class WebSocketStreamingSession:
             ts_audio_end=audio_duration,
         )
 
-    async def _trigger_final_diarization(self) -> EventEnvelope | None:
+    def _create_speaker_turn_event(
+        self,
+        speaker_id: str,
+        start: float,
+        end: float,
+        text: str | None = None,
+    ) -> EventEnvelope:
+        """
+        Create a SPEAKER_TURN event envelope.
+
+        Emits a SPEAKER_TURN event when a turn boundary is detected. This
+        event indicates that a speaker has completed a turn and another
+        speaker (or the same speaker after a pause) is now speaking.
+
+        Args:
+            speaker_id: The speaker ID for this turn (e.g., "spk_0").
+            start: Start time of the turn in seconds.
+            end: End time of the turn in seconds.
+            text: Optional transcript text for this turn.
+
+        Returns:
+            EventEnvelope with SPEAKER_TURN type.
+        """
+        self._speaker_turn_count += 1
+
+        return self._create_envelope(
+            ServerMessageType.SPEAKER_TURN,
+            {
+                "turn_id": f"turn_{self._speaker_turn_count - 1}",
+                "speaker_id": speaker_id,
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "text": text,
+            },
+            ts_audio_start=start,
+            ts_audio_end=end,
+        )
+
+    def _detect_speaker_turns_from_assignments(
+        self,
+        assignments: list[SpeakerAssignment],
+    ) -> list[EventEnvelope]:
+        """
+        Detect speaker turn boundaries from diarization assignments.
+
+        Compares new assignments with the last emitted speaker to detect
+        turn boundaries. A turn boundary occurs when the speaker changes.
+
+        Args:
+            assignments: List of speaker assignments from diarization.
+
+        Returns:
+            List of SPEAKER_TURN EventEnvelope objects for detected turns.
+        """
+        events: list[EventEnvelope] = []
+
+        if not assignments:
+            return events
+
+        # Group consecutive assignments by speaker into turns
+        current_turn_speaker: str | None = None
+        current_turn_start: float | None = None
+        current_turn_end: float | None = None
+
+        for assignment in assignments:
+            if current_turn_speaker is None:
+                # Start first turn
+                current_turn_speaker = assignment.speaker_id
+                current_turn_start = assignment.start
+                current_turn_end = assignment.end
+            elif assignment.speaker_id == current_turn_speaker:
+                # Continue same speaker's turn
+                current_turn_end = assignment.end
+            else:
+                # Speaker changed - emit turn event for previous speaker
+                # Only emit if this is a new turn we haven't seen before
+                if (
+                    current_turn_speaker != self._last_emitted_speaker
+                    or current_turn_start != 0.0  # New turn at non-zero start
+                ):
+                    events.append(
+                        self._create_speaker_turn_event(
+                            speaker_id=current_turn_speaker,
+                            start=current_turn_start or 0.0,
+                            end=current_turn_end or 0.0,
+                        )
+                    )
+                    self._last_emitted_speaker = current_turn_speaker
+
+                # Start new turn
+                current_turn_speaker = assignment.speaker_id
+                current_turn_start = assignment.start
+                current_turn_end = assignment.end
+
+        # Don't emit the last turn yet - it may still be ongoing
+        # It will be emitted when another speaker takes over or at end of stream
+
+        return events
+
+    async def _trigger_final_diarization(self) -> list[EventEnvelope]:
         """
         Trigger final diarization at end of stream.
 
         Always runs diarization if enabled and hook is available,
-        regardless of interval threshold.
+        regardless of interval threshold. Also emits final SPEAKER_TURN
+        event for the last speaker's turn.
 
         Returns:
-            EventEnvelope with DIARIZATION_UPDATE type, or None if not available.
+            List of EventEnvelope objects (DIARIZATION_UPDATE and SPEAKER_TURN).
         """
         if not self.config.enable_diarization:
-            return None
+            return []
         if self._diarization_hook is None:
-            return None
+            return []
         if len(self._audio_buffer) == 0:
-            return None
+            return []
 
         try:
             audio_bytes = bytes(self._audio_buffer)
@@ -1327,10 +1541,34 @@ class WebSocketStreamingSession:
             self._diarization_update_count += 1
             self._current_speaker_assignments = new_assignments
 
-            if new_assignments:
-                return self._create_diarization_update_event(new_assignments)
+            events: list[EventEnvelope] = []
 
-            return None
+            if new_assignments:
+                # Emit DIARIZATION_UPDATE
+                events.append(self._create_diarization_update_event(new_assignments))
+
+                # Detect and emit SPEAKER_TURN events for all turn boundaries
+                turn_events = self._detect_speaker_turns_from_assignments(new_assignments)
+                events.extend(turn_events)
+
+                # Emit final SPEAKER_TURN for the last speaker (stream is ending)
+                last_assignment = new_assignments[-1]
+                # Find the start of the last turn
+                last_turn_start = last_assignment.start
+                for i in range(len(new_assignments) - 1, -1, -1):
+                    if new_assignments[i].speaker_id != last_assignment.speaker_id:
+                        break
+                    last_turn_start = new_assignments[i].start
+
+                events.append(
+                    self._create_speaker_turn_event(
+                        speaker_id=last_assignment.speaker_id,
+                        start=last_turn_start,
+                        end=last_assignment.end,
+                    )
+                )
+
+            return events
 
         except Exception as e:
             logger.warning(
@@ -1338,7 +1576,7 @@ class WebSocketStreamingSession:
                 self.stream_id,
                 e,
             )
-            return None
+            return []
 
     def get_speaker_assignments(self) -> list[SpeakerAssignment]:
         """
@@ -1376,9 +1614,8 @@ class WebSocketStreamingSession:
         events: list[EventEnvelope] = []
 
         # Trigger final diarization if enabled
-        final_diarization = await self._trigger_final_diarization()
-        if final_diarization:
-            events.append(final_diarization)
+        final_diarization_events = await self._trigger_final_diarization()
+        events.extend(final_diarization_events)
 
         # Flush ASR adapter if enabled
         if self._asr_adapter is not None:
@@ -1626,6 +1863,8 @@ def decode_audio_chunk(payload: dict[str, Any]) -> tuple[bytes, int]:
 # =============================================================================
 
 __all__ = [
+    # Constants
+    "EVENT_ENVELOPE_SCHEMA_VERSION",
     # Enums
     "ClientMessageType",
     "ServerMessageType",

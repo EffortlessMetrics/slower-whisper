@@ -139,6 +139,100 @@ Runs everything in fast mode, plus:
 
 ---
 
+## Benchmark CI Integration
+
+The benchmark CI workflow (`.github/workflows/benchmark.yml`) runs quality evaluations to detect performance regressions. It operates in **report-only mode by default** and does not block merges.
+
+### How It Works
+
+1. **Triggers**: Runs on pull requests to main and manual dispatch
+2. **Tracks**: ASR (transcription accuracy) and Semantic (annotation quality)
+3. **Datasets**: Uses smoke datasets by default (committed to repo, always available)
+4. **Baselines**: Compares against versioned baselines in `benchmarks/baselines/`
+5. **Artifacts**: Uploads results for 30-day retention
+6. **PR Comments**: Posts regression summary on pull requests
+
+### Running Locally
+
+Use the benchmark CI script to run the same checks locally:
+
+```bash
+# Run smoke benchmarks (report-only, same as PR CI)
+./scripts/ci-benchmarks.sh
+
+# Run with gate mode (fail on regression)
+./scripts/ci-benchmarks.sh --gate
+
+# Run specific track
+./scripts/ci-benchmarks.sh --track asr
+
+# Save new baselines after improvements
+./scripts/ci-benchmarks.sh --save --track asr
+```
+
+### Modes
+
+| Mode | Description | CI Behavior |
+|------|-------------|-------------|
+| Report-only | Default mode for PRs | Never fails CI, posts summary comment |
+| Gate | Manual dispatch only | Fails CI if regression exceeds threshold |
+| Save baseline | Manual dispatch only | Creates new baseline files |
+
+### Baseline Files
+
+Baselines are stored in `benchmarks/baselines/<track>/<dataset>.json`:
+
+```
+benchmarks/baselines/
+  asr/
+    smoke.json          # Smoke test baseline
+    librispeech.json    # Full LibriSpeech baseline
+  semantic/
+    ami.json            # Semantic annotation baseline
+  diarization/
+    smoke.json
+    ami.json
+```
+
+Each baseline includes:
+- Metric values (WER, CER, RTF, F1, etc.)
+- Regression thresholds (default: 10%)
+- Provenance receipt (tool version, model, git commit)
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BENCHMARK_LIMIT` | Samples per benchmark | 5 |
+| `RESULTS_DIR` | Output directory | `benchmark-results` |
+| `SLOWER_WHISPER_BASELINES` | Override baselines path | `benchmarks/baselines` |
+
+### Workflow Phases
+
+The benchmark CI was implemented in phases:
+
+1. **Phase 1** (Complete): Report-only benchmarks with artifact upload
+2. **Phase 2** (Complete): PR comments with regression summary tables
+3. **Phase 3** (Current): Optional gate mode for critical regressions
+
+### Troubleshooting
+
+**"Dataset not staged"**: The smoke dataset should always be available. If you see this error, verify the dataset files exist:
+
+```bash
+python scripts/fetch_datasets.py verify --dataset asr-smoke
+```
+
+**Regression detected but expected**: If you intentionally changed behavior, save a new baseline:
+
+```bash
+./scripts/ci-benchmarks.sh --save --track asr
+git add benchmarks/baselines/
+git commit -m "chore: update ASR baseline"
+```
+
+---
+
 ## Environment Setup
 
 ### Nix Dev Shell
@@ -354,12 +448,15 @@ uv run pytest -m "not slow"
 
 ## Summary
 
-| Command                   | What it does                          | Use case                 |
-| ------------------------- | ------------------------------------- | ------------------------ |
-| `nix flake check`         | Pure lint + format (offline)          | Pre-commit, quick sanity |
-| `nix run .#ci -- fast`    | Lint, format, typecheck, fast tests   | During development       |
-| `nix run .#ci`            | Full test suite                       | Before PR, before tag    |
-| `nix run .#verify`        | Run verification spine                | Dogfooding, smoke test   |
-| `nix run .#dogfood`       | Run dogfood workflow                  | Testing with real audio  |
+| Command                       | What it does                          | Use case                 |
+| ----------------------------- | ------------------------------------- | ------------------------ |
+| `nix flake check`             | Pure lint + format (offline)          | Pre-commit, quick sanity |
+| `nix run .#ci -- fast`        | Lint, format, typecheck, fast tests   | During development       |
+| `nix run .#ci`                | Full test suite                       | Before PR, before tag    |
+| `nix run .#verify`            | Run verification spine                | Dogfooding, smoke test   |
+| `nix run .#dogfood`           | Run dogfood workflow                  | Testing with real audio  |
+| `./scripts/ci-benchmarks.sh`  | Run benchmark regression checks       | Before PR, perf changes  |
 
 **Bottom line**: `nix run .#ci -- fast` is your main local CI button. It mirrors what GitHub Actions runs, ensuring "if it passes locally, it'll pass in CI."
+
+For performance-related changes, also run `./scripts/ci-benchmarks.sh` to verify no regressions.

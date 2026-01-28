@@ -1144,6 +1144,78 @@ The v2.0.0 release introduces a WebSocket-based real-time streaming API.
 | `SESSION_ENDED` | `{stats: dict}` | Session statistics |
 | `PONG` | `{timestamp: int}` | Heartbeat response |
 
+### Example: Reference Python Client
+
+The `transcription.streaming_client` module provides a high-level async Python client for WebSocket streaming.
+
+**Installation**: Requires `websockets` package (`pip install websockets`).
+
+```python
+import asyncio
+from transcription.streaming_client import (
+    StreamingClient,
+    StreamingConfig,
+    EventType,
+    ResumeGapError,
+)
+
+async def transcribe_audio(audio_chunks):
+    """Stream audio and collect transcribed segments."""
+    config = StreamingConfig(
+        url="ws://localhost:8000/stream",
+        max_gap_sec=1.0,
+        enable_prosody=False,
+    )
+
+    segments = []
+
+    def on_finalized(event):
+        segment = event.payload.get("segment", {})
+        segments.append(segment["text"])
+        print(f"[{segment['start']:.2f}s] {segment['text']}")
+
+    async with StreamingClient(config=config, on_finalized=on_finalized) as client:
+        # Start session
+        await client.start_session()
+        print(f"Session: {client.stream_id}")
+
+        # Stream audio chunks
+        for chunk in audio_chunks:
+            await client.send_audio(chunk)
+
+        # End session and get final events
+        await client.end_session()
+
+        # last_event_id can be saved for resume after disconnect
+        print(f"Last event ID: {client.last_event_id}")
+
+    return " ".join(segments)
+
+# Resume after disconnect example:
+async def resume_example(session_id, last_event_id):
+    config = StreamingConfig(url="ws://localhost:8000/stream")
+    client = StreamingClient(config=config)
+
+    try:
+        await client.connect()
+        replayed = await client.resume_session(session_id, last_event_id)
+        print(f"Replayed {len(replayed)} events")
+    except ResumeGapError as e:
+        print(f"Cannot resume: oldest={e.oldest_available}, need to restart")
+    finally:
+        await client.close()
+```
+
+**Key Features**:
+- Async context manager for connection lifecycle
+- Callback-based event handling (on_partial, on_finalized, on_error)
+- Async iteration over events (`async for event in client.events()`)
+- Session resume with `last_event_id` tracking
+- Automatic reconnection with configurable retries
+- Statistics tracking (`client.stats`)
+
+**Full Example**: See `examples/streaming/websocket_client_demo.py`
+
 ### Example: WebSocket Client (JavaScript)
 
 ```javascript
@@ -1822,7 +1894,30 @@ Every server-to-client message is wrapped in an `EventEnvelope` that provides co
 
 ### ID Contracts
 
-The protocol uses three distinct identifier types with specific guarantees:
+The protocol uses four distinct identifier types with specific guarantees. All ID generators are centralized in `transcription/ids.py` for consistency.
+
+#### run_id
+
+| Property | Specification |
+|----------|---------------|
+| **Format** | `run-YYYYMMDD-HHMMSS-XXXXXX` (e.g., `run-20260128-143052-x7k9p2`) |
+| **Components** | Date (YYYYMMDD) + Time (HHMMSS) + 6 random alphanumeric chars |
+| **Scope** | Per batch transcription run |
+| **Uniqueness** | Unique across all runs (timestamp + random suffix) |
+| **Lifetime** | Created at batch start, used in receipts for provenance tracking |
+| **Generation** | Server-side only, via `generate_run_id()` |
+
+```python
+# Example generation (from ids.py)
+from transcription.ids import generate_run_id
+
+run_id = generate_run_id()  # "run-20260128-143052-x7k9p2"
+```
+
+**Use Cases:**
+- Batch transcription receipts (`meta.receipt.run_id`)
+- Audit trails for provenance tracking
+- Correlating related transcription operations
 
 #### stream_id
 
@@ -1835,8 +1930,10 @@ The protocol uses three distinct identifier types with specific guarantees:
 | **Generation** | Server-side only, using UUID v4 |
 
 ```python
-# Example generation (from streaming_ws.py)
-stream_id = f"str-{uuid.uuid4()}"
+# Example generation (from ids.py)
+from transcription.ids import generate_stream_id
+
+stream_id = generate_stream_id()  # "str-550e8400-e29b-41d4-a716-446655440000"
 ```
 
 #### event_id
@@ -1851,11 +1948,13 @@ stream_id = f"str-{uuid.uuid4()}"
 | **Guarantees** | If `event_id=N` is received, all events 1 to N-1 have been sent |
 
 ```python
-# Example counter increment (from streaming_ws.py)
-def _next_event_id(self) -> int:
-    """Generate next monotonically increasing event ID."""
-    self._event_id_counter += 1
-    return self._event_id_counter
+# Example counter usage (from ids.py)
+from transcription.ids import EventIdCounter
+
+counter = EventIdCounter()
+event_id = counter.next()  # 1
+event_id = counter.next()  # 2
+print(counter.current)     # 2
 ```
 
 #### segment_id
@@ -1869,12 +1968,17 @@ def _next_event_id(self) -> int:
 | **Correlation** | Links PARTIAL events to their final FINALIZED event |
 
 ```python
-# Example generation (from streaming_ws.py)
-def _next_segment_id(self) -> str:
-    """Generate next segment ID."""
-    seg_id = f"seg-{self._segment_seq}"
-    self._segment_seq += 1
-    return seg_id
+# Example generation (from ids.py)
+from transcription.ids import generate_segment_id, SegmentIdCounter
+
+# Direct generation
+segment_id = generate_segment_id(0)  # "seg-0"
+segment_id = generate_segment_id(42) # "seg-42"
+
+# Using counter
+counter = SegmentIdCounter()
+segment_id = counter.next()  # "seg-0"
+segment_id = counter.next()  # "seg-1"
 ```
 
 **Segment ID Lifecycle:**
@@ -1891,7 +1995,7 @@ PARTIAL  (segment_id: seg-1)  → text: "I'm"
 
 ### Event Types Specification
 
-The server emits five event types, each with a specific purpose and payload schema:
+The server emits the following event types, each with a specific purpose and payload schema. Event types are organized into core v2.0 types and reflex/physics v2.1 types:
 
 #### PARTIAL
 
@@ -2215,6 +2319,203 @@ Emitted when a recoverable or fatal error occurs during processing.
 **Guarantees:**
 - Never dropped under backpressure
 - `recoverable: false` indicates client should close connection
+
+---
+
+#### PHYSICS_UPDATE (v2.1)
+
+Emitted periodically to report conversation dynamics metrics. Only emitted when `enable_conversation_physics=true` is set in the session configuration.
+
+```json
+{
+  "event_id": 25,
+  "stream_id": "str-abc123",
+  "segment_id": null,
+  "type": "PHYSICS_UPDATE",
+  "ts_server": 1736251225000,
+  "ts_audio_start": null,
+  "ts_audio_end": null,
+  "payload": {
+    "speaker_talk_times": {"spk_0": 15.5, "spk_1": 12.3},
+    "total_duration_sec": 30.0,
+    "interruption_count": 2,
+    "interruption_rate": 4.0,
+    "mean_response_latency_sec": 0.85,
+    "speaker_transitions": 5,
+    "overlap_duration_sec": 1.2
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `speaker_talk_times` | object | yes | Map of speaker_id to total talk time (seconds) |
+| `total_duration_sec` | float | yes | Total conversation duration (seconds) |
+| `interruption_count` | integer | yes | Total number of interruptions detected |
+| `interruption_rate` | float | no | Interruptions per minute |
+| `mean_response_latency_sec` | float | no | Average response latency between speakers (seconds) |
+| `speaker_transitions` | integer | no | Number of speaker transitions |
+| `overlap_duration_sec` | float | no | Total overlapping speech duration (seconds) |
+
+**Guarantees:**
+- Emitted after FINALIZED events that update conversation state
+- Requires `enable_conversation_physics=true` in session config
+- May be dropped under extreme backpressure (after PARTIAL)
+
+---
+
+#### AUDIO_HEALTH (v2.1)
+
+Emitted periodically to report audio quality metrics. Only emitted when `enable_audio_health=true` is set in the session configuration.
+
+```json
+{
+  "event_id": 26,
+  "stream_id": "str-abc123",
+  "segment_id": null,
+  "type": "AUDIO_HEALTH",
+  "ts_server": 1736251226000,
+  "ts_audio_start": null,
+  "ts_audio_end": null,
+  "payload": {
+    "clipping_ratio": 0.01,
+    "rms_energy": -22.5,
+    "snr_proxy": 25.0,
+    "spectral_centroid": 2500.0,
+    "quality_score": 0.85,
+    "is_speech_likely": true
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `clipping_ratio` | float | yes | Ratio of clipped samples (0.0-1.0) |
+| `rms_energy` | float | yes | Root mean square energy level |
+| `snr_proxy` | float | no | Signal-to-noise ratio estimate |
+| `spectral_centroid` | float | no | Spectral centroid in Hz |
+| `quality_score` | float | yes | Overall audio quality score (0.0-1.0) |
+| `is_speech_likely` | boolean | yes | Whether speech is likely present |
+
+**Guarantees:**
+- Emitted at `audio_health_interval_chunks` interval
+- Requires `enable_audio_health=true` in session config
+- May be dropped under extreme backpressure (after PARTIAL)
+
+---
+
+#### VAD_ACTIVITY (v2.1)
+
+Emitted when voice activity detection state changes. Only emitted when `enable_reflex_events=true` is set in the session configuration.
+
+```json
+{
+  "event_id": 27,
+  "stream_id": "str-abc123",
+  "segment_id": null,
+  "type": "VAD_ACTIVITY",
+  "ts_server": 1736251227000,
+  "ts_audio_start": null,
+  "ts_audio_end": null,
+  "payload": {
+    "energy_level": -18.5,
+    "is_speech": true,
+    "silence_duration_sec": 0.0
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `energy_level` | float | yes | Current audio energy level |
+| `is_speech` | boolean | yes | Whether speech is currently detected |
+| `silence_duration_sec` | float | yes | Duration of current silence period (0 if speaking) |
+
+**Guarantees:**
+- Emitted on speech/silence state transitions only
+- Requires `enable_reflex_events=true` in session config
+- May be dropped under extreme backpressure (after PARTIAL)
+
+---
+
+#### BARGE_IN (v2.1)
+
+Emitted when user speech is detected during TTS playback. This enables voice agents to detect when a user is trying to interrupt. Only emitted when `enable_reflex_events=true` is set and TTS state is being tracked.
+
+```json
+{
+  "event_id": 28,
+  "stream_id": "str-abc123",
+  "segment_id": null,
+  "type": "BARGE_IN",
+  "ts_server": 1736251228000,
+  "ts_audio_start": null,
+  "ts_audio_end": null,
+  "payload": {
+    "energy": -15.0,
+    "tts_elapsed_sec": 2.3
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `energy` | float | yes | Audio energy level that triggered barge-in |
+| `tts_elapsed_sec` | float | yes | Time since TTS started when barge-in detected |
+
+**Guarantees:**
+- Requires client to send `TTS_STATE` messages to track TTS playback
+- Requires `enable_reflex_events=true` in session config
+- Auto-stops TTS state tracking after barge-in detection
+- May be dropped under extreme backpressure (after PARTIAL)
+
+---
+
+#### END_OF_TURN_HINT (v2.1)
+
+Emitted when prosodic and silence cues suggest the speaker has finished their turn. This enables voice agents to respond more naturally without waiting for long silences.
+
+```json
+{
+  "event_id": 29,
+  "stream_id": "str-abc123",
+  "segment_id": null,
+  "type": "END_OF_TURN_HINT",
+  "ts_server": 1736251229000,
+  "ts_audio_start": null,
+  "ts_audio_end": null,
+  "payload": {
+    "confidence": 0.85,
+    "silence_duration_sec": 1.2,
+    "prosodic_cues": {
+      "falling_intonation": true,
+      "final_lengthening": false
+    }
+  }
+}
+```
+
+**Payload Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `confidence` | float | yes | Confidence the speaker has finished (0.0-1.0) |
+| `silence_duration_sec` | float | yes | Trailing silence duration that triggered hint |
+| `prosodic_cues` | object | no | Prosodic indicators (falling intonation, lengthening) |
+
+**Guarantees:**
+- This is a hint, not a definitive turn boundary
+- Higher confidence values indicate stronger end-of-turn signals
+- May be emitted multiple times if turn continues
+- May be dropped under extreme backpressure (after PARTIAL)
 
 ---
 
@@ -2553,16 +2854,21 @@ Sec-WebSocket-Protocol: transcription.v2, auth.bearer.eyJhbGciOiJIUzI1NiIs...
 
 ### JSON Schema Reference
 
-Complete JSON Schema definitions for validation:
+Complete JSON Schema definitions for validation are available in two locations:
 
-#### EventEnvelope Schema
+1. **Package schema** (v2.1, includes all event types): `transcription/schemas/stream_event.schema.json`
+2. **Docs schema** (v2.0, for reference): `docs/schemas/event_envelope_v2.json`
+
+The package schema includes all v2.1 event types (PHYSICS_UPDATE, AUDIO_HEALTH, VAD_ACTIVITY, BARGE_IN, END_OF_TURN_HINT) and their payload definitions.
+
+#### EventEnvelope Schema (Simplified)
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://slower-whisper.dev/schemas/event-envelope.json",
-  "title": "EventEnvelope",
-  "description": "Server-to-client event envelope for WebSocket streaming",
+  "$id": "https://slower-whisper.dev/schemas/stream_event.json",
+  "title": "StreamEventEnvelope",
+  "description": "Server-to-client event envelope for WebSocket streaming (v2.1)",
   "type": "object",
   "required": ["event_id", "stream_id", "type", "ts_server", "payload"],
   "properties": {
@@ -2583,8 +2889,12 @@ Complete JSON Schema definitions for validation:
     },
     "type": {
       "type": "string",
-      "enum": ["PARTIAL", "FINALIZED", "SPEAKER_TURN", "SEMANTIC_UPDATE", "ERROR", "SESSION_STARTED", "SESSION_ENDED", "PONG"],
-      "description": "Event type"
+      "enum": [
+        "SESSION_STARTED", "PARTIAL", "FINALIZED", "SPEAKER_TURN",
+        "SEMANTIC_UPDATE", "DIARIZATION_UPDATE", "ERROR", "SESSION_ENDED", "PONG",
+        "PHYSICS_UPDATE", "AUDIO_HEALTH", "VAD_ACTIVITY", "BARGE_IN", "END_OF_TURN_HINT"
+      ],
+      "description": "Event type (includes v2.0 core types and v2.1 reflex/physics types)"
     },
     "ts_server": {
       "type": "integer",
@@ -2602,7 +2912,7 @@ Complete JSON Schema definitions for validation:
     },
     "payload": {
       "type": "object",
-      "description": "Event-type-specific payload"
+      "description": "Event-type-specific payload (see full schema for definitions)"
     }
   },
   "additionalProperties": false

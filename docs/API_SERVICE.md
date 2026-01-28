@@ -212,6 +212,245 @@ curl -X POST \
 }
 ```
 
+## Streaming Session Management
+
+REST endpoints for managing WebSocket streaming sessions. These endpoints allow
+creating sessions, monitoring their status, and force-closing sessions.
+
+### Get Streaming Configuration
+
+**GET** `/stream/config`
+
+Returns the default streaming configuration and available options.
+
+```bash
+curl http://localhost:8000/stream/config
+```
+
+**Response:**
+```json
+{
+  "default_config": {
+    "max_gap_sec": 1.0,
+    "enable_prosody": false,
+    "enable_emotion": false,
+    "enable_categorical_emotion": false,
+    "sample_rate": 16000,
+    "audio_format": "pcm_s16le"
+  },
+  "supported_audio_formats": ["pcm_s16le"],
+  "supported_sample_rates": [16000],
+  "message_types": {
+    "client": ["START_SESSION", "AUDIO_CHUNK", "END_SESSION", "PING"],
+    "server": ["SESSION_STARTED", "PARTIAL", "FINALIZED", "SPEAKER_TURN", "SEMANTIC_UPDATE", "ERROR", "SESSION_ENDED", "PONG"]
+  }
+}
+```
+
+### Create Streaming Session
+
+**POST** `/stream/sessions`
+
+Creates a new streaming session that can be connected via WebSocket.
+
+**Parameters:**
+- `max_gap_sec` (query, optional): Gap threshold to finalize segment (default: 1.0, range: 0.1-10.0)
+- `enable_prosody` (query, optional): Extract prosodic features from audio (default: false)
+- `enable_emotion` (query, optional): Extract dimensional emotion features (default: false)
+- `enable_diarization` (query, optional): Enable incremental speaker diarization (default: false)
+- `sample_rate` (query, optional): Expected audio sample rate (default: 16000, range: 8000-48000)
+
+**Example:**
+```bash
+# Create with default config
+curl -X POST "http://localhost:8000/stream/sessions"
+
+# Create with custom config
+curl -X POST "http://localhost:8000/stream/sessions?max_gap_sec=0.5&enable_prosody=true&sample_rate=8000"
+```
+
+**Response (201 Created):**
+```json
+{
+  "session_id": "str-123e4567-e89b-12d3-a456-426614174000",
+  "websocket_url": "/stream?session_id=str-123e4567-e89b-12d3-a456-426614174000",
+  "config": {
+    "max_gap_sec": 1.0,
+    "enable_prosody": false,
+    "enable_emotion": false,
+    "enable_diarization": false,
+    "sample_rate": 16000,
+    "audio_format": "pcm_s16le"
+  }
+}
+```
+
+### List Streaming Sessions
+
+**GET** `/stream/sessions`
+
+Returns a list of all registered streaming sessions.
+
+```bash
+curl http://localhost:8000/stream/sessions
+```
+
+**Response:**
+```json
+{
+  "sessions": [
+    {
+      "session_id": "str-123e4567-e89b-12d3-a456-426614174000",
+      "status": "created",
+      "created_at": "2025-01-15T10:30:00.000Z",
+      "last_activity": "2025-01-15T10:30:00.000Z",
+      "config": {
+        "max_gap_sec": 1.0,
+        "enable_prosody": false,
+        "enable_emotion": false,
+        "enable_diarization": false,
+        "sample_rate": 16000
+      },
+      "stats": {
+        "chunks_received": 0,
+        "bytes_received": 0,
+        "segments_partial": 0,
+        "segments_finalized": 0,
+        "events_sent": 0,
+        "events_dropped": 0,
+        "errors": 0,
+        "backpressure_events": 0,
+        "resume_attempts": 0,
+        "duration_sec": 0.0
+      },
+      "last_event_id": 0,
+      "error": null
+    }
+  ],
+  "count": 1,
+  "registry_stats": {
+    "total_sessions": 1,
+    "by_status": {"created": 1},
+    "connected_count": 0,
+    "idle_timeout_sec": 300.0,
+    "disconnected_ttl_sec": 120.0,
+    "cleanup_interval_sec": 60.0,
+    "cleanup_task_running": false
+  }
+}
+```
+
+### Get Session Status
+
+**GET** `/stream/sessions/{session_id}`
+
+Returns detailed status and statistics for a specific session.
+
+**Path Parameters:**
+- `session_id` (required): The session ID returned when creating a session
+
+**Example:**
+```bash
+curl http://localhost:8000/stream/sessions/str-123e4567-e89b-12d3-a456-426614174000
+```
+
+**Response:**
+```json
+{
+  "session_id": "str-123e4567-e89b-12d3-a456-426614174000",
+  "status": "active",
+  "created_at": "2025-01-15T10:30:00.000Z",
+  "last_activity": "2025-01-15T10:35:00.000Z",
+  "config": {
+    "max_gap_sec": 1.0,
+    "enable_prosody": false,
+    "enable_emotion": false,
+    "enable_diarization": false,
+    "sample_rate": 16000
+  },
+  "stats": {
+    "chunks_received": 150,
+    "bytes_received": 4800000,
+    "segments_partial": 12,
+    "segments_finalized": 8,
+    "events_sent": 22,
+    "events_dropped": 0,
+    "errors": 0,
+    "backpressure_events": 0,
+    "resume_attempts": 0,
+    "duration_sec": 300.5
+  },
+  "last_event_id": 22,
+  "error": null
+}
+```
+
+**Session Status Values:**
+- `created`: Session created but not yet started (no WebSocket connected)
+- `active`: Session is actively processing audio
+- `ending`: Session is finalizing (processing final segments)
+- `ended`: Session has ended normally
+- `error`: Session ended due to an error
+- `disconnected`: WebSocket disconnected but session can be resumed
+
+**Error Response (404 Not Found):**
+```json
+{
+  "detail": "Session not found: str-nonexistent-id"
+}
+```
+
+### Close Session
+
+**DELETE** `/stream/sessions/{session_id}`
+
+Force closes a streaming session and cleans up resources.
+
+**Path Parameters:**
+- `session_id` (required): The session ID to close
+
+**Example:**
+```bash
+curl -X DELETE http://localhost:8000/stream/sessions/str-123e4567-e89b-12d3-a456-426614174000
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Session str-123e4567-e89b-12d3-a456-426614174000 closed",
+  "session_id": "str-123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+**Error Response (404 Not Found):**
+```json
+{
+  "detail": "Session not found: str-nonexistent-id"
+}
+```
+
+### WebSocket Streaming Protocol
+
+After creating a session via REST, connect to the WebSocket endpoint:
+
+**WebSocket** `/stream`
+
+**Client Message Types:**
+- `START_SESSION`: Begin streaming with configuration
+- `AUDIO_CHUNK`: Send base64-encoded audio data
+- `END_SESSION`: End the session
+- `PING`: Heartbeat for connection health
+
+**Server Message Types:**
+- `SESSION_STARTED`: Session initialized successfully
+- `PARTIAL`: Partial transcription (may be dropped under backpressure)
+- `FINALIZED`: Final transcription (never dropped)
+- `ERROR`: Error message with recovery info
+- `SESSION_ENDED`: Session ended with statistics
+- `PONG`: Response to client PING
+
+See `docs/STREAMING_ARCHITECTURE.md` for detailed protocol specification.
+
 ## Interactive Documentation
 
 The API includes auto-generated interactive documentation:

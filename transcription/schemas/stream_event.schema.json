@@ -1,21 +1,20 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://slower-whisper.dev/schemas/event_envelope_v2.json",
-  "title": "EventEnvelope",
-  "description": "Server-to-client event envelope for WebSocket streaming protocol v2.1. Every server message uses this envelope format to provide consistent metadata for event ordering, timing, and context. See docs/STREAMING_API.md for full specification.",
+  "$id": "https://slower-whisper.dev/schemas/stream_event.json",
+  "title": "StreamEventEnvelope",
+  "description": "Server-to-client event envelope for WebSocket streaming protocol (v2.1). Every server message uses this envelope format to provide consistent metadata for event ordering, timing, and context. See docs/STREAMING_ARCHITECTURE.md section 11 for complete specification.",
   "type": "object",
   "required": ["event_id", "stream_id", "type", "ts_server", "payload"],
   "properties": {
     "schema_version": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "description": "Schema version for forward compatibility (semver format). Clients should check this field to detect protocol changes. Current version: 2.1.0",
-      "default": "2.1.0"
+      "description": "Schema version string (semver format, e.g., '2.1.0'). Used for forward compatibility."
     },
     "event_id": {
       "type": "integer",
       "minimum": 1,
-      "description": "Monotonically increasing event ID per stream. Starts at 1 for each session. Never resets or decreases within a session. Gaps indicate dropped PARTIAL events (FINALIZED events are never dropped)."
+      "description": "Monotonically increasing event ID per stream. Never resets within a session. Starts at 1. Gaps indicate dropped events (PARTIAL under backpressure)."
     },
     "stream_id": {
       "type": "string",
@@ -25,7 +24,7 @@
     "segment_id": {
       "type": ["string", "null"],
       "pattern": "^seg-\\d+$",
-      "description": "Segment identifier in format seg-{seq}. Null for non-segment events (SESSION_STARTED, SESSION_ENDED, PONG, etc.). Same segment_id links PARTIAL events to their FINALIZED event."
+      "description": "Segment identifier in format seg-{seq}. Null for non-segment events (SESSION_STARTED, SESSION_ENDED, PONG, PHYSICS_UPDATE, AUDIO_HEALTH, VAD_ACTIVITY, BARGE_IN, etc.). Same segment_id links PARTIAL events to their FINALIZED event."
     },
     "type": {
       "$ref": "#/$defs/ServerMessageType",
@@ -142,6 +141,56 @@
           "payload": { "$ref": "#/$defs/PongPayload" }
         }
       }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "PHYSICS_UPDATE" } }
+      },
+      "then": {
+        "properties": {
+          "payload": { "$ref": "#/$defs/PhysicsUpdatePayload" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "AUDIO_HEALTH" } }
+      },
+      "then": {
+        "properties": {
+          "payload": { "$ref": "#/$defs/AudioHealthPayload" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "VAD_ACTIVITY" } }
+      },
+      "then": {
+        "properties": {
+          "payload": { "$ref": "#/$defs/VADActivityPayload" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "BARGE_IN" } }
+      },
+      "then": {
+        "properties": {
+          "payload": { "$ref": "#/$defs/BargeInPayload" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "END_OF_TURN_HINT" } }
+      },
+      "then": {
+        "properties": {
+          "payload": { "$ref": "#/$defs/EndOfTurnHintPayload" }
+        }
+      }
     }
   ],
   "$defs": {
@@ -163,7 +212,7 @@
         "BARGE_IN",
         "END_OF_TURN_HINT"
       ],
-      "description": "Server message types sent from server to client. Core types: SESSION_STARTED, PARTIAL, FINALIZED, SPEAKER_TURN, SEMANTIC_UPDATE, DIARIZATION_UPDATE, ERROR, SESSION_ENDED, PONG. v2.1 additions: PHYSICS_UPDATE, AUDIO_HEALTH, VAD_ACTIVITY, BARGE_IN, END_OF_TURN_HINT."
+      "description": "Server message types sent from server to client. Includes v2.0 core types and v2.1 reflex/physics types."
     },
     "SessionStartedPayload": {
       "type": "object",
@@ -236,6 +285,16 @@
           "type": "integer",
           "minimum": 0,
           "description": "Number of errors encountered during session."
+        },
+        "backpressure_events": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of times backpressure was triggered."
+        },
+        "resume_attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of resume attempts made."
         },
         "duration_sec": {
           "type": "number",
@@ -326,135 +385,11 @@
         },
         "audio_state": {
           "type": ["object", "null"],
-          "$ref": "#/$defs/AudioState",
           "description": "Audio enrichment data. Null if enrichment not enabled or failed."
         }
       },
       "additionalProperties": false,
       "description": "Segment data for FINALIZED events."
-    },
-    "AudioState": {
-      "type": ["object", "null"],
-      "properties": {
-        "prosody": {
-          "type": "object",
-          "properties": {
-            "pitch": {
-              "type": "object",
-              "properties": {
-                "level": {
-                  "type": "string",
-                  "enum": ["low", "neutral", "high"],
-                  "description": "Pitch level classification."
-                },
-                "mean_hz": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "Mean pitch in Hz."
-                }
-              },
-              "additionalProperties": true
-            },
-            "energy": {
-              "type": "object",
-              "properties": {
-                "level": {
-                  "type": "string",
-                  "enum": ["quiet", "moderate", "loud"],
-                  "description": "Energy/volume level classification."
-                },
-                "mean_db": {
-                  "type": "number",
-                  "description": "Mean energy in dB."
-                }
-              },
-              "additionalProperties": true
-            },
-            "rate": {
-              "type": "object",
-              "properties": {
-                "level": {
-                  "type": "string",
-                  "enum": ["slow", "moderate", "fast"],
-                  "description": "Speech rate classification."
-                },
-                "syllables_per_sec": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "Syllables per second."
-                }
-              },
-              "additionalProperties": true
-            }
-          },
-          "additionalProperties": true,
-          "description": "Prosodic features extracted from audio."
-        },
-        "emotion": {
-          "type": "object",
-          "properties": {
-            "valence": {
-              "type": "object",
-              "properties": {
-                "level": {
-                  "type": "string",
-                  "enum": ["negative", "neutral", "positive"],
-                  "description": "Valence classification."
-                },
-                "score": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 1,
-                  "description": "Valence score (0.0-1.0)."
-                }
-              },
-              "additionalProperties": true
-            },
-            "arousal": {
-              "type": "object",
-              "properties": {
-                "level": {
-                  "type": "string",
-                  "enum": ["low", "moderate", "high"],
-                  "description": "Arousal classification."
-                },
-                "score": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 1,
-                  "description": "Arousal score (0.0-1.0)."
-                }
-              },
-              "additionalProperties": true
-            }
-          },
-          "additionalProperties": true,
-          "description": "Dimensional emotion features."
-        },
-        "categorical_emotion": {
-          "type": "object",
-          "properties": {
-            "label": {
-              "type": "string",
-              "description": "Categorical emotion label (e.g., 'happy', 'sad', 'angry')."
-            },
-            "confidence": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1,
-              "description": "Classification confidence (0.0-1.0)."
-            }
-          },
-          "additionalProperties": true,
-          "description": "Categorical emotion classification."
-        },
-        "rendering": {
-          "type": "string",
-          "description": "Human-readable rendering of audio state (e.g., '[audio: high pitch, positive]')."
-        }
-      },
-      "additionalProperties": true,
-      "description": "Audio enrichment data including prosody, emotion, and rendering."
     },
     "SpeakerTurnPayload": {
       "type": "object",
@@ -657,7 +592,8 @@
             "SESSION_ERROR",
             "INVALID_MESSAGE",
             "RATE_LIMITED",
-            "DIARIZATION_FAILURE"
+            "DIARIZATION_FAILURE",
+            "SESSION_MISMATCH"
           ],
           "description": "Error code identifier."
         },
@@ -693,6 +629,161 @@
       },
       "additionalProperties": false,
       "description": "Payload for PONG events. Used for latency measurement and keep-alive."
+    },
+    "PhysicsUpdatePayload": {
+      "type": "object",
+      "required": ["speaker_talk_times", "total_duration_sec", "interruption_count"],
+      "properties": {
+        "speaker_talk_times": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          },
+          "description": "Map of speaker_id to total talk time in seconds."
+        },
+        "total_duration_sec": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total conversation duration in seconds."
+        },
+        "interruption_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of interruptions detected."
+        },
+        "interruption_rate": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Interruptions per minute."
+        },
+        "mean_response_latency_sec": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Average response latency between speakers in seconds. Null if not enough data."
+        },
+        "speaker_transitions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of speaker transitions."
+        },
+        "overlap_duration_sec": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total duration of overlapping speech in seconds."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Payload for PHYSICS_UPDATE events (v2.1). Contains conversation dynamics metrics."
+    },
+    "AudioHealthPayload": {
+      "type": "object",
+      "required": ["clipping_ratio", "rms_energy", "quality_score", "is_speech_likely"],
+      "properties": {
+        "clipping_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Ratio of clipped samples (0.0-1.0). High values indicate audio distortion."
+        },
+        "rms_energy": {
+          "type": "number",
+          "description": "Root mean square energy level (dB or linear scale)."
+        },
+        "snr_proxy": {
+          "type": ["number", "null"],
+          "description": "Signal-to-noise ratio proxy estimate. Null if not computable."
+        },
+        "spectral_centroid": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Spectral centroid in Hz. Null if not computable."
+        },
+        "quality_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Overall audio quality score (0.0-1.0)."
+        },
+        "is_speech_likely": {
+          "type": "boolean",
+          "description": "Whether the audio chunk likely contains speech."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Payload for AUDIO_HEALTH events (v2.1). Contains audio quality metrics."
+    },
+    "VADActivityPayload": {
+      "type": "object",
+      "required": ["energy_level", "is_speech", "silence_duration_sec"],
+      "properties": {
+        "energy_level": {
+          "type": "number",
+          "description": "Current audio energy level."
+        },
+        "is_speech": {
+          "type": "boolean",
+          "description": "Whether speech is currently detected."
+        },
+        "silence_duration_sec": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Duration of current silence period in seconds. Zero if speaking."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Payload for VAD_ACTIVITY events (v2.1). Emitted on speech/silence state transitions."
+    },
+    "BargeInPayload": {
+      "type": "object",
+      "required": ["energy", "tts_elapsed_sec"],
+      "properties": {
+        "energy": {
+          "type": "number",
+          "description": "Audio energy level that triggered the barge-in detection."
+        },
+        "tts_elapsed_sec": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Time elapsed since TTS started playing when barge-in was detected."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Payload for BARGE_IN events (v2.1). Emitted when user speech is detected during TTS playback."
+    },
+    "EndOfTurnHintPayload": {
+      "type": "object",
+      "required": ["confidence", "silence_duration_sec"],
+      "properties": {
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Confidence that the speaker has finished their turn (0.0-1.0)."
+        },
+        "silence_duration_sec": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Duration of trailing silence that triggered the hint."
+        },
+        "prosodic_cues": {
+          "type": "object",
+          "properties": {
+            "falling_intonation": {
+              "type": "boolean",
+              "description": "Whether falling intonation was detected."
+            },
+            "final_lengthening": {
+              "type": "boolean",
+              "description": "Whether final syllable lengthening was detected."
+            }
+          },
+          "additionalProperties": false,
+          "description": "Prosodic cues contributing to end-of-turn detection. Optional."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Payload for END_OF_TURN_HINT events (v2.1). Hints that the speaker may have finished their turn."
     }
   }
 }

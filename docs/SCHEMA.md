@@ -107,11 +107,69 @@ validate_transcript_json(data)  # raises on invalid
 
 ---
 
+## Receipt Contract (v2.1+)
+
+The `meta.receipt` field provides provenance tracking for reproducibility and traceability.
+
+### Receipt Fields
+
+| Key | Type | Required | Notes |
+|-----|------|----------|-------|
+| `tool_version` | string | ✓ | Package version (e.g., "2.1.0") |
+| `schema_version` | int | ✓ | JSON schema version (matches root `schema_version`) |
+| `model` | string | ✓ | ASR model name (e.g., "large-v3") |
+| `device` | string | ✓ | Resolved device ("cuda", "cpu") |
+| `compute_type` | string | ✓ | Compute type ("float16", "int8") |
+| `config_hash` | string | ✓ | SHA-256 hash of normalized config (12 chars) |
+| `run_id` | string | ✓ | Unique execution identifier (UUID4) |
+| `created_at` | string | ✓ | ISO 8601 timestamp (UTC) |
+| `git_commit` | string | | Optional short git commit hash |
+
+### Receipt Example
+
+```json
+{
+  "meta": {
+    "receipt": {
+      "tool_version": "2.1.0",
+      "schema_version": 2,
+      "model": "large-v3",
+      "device": "cuda",
+      "compute_type": "float16",
+      "config_hash": "a1b2c3d4e5f6",
+      "run_id": "550e8400-e29b-41d4-a716-446655440000",
+      "created_at": "2024-01-15T10:30:00Z",
+      "git_commit": "abc1234"
+    }
+  }
+}
+```
+
+### Usage
+
+```python
+from transcription.receipt import build_receipt
+from transcription.writers import add_receipt_to_meta
+
+# Build a receipt
+receipt = build_receipt(
+    model="large-v3",
+    device="cuda",
+    compute_type="float16",
+)
+
+# Add to transcript metadata
+transcript.meta = add_receipt_to_meta(transcript.meta, receipt)
+```
+
+---
+
 ## Backward Compatibility
 
 - v1 transcripts (missing `audio_state`, `words`) load correctly
 - Deserializer accepts both `file` and `file_name` keys for REST API compatibility
 - Optional fields may be `null` or absent
+- Transcripts without `meta.receipt` are valid (receipt is optional for backward compatibility)
 
 ---
 
