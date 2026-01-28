@@ -463,8 +463,16 @@ def assign_speakers(
     # Sort turns by start time for optimized search (copy to avoid mutating caller's list)
     sorted_turns = sorted(speaker_turns, key=lambda t: t.start)
 
+    # Sort segments by start time to ensure deterministic speaker assignment.
+    # This guards against out-of-order segments which would break the sliding
+    # window optimization. Mutations happen in-place on the segment objects.
+    sorted_segments = sorted(transcript.segments, key=lambda s: s.start)
+
+    turn_idx = 0
+    num_turns = len(sorted_turns)
+
     # Assign speakers to each segment
-    for segment in transcript.segments:
+    for segment in sorted_segments:
         seg_start = segment.start
         seg_end = segment.end
         seg_duration = seg_end - seg_start
@@ -474,19 +482,21 @@ def assign_speakers(
             segment.speaker = None
             continue
 
+        # Optimization: Advance turn_idx to skip turns that end before this segment starts
+        while turn_idx < num_turns and sorted_turns[turn_idx].end <= seg_start:
+            turn_idx += 1
+
         # Find best speaker by max overlap
         best_speaker_id: str | None = None
         max_overlap_duration = 0.0
 
-        for turn in sorted_turns:
+        for i in range(turn_idx, num_turns):
+            turn = sorted_turns[i]
+
             # Optimization: Since turns are sorted by start time,
             # if a turn starts after the segment ends, all subsequent turns also will.
             if turn.start >= seg_end:
                 break
-
-            # Optimization: Skip turns that end before the segment starts
-            if turn.end <= seg_start:
-                continue
 
             overlap_duration = _compute_overlap(seg_start, seg_end, turn.start, turn.end)
 
