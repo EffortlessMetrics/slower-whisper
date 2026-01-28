@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "librispeech-test-other",
+  "track": "asr",
+  "split": "test",
+  "description": "LibriSpeech test-other subset - challenging read English speech with more acoustic variability",
+  "source": {
+    "name": "LibriSpeech ASR Corpus",
+    "url": "https://www.openslr.org/12/",
+    "citation": "Panayotov et al., LibriSpeech: An ASR Corpus Based on Public Domain Audio Books, ICASSP 2015"
+  },
+  "license": {
+    "id": "CC-BY-4.0",
+    "name": "Creative Commons Attribution 4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "download": {
+    "url": "https://www.openslr.org/resources/12/test-other.tar.gz",
+    "sha256": "d09c181bba5cf717b3dee7d4d92e8d4470c6b57ff8d7c4be9d30c5e8e3e1e0c3",
+    "size_bytes": 343987200,
+    "format": "tar.gz",
+    "extraction_path": "LibriSpeech/test-other"
+  },
+  "audio_format": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "encoding": "flac",
+    "bit_depth": 16
+  },
+  "samples": [],
+  "sample_discovery": {
+    "method": "filesystem",
+    "pattern": "**/*.flac",
+    "transcript_pattern": "**/*.trans.txt",
+    "transcript_format": "librispeech",
+    "notes": "Samples are discovered from extracted archive. Each speaker/chapter directory contains .flac files and a .trans.txt file with space-separated ID and normalized transcript."
+  },
+  "meta": {
+    "created_at": "2026-01-26T00:00:00Z",
+    "total_duration_hours": 5.1,
+    "sample_count": 2939,
+    "speaker_count": 33,
+    "language": "en",
+    "domain": "audiobook",
+    "speech_type": "read",
+    "quality": "other",
+    "notes": "More challenging subset with speakers having stronger accents or less clear recordings. WER is typically 2-3x higher than test-clean. Use for robustness evaluation."
+  }
+}

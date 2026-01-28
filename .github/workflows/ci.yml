@@ -438,6 +438,39 @@ jobs:
           path: benchmark-results/
           retention-days: 30
 
+  # Documentation build
+  docs:
+    name: Build docs
+    runs-on: ubuntu-latest
+    needs: [lint, format]  # Run after quick checks pass
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install docs dependencies
+        run: uv sync --extra docs --no-dev
+
+      - name: Build documentation
+        run: ./scripts/docs-build.sh --strict
+
+      - name: Upload documentation
+        uses: actions/upload-artifact@v6
+        with:
+          name: docs-html
+          path: docs/_build/html/
+          retention-days: 14
+
   # Summary job that all required checks depend on
   ci-success:
     name: CI Success
@@ -451,16 +484,19 @@ jobs:
       - bdd-library
       - bdd-api
       - benchmark
+      - docs
     runs-on: ubuntu-latest
     steps:
       - name: Check all jobs
         run: |
           if [[ "${{ needs.lint.result }}" == "failure" ]] || \
              [[ "${{ needs.format.result }}" == "failure" ]] || \
+             [[ "${{ needs.type-check.result }}" == "failure" ]] || \
              [[ "${{ needs.test.result }}" == "failure" ]] || \
              [[ "${{ needs.test-integration.result }}" == "failure" ]] || \
              [[ "${{ needs.bdd-library.result }}" == "failure" ]] || \
-             [[ "${{ needs.bdd-api.result }}" == "failure" ]]; then
+             [[ "${{ needs.bdd-api.result }}" == "failure" ]] || \
+             [[ "${{ needs.docs.result }}" == "failure" ]]; then
             echo "One or more required jobs failed"
             exit 1
           fi
@@ -478,8 +514,11 @@ jobs:
           echo ""
           echo "All required jobs passed!"
           echo ""
-          echo "✅ Code quality verified"
+          echo "✅ Lint passed"
+          echo "✅ Format check passed"
+          echo "✅ Type check passed"
           echo "✅ Unit tests passed"
           echo "✅ Integration tests passed"
           echo "✅ Library BDD contract enforced"
           echo "✅ API BDD contract enforced"
+          echo "✅ Documentation builds cleanly"

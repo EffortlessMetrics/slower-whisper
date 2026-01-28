@@ -229,3 +229,40 @@ class TestDryRunValidation:
         # selection.csv has 15 entries (from the test data)
         assert "Samples defined: 15" in output
         assert "from selection.csv" in output
+
+
+def test_benchmark_run_passes_llm_delay_to_runner() -> None:
+    """LLM delay is forwarded to the benchmark runner factory."""
+    from transcription.benchmark_cli import BenchmarkMetric, BenchmarkResult, handle_benchmark_run
+
+    dummy_result = BenchmarkResult(
+        track="semantic",
+        dataset="ami",
+        split="test",
+        samples_evaluated=1,
+        samples_failed=0,
+        metrics=[BenchmarkMetric(name="faithfulness", value=1.0, unit="/10")],
+    )
+
+    mock_runner = MagicMock()
+    mock_runner.run.return_value = dummy_result
+
+    with patch(
+        "transcription.benchmark_cli.get_benchmark_runner", return_value=mock_runner
+    ) as mock_get:
+        exit_code = handle_benchmark_run(
+            track="semantic",
+            dataset="ami",
+            split="test",
+            limit=1,
+            output=None,
+            verbose=False,
+            mode="summary",
+            dry_run=False,
+            gate=False,
+            threshold_overrides=None,
+            llm_delay_s=1.5,
+        )
+
+    assert exit_code == 0
+    mock_get.assert_called_once_with("semantic", "ami", "test", mode="summary", llm_delay_s=1.5)

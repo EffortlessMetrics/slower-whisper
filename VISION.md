@@ -1,17 +1,17 @@
-# Vision: slower-whisper as Local Conversation Intelligence Infrastructure
+# Vision: slower-whisper as ETL for Conversations
 
-**Last Updated:** 2025-11-17
+**Last Updated:** 2026-01-26
 **Status:** Active Development
 
 ---
 
 ## One-Sentence Vision
 
-> **Make conversations machine-understandable—locally.**
+> **ETL for conversations. Audio in, receipts out.**
 
 Or more precisely:
 
-> Turn raw audio into **LLM-ready conversational state**: text + timing + speakers + prosody + emotion + overlaps, in a tested JSON schema, using local models.
+> Schema-versioned transformation pipeline that turns raw audio into **LLM-ready structured data**: text + timing + speakers + prosody + emotion, with deterministic ground truth that LLMs can't hallucinate.
 
 ---
 
@@ -63,7 +63,7 @@ But it misses **how** it was said:
 
 ### Positioning
 
-slower-whisper is **local-first, open-source conversation intelligence infrastructure**.
+slower-whisper is **ETL for conversations**—local-first, schema-versioned, LLM-ready.
 
 It's:
 
@@ -73,9 +73,10 @@ It's:
 
 It **is**:
 
-- A **conversation signal engine** that turns audio into rich, structured state
+- **ETL for conversations** — deterministic transformation from audio to structured JSON
+- **FinOps for LLMs** — cheap triage layer (rules, DSP, local math) before expensive model inference
+- **Truth layer** — acoustic ground truth (timestamps, speaker math, prosody) that LLMs can't hallucinate
 - **Infrastructure** for building LLM-powered conversation tools
-- **OpenTelemetry for audio conversations** — standardized, inspectable, composable
 
 ### Target Users
 
@@ -146,6 +147,37 @@ Building conversation-aware LLM apps:
 - Praat export before HTML viewer (group 2 > casual users)
 - Schema stability before semantic SLM (infrastructure > novelty)
 
+### Why "ETL" and "FinOps"?
+
+**ETL for Conversations:**
+
+Traditional ETL transforms messy data into queryable, schema-stable artifacts. slower-whisper does the same for audio:
+
+- **Extract**: Pull signal from raw audio (ASR, diarization, prosody)
+- **Transform**: Normalize into versioned schema with receipts
+- **Load**: Output JSON that LLMs, vector DBs, and analytics tools can consume directly
+
+**FinOps for LLMs:**
+
+LLM inference is expensive. slower-whisper runs **cheap deterministic triage first**:
+
+1. **Rule-based keyword extraction** — zero-cost, instant (regex for "cancel", "manager", "complaint")
+2. **DSP-derived prosody** — CPU-only (librosa RMS, Praat pitch)
+3. **Speaker math** — IoU assignment, turn boundaries
+4. **Only then**: route interesting segments to expensive models
+
+This cuts API costs by filtering what needs cloud intelligence. The cheap layer flags; the expensive layer reasons.
+
+**Truth Layer:**
+
+LLMs hallucinate tone, pacing, and speaker attribution. They can't produce stable timestamps or reliably separate speakers. slower-whisper pre-computes these with deterministic math and hands the LLM hard facts:
+
+- `[5.8s - 9.2s]` — exact timing, not guessed
+- `speaker: "spk_0"` — IoU-assigned, not inferred
+- `[audio: high energy, fast speech]` — DSP-derived, not hallucinated
+
+Even omnimodal LLMs benefit: they burn capacity doing ASR/diarization implicitly. Pre-computing shrinks the search space and reduces hallucinated tone/pacing.
+
 ### Market Position
 
 | Dimension | Cloud APIs | OSS Toolkits | slower-whisper |
@@ -155,10 +187,11 @@ Building conversation-aware LLM apps:
 | **LLM Integration** | Via API | Not designed for it | **LLM-native JSON** |
 | **Contracts** | None | None | **BDD + IaC contracts** |
 | **Acoustic Features** | Limited | Rich but scattered | **Structured + versioned** |
+| **Cost Model** | Per-minute | Free but manual | **Cheap triage + optional LLM** |
 
 **Unique position:**
 
-> The only open, local, contract-driven pipeline that turns audio into **stable, LLM-ready conversational state**.
+> The only open, local, contract-driven pipeline that turns audio into **stable, LLM-ready conversational state** with deterministic ground truth.
 
 ---
 

@@ -5,24 +5,28 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "slower-whisper"
 version = "1.9.2"
-description = "Local-first conversation signal engine: transform audio into LLM-ready structured data with speaker diarization, prosody, and emotion"
+description = "Audio to receipts. Local-first conversation ETL: schema-versioned transcripts with speakers, timestamps, prosody, and a stable JSON contract for LLM pipelines."
 readme = "README.md"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.15"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "Effortless Metrics", email = "opensource@effortlessmetrics.com"}
+    {name = "Effortless Metrics", email = "git@effortlesssteven.com"}
 ]
 keywords = [
+    "asr",
     "whisper",
+    "faster-whisper",
     "transcription",
-    "audio",
-    "speech-to-text",
-    "prosody",
-    "emotion",
     "diarization",
-    "speaker-identification",
+    "streaming",
+    "prosody",
+    "emotion-recognition",
+    "local-first",
+    "privacy",
+    "json-schema",
     "conversation-intelligence",
-    "llm-integration",
+    "llm",
+    "rag",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -30,8 +34,9 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Text Processing :: Linguistic",
@@ -48,13 +53,13 @@ dependencies = [
 # Adds: soundfile, numpy, librosa stack (scipy, scikit-learn, numba)
 enrich-basic = [
     "soundfile>=0.13.1",
-    "numpy>=2,<3",
+    "numpy>=2,<2.4",  # Upper bound from numba 0.63.x; bump when numba supports 2.4+
     "librosa>=0.11.0",
     # Floor numba to prevent solver from backtracking to ancient versions
     # that claim numpy 2.4+ compatibility but fail on modern Python.
     # numba 0.62+ brings compatible llvmlite automatically.
     # See: https://github.com/numba/numba/issues/10263
-    "numba>=0.62",
+    "numba>=0.63.1",
 ]
 
 # Stage 2b: Prosody with Praat (best accuracy, ~36MB additional)
@@ -70,7 +75,7 @@ emotion = [
     "slower-whisper[enrich-basic]",
     "torch>=2.8.0,<3",
     "torchaudio>=2.8.0,<3",
-    "transformers>=4.57.3,<5",
+    "transformers==5.0.0",
 ]
 
 # Stage 2d: Speaker diarization (heavy ML, ~4GB additional)
@@ -97,9 +102,9 @@ enrich = [
 
 # FastAPI service wrapper
 api = [
-    "fastapi>=0.127.0",
+    "fastapi>=0.128.0",
     "uvicorn[standard]>=0.40.0",
-    "python-multipart>=0.0.21",  # Required for file uploads
+    "python-multipart>=0.0.22",  # Required for file uploads
 ]
 
 # Integrations (LangChain, LlamaIndex)
@@ -108,13 +113,23 @@ integrations = [
     "llama-index-core",
 ]
 
+# Documentation (Sphinx 9.1+ requires Python 3.12+)
+docs = [
+    "Sphinx==9.1.0; python_version >= '3.12'",
+    "myst-parser==5.0.0; python_version >= '3.12'",
+    "sphinx-rtd-theme==3.1.0; python_version >= '3.12'",
+    "sphinx-autodoc-typehints==3.6.2; python_version >= '3.12'",
+    "docutils==0.22.4; python_version >= '3.12'",
+]
+
 # Development dependencies
 dev = [
     "slower-whisper[full]",
     "slower-whisper[integrations]",
     "slower-whisper[api]",
+    "slower-whisper[docs]",
     # Historian pipeline (PR analysis)
-    "claude-agent-sdk>=0.1.0",
+    "claude-agent-sdk>=0.1.23",
     # Testing
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
@@ -124,36 +139,31 @@ dev = [
     "pytest-bdd>=8.1.0",
     "httpx>=0.28.1",  # For API BDD tests
     "jiwer>=4.0.0",  # For WER computation in benchmarks
-    "pyannote.metrics>=3.2.0",  # For DER computation in benchmarks
-    "jsonschema>=4.25.1",  # For schema validation CLI/tests
+    "pyannote.metrics>=4.0.0",  # For DER computation in benchmarks
+    "jsonschema>=4.26.0",  # For schema validation CLI/tests
     # Code quality (ruff replaces black, isort, flake8)
     "mypy>=1.19.1",
-    "ruff>=0.14.10",
+    "ruff>=0.14.14",
     # Type stubs
     "types-requests",
     "types-PyYAML",
     "types-jsonschema",
-    # Documentation
-    "sphinx>=8,<10",
-    "sphinx-rtd-theme>=3,<4",
-    "sphinx-autodoc-typehints>=3,<4",
-    "myst-parser>=4,<5",
     # Build & Distribution
-    "build>=1.3.0",
+    "build>=1.4.0",
     "twine>=6.2.0",
-    "wheel>=0.45.1",
+    "wheel>=0.46.3",
     # Utilities
     "pre-commit>=4.5.1",
-    "ipython>=9.8.0",
+    "ipython>=9.9.0",
     "ipdb>=0.13.13",
-    "rich>=14.2.0",
+    "rich>=14.3.1",
 ]
 
 # Security scanning
 security = [
     "pip-audit>=2.10.0",
     "safety>=3.7.0",
-    "bandit>=1.9.2",
+    "bandit>=1.9.3",
 ]
 
 # Performance profiling
@@ -161,7 +171,7 @@ profiling = [
     "memory-profiler>=0.61.0",
     "line-profiler>=5.0.0",
     "py-spy>=0.4.1",
-    "psutil>=7.1.3",
+    "psutil>=7.2.1",
 ]
 
 [project.scripts]
@@ -188,7 +198,7 @@ transcription = ["py.typed"]
 
 [tool.black]
 line-length = 100
-target-version = ['py311', 'py312']
+target-version = ['py312', 'py313']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -215,7 +225,7 @@ use_parentheses = true
 ensure_newline_before_comments = true
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -311,7 +321,7 @@ exclude_lines = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [

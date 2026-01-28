@@ -44,8 +44,8 @@ class TestTranscribeEndpointLeaks:
         sensitive_path = "/home/user/secrets/api_key.txt"
 
         with (
-            patch("transcription.service.transcribe_file") as mock_transcribe,
-            patch("transcription.service.validate_audio_format"),
+            patch("transcription.service_transcribe.transcribe_file") as mock_transcribe,
+            patch("transcription.service_transcribe.validate_audio_format"),
         ):
             mock_transcribe.side_effect = RuntimeError(f"File not found at {sensitive_path}")
 
@@ -68,8 +68,8 @@ class TestTranscribeEndpointLeaks:
         sensitive_detail = "Model path: /opt/models/whisper-secret-v3"
 
         with (
-            patch("transcription.service.transcribe_file") as mock_transcribe,
-            patch("transcription.service.validate_audio_format"),
+            patch("transcription.service_transcribe.transcribe_file") as mock_transcribe,
+            patch("transcription.service_transcribe.validate_audio_format"),
         ):
             mock_transcribe.side_effect = TranscriptionError(sensitive_detail)
 
@@ -92,8 +92,8 @@ class TestTranscribeEndpointLeaks:
         sensitive_config = "CUDA_HOME=/usr/local/cuda-secret"
 
         with (
-            patch("transcription.service.transcribe_file") as mock_transcribe,
-            patch("transcription.service.validate_audio_format"),
+            patch("transcription.service_transcribe.transcribe_file") as mock_transcribe,
+            patch("transcription.service_transcribe.validate_audio_format"),
         ):
             mock_transcribe.side_effect = ConfigurationError(sensitive_config)
 
@@ -123,9 +123,9 @@ class TestEnrichEndpointLeaks:
         sensitive_cred = "DB_PASSWORD=secret123"
 
         with (
-            patch("transcription.service._enrich_transcript") as mock_enrich,
-            patch("transcription.service.load_transcript") as mock_load,
-            patch("transcription.service.validate_audio_format"),
+            patch("transcription.service_enrich.enrich_transcript") as mock_enrich,
+            patch("transcription.api.load_transcript") as mock_load,
+            patch("transcription.service_enrich.validate_audio_format"),
         ):
             mock_load.return_value = MagicMock(segments=[MagicMock()])
             mock_enrich.side_effect = RuntimeError(f"Connection failed: {sensitive_cred}")
@@ -156,9 +156,9 @@ class TestEnrichEndpointLeaks:
         sensitive_detail = "Torch cache: /home/user/.cache/torch/hub/secret"
 
         with (
-            patch("transcription.service._enrich_transcript") as mock_enrich,
-            patch("transcription.service.load_transcript") as mock_load,
-            patch("transcription.service.validate_audio_format"),
+            patch("transcription.service_enrich.enrich_transcript") as mock_enrich,
+            patch("transcription.api.load_transcript") as mock_load,
+            patch("transcription.service_enrich.validate_audio_format"),
         ):
             mock_load.return_value = MagicMock(segments=[MagicMock()])
             mock_enrich.side_effect = EnrichmentError(sensitive_detail)

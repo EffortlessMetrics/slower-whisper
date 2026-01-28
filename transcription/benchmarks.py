@@ -10,7 +10,7 @@ Datasets are expected to be manually staged under:
     $SLOWER_WHISPER_CACHE_ROOT/benchmarks (default: ~/.cache/slower-whisper/benchmarks)
 
 Each dataset should be placed in its own subdirectory with a documented structure.
-See docs/AMI_SETUP.md, docs/IEMOCAP_SETUP.md for setup instructions.
+See docs/AMI_SETUP.md, docs/IEMOCAP_SETUP.md, docs/LIBRICSS_SETUP.md for setup instructions.
 
 Environment variables respected:
 - SLOWER_WHISPER_CACHE_ROOT: Root cache directory
@@ -774,6 +774,336 @@ def iter_smoke_asr(
         count += 1
 
 
+def iter_smoke_diarization(
+    limit: int | None = None,
+) -> Iterable[EvalSample]:
+    """Iterate over diarization smoke test samples.
+
+    Smoke tests are minimal datasets committed to the repository for quick CI
+    validation. They use synthetic tone-based audio with known speaker patterns.
+
+    The samples are defined in:
+        benchmarks/datasets/diarization/smoke/manifest.json
+
+    Args:
+        limit: Maximum number of samples to return (None = all)
+
+    Yields:
+        EvalSample objects with:
+            - dataset="diarization-smoke"
+            - id=sample["id"]
+            - audio_path: Path to audio file
+            - reference_speakers: Parsed from RTTM file
+
+    Raises:
+        FileNotFoundError: If manifest or audio files not found
+
+    Example:
+        >>> for sample in iter_smoke_diarization(limit=2):
+        ...     print(f"{sample.id}: {len(sample.reference_speakers)} speakers")
+    """
+    # Manifest is in the project benchmarks directory
+    module_dir = Path(__file__).parent.parent
+    manifest_path = (
+        module_dir / "benchmarks" / "datasets" / "diarization" / "smoke" / "manifest.json"
+    )
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Diarization smoke manifest not found at {manifest_path}.\n"
+            f"This should be committed to the repository."
+        )
+
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    samples = manifest.get("samples", [])
+    if not samples:
+        logger.warning(f"No samples found in diarization smoke manifest: {manifest_path}")
+        return
+
+    count = 0
+    for sample in samples:
+        if limit and count >= limit:
+            return
+
+        sample_id = sample.get("id")
+        audio_rel = sample.get("audio")
+        rttm_rel = sample.get("reference_rttm")
+
+        if not sample_id or not audio_rel:
+            logger.debug(f"Skipping sample with missing id or audio: {sample}")
+            continue
+
+        # Resolve paths relative to manifest directory
+        audio_path = (manifest_path.parent / audio_rel).resolve()
+        rttm_path = (manifest_path.parent / rttm_rel).resolve() if rttm_rel else None
+
+        if not audio_path.exists():
+            logger.warning(
+                f"Audio file not found for sample '{sample_id}': {audio_path}. Skipping."
+            )
+            continue
+
+        # Parse RTTM to get reference speakers
+        reference_speakers = None
+        if rttm_path and rttm_path.exists():
+            reference_speakers = _parse_rttm_file(rttm_path)
+
+        yield EvalSample(
+            dataset="diarization-smoke",
+            id=sample_id,
+            audio_path=audio_path,
+            reference_speakers=reference_speakers,
+            metadata={
+                "duration_s": sample.get("duration_s"),
+                "expected_speaker_count": sample.get("expected_speaker_count"),
+                "source": sample.get("source"),
+                "notes": sample.get("notes"),
+            },
+        )
+        count += 1
+
+
+def _parse_rttm_file(rttm_path: Path) -> list[dict[str, Any]]:
+    """Parse an RTTM file to extract speaker turns.
+
+    RTTM format:
+        SPEAKER file_id channel start duration <NA> <NA> speaker_id <NA> <NA>
+
+    Args:
+        rttm_path: Path to RTTM file
+
+    Returns:
+        List of dicts with keys: speaker_id, start, end
+    """
+    speakers = []
+    try:
+        with open(rttm_path, encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 8 and parts[0] == "SPEAKER":
+                    start = float(parts[3])
+                    duration = float(parts[4])
+                    speaker_id = parts[7]
+                    speakers.append(
+                        {
+                            "speaker_id": speaker_id,
+                            "start": start,
+                            "end": start + duration,
+                        }
+                    )
+    except Exception as e:
+        logger.warning(f"Failed to parse RTTM file {rttm_path}: {e}")
+    return speakers
+
+
+def iter_callhome(
+    split: str = "test",
+    limit: int | None = None,
+) -> Iterable[EvalSample]:
+    """Iterate over CALLHOME American English samples for diarization.
+
+    CALLHOME is a telephone speech corpus for 2-speaker diarization evaluation.
+    It should be manually staged under benchmarks_root/diarization/callhome-english/
+    following the structure documented in docs/CALLHOME_SETUP.md.
+
+    Expected structure:
+        benchmarks_root/diarization/callhome-english/
+            audio/
+                <call_id>.wav
+                ...
+            rttm/
+                <call_id>.rttm
+                ...
+            splits/
+                test.txt
+
+    Args:
+        split: Dataset split ("test" is the standard CALLHOME evaluation set)
+        limit: Maximum number of samples to return (None = all)
+
+    Yields:
+        EvalSample objects with CALLHOME call data
+
+    Raises:
+        FileNotFoundError: If CALLHOME directory not found or structure invalid
+
+    Example:
+        >>> for sample in iter_callhome(split="test", limit=5):
+        ...     print(f"Call {sample.id}: {sample.audio_path}")
+    """
+    root = get_benchmarks_root() / "diarization" / "callhome-english"
+    if not root.exists():
+        raise FileNotFoundError(
+            f"CALLHOME American English not found at {root}.\n"
+            f"Please see docs/CALLHOME_SETUP.md for setup instructions."
+        )
+
+    audio_dir = root / "audio"
+    rttm_dir = root / "rttm"
+
+    if not audio_dir.exists():
+        raise FileNotFoundError(
+            f"CALLHOME directory structure invalid. Expected:\n"
+            f"  {audio_dir}/\n"
+            f"See docs/CALLHOME_SETUP.md for correct structure."
+        )
+
+    # Load split manifest if available
+    split_file = root / "splits" / f"{split}.txt"
+    if split_file.exists():
+        call_ids = split_file.read_text().strip().split("\n")
+    else:
+        # Fallback: all audio files
+        call_ids = [f.stem for f in audio_dir.glob("*.wav")]
+
+    count = 0
+    for call_id in call_ids:
+        if limit and count >= limit:
+            break
+
+        call_id = call_id.strip()
+        if not call_id:
+            continue
+
+        audio_path = audio_dir / f"{call_id}.wav"
+        rttm_path = rttm_dir / f"{call_id}.rttm"
+
+        if not audio_path.exists():
+            logger.warning(f"Audio file not found for call {call_id}: {audio_path}")
+            continue
+
+        # Parse RTTM for reference speakers
+        reference_speakers = None
+        if rttm_path.exists():
+            reference_speakers = _parse_rttm_file(rttm_path)
+
+        yield EvalSample(
+            dataset="callhome",
+            id=call_id,
+            audio_path=audio_path,
+            reference_speakers=reference_speakers,
+            metadata={
+                "split": split,
+                "expected_speaker_count": 2,  # CALLHOME is always 2-speaker
+            },
+        )
+        count += 1
+
+
+def iter_libricss(
+    split: str = "test",
+    limit: int | None = None,
+) -> Iterable[EvalSample]:
+    """Iterate over LibriCSS samples for diarization evaluation.
+
+    LibriCSS is a continuous speech separation dataset derived from LibriSpeech.
+    It should be manually staged under benchmarks_root/libricss/ following the
+    structure documented in docs/LIBRICSS_SETUP.md.
+
+    Expected structure:
+        benchmarks_root/libricss/
+            audio/
+                <recording_id>.wav
+                ...
+            rttm/
+                <recording_id>.rttm
+                ...
+            splits/
+                test.txt
+
+    Args:
+        split: Dataset split ("train", "dev", "test") if split files exist
+        limit: Maximum number of samples to return (None = all)
+
+    Yields:
+        EvalSample objects with LibriCSS audio + RTTM references
+
+    Raises:
+        FileNotFoundError: If LibriCSS directory not found or structure invalid
+    """
+    root = get_benchmarks_root() / "libricss"
+    if not root.exists():
+        raise FileNotFoundError(
+            f"LibriCSS not found at {root}.\n"
+            f"Please see docs/LIBRICSS_SETUP.md for setup instructions."
+        )
+
+    audio_dir = root / "audio"
+    rttm_dir = root / "rttm"
+
+    if not audio_dir.exists():
+        raise FileNotFoundError(
+            f"LibriCSS directory structure invalid. Expected:\n"
+            f"  {audio_dir}/\n"
+            f"See docs/LIBRICSS_SETUP.md for correct structure."
+        )
+
+    audio_exts = (".wav", ".flac", ".mp3", ".ogg", ".m4a")
+
+    # Load split manifest if available
+    split_file = root / "splits" / f"{split}.txt"
+    if split_file.exists():
+        recording_ids = [line.strip() for line in split_file.read_text().splitlines()]
+    else:
+        # Fallback: all audio files with supported extensions
+        recording_ids = [
+            f.stem for f in audio_dir.iterdir() if f.is_file() and f.suffix.lower() in audio_exts
+        ]
+
+    def resolve_audio_path(recording_id: str) -> Path | None:
+        candidate = audio_dir / recording_id
+        if candidate.exists() and candidate.is_file():
+            return candidate
+        # Try common audio extensions
+        for ext in audio_exts:
+            path = audio_dir / f"{recording_id}{ext}"
+            if path.exists():
+                return path
+        # Fallback: any file with matching stem
+        matches = [
+            p
+            for p in audio_dir.glob(f"{recording_id}.*")
+            if p.is_file() and p.suffix.lower() in audio_exts
+        ]
+        if matches:
+            return matches[0]
+        return None
+
+    count = 0
+    for recording_id in recording_ids:
+        if limit and count >= limit:
+            break
+
+        recording_id = recording_id.strip()
+        if not recording_id:
+            continue
+
+        audio_path = resolve_audio_path(recording_id)
+        if audio_path is None:
+            logger.warning(f"Audio file not found for recording {recording_id} in {audio_dir}")
+            continue
+
+        base_id = Path(recording_id).stem
+        rttm_path = rttm_dir / f"{base_id}.rttm"
+
+        reference_speakers = None
+        if rttm_path.exists():
+            reference_speakers = _parse_rttm_file(rttm_path)
+
+        yield EvalSample(
+            dataset="libricss",
+            id=base_id,
+            audio_path=audio_path,
+            reference_speakers=reference_speakers,
+            metadata={
+                "split": split,
+            },
+        )
+        count += 1
+
+
 def list_available_benchmarks() -> dict[str, dict[str, Any]]:
     """List available benchmark datasets with status.
 
@@ -797,33 +1127,28 @@ def list_available_benchmarks() -> dict[str, dict[str, Any]]:
     root = get_benchmarks_root()
 
     datasets = {
-        "ami": {
-            "path": str(root / "ami"),
-            "available": (root / "ami").exists(),
-            "setup_doc": "docs/AMI_SETUP.md",
-            "description": "AMI Meeting Corpus for diarization and summarization evaluation",
-            "tasks": ["diarization", "summarization", "action_items"],
-        },
-        "iemocap": {
-            "path": str(root / "iemocap"),
-            "available": (root / "iemocap").exists(),
-            "setup_doc": "docs/IEMOCAP_SETUP.md",
-            "description": "IEMOCAP for emotion recognition evaluation",
-            "tasks": ["emotion"],
+        # ASR datasets
+        "smoke": {
+            "path": str(Path(__file__).parent.parent / "benchmarks" / "datasets" / "asr" / "smoke"),
+            "available": (
+                Path(__file__).parent.parent
+                / "benchmarks"
+                / "datasets"
+                / "asr"
+                / "smoke"
+                / "manifest.json"
+            ).exists(),
+            "setup_doc": "Committed to repository - always available",
+            "description": "Minimal ASR smoke tests for CI (synthetic TTS audio)",
+            "tasks": ["asr"],
         },
         "librispeech": {
             "path": str(root / "librispeech"),
             "available": (root / "librispeech" / "LibriSpeech").exists(),
-            "setup_doc": "See iter_librispeech() docstring",
-            "description": "LibriSpeech ASR corpus for WER evaluation (clean speech)",
+            "setup_doc": "docs/LIBRISPEECH_SETUP.md",
+            "description": "LibriSpeech ASR corpus for WER evaluation",
             "tasks": ["asr"],
-        },
-        "libricss": {
-            "path": str(root / "libricss"),
-            "available": (root / "libricss").exists(),
-            "setup_doc": "docs/LIBRICSS_SETUP.md",
-            "description": "LibriCSS for overlapping speech and diarization",
-            "tasks": ["diarization", "overlap_detection"],
+            "splits": ["test-clean", "dev-clean", "test-other", "dev-other"],
         },
         "commonvoice_en_smoke": {
             "path": str(
@@ -845,19 +1170,54 @@ def list_available_benchmarks() -> dict[str, dict[str, Any]]:
             "description": "Common Voice English smoke test subset for quick ASR evaluation",
             "tasks": ["asr"],
         },
-        "smoke": {
-            "path": str(Path(__file__).parent.parent / "benchmarks" / "datasets" / "asr" / "smoke"),
+        # Diarization datasets
+        "diarization-smoke": {
+            "path": str(
+                Path(__file__).parent.parent / "benchmarks" / "datasets" / "diarization" / "smoke"
+            ),
             "available": (
                 Path(__file__).parent.parent
                 / "benchmarks"
                 / "datasets"
-                / "asr"
+                / "diarization"
                 / "smoke"
                 / "manifest.json"
             ).exists(),
             "setup_doc": "Committed to repository - always available",
-            "description": "Minimal ASR smoke tests for CI (synthetic TTS audio)",
-            "tasks": ["asr"],
+            "description": "Minimal diarization smoke tests for CI (synthetic tones)",
+            "tasks": ["diarization"],
+        },
+        "ami": {
+            "path": str(root / "ami"),
+            "available": (root / "ami").exists() or (root / "diarization" / "ami-headset").exists(),
+            "setup_doc": "docs/AMI_SETUP.md",
+            "description": "AMI Meeting Corpus for diarization and summarization evaluation",
+            "tasks": ["diarization", "summarization", "action_items"],
+            "splits": ["train", "dev", "test"],
+        },
+        "callhome": {
+            "path": str(root / "diarization" / "callhome-english"),
+            "available": (root / "diarization" / "callhome-english").exists(),
+            "setup_doc": "docs/CALLHOME_SETUP.md",
+            "description": "CALLHOME American English for 2-speaker telephone diarization",
+            "tasks": ["diarization"],
+            "splits": ["test"],
+        },
+        # Emotion datasets
+        "iemocap": {
+            "path": str(root / "iemocap"),
+            "available": (root / "iemocap").exists(),
+            "setup_doc": "docs/IEMOCAP_SETUP.md",
+            "description": "IEMOCAP for emotion recognition evaluation",
+            "tasks": ["emotion"],
+        },
+        # Other
+        "libricss": {
+            "path": str(root / "libricss"),
+            "available": (root / "libricss").exists(),
+            "setup_doc": "docs/LIBRICSS_SETUP.md",
+            "description": "LibriCSS for overlapping speech and diarization",
+            "tasks": ["diarization", "overlap_detection"],
         },
     }
 

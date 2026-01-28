@@ -219,18 +219,19 @@ uv run python benchmarks/eval_summaries.py --dataset ami --n 5 \
 
 ### Emotion Evaluation (`eval_emotion.py`)
 
-**Status:** 📋 TODO (v1.2)
+**Status:** ✅ Implemented (IEMOCAP-backed; categorical + dimensional)
 
-**What it will measure:**
+**What it measures:**
 - Emotion classification accuracy
 - Confusion matrix (angry/happy/sad/neutral)
 - Per-emotion F1 scores
+- Dimensional MAE/RMSE/correlation (valence/arousal/dominance)
 
-**Planned workflow:**
+**Workflow:**
 1. Load IEMOCAP clips with emotion labels
-2. Transcribe + enrich with emotion features
-3. Map `audio_state.emotion` to categorical label
-4. Compute accuracy/F1 vs ground truth
+2. Run categorical and/or dimensional emotion extraction on each clip
+3. Map categorical predictions to IEMOCAP labels
+4. Compute accuracy/F1 (categorical) and MAE/RMSE/correlation (dimensional)
 
 ## Result Format
 
@@ -454,13 +455,14 @@ Possible causes:
 
 If evaluating many meetings:
 - Use `--n` to limit count
-- Add delays between API calls (TODO: implement in harness)
+- Add delays between API calls (use `--llm-delay`)
 - Use tier 2+ API key for higher rate limits
 
 ## Related Documentation
 
 - `docs/AMI_SETUP.md` - AMI corpus setup guide
-- `docs/IEMOCAP_SETUP.md` - IEMOCAP setup (TODO)
+- `docs/IEMOCAP_SETUP.md` - IEMOCAP setup
+- `docs/LIBRICSS_SETUP.md` - LibriCSS setup
 - `docs/LLM_PROMPT_PATTERNS.md` - Prompt engineering guide
 - [DOGFOOD_SETUP.md](../docs/DOGFOOD_SETUP.md) - Dogfooding workflow (synthetic samples)
 - `transcription/benchmarks.py` - Dataset iterator API

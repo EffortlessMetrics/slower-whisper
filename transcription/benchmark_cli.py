@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import sys
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -43,10 +44,13 @@ from .benchmarks import (
     EvalSample,
     get_benchmarks_root,
     iter_ami_meetings,
+    iter_callhome,
     iter_commonvoice,
     iter_iemocap_clips,
+    iter_libricss,
     iter_librispeech,
     iter_smoke_asr,
+    iter_smoke_diarization,
     list_available_benchmarks,
 )
 from .semantic import KeywordSemanticAnnotator
@@ -82,9 +86,9 @@ BENCHMARK_TRACKS: dict[str, TrackConfig] = {
     "diarization": TrackConfig(
         name="Speaker Diarization",
         description="Evaluate speaker segmentation using DER metrics",
-        supported_datasets=["ami", "libricss"],
+        supported_datasets=["smoke", "ami", "callhome", "libricss"],
         metrics=["der", "jer", "speaker_count_accuracy"],
-        default_dataset="ami",
+        default_dataset="smoke",
     ),
     "streaming": TrackConfig(
         name="Streaming Performance",
@@ -824,8 +828,14 @@ class DiarizationBenchmarkRunner(BenchmarkRunner):
         return self._diarizer
 
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
-        if self.dataset == "ami":
+        if self.dataset == "smoke":
+            return list(iter_smoke_diarization(limit=limit))
+        elif self.dataset == "ami":
             return list(iter_ami_meetings(split=self.split, limit=limit))
+        elif self.dataset == "callhome":
+            return list(iter_callhome(split=self.split, limit=limit))
+        elif self.dataset == "libricss":
+            return list(iter_libricss(split=self.split, limit=limit))
         raise ValueError(f"Dataset {self.dataset} not supported for diarization track")
 
     def evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
@@ -1123,9 +1133,11 @@ class SemanticBenchmarkRunner(BenchmarkRunner):
         dataset: str,
         split: str = "test",
         mode: SemanticMode = "tags",
+        llm_delay_s: float = 0.0,
     ):
         super().__init__(track, dataset, split)
         self.mode = mode
+        self.llm_delay_s = max(0.0, float(llm_delay_s))
         self._annotator = KeywordSemanticAnnotator()
         # Gold labels are in project's benchmarks/gold/semantic directory
         self._gold_dir = self._get_gold_dir()
@@ -1361,6 +1373,13 @@ class SemanticBenchmarkRunner(BenchmarkRunner):
 
         return out
 
+    def _sleep_if_needed(self, stage: str) -> None:
+        """Sleep between LLM API calls to respect rate limits."""
+        if self.llm_delay_s <= 0:
+            return
+        logger.debug("Sleeping %.2fs before %s", self.llm_delay_s, stage)
+        time.sleep(self.llm_delay_s)
+
     def _evaluate_summary(self, sample: EvalSample) -> dict[str, Any]:
         """Evaluate summary generation using Claude-as-judge.
 
@@ -1408,6 +1427,7 @@ class SemanticBenchmarkRunner(BenchmarkRunner):
             client = Anthropic(api_key=api_key)
 
             # Generate summary
+            self._sleep_if_needed("summary_generation")
             gen_prompt = f"""You are analyzing a meeting transcript. Generate a concise summary that captures:
 - Main topics discussed
 - Key decisions made
@@ -1429,6 +1449,7 @@ Summary:"""
             candidate_summary = gen_response.content[0].text
 
             # Judge summary
+            self._sleep_if_needed("summary_judgement")
             judge_prompt = f"""You are evaluating a meeting summary against a reference summary.
 
 Reference summary (ground truth):
@@ -1708,6 +1729,7 @@ def get_benchmark_runner(
     dataset: str,
     split: str = "test",
     mode: SemanticMode | None = None,
+    llm_delay_s: float | None = None,
 ) -> BenchmarkRunner:
     """Get the appropriate benchmark runner for a track.
 
@@ -1731,7 +1753,11 @@ def get_benchmark_runner(
         return StreamingBenchmarkRunner(track=track, dataset=dataset, split=split)
     elif track == "semantic":
         return SemanticBenchmarkRunner(
-            track=track, dataset=dataset, split=split, mode=mode or "tags"
+            track=track,
+            dataset=dataset,
+            split=split,
+            mode=mode or "tags",
+            llm_delay_s=llm_delay_s or 0.0,
         )
     elif track == "emotion":
         return EmotionBenchmarkRunner(track=track, dataset=dataset, split=split)
@@ -1965,6 +1991,77 @@ def _perform_dry_run_validation(track: str, dataset: str) -> int:
     return 0
 
 
+def _print_gate_report(comparison: BaselineComparison) -> None:
+    """Print a detailed gate mode regression report.
+
+    Outputs a clear, CI-friendly report showing:
+    - Which metrics passed/failed
+    - Regression percentages vs thresholds
+    - Overall gate status
+
+    Args:
+        comparison: The baseline comparison results
+    """
+    print("=" * 70)
+    print("REGRESSION GATE CHECK")
+    print("=" * 70)
+    print(f"\nTrack: {comparison.track}")
+    print(f"Dataset: {comparison.dataset}")
+    print(f"Baseline: {comparison.baseline_created_at}")
+
+    # Separate failed metrics for summary reporting
+    failed_metrics = [r for r in comparison.results if not r.passed]
+
+    print("\n" + "-" * 70)
+    print(
+        f"{'Metric':<20} {'Current':<12} {'Baseline':<12} {'Change':<12} "
+        f"{'Threshold':<12} {'Status'}"
+    )
+    print("-" * 70)
+
+    for r in comparison.results:
+        # Format regression as percentage with sign
+        if r.regression == float("inf"):
+            change_str = "+inf%"
+        elif r.regression == float("-inf"):
+            change_str = "-inf%"
+        else:
+            change_str = f"{r.regression:+.1%}"
+
+        # Format threshold
+        threshold_str = f"{r.threshold:.0%}" if r.threshold is not None else "N/A"
+
+        # Status indicator
+        if r.passed:
+            status = "\u2713 PASS"  # checkmark
+        else:
+            status = "\u2717 FAIL"  # cross mark
+
+        print(
+            f"{r.metric_name:<20} {r.current_value:<12.4f} {r.baseline_value:<12.4f} "
+            f"{change_str:<12} {threshold_str:<12} {status}"
+        )
+
+    print("-" * 70)
+
+    # Summary
+    if comparison.overall_passed:
+        print("\n\u2713 GATE PASSED: All metrics within thresholds.")
+    else:
+        print(f"\n\u2717 GATE FAILED: {len(failed_metrics)} metric(s) exceeded threshold.")
+        print("\nFailed metrics:")
+        for r in failed_metrics:
+            if r.regression == float("inf"):
+                change_str = "+inf%"
+            else:
+                change_str = f"{r.regression:+.1%}"
+            threshold_str = f"{r.threshold:.0%}" if r.threshold is not None else "N/A"
+            print(
+                f"  - {r.metric_name}: {r.current_value:.4f} vs baseline {r.baseline_value:.4f} "
+                f"({change_str} change, threshold {threshold_str})"
+            )
+
+
 def handle_benchmark_run(
     track: str,
     dataset: str | None,
@@ -1974,6 +2071,9 @@ def handle_benchmark_run(
     verbose: bool,
     mode: SemanticMode | None = None,
     dry_run: bool = False,
+    gate: bool = False,
+    threshold_overrides: dict[str, float] | None = None,
+    llm_delay_s: float = 0.0,
 ) -> int:
     """Handle 'benchmark run' command - run a specific benchmark.
 
@@ -1986,9 +2086,11 @@ def handle_benchmark_run(
         verbose: Show detailed progress
         mode: Semantic evaluation mode (only for semantic track)
         dry_run: If True, validate manifest and configuration without running benchmarks
+        gate: If True, compare against baseline and fail on regression
+        threshold_overrides: Optional per-metric threshold overrides (e.g., {"wer": 0.05})
 
     Returns:
-        Exit code (0 = success, 1 = error)
+        Exit code (0 = success, 1 = error/regression in gate mode)
     """
     # Validate track
     if track not in BENCHMARK_TRACKS:
@@ -2031,10 +2133,12 @@ def handle_benchmark_run(
         print(f"  Limit: {limit} samples")
     if track == "semantic" and mode:
         print(f"  Mode: {mode}")
+        if llm_delay_s > 0:
+            print(f"  LLM delay: {llm_delay_s:.2f}s between API calls")
     print()
 
     try:
-        runner = get_benchmark_runner(track, dataset, split, mode=mode)
+        runner = get_benchmark_runner(track, dataset, split, mode=mode, llm_delay_s=llm_delay_s)
         result = runner.run(limit=limit, verbose=verbose)
 
         # Display results
@@ -2082,6 +2186,30 @@ def handle_benchmark_run(
             with open(output, "w") as f:
                 json.dump(result.to_dict(), f, indent=2)
             print(f"\nResults saved to: {output}")
+
+        # Gate mode: compare against baseline and fail on regression
+        if gate:
+            baseline = load_baseline(track, dataset)
+            if baseline is None:
+                baseline_path = get_baseline_path(track, dataset)
+                print(f"\nWarning: No baseline found at {baseline_path}", file=sys.stderr)
+                print("Gate mode requires a baseline. Run 'benchmark save-baseline' first.")
+                print("Continuing without gate check...")
+                return 0 if result.samples_failed == 0 else 1
+
+            # Apply threshold overrides to baseline metrics
+            if threshold_overrides:
+                for metric_name, threshold in threshold_overrides.items():
+                    if metric_name in baseline.metrics:
+                        baseline.metrics[metric_name].threshold = threshold
+
+            comparison = compare_with_baseline(result, baseline, mode="gate")
+
+            print("\n")
+            _print_gate_report(comparison)
+
+            if not comparison.overall_passed:
+                return 1
 
         return 0 if result.samples_failed == 0 else 1
 
@@ -2144,6 +2272,7 @@ def handle_baseline_save(
     verbose: bool,
     thresholds: dict[str, float] | None = None,
     mode: SemanticMode | None = None,
+    llm_delay_s: float = 0.0,
 ) -> int:
     """Handle 'benchmark save-baseline' command - run benchmark and save as baseline.
 
@@ -2188,10 +2317,14 @@ def handle_baseline_save(
     print(f"  Split: {split}")
     if limit:
         print(f"  Limit: {limit} samples")
+    if track == "semantic" and mode:
+        print(f"  Mode: {mode}")
+        if llm_delay_s > 0:
+            print(f"  LLM delay: {llm_delay_s:.2f}s between API calls")
     print()
 
     try:
-        runner = get_benchmark_runner(track, dataset, split, mode=mode)
+        runner = get_benchmark_runner(track, dataset, split, mode=mode, llm_delay_s=llm_delay_s)
         result = runner.run(limit=limit, verbose=verbose)
 
         if result.samples_evaluated == 0:
@@ -2254,6 +2387,8 @@ def handle_baseline_compare(
     verbose: bool,
     gate_mode: bool = False,
     mode: SemanticMode | None = None,
+    threshold_overrides: dict[str, float] | None = None,
+    llm_delay_s: float = 0.0,
 ) -> int:
     """Handle 'benchmark compare' command - run benchmark and compare with baseline.
 
@@ -2266,6 +2401,7 @@ def handle_baseline_compare(
         verbose: Show detailed progress
         gate_mode: If True, exit with error on regression
         mode: Semantic evaluation mode
+        threshold_overrides: Optional per-metric threshold overrides (e.g., {"wer": 0.05})
 
     Returns:
         Exit code (0 = success/no regression, 1 = error/regression in gate mode)
@@ -2301,16 +2437,26 @@ def handle_baseline_compare(
         print("Run 'benchmark save-baseline' first to create a baseline.", file=sys.stderr)
         return 1
 
+    # Apply threshold overrides to baseline metrics
+    if threshold_overrides:
+        for metric_name, threshold in threshold_overrides.items():
+            if metric_name in baseline.metrics:
+                baseline.metrics[metric_name].threshold = threshold
+
     print(f"Comparing against baseline: {track}/{dataset}")
     print(f"  Baseline created: {baseline.created_at}")
     print(f"  Split: {split}")
     if limit:
         print(f"  Limit: {limit} samples")
     print(f"  Mode: {'gate' if gate_mode else 'report'}")
+    if track == "semantic" and mode:
+        print(f"  Semantic mode: {mode}")
+        if llm_delay_s > 0:
+            print(f"  LLM delay: {llm_delay_s:.2f}s between API calls")
     print()
 
     try:
-        runner = get_benchmark_runner(track, dataset, split, mode=mode)
+        runner = get_benchmark_runner(track, dataset, split, mode=mode, llm_delay_s=llm_delay_s)
         result = runner.run(limit=limit, verbose=verbose)
 
         if result.samples_evaluated == 0:
@@ -2522,9 +2668,40 @@ def build_benchmark_parser(
     )
 
     p_run.add_argument(
+        "--llm-delay",
+        type=float,
+        default=0.0,
+        help=(
+            "Delay in seconds between LLM API calls for semantic summary evaluation "
+            "(only applies to --track semantic)."
+        ),
+    )
+
+    p_run.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate manifest and configuration without running benchmarks.",
+    )
+
+    p_run.add_argument(
+        "--gate",
+        action="store_true",
+        help=(
+            "Gate mode: compare results against baseline and exit with error "
+            "if any metric exceeds its regression threshold. Use for CI gates."
+        ),
+    )
+
+    p_run.add_argument(
+        "--threshold",
+        type=str,
+        action="append",
+        metavar="METRIC=VALUE",
+        help=(
+            "Override regression threshold for a metric (e.g., --threshold wer=0.05). "
+            "Can be specified multiple times. Value is a decimal (0.05 = 5%%). "
+            "Only used with --gate."
+        ),
     )
 
     # benchmark baselines - list stored baselines
@@ -2602,6 +2779,16 @@ def build_benchmark_parser(
         help="Semantic evaluation mode (only for --track semantic).",
     )
 
+    p_save.add_argument(
+        "--llm-delay",
+        type=float,
+        default=0.0,
+        help=(
+            "Delay in seconds between LLM API calls for semantic summary evaluation "
+            "(only applies to --track semantic)."
+        ),
+    )
+
     # benchmark compare - run benchmark and compare with baseline
     p_compare = benchmark_subparsers.add_parser(
         "compare",
@@ -2659,11 +2846,32 @@ def build_benchmark_parser(
     )
 
     p_compare.add_argument(
+        "--threshold",
+        type=str,
+        action="append",
+        metavar="METRIC=VALUE",
+        help=(
+            "Override regression threshold for a metric (e.g., --threshold wer=0.05). "
+            "Can be specified multiple times. Value is a decimal (0.05 = 5%%)."
+        ),
+    )
+
+    p_compare.add_argument(
         "--mode",
         "-m",
         choices=["tags", "summary", "both"],
         default="tags",
         help="Semantic evaluation mode (only for --track semantic).",
+    )
+
+    p_compare.add_argument(
+        "--llm-delay",
+        type=float,
+        default=0.0,
+        help=(
+            "Delay in seconds between LLM API calls for semantic summary evaluation "
+            "(only applies to --track semantic)."
+        ),
     )
 
     # Default action if no subcommand given - show help
@@ -2710,6 +2918,7 @@ def handle_benchmark_command(args: argparse.Namespace) -> int:
         return handle_baseline_list()
 
     if args.benchmark_action == "run":
+        threshold_overrides = _parse_thresholds(getattr(args, "threshold", None))
         return handle_benchmark_run(
             track=args.track,
             dataset=args.dataset,
@@ -2719,6 +2928,9 @@ def handle_benchmark_command(args: argparse.Namespace) -> int:
             verbose=args.verbose,
             mode=getattr(args, "mode", None),
             dry_run=getattr(args, "dry_run", False),
+            gate=getattr(args, "gate", False),
+            threshold_overrides=threshold_overrides if threshold_overrides else None,
+            llm_delay_s=getattr(args, "llm_delay", 0.0),
         )
 
     if args.benchmark_action == "save-baseline":
@@ -2732,9 +2944,11 @@ def handle_benchmark_command(args: argparse.Namespace) -> int:
             verbose=args.verbose,
             thresholds=thresholds if thresholds else None,
             mode=getattr(args, "mode", None),
+            llm_delay_s=getattr(args, "llm_delay", 0.0),
         )
 
     if args.benchmark_action == "compare":
+        threshold_overrides = _parse_thresholds(getattr(args, "threshold", None))
         return handle_baseline_compare(
             track=args.track,
             dataset=args.dataset,
@@ -2744,6 +2958,8 @@ def handle_benchmark_command(args: argparse.Namespace) -> int:
             verbose=args.verbose,
             gate_mode=getattr(args, "gate", False),
             mode=getattr(args, "mode", None),
+            threshold_overrides=threshold_overrides if threshold_overrides else None,
+            llm_delay_s=getattr(args, "llm_delay", 0.0),
         )
 
     # Unknown action

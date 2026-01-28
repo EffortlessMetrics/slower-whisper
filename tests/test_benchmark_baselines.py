@@ -515,3 +515,174 @@ class TestParseThresholds:
         result = _parse_thresholds(args)
 
         assert result == {"wer": 0.10, "cer": 0.05}
+
+
+# =============================================================================
+# Gate Mode Tests
+# =============================================================================
+
+
+class TestGateMode:
+    """Tests for --gate flag on benchmark run command."""
+
+    def test_gate_mode_passes_when_within_threshold(
+        self, sample_baseline: BaselineFile, tmp_path: Path
+    ) -> None:
+        """Gate mode returns 0 when metrics are within thresholds."""
+        # Mock the runner to return good results
+        result = BenchmarkResult(
+            track="asr",
+            dataset="librispeech",
+            split="test",
+            samples_evaluated=10,
+            samples_failed=0,
+            metrics=[
+                BenchmarkMetric(name="wer", value=4.6, unit="%"),  # Small regression
+                BenchmarkMetric(name="cer", value=1.1, unit="%"),  # Improvement
+            ],
+        )
+
+        comparison = compare_with_baseline(result, sample_baseline, mode="gate")
+        assert comparison.overall_passed is True
+
+    def test_gate_mode_fails_when_exceeds_threshold(self, sample_baseline: BaselineFile) -> None:
+        """Gate mode returns 1 when any metric exceeds threshold."""
+        result = BenchmarkResult(
+            track="asr",
+            dataset="librispeech",
+            split="test",
+            samples_evaluated=10,
+            samples_failed=0,
+            metrics=[
+                BenchmarkMetric(name="wer", value=6.0, unit="%"),  # 33% regression
+            ],
+        )
+
+        comparison = compare_with_baseline(result, sample_baseline, mode="gate")
+        assert comparison.overall_passed is False
+
+    def test_threshold_override_can_make_test_pass(self, sample_baseline: BaselineFile) -> None:
+        """Threshold override can change pass/fail outcome."""
+        result = BenchmarkResult(
+            track="asr",
+            dataset="librispeech",
+            split="test",
+            samples_evaluated=10,
+            samples_failed=0,
+            metrics=[
+                BenchmarkMetric(name="wer", value=5.0, unit="%"),  # 11% regression
+            ],
+        )
+
+        # With default threshold (10%), should fail
+        comparison1 = compare_with_baseline(result, sample_baseline, mode="gate")
+        wer_result1 = next(r for r in comparison1.results if r.metric_name == "wer")
+        assert wer_result1.passed is False  # 11% > 10%
+
+        # Override threshold to 15%, should pass now
+        sample_baseline.metrics["wer"].threshold = 0.15
+        comparison2 = compare_with_baseline(result, sample_baseline, mode="gate")
+        wer_result2 = next(r for r in comparison2.results if r.metric_name == "wer")
+        assert wer_result2.passed is True  # 11% < 15%
+
+    def test_threshold_override_can_make_test_stricter(self, sample_baseline: BaselineFile) -> None:
+        """Threshold override can make test stricter."""
+        result = BenchmarkResult(
+            track="asr",
+            dataset="librispeech",
+            split="test",
+            samples_evaluated=10,
+            samples_failed=0,
+            metrics=[
+                BenchmarkMetric(name="wer", value=4.7, unit="%"),  # 4.4% regression
+            ],
+        )
+
+        # With default threshold (10%), should pass
+        comparison1 = compare_with_baseline(result, sample_baseline, mode="gate")
+        wer_result1 = next(r for r in comparison1.results if r.metric_name == "wer")
+        assert wer_result1.passed is True  # 4.4% < 10%
+
+        # Override threshold to 3%, should fail now
+        sample_baseline.metrics["wer"].threshold = 0.03
+        comparison2 = compare_with_baseline(result, sample_baseline, mode="gate")
+        wer_result2 = next(r for r in comparison2.results if r.metric_name == "wer")
+        assert wer_result2.passed is False  # 4.4% > 3%
+
+
+class TestPrintGateReport:
+    """Tests for _print_gate_report function output."""
+
+    def test_gate_report_shows_all_metrics(
+        self, sample_baseline: BaselineFile, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Gate report shows all metrics in comparison."""
+        from transcription.benchmark_cli import _print_gate_report
+
+        result = BenchmarkResult(
+            track="asr",
+            dataset="librispeech",
+            split="test",
+            samples_evaluated=10,
+            samples_failed=0,
+            metrics=[
+                BenchmarkMetric(name="wer", value=4.8, unit="%"),
+                BenchmarkMetric(name="cer", value=1.1, unit="%"),
+            ],
+        )
+
+        comparison = compare_with_baseline(result, sample_baseline, mode="gate")
+        _print_gate_report(comparison)
+
+        output = capsys.readouterr().out
+        assert "wer" in output
+        assert "cer" in output
+        assert "REGRESSION GATE CHECK" in output
+
+    def test_gate_report_shows_pass_status(
+        self, sample_baseline: BaselineFile, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Gate report shows GATE PASSED when all metrics pass."""
+        from transcription.benchmark_cli import _print_gate_report
+
+        result = BenchmarkResult(
+            track="asr",
+            dataset="librispeech",
+            split="test",
+            samples_evaluated=10,
+            samples_failed=0,
+            metrics=[
+                BenchmarkMetric(name="wer", value=4.6, unit="%"),
+            ],
+        )
+
+        comparison = compare_with_baseline(result, sample_baseline, mode="gate")
+        _print_gate_report(comparison)
+
+        output = capsys.readouterr().out
+        assert "GATE PASSED" in output
+
+    def test_gate_report_shows_fail_details(
+        self, sample_baseline: BaselineFile, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Gate report shows detailed failure information."""
+        from transcription.benchmark_cli import _print_gate_report
+
+        result = BenchmarkResult(
+            track="asr",
+            dataset="librispeech",
+            split="test",
+            samples_evaluated=10,
+            samples_failed=0,
+            metrics=[
+                BenchmarkMetric(name="wer", value=6.0, unit="%"),  # Big regression
+            ],
+        )
+
+        comparison = compare_with_baseline(result, sample_baseline, mode="gate")
+        _print_gate_report(comparison)
+
+        output = capsys.readouterr().out
+        assert "GATE FAILED" in output
+        assert "Failed metrics:" in output
+        assert "wer" in output

@@ -1,16 +1,36 @@
 # slower-whisper
 
-## Local-first conversation signal engine for LLMs
+## Audio → Receipts
+
+Local-first transcripts with speakers, timestamps, enrichment, and a stable JSON contract for LLM pipelines.
 
 ![Python](https://img.shields.io/badge/python-3.11--3.12-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Status](https://img.shields.io/badge/status-production%20ready-success)
 
-slower-whisper transforms audio conversations into **LLM-ready structured data** that captures not just what was said, but **how it was said**.
+---
 
-Output includes timestamped segments, speaker diarization, prosodic features (pitch, energy, speaking rate), and emotional state. A text-only LLM can now "hear" tone, emphasis, and hesitation that aren't in the transcription alone.
+### What this is
 
-**Key properties:** Runs entirely locally (GPU recommended, CPU fallback). Produces stable, versioned JSON (schema v2). Modular architecture — use only what you need.
+**slower-whisper is ETL for conversations.** It transforms raw audio into schema-versioned structured data that captures not just *what* was said, but *who* said it, *when*, and *how*.
+
+Text-only LLMs can't hear tone, pacing, or hesitation. Omnimodal LLMs burn capacity doing ASR/diarization implicitly. This system pre-computes the acoustic ground truth—timestamps, speaker turns, prosody, emotion—so your LLM can focus on reasoning instead of signal processing.
+
+### Why this exists
+
+**FinOps for LLMs.** Deterministic triage runs first: rule-based keyword extraction, DSP-derived prosody, speaker math. Only the interesting segments need expensive model inference. The cheap layer filters; the expensive layer reasons.
+
+**Truth layer.** LLMs hallucinate tone and pacing. They can't reliably separate speakers or produce stable timestamps. slower-whisper does that with deterministic math (IoU speaker assignment, Praat pitch extraction, librosa energy) and hands the LLM hard facts instead of guesses.
+
+**Local-first.** All processing runs on your hardware. Data never leaves. Model weights are fetched once on first use.
+
+### Key properties
+
+- **Schema-versioned JSON** (v2) with stability tiers and backward compatibility
+- **Modular dependencies** — install only what you need (2.5GB base → 8GB+ full)
+- **5 semantic adapters** — local keywords, local LLM, OpenAI, Anthropic, or bring your own
+- **Streaming built-in** — WebSocket + SSE for real-time pipelines
+- **Receipt provenance** — config hash, run IDs, git commit for reproducibility
 
 ---
 

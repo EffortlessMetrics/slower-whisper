@@ -129,25 +129,22 @@ benchmarks/results/ami_*.json
 benchmarks/results/asr_diar_*.json
 ```
 
-#### 3. **Missing Dataset Setup Docs** (Low Priority)
+#### 3. **Missing Dataset Setup Docs** (Resolved)
 
-**Issue:** `transcription/benchmarks.py` references non-existent documentation:
+**Previous issue:** `transcription/benchmarks.py` referenced non-existent documentation:
 
 ```python
 # Line 187 (iter_iemocap_clips docstring)
 "Please see docs/IEMOCAP_SETUP.md for setup instructions."
 
 # Line 342 (list_available_benchmarks)
-"setup_doc": "docs/IEMOCAP_SETUP.md",  # Doesn't exist
-"setup_doc": "docs/LIBRICSS_SETUP.md",  # Doesn't exist
+"setup_doc": "docs/IEMOCAP_SETUP.md",
+"setup_doc": "docs/LIBRICSS_SETUP.md",
 ```
 
-**Impact:** Users following error messages hit dead links
-
-**Recommendation:** Either:
-1. Create placeholder docs (minimal effort, clear TODOs)
-2. Update to point to `docs/AMI_SETUP.md` as template
-3. Use generic message: "Manual dataset setup required"
+**Resolution:** Both setup guides now exist and are referenced directly:
+- `docs/IEMOCAP_SETUP.md`
+- `docs/LIBRICSS_SETUP.md`
 
 ---
 
@@ -308,12 +305,12 @@ Add a new section:
   - Manually staged (requires license acceptance)
 
 - **IEMOCAP:** Emotion recognition
-  - Setup: `docs/IEMOCAP_SETUP.md` (TODO)
+  - Setup: `docs/IEMOCAP_SETUP.md`
   - ~12 hours of emotional speech
   - Manually staged (requires license)
 
 - **LibriCSS:** Overlapping speech and diarization
-  - Setup: `docs/LIBRICSS_SETUP.md` (TODO)
+  - Setup: `docs/LIBRICSS_SETUP.md`
   - Derived from LibriSpeech
   - Manually staged
 
@@ -339,38 +336,12 @@ export SLOWER_WHISPER_BENCHMARKS=/data/benchmarks
 **Important:** Benchmark datasets are NOT auto-downloaded. See setup docs for staging instructions.
 ```
 
-### Create Stub Documentation Files
+### Dataset Setup Docs
 
-Create minimal placeholder docs for missing datasets:
+Documentation is now available:
 
-**`docs/IEMOCAP_SETUP.md`:**
-```markdown
-# IEMOCAP Setup (Coming Soon)
-
-**Status:** Documentation in progress
-
-The IEMOCAP dataset iterator is implemented in `transcription/benchmarks.py`,
-but detailed setup instructions are pending.
-
-**Quick Start:**
-1. Obtain IEMOCAP from USC (requires license agreement)
-2. Stage under `~/.cache/slower-whisper/benchmarks/iemocap/`
-3. Expected structure:
-   ```
-   iemocap/
-   ├── Session1/
-   │   ├── sentences/wav/...
-   │   └── dialog/EmoEvaluation/...
-   ├── Session2/
-   └── ...
-   ```
-
-**Reference:** See `docs/AMI_SETUP.md` for similar setup pattern.
-
-**TODO:** Full setup guide with conversion scripts for emotion annotations.
-```
-
-**`docs/LIBRICSS_SETUP.md`:** (Similar stub)
+- `docs/IEMOCAP_SETUP.md` — Emotion dataset setup (IEMOCAP)
+- `docs/LIBRICSS_SETUP.md` — Overlapping speech / diarization setup (LibriCSS)
 
 ---
 
@@ -386,7 +357,7 @@ but detailed setup instructions are pending.
 | **Error Messages** | ✅ Helpful | Point to setup docs with clear instructions |
 | **Separation of Concerns** | ✅ Clear | samples vs benchmarks distinction well-defined |
 | **`.gitignore` Coverage** | ⚠️ Incomplete | Missing `benchmarks/results/*.json` |
-| **Documentation Completeness** | ⚠️ Partial | AMI documented, IEMOCAP/LibriCSS referenced but missing |
+| **Documentation Completeness** | ✅ Complete | AMI, IEMOCAP, and LibriCSS setup guides are documented |
 | **Hardcoded Paths** | ⚠️ Minor Issue | Eval scripts use `Path("whisper_json")` |
 
 ### Recommended Actions
@@ -397,9 +368,8 @@ but detailed setup instructions are pending.
    - Keeps git status clean
 
 **Medium Priority:**
-2. ⚠️ **Create stub docs for IEMOCAP and LibriCSS**
-   - Prevents user confusion when following error messages
-   - 15 minutes to create minimal placeholders
+2. ✅ **Document IEMOCAP and LibriCSS setup**
+   - Setup guides now exist and are referenced by error messages
 
 **Low Priority (Nice-to-Have):**
 3. 💡 **Add dataset validation helpers** to `benchmarks.py`

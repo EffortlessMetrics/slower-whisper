@@ -305,7 +305,7 @@ class TestEnrichEndpoint:
 
 def test_transcript_to_dict_includes_optional_fields(sample_transcript):
     """Helper serializer should emit diarization fields when present."""
-    from transcription.service import _transcript_to_dict
+    from transcription.service_serialization import _transcript_to_dict
 
     sample_transcript.speakers = [
         {"id": "spk_0", "label": None, "total_speech_time": 1.5, "num_segments": 1}

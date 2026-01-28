@@ -1,20 +1,25 @@
 # Documentation Index
 
-Welcome to the **slower-whisper** documentation -- your guide to local-first conversation intelligence infrastructure.
+Welcome to the **slower-whisper** documentation -- ETL for conversations, audio in, receipts out.
 
 ---
 
 ## What is slower-whisper?
 
-slower-whisper is a **local conversation signal engine** that turns audio into **LLM-ready structured data**, capturing not just *what* was said, but ***how*** it was said (prosody, emotion, speaker dynamics, interaction patterns).
+**slower-whisper is ETL for conversations.** It transforms raw audio into schema-versioned structured data that captures not just *what* was said, but *who* said it, *when*, and *how*.
 
-**Key differentiators:**
+**Why it exists:**
 
-- **Local-first** -- runs entirely on your machine, no cloud dependency
-- **Stable JSON schema** -- versioned contracts for production use
-- **Modular architecture** -- use only the features you need
-- **Contract-driven** -- BDD scenarios enforce behavioral stability
-- **LLM-native** -- designed for RAG, summarization, analysis
+- **FinOps for LLMs** -- cheap deterministic triage (rules, DSP, speaker math) before expensive model inference
+- **Truth layer** -- acoustic ground truth (timestamps, speakers, prosody) that LLMs can't hallucinate
+- **Local-first** -- all processing runs on your hardware, data never leaves
+
+**Key properties:**
+
+- **Schema-versioned JSON** (v2) with stability tiers and backward compatibility
+- **5 semantic adapters** -- local keywords, local LLM, OpenAI, Anthropic, or bring your own
+- **Streaming built-in** -- WebSocket + SSE for real-time pipelines
+- **Receipt provenance** -- config hash, run IDs, git commit for reproducibility
 
 See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROADMAP.md) for development timeline.
 
@@ -215,18 +220,22 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 | Document | Description |
 |----------|-------------|
+| [DATASET_MANIFEST.md](DATASET_MANIFEST.md) | Dataset manifest infrastructure and schema |
+| [LIBRISPEECH_SETUP.md](LIBRISPEECH_SETUP.md) | **LibriSpeech ASR corpus setup (recommended)** |
+| [LIBRISPEECH_QUICKSTART.md](LIBRISPEECH_QUICKSTART.md) | LibriSpeech ASR evaluation quick start |
+| [LIBRISPEECH_EVAL_RESULTS.md](LIBRISPEECH_EVAL_RESULTS.md) | LibriSpeech evaluation results |
 | [AMI_SETUP.md](AMI_SETUP.md) | AMI Meeting Corpus setup for diarization evaluation |
 | [AMI_DOWNLOAD_GUIDE.md](AMI_DOWNLOAD_GUIDE.md) | AMI dataset download instructions |
 | [AMI_DIRECTORY_LAYOUT.md](AMI_DIRECTORY_LAYOUT.md) | AMI dataset directory structure |
 | [AMI_ANNOTATION_SCHEMA.md](AMI_ANNOTATION_SCHEMA.md) | AMI annotation schema reference |
 | [AMI_INTEGRATION_SUMMARY.md](AMI_INTEGRATION_SUMMARY.md) | AMI integration summary |
 | [AMI_EVAL_SMOKE_TEST_RESULTS.md](AMI_EVAL_SMOKE_TEST_RESULTS.md) | AMI evaluation smoke test results |
+| [CALLHOME_SETUP.md](CALLHOME_SETUP.md) | **CALLHOME telephone diarization setup** |
 | [IEMOCAP_SETUP.md](IEMOCAP_SETUP.md) | IEMOCAP emotion dataset setup |
 | [IEMOCAP_QUICKREF.md](IEMOCAP_QUICKREF.md) | IEMOCAP quick reference |
 | [IEMOCAP_LABEL_MAPPING.md](IEMOCAP_LABEL_MAPPING.md) | IEMOCAP emotion label mapping |
 | [IEMOCAP_INTEGRATION_SUMMARY.md](IEMOCAP_INTEGRATION_SUMMARY.md) | IEMOCAP integration summary |
-| [LIBRISPEECH_QUICKSTART.md](LIBRISPEECH_QUICKSTART.md) | LibriSpeech ASR evaluation quick start |
-| [LIBRISPEECH_EVAL_RESULTS.md](LIBRISPEECH_EVAL_RESULTS.md) | LibriSpeech evaluation results |
+| [LIBRICSS_SETUP.md](LIBRICSS_SETUP.md) | LibriCSS overlapping speech / diarization setup |
 
 ### Benchmark Cache & Strategy
 

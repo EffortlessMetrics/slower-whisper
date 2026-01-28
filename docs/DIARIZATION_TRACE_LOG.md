@@ -604,35 +604,40 @@ def assign_speakers(
 ### Step 11: build_turns() - Group Segments by Speaker
 **File:** `/home/steven/code/Python/slower-whisper/transcription/turns.py`
 
-**Lines 62-138:** `build_turns(transcript, pause_threshold)`
+**Lines 46-148:** `build_turns(transcript, pause_threshold)`
 ```python
 def build_turns(
     transcript: Transcript,
-    pause_threshold: float | None = None,  # ← Line 64 (None by default)
+    pause_threshold: float | None = None,  # ← Line 48 (None by default)
 ) -> Transcript:
     """Build conversational turns from speaker-attributed segments."""
 
     # Filter segments with known speakers
-    speaker_segments = [seg for seg in transcript.segments if seg.speaker is not None]  # Line 108
-    # RESULT: List of segments with speaker assignments (from assign_speakers)
+    speaker_segments: list[tuple[Segment, str]] = []  # Line 100
+    for seg in transcript.segments:  # Line 101
+        speaker_id = _coerce_speaker_id(seg.speaker)  # Line 102
+        if speaker_id is None:  # Line 103
+            continue
+        speaker_segments.append((seg, speaker_id))  # Line 105
+    # RESULT: List of segments with normalized speaker IDs
 
-    if not speaker_segments:  # Line 110
+    if not speaker_segments:  # Line 107
         # No speakers assigned → no turns
-        transcript.turns = []  # Line 112
+        transcript.turns = []  # Line 109
         return transcript
 
-    turns: list[dict[str, Any]] = []  # Line 115
-    current_turn_segments: list[Any] = []  # Line 116
-    current_speaker_id: str | None = None  # Line 117
+    turns: list[Turn | dict[str, Any]] = []  # Line 112
+    current_turn_segments: list[Segment] = []  # Line 113
+    current_speaker_id: str | None = None  # Line 114
 
-    for segment in speaker_segments:  # Line 119
-        speaker_id = segment.speaker["id"]  # Line 120 (e.g., "spk_0")
+    for segment, speaker_id in speaker_segments:  # Line 116
 
-        if speaker_id != current_speaker_id:  # Line 122 (speaker changed)
+        if speaker_id != current_speaker_id:  # Line 117 (speaker changed)
             # Speaker change → finalize current turn and start new
-            if current_turn_segments:  # Line 124
-                turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))  # Line 125
-                # CALLS: Lines 141-165 (_finalize_turn)
+            if current_turn_segments:  # Line 119
+                assert current_speaker_id is not None  # Line 120
+                turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))  # Line 121
+                # CALLS: Lines 151-169 (_finalize_turn)
                 # Builds dict with:
                 # - "id": "turn_0"
                 # - "speaker_id": "spk_0"
@@ -640,18 +645,29 @@ def build_turns(
                 # - "end": segment[-1].end
                 # - "segment_ids": [seg.id for seg in segments]
                 # - "text": " ".join(segment texts)
-            current_turn_segments = [segment]  # Line 126
-            current_speaker_id = speaker_id  # Line 127
+            current_turn_segments = [segment]  # Line 122
+            current_speaker_id = speaker_id  # Line 123
         else:
-            # Same speaker → add to current turn
-            # TODO(v1.2): Check pause_threshold here if enabled
-            current_turn_segments.append(segment)  # Line 131
+            # Same speaker → check pause-based split
+            should_split_on_pause = False  # Line 126
+            if pause_threshold is not None and current_turn_segments:  # Line 127
+                previous_segment = current_turn_segments[-1]  # Line 129
+                gap = segment.start - previous_segment.end  # Line 130
+                if gap >= pause_threshold:  # Line 131
+                    should_split_on_pause = True  # Line 132
+
+            if should_split_on_pause:  # Line 134
+                assert current_speaker_id is not None  # Line 135
+                turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))  # Line 137
+                current_turn_segments = [segment]  # Line 138
+            else:
+                current_turn_segments.append(segment)  # Line 141
 
     # Finalize last turn
-    if current_turn_segments:  # Line 134
-        turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))  # Line 135
+    if current_turn_segments:  # Line 144
+        turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))  # Line 145
 
-    transcript.turns = turns  # Line 137 ← ASSIGN TURNS
+    transcript.turns = turns  # Line 147 ← ASSIGN TURNS
     # RESULT: [
     #   {
     #     "id": "turn_0",
@@ -671,7 +687,7 @@ def build_turns(
     #   },
     # ]
 
-    return transcript  # Line 138
+    return transcript  # Line 148
 ```
 
 **Result:** transcript.turns populated with turn groupings.
