@@ -1,5 +1,5 @@
 """
-WebSocket streaming protocol for real-time transcription (v2.0.0).
+WebSocket streaming protocol for real-time transcription (v2.1.0).
 
 This module implements the WebSocket-based streaming API for real-time
 audio transcription and enrichment. It provides event-driven communication
@@ -7,10 +7,12 @@ with clients using JSON message envelopes.
 
 Key features:
 - Event envelope with monotonically increasing event_id
-- Client message types: START_SESSION, AUDIO_CHUNK, END_SESSION, PING
+- Client message types: START_SESSION, AUDIO_CHUNK, END_SESSION, PING, TTS_STATE
 - Server message types: SESSION_STARTED, PARTIAL, FINALIZED, ERROR, etc.
+- v2.1 additions: PHYSICS_UPDATE, AUDIO_HEALTH, VAD_ACTIVITY, BARGE_IN, END_OF_TURN_HINT
 - Session lifecycle management with configurable enrichment
 - Backpressure handling: PARTIAL events can be dropped, FINALIZED never dropped
+- TTS state tracking for barge-in detection
 
 See docs/STREAMING_ARCHITECTURE.md section 6 for protocol specification.
 """
@@ -47,6 +49,7 @@ class ClientMessageType(str, Enum):
     END_SESSION = "END_SESSION"
     PING = "PING"
     RESUME_SESSION = "RESUME_SESSION"  # Resume after reconnection
+    TTS_STATE = "TTS_STATE"  # Client sends when TTS starts/stops playing
 
 
 class ServerMessageType(str, Enum):
@@ -61,6 +64,12 @@ class ServerMessageType(str, Enum):
     ERROR = "ERROR"
     SESSION_ENDED = "SESSION_ENDED"
     PONG = "PONG"
+    # v2.1 additions
+    PHYSICS_UPDATE = "PHYSICS_UPDATE"
+    AUDIO_HEALTH = "AUDIO_HEALTH"
+    VAD_ACTIVITY = "VAD_ACTIVITY"
+    BARGE_IN = "BARGE_IN"
+    END_OF_TURN_HINT = "END_OF_TURN_HINT"
 
 
 # =============================================================================
@@ -138,6 +147,14 @@ class WebSocketSessionConfig:
         audio_format: Audio encoding format (default: "pcm_s16le")
         replay_buffer_size: Size of event replay buffer for resume (default: 100)
         backpressure_threshold: Queue size threshold for backpressure (default: 80)
+        enable_conversation_physics: Enable conversation physics updates (default: False)
+        enable_audio_health: Enable audio health monitoring (default: False)
+        audio_health_interval_chunks: Interval for audio health updates in chunks (default: 10)
+        enable_reflex_events: Enable reflex events like VAD_ACTIVITY and BARGE_IN (default: False)
+        enable_tts_style: Enable TTS style hints in events (default: False)
+        enable_correction_detection: Enable detection of speaker corrections (default: False)
+        enable_commitment_tracking: Enable tracking of speaker commitments (default: False)
+        correction_similarity_threshold: Similarity threshold for correction detection (default: 0.7)
     """
 
     max_gap_sec: float = 1.0
@@ -150,6 +167,15 @@ class WebSocketSessionConfig:
     audio_format: str = "pcm_s16le"
     replay_buffer_size: int = 100
     backpressure_threshold: int = 80
+    # v2.1 additions
+    enable_conversation_physics: bool = False
+    enable_audio_health: bool = False
+    audio_health_interval_chunks: int = 10
+    enable_reflex_events: bool = False
+    enable_tts_style: bool = False
+    enable_correction_detection: bool = False
+    enable_commitment_tracking: bool = False
+    correction_similarity_threshold: float = 0.7
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WebSocketSessionConfig:
@@ -172,6 +198,15 @@ class WebSocketSessionConfig:
             audio_format=str(data.get("audio_format", "pcm_s16le")),
             replay_buffer_size=int(data.get("replay_buffer_size", 100)),
             backpressure_threshold=int(data.get("backpressure_threshold", 80)),
+            # v2.1 additions
+            enable_conversation_physics=bool(data.get("enable_conversation_physics", False)),
+            enable_audio_health=bool(data.get("enable_audio_health", False)),
+            audio_health_interval_chunks=int(data.get("audio_health_interval_chunks", 10)),
+            enable_reflex_events=bool(data.get("enable_reflex_events", False)),
+            enable_tts_style=bool(data.get("enable_tts_style", False)),
+            enable_correction_detection=bool(data.get("enable_correction_detection", False)),
+            enable_commitment_tracking=bool(data.get("enable_commitment_tracking", False)),
+            correction_similarity_threshold=float(data.get("correction_similarity_threshold", 0.7)),
         )
 
 
@@ -449,6 +484,10 @@ class WebSocketStreamingSession:
         self._current_speaker_assignments: list[SpeakerAssignment] = []
         self._diarization_update_count = 0
 
+        # TTS state tracking for barge-in detection (v2.1)
+        self._tts_playing: bool = False
+        self._tts_start_time: float | None = None
+
         logger.info(
             "Created WebSocket session: stream_id=%s, config=%s, diarization_hook=%s, asr=%s",
             self.stream_id,
@@ -662,6 +701,36 @@ class WebSocketStreamingSession:
                 },
             },
         )
+
+    def set_tts_state(self, playing: bool) -> None:
+        """
+        Update the TTS playback state.
+
+        Called when client sends TTS_STATE message to indicate TTS has
+        started or stopped playing. This state is used for barge-in detection.
+
+        Args:
+            playing: True if TTS is currently playing, False if stopped.
+        """
+        if playing and not self._tts_playing:
+            # TTS starting
+            self._tts_playing = True
+            self._tts_start_time = time.time()
+            logger.debug(
+                "TTS started: stream_id=%s, start_time=%s",
+                self.stream_id,
+                self._tts_start_time,
+            )
+        elif not playing and self._tts_playing:
+            # TTS stopping
+            duration = time.time() - (self._tts_start_time or time.time())
+            self._tts_playing = False
+            self._tts_start_time = None
+            logger.debug(
+                "TTS stopped: stream_id=%s, duration=%.3fs",
+                self.stream_id,
+                duration,
+            )
 
     async def start(self) -> EventEnvelope:
         """

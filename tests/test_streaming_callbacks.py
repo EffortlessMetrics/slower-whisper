@@ -664,6 +664,28 @@ class TestProtocolCompliance:
             def on_error(self, error: StreamingError) -> None:
                 pass
 
+            # v2.1 callbacks
+            def on_physics_update(self, snapshot: Any) -> None:
+                pass
+
+            def on_audio_health(self, snapshot: Any) -> None:
+                pass
+
+            def on_vad_activity(self, payload: Any) -> None:
+                pass
+
+            def on_barge_in(self, payload: Any) -> None:
+                pass
+
+            def on_end_of_turn_hint(self, payload: Any) -> None:
+                pass
+
+            def on_correction(self, correction: Any) -> None:
+                pass
+
+            def on_commitment(self, commitment: Any) -> None:
+                pass
+
         callbacks = CompliantCallbacks()
         assert isinstance(callbacks, StreamCallbacks)
 
