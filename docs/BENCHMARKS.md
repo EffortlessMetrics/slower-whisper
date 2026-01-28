@@ -2,6 +2,8 @@
 
 This document describes the benchmark CLI for evaluating slower-whisper quality on standard datasets.
 
+> **Gate mode** runs the benchmark and immediately compares results to a stored baseline. It fails the run if any metric regresses beyond configured thresholds. Use `--gate` flag to enable.
+
 ## Overview
 
 The benchmark CLI provides a standardized way to evaluate slower-whisper across multiple dimensions:

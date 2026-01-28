@@ -263,7 +263,7 @@ See [docs/DEV_ENV_NIX.md](docs/DEV_ENV_NIX.md) for complete Nix documentation.
 
 Before you begin, ensure you have:
 
-1. **Python 3.11 or later** - Check with `python --version`
+1. **Python 3.12 or later** - Check with `python --version`
 2. **ffmpeg** - Required for audio processing
    - Ubuntu/Debian: `sudo apt-get install ffmpeg libsndfile1`
    - macOS: `brew install ffmpeg`
@@ -1033,7 +1033,7 @@ If your changes affect any BDD scenarios (`tests/features/` or `features/`), you
    - Linting (ruff check)
    - Formatting check (ruff format)
    - Type checking (mypy)
-   - Tests on Python 3.11, 3.12
+   - Tests on Python 3.12, 3.13
    - Integration tests
 
 2. **Review by maintainer** - A project maintainer will:

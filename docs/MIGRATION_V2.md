@@ -58,14 +58,14 @@ Before upgrading, complete these steps:
 - [ ] **Check deprecation warnings**: Run your v1.x workflow and note any deprecation warnings
 - [ ] **Review your CLI usage**: Check if you use any deprecated flags or scripts
 - [ ] **Test in staging**: Upgrade in a non-production environment first
-- [ ] **Update dependencies**: Ensure you have Python 3.11+ (recommended for v2.0.0)
+- [ ] **Update dependencies**: Ensure you have Python 3.12+ (required for v2.0.0)
 - [ ] **Review config files**: Check for deprecated configuration keys
 
 ### Minimum Requirements for v2.0.0
 
 | Requirement | v1.x | v2.0.0 |
 |-------------|------|--------|
-| Python | 3.9+ | 3.11+ |
+| Python | 3.9+ | 3.12+ |
 | faster-whisper | 0.9+ | 1.0+ |
 | torch (optional) | 2.0+ | 2.1+ |
 | ffmpeg | any | any |

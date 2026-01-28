@@ -6,7 +6,7 @@ Get audio features (prosody & emotion) from your transcribed audio in 5 steps.
 
 - Audio files already transcribed to JSON (Stage 1 complete)
 - Audio files in `input_audio/` directory
-- Python 3.9+
+- Python 3.12+
 
 ## 5-Step Setup
 

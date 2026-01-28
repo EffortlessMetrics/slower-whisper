@@ -552,6 +552,10 @@ def assign_speakers_to_words(
 
     **Mutates transcript in-place** and returns it for convenience.
 
+    **Note on iteration order**: Segments are processed in start-time order for
+    deterministic assignment. This does not reorder ``transcript.segments``; it
+    iterates a sorted view and mutates segment objects in-place.
+
     Args:
         transcript: Transcript with segments that have word-level timestamps.
         speaker_turns: List of SpeakerTurn from diarization.

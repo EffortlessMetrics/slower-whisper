@@ -24,7 +24,7 @@ Add these badges to your README.md to show the status of your CI/CD workflows:
 
 ## Python Versions
 ```markdown
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 ```
 
 ## License
@@ -41,7 +41,7 @@ Add these badges to your README.md to show the status of your CI/CD workflows:
 
 [![CI](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/YOUR_USERNAME/slower-whisper/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/slower-whisper)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Local transcription pipeline with audio enrichment
