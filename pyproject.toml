@@ -75,7 +75,7 @@ emotion = [
     "slower-whisper[enrich-basic]",
     "torch>=2.8.0,<3",
     "torchaudio>=2.8.0,<3",
-    "transformers==5.0.0",
+    "transformers==4.57.6",
 ]
 
 # Stage 2d: Speaker diarization (heavy ML, ~4GB additional)
