@@ -80,6 +80,37 @@ def test_get_sample_test_files_and_copy(monkeypatch, tmp_path):
     assert copied[0].read_bytes() == b"audio-bytes"
 
 
+def test_copy_sample_no_overwrite_raises_error(monkeypatch, tmp_path):
+    monkeypatch.setenv("SLOWER_WHISPER_SAMPLES", str(tmp_path))
+
+    # Setup source
+    dataset_dir = tmp_path / "mini_diarization" / "dataset" / "test"
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    audio_file = dataset_dir / "test.wav"
+    audio_file.write_bytes(b"new-content")
+
+    # Setup destination with existing file
+    project_raw = tmp_path / "raw_audio"
+    project_raw.mkdir(parents=True)
+    existing_file = project_raw / "mini_diarization_test.wav"
+    existing_file.write_bytes(b"existing-content")
+
+    # Should raise error with overwrite=False
+    from transcription.exceptions import SampleExistsError
+
+    with pytest.raises(SampleExistsError) as exc:
+        samples.copy_sample_to_project("mini_diarization", project_raw, overwrite=False)
+
+    assert existing_file in exc.value.existing_files
+
+    # Verify file wasn't changed
+    assert existing_file.read_bytes() == b"existing-content"
+
+    # Should succeed with overwrite=True
+    samples.copy_sample_to_project("mini_diarization", project_raw, overwrite=True)
+    assert existing_file.read_bytes() == b"new-content"
+
+
 def test_list_sample_datasets_contains_metadata():
     available = samples.list_sample_datasets()
     assert "mini_diarization" in available

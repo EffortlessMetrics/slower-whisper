@@ -33,7 +33,12 @@ from .config import (
     TranscriptionConfig,
 )
 from .device import DeviceChoice, format_preflight_banner, resolve_device
-from .exceptions import ConfigurationError, EnrichmentError, SlowerWhisperError
+from .exceptions import (
+    ConfigurationError,
+    EnrichmentError,
+    SampleExistsError,
+    SlowerWhisperError,
+)
 from .exporters import SUPPORTED_EXPORT_FORMATS, export_transcript
 from .integrations.cli import build_integrations_parser, handle_integrations_command
 from .models import Transcript
@@ -410,6 +415,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path.cwd(),
         help="Project root directory (default: current directory).",
+    )
+    p_samples_copy.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Overwrite existing files without confirmation.",
     )
 
     # samples generate
@@ -841,7 +852,36 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
     elif args.samples_action == "copy":
         try:
             project_dir = args.root / "raw_audio"
-            copied_files = copy_sample_to_project(args.dataset, project_dir)
+            # Attempt copy, respecting --force flag
+            overwrite = args.force
+
+            try:
+                copied_files = copy_sample_to_project(
+                    args.dataset, project_dir, overwrite=overwrite
+                )
+            except SampleExistsError as e:
+                # If interactive, prompt for confirmation
+                if not sys.stdin.isatty():
+                    print(
+                        f"Error: {len(e.existing_files)} files exist. Use --force to overwrite.",
+                        file=sys.stderr,
+                    )
+                    return 1
+
+                print(Colors.red("The following files will be overwritten:"))
+                for f in e.existing_files:
+                    print(f"  {f}")
+
+                confirm = input(f"{Colors.red('Overwrite?')} [y/N] ")
+                if confirm.lower() not in ("y", "yes"):
+                    print("Aborted.")
+                    return 0
+
+                # Retry with overwrite=True
+                copied_files = copy_sample_to_project(
+                    args.dataset, project_dir, overwrite=True
+                )
+
             print(f"\nCopied {len(copied_files)} files to {project_dir}:")
             for f in copied_files:
                 print(f"  {f.name}")
