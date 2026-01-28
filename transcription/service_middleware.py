@@ -71,3 +71,30 @@ async def log_requests(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
 
     return response
+
+
+async def add_security_headers(request: Request, call_next):
+    """
+    Add security headers to all responses.
+
+    Headers added:
+    - X-Content-Type-Options: nosniff
+    - X-Frame-Options: DENY
+    - Content-Security-Policy: default-src 'self'
+    """
+    response = await call_next(request)
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+
+    # CSP: Allow Swagger UI/Redoc assets (CDN) + 'self'
+    # script-src/style-src need 'unsafe-inline' for Swagger UI
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net",
+        "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net",
+        "img-src 'self' data: fastapi.tiangolo.com",
+    ]
+    response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+
+    return response

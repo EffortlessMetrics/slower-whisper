@@ -36,7 +36,7 @@ from .api import load_transcript, transcribe_file
 from .config import EnrichmentConfig, TranscriptionConfig, WhisperTask, validate_compute_type
 from .exceptions import ConfigurationError, EnrichmentError, TranscriptionError
 from .service_metrics import router as metrics_router
-from .service_middleware import log_requests
+from .service_middleware import add_security_headers, log_requests
 from .service_streaming import router as streaming_router
 from .service_validation import (
     save_upload_file_streaming,
@@ -105,6 +105,7 @@ app = FastAPI(
 # =============================================================================
 
 app.middleware("http")(log_requests)
+app.middleware("http")(add_security_headers)
 register_exception_handlers(app)
 
 # =============================================================================
