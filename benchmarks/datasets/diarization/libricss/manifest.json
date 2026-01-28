@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "libricss",
+  "track": "diarization",
+  "split": "test",
+  "description": "LibriCSS - Continuous Speech Separation benchmark derived from LibriSpeech for meeting-style diarization",
+  "source": {
+    "name": "LibriCSS",
+    "url": "https://github.com/chenzhuo1011/libri_css",
+    "citation": "Chen et al., Continuous Speech Separation: Dataset and Analysis, ICASSP 2020"
+  },
+  "license": {
+    "id": "CC-BY-4.0",
+    "name": "Creative Commons Attribution 4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/",
+    "notes": "LibriCSS is derived from LibriSpeech (CC-BY-4.0). Academic use requires citation."
+  },
+  "download": {
+    "method": "manual",
+    "instructions_url": "https://github.com/chenzhuo1011/libri_css#download",
+    "notes": "Download from official GitHub repository. See docs/LIBRICSS_SETUP.md for detailed instructions."
+  },
+  "audio_format": {
+    "sample_rate": 16000,
+    "channels": 7,
+    "encoding": "wav",
+    "bit_depth": 16,
+    "notes": "7-channel circular microphone array recordings. Channel 0 is reference."
+  },
+  "annotation_format": {
+    "type": "rttm",
+    "source": "derived",
+    "notes": "RTTM files derived from LibriSpeech alignments with simulated overlap"
+  },
+  "samples": [],
+  "sample_discovery": {
+    "method": "filesystem",
+    "pattern": "*/overlap_ratio_*/*.wav",
+    "rttm_pattern": "*/overlap_ratio_*/*.rttm",
+    "notes": "Sessions organized by overlap ratio (0.0S to 40.0S). Each session is ~60 seconds."
+  },
+  "overlap_conditions": [
+    {"id": "0S", "overlap_ratio": 0.0, "description": "No overlap"},
+    {"id": "10S", "overlap_ratio": 0.1, "description": "10% overlap"},
+    {"id": "20S", "overlap_ratio": 0.2, "description": "20% overlap"},
+    {"id": "30S", "overlap_ratio": 0.3, "description": "30% overlap"},
+    {"id": "40S", "overlap_ratio": 0.4, "description": "40% overlap"}
+  ],
+  "meta": {
+    "created_at": "2026-01-28T00:00:00Z",
+    "total_duration_hours": 10.0,
+    "sample_count": 500,
+    "speaker_count_per_session": 8,
+    "language": "en",
+    "domain": "simulated-meeting",
+    "speech_type": "read",
+    "quality": "clean",
+    "notes": "LibriCSS simulates meeting scenarios with controlled overlap ratios. Audio is played through speakers in a real room and re-recorded with a microphone array. Useful for evaluating diarization under various overlap conditions."
+  }
+}

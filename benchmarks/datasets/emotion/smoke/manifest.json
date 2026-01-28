@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "id": "emotion-smoke",
+  "track": "emotion",
+  "split": "smoke",
+  "description": "Minimal smoke test for emotion recognition benchmark track. Uses synthetic audio samples with known emotion characteristics.",
+  "source": {
+    "name": "slower-whisper synthetic",
+    "url": "https://github.com/EffortlessMetrics/slower-whisper"
+  },
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "notes": "Synthetic samples created for CI testing"
+  },
+  "download": null,
+  "audio_format": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "encoding": "wav",
+    "bit_depth": 16
+  },
+  "annotation_format": {
+    "type": "json",
+    "source": "synthetic",
+    "notes": "Labels assigned based on synthetic audio characteristics"
+  },
+  "samples": [
+    {
+      "id": "smoke_neutral_001",
+      "audio": "audio/smoke_neutral_001.wav",
+      "duration_s": 3.0,
+      "language": "en",
+      "emotion_label": "neutral",
+      "valence": 0.5,
+      "arousal": 0.3,
+      "dominance": 0.5,
+      "source": "synthetic",
+      "notes": "Steady tone, baseline characteristics"
+    },
+    {
+      "id": "smoke_happy_001",
+      "audio": "audio/smoke_happy_001.wav",
+      "duration_s": 3.0,
+      "language": "en",
+      "emotion_label": "happy",
+      "valence": 0.8,
+      "arousal": 0.7,
+      "dominance": 0.6,
+      "source": "synthetic",
+      "notes": "Higher pitch, faster rate characteristics"
+    },
+    {
+      "id": "smoke_sad_001",
+      "audio": "audio/smoke_sad_001.wav",
+      "duration_s": 3.0,
+      "language": "en",
+      "emotion_label": "sad",
+      "valence": 0.2,
+      "arousal": 0.3,
+      "dominance": 0.3,
+      "source": "synthetic",
+      "notes": "Lower pitch, slower rate characteristics"
+    }
+  ],
+  "expected_baseline": {
+    "accuracy": {
+      "value": 0.60,
+      "tolerance": 0.20,
+      "unit": "fraction",
+      "notes": "Smoke test accuracy threshold (relaxed for synthetic)"
+    },
+    "f1_weighted": {
+      "value": 0.55,
+      "tolerance": 0.25,
+      "unit": "fraction",
+      "notes": "Weighted F1 score threshold"
+    }
+  },
+  "meta": {
+    "created_at": "2026-01-28T00:00:00Z",
+    "total_duration_s": 9.0,
+    "sample_count": 3,
+    "speaker_count": 1,
+    "language": "en",
+    "domain": "synthetic",
+    "speech_type": "synthetic-tones",
+    "quality": "clean",
+    "notes": "Minimal smoke test for CI. Real emotion recognition requires IEMOCAP or similar corpus."
+  }
+}

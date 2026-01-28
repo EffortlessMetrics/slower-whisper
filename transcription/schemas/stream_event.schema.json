@@ -384,12 +384,135 @@
           "description": "Speaker identifier."
         },
         "audio_state": {
-          "type": ["object", "null"],
+          "$ref": "#/$defs/AudioState",
           "description": "Audio enrichment data. Null if enrichment not enabled or failed."
         }
       },
       "additionalProperties": false,
       "description": "Segment data for FINALIZED events."
+    },
+    "AudioState": {
+      "type": ["object", "null"],
+      "properties": {
+        "prosody": {
+          "type": "object",
+          "properties": {
+            "pitch": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "string",
+                  "enum": ["low", "neutral", "high"],
+                  "description": "Pitch level classification."
+                },
+                "mean_hz": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Mean pitch in Hz."
+                }
+              },
+              "additionalProperties": true
+            },
+            "energy": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "string",
+                  "enum": ["quiet", "moderate", "loud"],
+                  "description": "Energy/volume level classification."
+                },
+                "mean_db": {
+                  "type": "number",
+                  "description": "Mean energy in dB."
+                }
+              },
+              "additionalProperties": true
+            },
+            "rate": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "string",
+                  "enum": ["slow", "moderate", "fast"],
+                  "description": "Speech rate classification."
+                },
+                "syllables_per_sec": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Syllables per second."
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "description": "Prosodic features extracted from audio."
+        },
+        "emotion": {
+          "type": "object",
+          "properties": {
+            "valence": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "string",
+                  "enum": ["negative", "neutral", "positive"],
+                  "description": "Valence classification."
+                },
+                "score": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Valence score (0.0-1.0)."
+                }
+              },
+              "additionalProperties": true
+            },
+            "arousal": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "string",
+                  "enum": ["low", "moderate", "high"],
+                  "description": "Arousal classification."
+                },
+                "score": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Arousal score (0.0-1.0)."
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "description": "Dimensional emotion features."
+        },
+        "categorical_emotion": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "description": "Categorical emotion label (e.g., 'happy', 'sad', 'angry')."
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Classification confidence (0.0-1.0)."
+            }
+          },
+          "additionalProperties": true,
+          "description": "Categorical emotion classification."
+        },
+        "rendering": {
+          "type": "string",
+          "description": "Human-readable rendering of audio state (e.g., '[audio: high pitch, positive]')."
+        }
+      },
+      "additionalProperties": true,
+      "description": "Audio enrichment data including prosody, emotion, and rendering."
     },
     "SpeakerTurnPayload": {
       "type": "object",
