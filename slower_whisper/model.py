@@ -180,8 +180,14 @@ class WhisperModel:
 
         # File-like object - read and write to temp file
         if isinstance(audio, (io.IOBase, BinaryIO)) or hasattr(audio, "read"):
+            data = audio.read()
+            if not isinstance(data, (bytes, bytearray)):
+                raise TypeError(
+                    "File-like audio input must return bytes from read(); "
+                    f"got {type(data).__name__}."
+                )
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp.write(audio.read())
+                tmp.write(data)
                 return Path(tmp.name), True
 
         # Check for numpy array without importing numpy at module level
@@ -245,10 +251,10 @@ class WhisperModel:
         without_timestamps: bool = False,
         max_initial_timestamp: float = 1.0,
         word_timestamps: bool = False,
-        prepend_punctuations: str = "\"'([{-",
-        append_punctuations: str = "\"'.googl,:;!?)]}",
+        prepend_punctuations: str = '"\'"¿([{-',
+        append_punctuations: str = '"\'.。,，!！?？:：")]}、',
         multilingual: bool = False,
-        vad_filter: bool = False,
+        vad_filter: bool = True,
         vad_parameters: dict[str, Any] | None = None,
         max_new_tokens: int | None = None,
         chunk_length: int | None = None,
@@ -326,10 +332,13 @@ class WhisperModel:
             engine.cfg.task = task
             engine.cfg.beam_size = beam_size
             engine.cfg.word_timestamps = word_timestamps
-            if vad_parameters:
-                engine.cfg.vad_min_silence_ms = vad_parameters.get(
-                    "min_silence_duration_ms", 500
-                )
+
+            # Respect faster-whisper semantics: allow disabling VAD
+            engine.cfg.vad_filter = bool(vad_filter)
+
+            # Only apply vad_parameters when VAD is enabled
+            if vad_filter and vad_parameters:
+                engine.cfg.vad_min_silence_ms = vad_parameters.get("min_silence_duration_ms", 500)
 
             # Perform transcription
             transcript = engine.transcribe_file(audio_path)
@@ -363,9 +372,7 @@ class WhisperModel:
                 except OSError:
                     pass
 
-    def _apply_diarization(
-        self, transcript: Transcript, audio_path: Path
-    ) -> Transcript:
+    def _apply_diarization(self, transcript: Transcript, audio_path: Path) -> Transcript:
         """Apply speaker diarization to the transcript."""
         try:
             from transcription.diarization import Diarizer, assign_speakers
@@ -572,14 +579,104 @@ class WhisperModel:
 # Whisper's supported language codes (ISO 639-1)
 # This is a subset of the most common ones; the full list has ~100 languages
 _WHISPER_LANGUAGE_CODES = [
-    "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr",
-    "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi",
-    "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no",
-    "th", "ur", "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk",
-    "te", "fa", "lv", "bn", "sr", "az", "sl", "kn", "et", "mk",
-    "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw",
-    "gl", "mr", "pa", "si", "km", "sn", "yo", "so", "af", "oc",
-    "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo",
-    "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl",
-    "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su", "yue",
+    "en",
+    "zh",
+    "de",
+    "es",
+    "ru",
+    "ko",
+    "fr",
+    "ja",
+    "pt",
+    "tr",
+    "pl",
+    "ca",
+    "nl",
+    "ar",
+    "sv",
+    "it",
+    "id",
+    "hi",
+    "fi",
+    "vi",
+    "he",
+    "uk",
+    "el",
+    "ms",
+    "cs",
+    "ro",
+    "da",
+    "hu",
+    "ta",
+    "no",
+    "th",
+    "ur",
+    "hr",
+    "bg",
+    "lt",
+    "la",
+    "mi",
+    "ml",
+    "cy",
+    "sk",
+    "te",
+    "fa",
+    "lv",
+    "bn",
+    "sr",
+    "az",
+    "sl",
+    "kn",
+    "et",
+    "mk",
+    "br",
+    "eu",
+    "is",
+    "hy",
+    "ne",
+    "mn",
+    "bs",
+    "kk",
+    "sq",
+    "sw",
+    "gl",
+    "mr",
+    "pa",
+    "si",
+    "km",
+    "sn",
+    "yo",
+    "so",
+    "af",
+    "oc",
+    "ka",
+    "be",
+    "tg",
+    "sd",
+    "gu",
+    "am",
+    "yi",
+    "lo",
+    "uz",
+    "fo",
+    "ht",
+    "ps",
+    "tk",
+    "nn",
+    "mt",
+    "sa",
+    "lb",
+    "my",
+    "bo",
+    "tl",
+    "mg",
+    "as",
+    "tt",
+    "haw",
+    "ln",
+    "ha",
+    "ba",
+    "jw",
+    "su",
+    "yue",
 ]
