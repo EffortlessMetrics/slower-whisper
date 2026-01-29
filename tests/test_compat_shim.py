@@ -1072,3 +1072,266 @@ class TestSegmentValuesFromInternal:
         assert segment.no_speech_prob == 0.0
         assert segment.temperature == 0.0
         assert segment.seek == 0
+
+
+class TestDeviceCoercionWarning:
+    """Tests for device coercion warning."""
+
+    def test_invalid_device_logs_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Invalid device string logs warning and defaults to 'auto'."""
+        import logging
+
+        # Mock the imports inside _ensure_engine
+        mock_engine = MagicMock()
+        mock_engine.cfg = MagicMock()
+        mock_engine.cfg.device = "cpu"
+        mock_engine.model = MagicMock()
+
+        monkeypatch.setattr(
+            "transcription.asr_engine.TranscriptionEngine",
+            lambda cfg: mock_engine,
+        )
+        monkeypatch.setattr(
+            "transcription.device.resolve_device",
+            lambda x: MagicMock(device="cpu"),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="slower_whisper.model"):
+            model = WhisperModel("tiny", device="invalid_device")
+            # Force engine initialization
+            model._ensure_engine()
+
+        # Should log a warning about invalid device
+        assert any("Invalid device" in record.message for record in caplog.records)
+        assert any("invalid_device" in record.message for record in caplog.records)
+
+
+class TestVadDurationTracking:
+    """Tests for VAD duration tracking."""
+
+    def test_transcription_info_uses_vad_duration(self) -> None:
+        """TranscriptionInfo.from_transcript() uses duration_after_vad when available."""
+        from transcription.models import Segment as InternalSegment
+        from transcription.models import Transcript
+
+        # Create transcript with duration_after_vad set
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                InternalSegment(id=0, start=0.0, end=10.0, text="Hello"),
+            ],
+            duration_after_vad=8.5,  # VAD trimmed some silence
+        )
+
+        info = TranscriptionInfo.from_transcript(transcript)
+
+        assert info.duration == 10.0  # Total duration from segments
+        assert info.duration_after_vad == 8.5  # VAD-trimmed duration
+
+    def test_transcription_info_fallback_without_vad_duration(self) -> None:
+        """TranscriptionInfo.from_transcript() falls back to duration when no VAD duration."""
+        from transcription.models import Segment as InternalSegment
+        from transcription.models import Transcript
+
+        # Create transcript without duration_after_vad
+        transcript = Transcript(
+            file_name="test.wav",
+            language="en",
+            segments=[
+                InternalSegment(id=0, start=0.0, end=10.0, text="Hello"),
+            ],
+        )
+
+        info = TranscriptionInfo.from_transcript(transcript)
+
+        assert info.duration == 10.0
+        assert info.duration_after_vad == 10.0  # Falls back to duration
+
+
+class TestLanguageDetectionCaching:
+    """Tests for language detection caching."""
+
+    def test_detect_language_caches_result(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """detect_language() caches results for same file path."""
+        mock_transcript = _create_mock_transcript()
+        mock_transcript.language = "es"
+
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = mock_transcript
+        mock_engine.cfg = MagicMock()
+        mock_engine.cfg.device = "cpu"
+        mock_engine.model = MagicMock(spec=[])  # No detect_language method
+
+        model = WhisperModel("tiny", device="cpu")
+        model._engine = mock_engine
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(b"RIFF" + b"\x00" * 100)
+            audio_path = f.name
+
+        try:
+            # First call - should transcribe
+            lang1, prob1, _ = model.detect_language(audio_path)
+            assert lang1 == "es"
+            assert mock_engine.transcribe_file.call_count == 1
+
+            # Second call - should use cache
+            lang2, prob2, _ = model.detect_language(audio_path)
+            assert lang2 == "es"
+            # Should NOT call transcribe_file again
+            assert mock_engine.transcribe_file.call_count == 1
+        finally:
+            Path(audio_path).unlink(missing_ok=True)
+
+    def test_clear_language_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """clear_language_cache() clears the detection cache."""
+        mock_transcript = _create_mock_transcript()
+        mock_transcript.language = "de"
+
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = mock_transcript
+        mock_engine.cfg = MagicMock()
+        mock_engine.cfg.device = "cpu"
+        mock_engine.model = MagicMock(spec=[])
+
+        model = WhisperModel("tiny", device="cpu")
+        model._engine = mock_engine
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(b"RIFF" + b"\x00" * 100)
+            audio_path = f.name
+
+        try:
+            # First call - populates cache
+            model.detect_language(audio_path)
+            assert mock_engine.transcribe_file.call_count == 1
+
+            # Clear cache
+            model.clear_language_cache()
+
+            # Second call - should transcribe again after cache clear
+            model.detect_language(audio_path)
+            assert mock_engine.transcribe_file.call_count == 2
+        finally:
+            Path(audio_path).unlink(missing_ok=True)
+
+
+class TestSampleRateHandling:
+    """Tests for sample rate handling with numpy arrays."""
+
+    def test_transcribe_accepts_sample_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """transcribe() accepts sample_rate parameter for numpy arrays."""
+        pytest.importorskip("numpy")
+        pytest.importorskip("soundfile")
+
+        import numpy as np
+
+        mock_transcript = _create_mock_transcript()
+
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = mock_transcript
+        mock_engine.cfg = MagicMock()
+        mock_engine.cfg.device = "cpu"
+
+        model = WhisperModel("tiny", device="cpu")
+        model._engine = mock_engine
+
+        # Create a simple numpy array (mono audio at 44100 Hz)
+        audio = np.zeros(44100, dtype=np.float32)  # 1 second of silence
+
+        # Should not raise
+        segments, info = model.transcribe(audio, sample_rate=44100)
+
+        assert len(segments) > 0
+        # Verify transcribe_file was called
+        assert mock_engine.transcribe_file.called
+
+    def test_detect_language_accepts_sample_rate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """detect_language() accepts sample_rate parameter for numpy arrays."""
+        pytest.importorskip("numpy")
+        pytest.importorskip("soundfile")
+
+        import numpy as np
+
+        mock_transcript = _create_mock_transcript()
+        mock_transcript.language = "ja"
+
+        mock_engine = MagicMock()
+        mock_engine.transcribe_file.return_value = mock_transcript
+        mock_engine.cfg = MagicMock()
+        mock_engine.cfg.device = "cpu"
+        mock_engine.model = MagicMock(spec=[])
+
+        model = WhisperModel("tiny", device="cpu")
+        model._engine = mock_engine
+
+        audio = np.zeros(22050, dtype=np.float32)  # 0.5 second at 44100 Hz
+
+        # Should not raise
+        lang, prob, _ = model.detect_language(audio, sample_rate=44100)
+
+        assert lang == "ja"
+
+
+class TestSegmentFallbackLogging:
+    """Tests for fallback logging in Segment.from_internal()."""
+
+    def test_segment_from_internal_logs_defaults(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Segment.from_internal() logs debug message when using defaults."""
+        import logging
+
+        from transcription.models import Segment as InternalSegment
+
+        # Create segment without optional fields
+        internal = InternalSegment(
+            id=0,
+            start=0.0,
+            end=1.0,
+            text="Test",
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="slower_whisper.compat"):
+            segment = Segment.from_internal(internal)
+
+        # Should log about using defaults
+        assert any("default values" in record.message for record in caplog.records)
+        # Should mention the fields that used defaults
+        debug_messages = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        assert len(debug_messages) > 0
+
+    def test_segment_from_internal_no_log_when_all_present(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Segment.from_internal() does not log when all fields present."""
+        import logging
+
+        from transcription.models import Segment as InternalSegment
+
+        # Create segment with all optional fields
+        internal = InternalSegment(
+            id=0,
+            start=0.0,
+            end=1.0,
+            text="Test",
+            tokens=[1, 2, 3],
+            avg_logprob=-0.5,
+            compression_ratio=1.2,
+            no_speech_prob=0.1,
+            temperature=0.0,
+            seek=100,
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="slower_whisper.compat"):
+            segment = Segment.from_internal(internal)
+
+        # Should NOT log about defaults
+        assert not any("default values" in record.message for record in caplog.records)

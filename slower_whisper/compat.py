@@ -17,6 +17,7 @@ The key types are:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -25,6 +26,8 @@ if TYPE_CHECKING:
     from transcription.models import Segment as InternalSegment
     from transcription.models import Transcript
     from transcription.models import Word as InternalWord
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,12 +183,45 @@ class Segment:
 
         # Extract faster-whisper compatibility fields from internal segment
         # These are now tracked in the internal Segment model
-        tokens = getattr(seg, "tokens", None) or []
-        avg_logprob = getattr(seg, "avg_logprob", 0.0)
-        compression_ratio = getattr(seg, "compression_ratio", 1.0)
-        no_speech_prob = getattr(seg, "no_speech_prob", 0.0)
-        temperature = getattr(seg, "temperature", 0.0)
-        seek = getattr(seg, "seek", 0)
+        # Track which fields used defaults for debugging
+        defaults_used: list[str] = []
+
+        tokens = getattr(seg, "tokens", None)
+        if tokens is None:
+            tokens = []
+            defaults_used.append("tokens")
+
+        avg_logprob = getattr(seg, "avg_logprob", None)
+        if avg_logprob is None:
+            avg_logprob = 0.0
+            defaults_used.append("avg_logprob")
+
+        compression_ratio = getattr(seg, "compression_ratio", None)
+        if compression_ratio is None:
+            compression_ratio = 1.0
+            defaults_used.append("compression_ratio")
+
+        no_speech_prob = getattr(seg, "no_speech_prob", None)
+        if no_speech_prob is None:
+            no_speech_prob = 0.0
+            defaults_used.append("no_speech_prob")
+
+        temperature = getattr(seg, "temperature", None)
+        if temperature is None:
+            temperature = 0.0
+            defaults_used.append("temperature")
+
+        seek = getattr(seg, "seek", None)
+        if seek is None:
+            seek = 0
+            defaults_used.append("seek")
+
+        if defaults_used:
+            logger.debug(
+                "Segment %d: using default values for fields: %s",
+                seg.id,
+                ", ".join(defaults_used),
+            )
 
         return cls(
             id=seg.id,
@@ -236,11 +272,15 @@ class TranscriptionInfo:
     ) -> TranscriptionInfo:
         """Create TranscriptionInfo from a slower-whisper Transcript."""
         duration = transcript.duration
+        # Use VAD duration from transcript if available, otherwise fall back to total duration
+        duration_after_vad = getattr(transcript, "duration_after_vad", None)
+        if duration_after_vad is None:
+            duration_after_vad = duration
         return cls(
             language=transcript.language,
             language_probability=language_probability,
             duration=duration,
-            duration_after_vad=duration,  # No VAD duration tracking internally
+            duration_after_vad=duration_after_vad,
             all_language_probs=[(transcript.language, language_probability)],
             transcription_options=transcription_options or {},
             vad_options=vad_options,

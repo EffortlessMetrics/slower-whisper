@@ -98,6 +98,9 @@ class WhisperModel:
         self._last_transcription_options: dict[str, Any] = {}
         self._last_vad_options: dict[str, Any] | None = None
 
+        # Cache for detect_language results: path -> (language, probability, all_probs)
+        self._language_cache: dict[str, tuple[str, float, list[tuple[str, float]] | None]] = {}
+
     def _ensure_engine(self) -> Any:
         """Lazily initialize the transcription engine."""
         if self._engine is not None:
@@ -112,6 +115,11 @@ class WhisperModel:
         # Map string device to the expected Literal type
         device_choice = self._device
         if device_choice not in ("auto", "cpu", "cuda"):
+            logger.warning(
+                "Invalid device '%s', defaulting to 'auto'. "
+                "Valid options are: 'auto', 'cpu', 'cuda'.",
+                device_choice,
+            )
             device_choice = "auto"
 
         resolved = resolve_device(device_choice)  # type: ignore[arg-type]
@@ -152,11 +160,15 @@ class WhisperModel:
         """
         return self._last_transcript
 
-    def _audio_to_path(self, audio: AudioInput) -> tuple[Path, bool]:
+    def _audio_to_path(
+        self, audio: AudioInput, sample_rate: int | None = None
+    ) -> tuple[Path, bool]:
         """Convert audio input to a file path.
 
         Args:
             audio: Audio input (path string, Path, file-like object, or numpy array).
+            sample_rate: Sample rate for numpy array input. If None, assumes 16000 Hz
+                (Whisper's native rate). Ignored for file inputs.
 
         Returns:
             Tuple of (path, should_cleanup) where should_cleanup indicates if
@@ -184,9 +196,17 @@ class WhisperModel:
                     "Install with: pip install slower-whisper[enrich-basic]"
                 ) from e
 
+            # Use provided sample rate or default to Whisper's native 16kHz
+            if sample_rate is None:
+                sample_rate = 16000
+                logger.debug(
+                    "No sample_rate provided for numpy array; assuming %d Hz. "
+                    "If audio has a different sample rate, pass sample_rate parameter.",
+                    sample_rate,
+                )
+
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                # Assume 16kHz sample rate (Whisper's native rate)
-                sf.write(tmp.name, audio, samplerate=16000)
+                sf.write(tmp.name, audio, samplerate=sample_rate)
                 return Path(tmp.name), True
 
         raise TypeError(
@@ -241,6 +261,7 @@ class WhisperModel:
         # slower-whisper extensions (ignored by faster-whisper code)
         diarize: bool = False,
         enrich: bool = False,
+        sample_rate: int | None = None,
     ) -> tuple[list[Segment], TranscriptionInfo]:
         """Transcribe audio file.
 
@@ -258,6 +279,9 @@ class WhisperModel:
             vad_parameters: VAD configuration dict.
             diarize: Enable speaker diarization (slower-whisper extension).
             enrich: Enable audio enrichment (slower-whisper extension).
+            sample_rate: Sample rate for numpy array input (slower-whisper extension).
+                If None and audio is a numpy array, assumes 16000 Hz (Whisper's native rate).
+                Ignored for file path inputs.
             ... (other parameters passed through to faster-whisper)
 
         Returns:
@@ -290,7 +314,7 @@ class WhisperModel:
         self._last_vad_options = vad_parameters
 
         # Convert audio input to file path
-        audio_path, should_cleanup = self._audio_to_path(audio)
+        audio_path, should_cleanup = self._audio_to_path(audio, sample_rate=sample_rate)
 
         try:
             # Get or create the transcription engine
@@ -444,6 +468,7 @@ class WhisperModel:
         vad_parameters: dict[str, Any] | None = None,
         language_detection_segments: int = 1,
         language_detection_threshold: float = 0.5,
+        sample_rate: int | None = None,
     ) -> tuple[str, float, list[tuple[str, float]] | None]:
         """Detect the language of audio (matches faster-whisper signature).
 
@@ -451,12 +476,17 @@ class WhisperModel:
         This is useful for pre-screening audio before transcription or for
         multilingual audio processing.
 
+        Results are cached by file path to avoid redundant analysis on repeated
+        calls with the same audio file. Use clear_language_cache() to reset.
+
         Args:
             audio: Path to audio file, file-like object, or numpy array.
             vad_filter: Enable VAD to filter non-speech before detection.
             vad_parameters: VAD configuration dict.
             language_detection_segments: Number of segments to analyze.
             language_detection_threshold: Minimum confidence threshold.
+            sample_rate: Sample rate for numpy array input. If None and audio is
+                a numpy array, assumes 16000 Hz. Ignored for file path inputs.
 
         Returns:
             Tuple of (language_code, probability, all_language_probs):
@@ -475,9 +505,15 @@ class WhisperModel:
         underlying = engine.model
 
         # Convert audio input to appropriate format
-        audio_path, should_cleanup = self._audio_to_path(audio)
+        audio_path, should_cleanup = self._audio_to_path(audio, sample_rate=sample_rate)
+        cache_key = str(audio_path.resolve()) if not should_cleanup else None
 
         try:
+            # Check cache for file-based inputs (not temp files)
+            if cache_key and cache_key in self._language_cache:
+                logger.debug("Using cached language detection for %s", audio_path.name)
+                return self._language_cache[cache_key]
+
             # Check if the underlying model has detect_language
             if hasattr(underlying, "detect_language"):
                 # Load audio as numpy array for faster-whisper
@@ -497,7 +533,11 @@ class WhisperModel:
                         lang = result[0]
                         prob = result[1]
                         all_probs = result[2] if len(result) > 2 else None
-                        return (str(lang), float(prob), all_probs)
+                        detection_result = (str(lang), float(prob), all_probs)
+                        # Cache the result for file-based inputs
+                        if cache_key:
+                            self._language_cache[cache_key] = detection_result
+                        return detection_result
                 except ImportError:
                     logger.debug("faster_whisper.audio not available, using fallback")
 
@@ -506,7 +546,11 @@ class WhisperModel:
             transcript = engine.transcribe_file(audio_path)
             detected_lang = transcript.language or "en"
             # Return with high confidence since we transcribed it
-            return (detected_lang, 0.99, [(detected_lang, 0.99)])
+            detection_result = (detected_lang, 0.99, [(detected_lang, 0.99)])
+            # Cache the result for file-based inputs
+            if cache_key:
+                self._language_cache[cache_key] = detection_result
+            return detection_result
 
         finally:
             # Cleanup temporary file if we created one
@@ -515,6 +559,14 @@ class WhisperModel:
                     audio_path.unlink()
                 except OSError:
                     pass
+
+    def clear_language_cache(self) -> None:
+        """Clear the language detection cache.
+
+        Call this if you need to re-detect language for previously analyzed files,
+        for example if the audio content has changed.
+        """
+        self._language_cache.clear()
 
 
 # Whisper's supported language codes (ISO 639-1)

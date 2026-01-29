@@ -590,6 +590,8 @@ class Transcript:
                Null in v1.0 transcripts; populated after diarization in v1.1+.
         speaker_stats: Optional list of per-speaker aggregates (v1.2 scaffolding).
                        Each entry can be a dict or SpeakerStats dataclass.
+        duration_after_vad: Duration in seconds after VAD filtering (v2.0+).
+                            None if VAD was not applied or duration not tracked.
     """
 
     file_name: str
@@ -601,6 +603,7 @@ class Transcript:
     turns: list[Turn | dict[str, Any]] | None = None
     speaker_stats: list[SpeakerStats | dict[str, Any]] | None = None
     chunks: list[Chunk | dict[str, Any]] | None = None
+    duration_after_vad: float | None = None
 
     @property
     def full_text(self) -> str:

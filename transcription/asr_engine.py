@@ -566,10 +566,19 @@ class TranscriptionEngine:
 
         self.using_dummy = used_dummy
 
+        # Extract duration_after_vad from faster-whisper's TranscriptionInfo
+        duration_after_vad: float | None = None
+        if info is not None and hasattr(info, "duration_after_vad"):
+            try:
+                duration_after_vad = float(info.duration_after_vad)
+            except (TypeError, ValueError):
+                pass
+
         transcript = Transcript(
             file_name=audio_path.name,
             language=self._normalize_language(info),
             segments=seg_objs,
+            duration_after_vad=duration_after_vad,
         )
         actual_device = "cpu" if used_dummy else self.cfg.device
         actual_compute_type = "n/a" if used_dummy else (self.cfg.compute_type or "unknown")
