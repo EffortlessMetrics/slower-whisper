@@ -301,6 +301,271 @@ class TestExtendedEndOfTurnHintPayload:
         assert data["reason_codes"] == ["SILENCE_THRESHOLD"]
 
 
+class TestEndOfTurnHintEmission:
+    """Tests for END_OF_TURN_HINT emission via callbacks."""
+
+    def test_hint_emitted_when_end_of_turn_detected(self):
+        """Callback is triggered when turn end is detected."""
+        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+        from transcription.streaming_callbacks import EndOfTurnHintPayload
+
+        hints_received = []
+
+        def on_hint(payload):
+            hints_received.append(payload)
+
+        # Use aggressive policy which has lower confidence threshold (0.6)
+        # and doesn't require prosody signal
+        config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=True,
+            turn_taking_policy="aggressive",
+        )
+        processor = PostProcessor(config, on_end_of_turn_hint=on_hint)
+
+        # Process a segment with conditions that should trigger end-of-turn
+        ctx = SegmentContext(
+            session_id="test",
+            segment_id="seg_0",
+            speaker_id="spk_0",
+            start=0.0,
+            end=2.0,
+            text="How can I help you today?",  # Question with terminal punct
+        )
+
+        processor.process_segment(
+            ctx,
+            silence_duration_ms=400,  # Exceeds aggressive threshold of 300ms
+            turn_duration_ms=2000,
+        )
+
+        # Should have received a hint
+        assert len(hints_received) == 1
+        payload = hints_received[0]
+        assert isinstance(payload, EndOfTurnHintPayload)
+        assert payload.confidence > 0.5
+        assert payload.terminal_punctuation is True
+        assert "terminal_punctuation" in payload.reason_codes
+        assert "question_detected" in payload.reason_codes
+        assert payload.partial_text == "How can I help you today?"
+        assert payload.policy_name == "aggressive"
+
+    def test_aggressive_fires_sooner_than_conservative(self):
+        """Aggressive policy fires hints sooner than conservative."""
+        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+        from transcription.streaming_callbacks import EndOfTurnHintPayload
+
+        aggressive_hints = []
+        conservative_hints = []
+
+        def on_aggressive_hint(payload):
+            aggressive_hints.append(payload)
+
+        def on_conservative_hint(payload):
+            conservative_hints.append(payload)
+
+        aggressive_config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=True,
+            turn_taking_policy="aggressive",
+        )
+        conservative_config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=True,
+            turn_taking_policy="conservative",
+        )
+
+        aggressive_processor = PostProcessor(aggressive_config, on_end_of_turn_hint=on_aggressive_hint)
+        conservative_processor = PostProcessor(conservative_config, on_end_of_turn_hint=on_conservative_hint)
+
+        # Test with moderate silence (400ms) - aggressive threshold is 300ms, conservative is 1200ms
+        ctx = SegmentContext(
+            session_id="test",
+            segment_id="seg_0",
+            speaker_id="spk_0",
+            start=0.0,
+            end=1.5,
+            text="Okay, thanks.",
+        )
+
+        # Process with silence between thresholds (aggressive should fire due to lower threshold and confidence)
+        aggressive_processor.process_segment(ctx, silence_duration_ms=400, turn_duration_ms=1500)
+        conservative_processor.process_segment(ctx, silence_duration_ms=400, turn_duration_ms=1500)
+
+        # Aggressive should fire (silence=400 > 300 threshold, punct strength 0.8)
+        # Conservative should not (silence=400 < 1200 threshold, needs much more evidence)
+        assert len(aggressive_hints) == 1
+        assert len(conservative_hints) == 0
+
+        # Now test with very long silence that exceeds conservative max_silence_for_continuation
+        aggressive_hints.clear()
+        conservative_hints.clear()
+
+        # Conservative max_silence_for_continuation is 5000ms, so 5500ms should force it
+        aggressive_processor.process_segment(ctx, silence_duration_ms=5500, turn_duration_ms=6000)
+        conservative_processor.process_segment(ctx, silence_duration_ms=5500, turn_duration_ms=6000)
+
+        # Both should fire when silence exceeds max_silence_for_continuation
+        assert len(aggressive_hints) == 1
+        assert len(conservative_hints) == 1
+
+    def test_hint_includes_all_reason_codes(self):
+        """Hint payload includes all applicable reason codes."""
+        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+        from transcription.streaming_callbacks import EndOfTurnHintPayload
+
+        hints_received = []
+
+        def on_hint(payload):
+            hints_received.append(payload)
+
+        # Use aggressive policy for easier triggering
+        config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=True,
+            turn_taking_policy="aggressive",
+        )
+        processor = PostProcessor(config, on_end_of_turn_hint=on_hint)
+
+        # Process segment with multiple end-of-turn signals
+        ctx = SegmentContext(
+            session_id="test",
+            segment_id="seg_0",
+            speaker_id="spk_0",
+            start=0.0,
+            end=3.0,
+            text="I would like to order a large pizza with extra cheese.",  # Complete sentence
+        )
+
+        processor.process_segment(
+            ctx,
+            silence_duration_ms=400,  # Silence threshold for aggressive
+            turn_duration_ms=3000,
+        )
+
+        assert len(hints_received) == 1
+        payload = hints_received[0]
+        assert "silence_threshold" in payload.reason_codes
+        assert "terminal_punctuation" in payload.reason_codes
+        # Note: aggressive policy disables sentence completion, so we check what it does have
+
+    def test_no_hint_when_turn_too_short(self):
+        """No hint emitted when turn is too short for policy."""
+        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+
+        hints_received = []
+
+        def on_hint(payload):
+            hints_received.append(payload)
+
+        config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=True,
+            turn_taking_policy="balanced",  # min_turn_duration_ms=500
+        )
+        processor = PostProcessor(config, on_end_of_turn_hint=on_hint)
+
+        ctx = SegmentContext(
+            session_id="test",
+            segment_id="seg_0",
+            speaker_id="spk_0",
+            start=0.0,
+            end=0.3,
+            text="Hi.",
+        )
+
+        # Turn duration is 300ms, below minimum of 500ms
+        processor.process_segment(ctx, silence_duration_ms=800, turn_duration_ms=300)
+
+        # No hint should be emitted
+        assert len(hints_received) == 0
+
+    def test_long_pause_forces_hint(self):
+        """Long pause forces hint regardless of other factors."""
+        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+
+        hints_received = []
+
+        def on_hint(payload):
+            hints_received.append(payload)
+
+        config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=True,
+            turn_taking_policy="balanced",  # max_silence_for_continuation_ms=3000
+        )
+        processor = PostProcessor(config, on_end_of_turn_hint=on_hint)
+
+        ctx = SegmentContext(
+            session_id="test",
+            segment_id="seg_0",
+            speaker_id="spk_0",
+            start=0.0,
+            end=1.0,
+            text="um",  # Incomplete text, no punctuation
+        )
+
+        # Very long silence forces end
+        processor.process_segment(ctx, silence_duration_ms=3500, turn_duration_ms=1000)
+
+        assert len(hints_received) == 1
+        payload = hints_received[0]
+        assert "long_pause" in payload.reason_codes
+
+    def test_hint_payload_has_correct_fields(self):
+        """Verify all EndOfTurnHintPayload fields are populated correctly."""
+        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+        from transcription.streaming_callbacks import EndOfTurnHintPayload
+
+        hints_received = []
+
+        def on_hint(payload):
+            hints_received.append(payload)
+
+        config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=True,
+            turn_taking_policy="aggressive",
+        )
+        processor = PostProcessor(config, on_end_of_turn_hint=on_hint)
+
+        ctx = SegmentContext(
+            session_id="test",
+            segment_id="seg_0",
+            speaker_id="spk_0",
+            start=0.0,
+            end=2.0,
+            text="Yes, I understand.",
+        )
+
+        processor.process_segment(ctx, silence_duration_ms=400, turn_duration_ms=2000)
+
+        assert len(hints_received) == 1
+        payload = hints_received[0]
+
+        # Check all fields
+        assert isinstance(payload, EndOfTurnHintPayload)
+        assert isinstance(payload.confidence, float)
+        assert 0.0 <= payload.confidence <= 1.0
+        assert isinstance(payload.silence_duration, float)
+        assert payload.silence_duration == 0.4  # 400ms = 0.4s
+        assert isinstance(payload.terminal_punctuation, bool)
+        assert payload.terminal_punctuation is True
+        assert payload.partial_text == "Yes, I understand."
+        assert isinstance(payload.reason_codes, list)
+        assert payload.silence_duration_ms == 400.0
+        assert payload.policy_name == "aggressive"
+
+        # Test to_dict
+        d = payload.to_dict()
+        assert d["confidence"] == payload.confidence
+        assert d["silence_duration"] == 0.4
+        assert d["terminal_punctuation"] is True
+        assert d["partial_text"] == "Yes, I understand."
+        assert d["policy_name"] == "aggressive"
+        assert d["silence_duration_ms"] == 400.0
+
+
 class TestEdgeCases:
     """Tests for edge cases."""
 

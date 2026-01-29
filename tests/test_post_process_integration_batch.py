@@ -22,6 +22,7 @@ from transcription.models import (
     Turn,
 )
 
+
 # ============================================================================
 # Fixtures and Factory Functions
 # ============================================================================
@@ -623,7 +624,7 @@ class TestAllFeaturesEnabledTogether:
 
         # Verify roles structure
         roles = result.annotations.get("roles", {})
-        for _speaker_id, role_data in roles.items():
+        for speaker_id, role_data in roles.items():
             assert "role" in role_data
             assert "confidence" in role_data
 
@@ -797,6 +798,7 @@ class TestDataFlowIntegrity:
 
     def test_segment_data_preserved(self):
         """Original segment data is preserved after processing."""
+        original_words = [{"word": "hello", "start": 0.0, "end": 0.5}]
         segments = [
             Segment(
                 id=0,

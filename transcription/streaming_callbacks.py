@@ -25,6 +25,7 @@ from .topic_segmentation import TopicBoundaryPayload
 if TYPE_CHECKING:
     from .audio_health import AudioHealthSnapshot
     from .conversation_physics import ConversationPhysicsSnapshot
+    from .role_inference import RoleAssignment
     from .safety_layer import SafetyAlertPayload
     from .streaming import StreamSegment
     from .streaming_semantic import CommitmentEntry, CorrectionEvent, SemanticUpdatePayload
@@ -405,29 +406,29 @@ class StreamCallbacks(Protocol):
         """
         ...
 
-    def on_role_assigned(self, assignments: dict) -> None:
+    def on_role_assigned(self, payload: RoleAssignedPayload) -> None:
         """Called when speaker roles are assigned.
 
         Role assignments are computed after enough turns have been
         processed (typically 5 turns or 30 seconds).
 
         Args:
-            assignments: Dictionary mapping speaker_id to RoleAssignment dict:
-                - speaker_id: Speaker identifier
-                - role: Inferred role ("agent", "customer", "facilitator", "unknown")
-                - confidence: Confidence score (0.0-1.0)
-                - evidence: List of evidence strings
+            payload: RoleAssignedPayload containing:
+                - assignments: Dictionary mapping speaker_id to RoleAssignment dict
+                  with keys: speaker_id, role, confidence, evidence, original_label
+                - timestamp: When roles were decided
+                - trigger: What caused decision ("turn_count", "elapsed_time", "finalize")
         """
         ...
 
-    def on_topic_boundary(self, payload: dict) -> None:
+    def on_topic_boundary(self, payload: TopicBoundaryPayload) -> None:
         """Called when a topic boundary is detected.
 
         Topic boundaries are detected when vocabulary shifts significantly
         between rolling windows of turns.
 
         Args:
-            payload: TopicBoundaryPayload dict containing:
+            payload: TopicBoundaryPayload containing:
                 - previous_topic_id: ID of the topic that ended
                 - new_topic_id: ID of the new topic starting
                 - boundary_turn_id: Turn ID where boundary was detected
@@ -481,10 +482,10 @@ class NoOpCallbacks:
     def on_safety_alert(self, payload: SafetyAlertPayload) -> None:
         pass
 
-    def on_role_assigned(self, assignments: dict) -> None:
+    def on_role_assigned(self, payload: RoleAssignedPayload) -> None:
         pass
 
-    def on_topic_boundary(self, payload: dict) -> None:
+    def on_topic_boundary(self, payload: TopicBoundaryPayload) -> None:
         pass
 
 

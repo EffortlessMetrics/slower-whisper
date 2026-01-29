@@ -41,6 +41,7 @@ from .environment_classifier import (
 from .role_inference import RoleAssignment, RoleInferenceConfig, RoleInferrer
 from .safety_config import SafetyConfig
 from .safety_layer import SafetyProcessingResult, SafetyProcessor
+from .streaming_callbacks import EndOfTurnHintPayload, RoleAssignedPayload
 from .topic_segmentation import (
     StreamingTopicSegmenter,
     TopicBoundaryPayload,
@@ -56,6 +57,8 @@ from .turn_taking_policy import (
 
 if TYPE_CHECKING:
     import numpy as np
+
+    from .enrichment_config import EnrichmentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +193,22 @@ class PostProcessConfig:
 
         return config
 
+    @classmethod
+    def from_enrichment_config(cls, config: "EnrichmentConfig") -> "PostProcessConfig | None":
+        """Create PostProcessConfig from EnrichmentConfig.
+
+        This is a convenience method that delegates to EnrichmentConfig.to_post_process_config().
+        It provides an alternative entry point for creating PostProcessConfig from enrichment settings.
+
+        Args:
+            config: EnrichmentConfig instance with enrichment settings.
+
+        Returns:
+            PostProcessConfig if any post-processing features are enabled,
+            None otherwise.
+        """
+        return config.to_post_process_config()
+
 
 @dataclass(slots=True)
 class PostProcessResult:
@@ -277,6 +296,7 @@ class PostProcessor:
         on_safety_alert: Any | None = None,
         on_role_assigned: Any | None = None,
         on_topic_boundary: Any | None = None,
+        on_end_of_turn_hint: Any | None = None,
     ):
         """Initialize post-processor.
 
@@ -285,11 +305,13 @@ class PostProcessor:
             on_safety_alert: Callback for safety alerts.
             on_role_assigned: Callback for role assignments.
             on_topic_boundary: Callback for topic boundaries.
+            on_end_of_turn_hint: Callback for end-of-turn hints.
         """
         self.config = config or PostProcessConfig()
         self._on_safety_alert = on_safety_alert
         self._on_role_assigned = on_role_assigned
         self._on_topic_boundary = on_topic_boundary
+        self._on_end_of_turn_hint = on_end_of_turn_hint
 
         # Initialize processors based on config
         self._safety_processor: SafetyProcessor | None = None
@@ -303,6 +325,8 @@ class PostProcessor:
         self._role_assignments: dict[str, RoleAssignment] = {}
         self._roles_decided = False
         self._start_time: float | None = None
+        self._last_end_time: float = 0.0
+        self._finalized = False
 
         self._initialize_processors()
 
@@ -369,6 +393,9 @@ class PostProcessor:
         if self._start_time is None:
             self._start_time = ctx.start
 
+        # Track last end time for finalize
+        self._last_end_time = max(self._last_end_time, ctx.end)
+
         # 1. Safety processing
         if self._safety_processor:
             try:
@@ -434,10 +461,51 @@ class PostProcessor:
                     prosody_falling=prosody_falling,
                     prosody_flat=prosody_flat,
                 )
+
+                # Emit on_end_of_turn_hint callback if turn-end detected
+                if result.end_of_turn.is_end_of_turn and self._on_end_of_turn_hint:
+                    # Convert reason codes to lowercase snake_case for API consistency
+                    reason_codes_mapped = self._map_reason_codes(result.end_of_turn.reason_codes)
+
+                    # Check for terminal punctuation in reason codes
+                    has_terminal_punct = any(
+                        code in result.end_of_turn.reason_codes
+                        for code in ("TERMINAL_PUNCT", "QUESTION_DETECTED")
+                    )
+
+                    payload = EndOfTurnHintPayload(
+                        confidence=result.end_of_turn.confidence,
+                        silence_duration=result.end_of_turn.silence_duration_ms / 1000.0,
+                        terminal_punctuation=has_terminal_punct,
+                        partial_text=ctx.text,
+                        reason_codes=reason_codes_mapped,
+                        silence_duration_ms=result.end_of_turn.silence_duration_ms,
+                        policy_name=result.end_of_turn.policy_name,
+                    )
+                    self._invoke_callback_safely(self._on_end_of_turn_hint, payload)
             except Exception as e:
                 logger.warning("Turn-taking evaluation failed: %s", e)
 
         return result
+
+    def _map_reason_codes(self, reason_codes: list[str]) -> list[str]:
+        """Map internal reason codes to API-friendly lowercase snake_case.
+
+        Args:
+            reason_codes: List of internal reason codes (e.g., "TERMINAL_PUNCT").
+
+        Returns:
+            List of API-friendly reason codes (e.g., "terminal_punctuation").
+        """
+        code_map = {
+            "TERMINAL_PUNCT": "terminal_punctuation",
+            "SILENCE_THRESHOLD": "silence_threshold",
+            "FALLING_INTONATION": "boundary_tone",
+            "COMPLETE_SENTENCE": "complete_sentence",
+            "QUESTION_DETECTED": "question_detected",
+            "LONG_PAUSE": "long_pause",
+        }
+        return [code_map.get(code, code.lower()) for code in reason_codes]
 
     def process_turn(self, turn: dict[str, Any]) -> TurnProcessResult:
         """Process a completed turn for topic/role analysis.
@@ -453,6 +521,10 @@ class PostProcessor:
 
         result = TurnProcessResult()
         self._turns.append(turn)
+
+        # Track last end time for finalize
+        turn_end = turn.get("end", 0.0)
+        self._last_end_time = max(self._last_end_time, turn_end)
 
         # Topic segmentation
         if self._topic_segmenter:
@@ -480,21 +552,32 @@ class PostProcessor:
         turn_count = len(self._turns)
         elapsed_sec = turn.get("end", 0.0) - (self._start_time or 0.0)
 
-        should_decide = (
-            turn_count >= self.config.role_decision_turns
-            or elapsed_sec >= self.config.role_decision_seconds
-        )
+        triggered_by_turns = turn_count >= self.config.role_decision_turns
+        triggered_by_time = elapsed_sec >= self.config.role_decision_seconds
+        should_decide = triggered_by_turns or triggered_by_time
 
         if should_decide and self._role_inferrer:
             try:
                 self._role_assignments = self._role_inferrer.infer_roles(self._turns)
                 self._roles_decided = True
 
-                # Emit callback
+                # Emit callback with typed payload
                 if self._on_role_assigned and self._role_assignments:
-                    self._invoke_callback_safely(
-                        self._on_role_assigned, self._role_assignments
+                    # Determine trigger reason
+                    trigger = "turn_count" if triggered_by_turns else "elapsed_time"
+                    timestamp = turn.get("end", 0.0)
+
+                    # Convert RoleAssignment objects to dicts
+                    assignments_dict = {
+                        k: v.to_dict() for k, v in self._role_assignments.items()
+                    }
+
+                    payload = RoleAssignedPayload(
+                        assignments=assignments_dict,
+                        timestamp=timestamp,
+                        trigger=trigger,
                     )
+                    self._invoke_callback_safely(self._on_role_assigned, payload)
             except Exception as e:
                 logger.warning("Role inference failed: %s", e)
 
@@ -542,12 +625,71 @@ class PostProcessor:
             return self._topic_segmenter.finalize()
         return []
 
+    def finalize(self) -> None:
+        """Finalize post-processing and close any open state.
+
+        Must be called after all segments/turns have been processed to:
+        - Close the current topic chunk with proper end_time
+        - Trigger final role inference if not yet decided
+        - Emit final callbacks
+
+        This method is idempotent - calling it multiple times has no effect
+        after the first call.
+        """
+        if self._finalized:
+            return
+
+        self._finalized = True
+
+        # Close open topic chunk
+        if self._topic_segmenter is not None:
+            closed_topic = self._topic_segmenter.close_current_topic(
+                end_time=self._last_end_time if self._last_end_time > 0 else None
+            )
+            # Emit callback for the closed topic if one was actually closed
+            if closed_topic is not None and self._on_topic_boundary:
+                # Create a boundary payload indicating finalization
+                from .topic_segmentation import TopicBoundaryPayload
+
+                payload = TopicBoundaryPayload(
+                    previous_topic_id=closed_topic.id,
+                    new_topic_id="",  # No new topic - this is the end
+                    boundary_turn_id=closed_topic.turn_ids[-1] if closed_topic.turn_ids else "",
+                    boundary_time=self._last_end_time,
+                    similarity_score=0.0,  # Not a similarity-based boundary
+                    keywords_previous=closed_topic.keywords,
+                    keywords_new=[],
+                )
+                self._invoke_callback_safely(self._on_topic_boundary, payload)
+
+        # Final role inference if not done yet
+        if self._role_inferrer is not None and not self._roles_decided and self._turns:
+            try:
+                self._role_assignments = self._role_inferrer.infer_roles(self._turns)
+                self._roles_decided = True
+
+                # Emit callback with "finalize" trigger
+                if self._on_role_assigned and self._role_assignments:
+                    assignments_dict = {
+                        k: v.to_dict() for k, v in self._role_assignments.items()
+                    }
+                    payload = RoleAssignedPayload(
+                        assignments=assignments_dict,
+                        timestamp=self._last_end_time,
+                        trigger="finalize",
+                    )
+                    self._invoke_callback_safely(self._on_role_assigned, payload)
+            except Exception as e:
+                logger.warning("Final role inference failed: %s", e)
+
     def reset(self) -> None:
         """Reset processor state for new session."""
         self._turns = []
         self._role_assignments = {}
         self._roles_decided = False
         self._start_time = None
+        self._last_end_time = 0.0
+        self._finalized = False
 
         if self._topic_segmenter:
             self._topic_segmenter.reset()
