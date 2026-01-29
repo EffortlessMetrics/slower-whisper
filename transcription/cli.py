@@ -878,9 +878,7 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                     return 0
 
                 # Retry with overwrite=True
-                copied_files = copy_sample_to_project(
-                    args.dataset, project_dir, overwrite=True
-                )
+                copied_files = copy_sample_to_project(args.dataset, project_dir, overwrite=True)
 
             print(f"\nCopied {len(copied_files)} files to {project_dir}:")
             for f in copied_files:

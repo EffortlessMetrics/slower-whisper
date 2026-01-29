@@ -13,6 +13,7 @@ returns partial results when some features cannot be extracted.
 """
 
 import logging
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -325,53 +326,59 @@ def enrich_transcript_audio(
 
     # Create a single extractor to reuse across all segments (avoids repeated file opens)
     try:
-        shared_extractor = AudioSegmentExtractor(wav_path)
+        extractor = AudioSegmentExtractor(wav_path)
+        shared_extractor = extractor
+        ctx = extractor
     except Exception as e:
         logger.error("Failed to create audio extractor for %s: %s", wav_path, e, exc_info=True)
         shared_extractor = None
+        ctx = nullcontext()
 
-    for idx, segment in enumerate(transcript.segments):
-        logger.debug("Enriching segment %d/%d: %s", idx + 1, len(transcript.segments), segment.id)
-
-        try:
-            audio_state = _enrich_segment_with_extractor(
-                shared_extractor,
-                wav_path,
-                segment,
-                enable_prosody=enable_prosody,
-                enable_emotion=enable_emotion,
-                enable_categorical_emotion=enable_categorical_emotion,
-                speaker_baseline=speaker_baseline,
+    with ctx:
+        for idx, segment in enumerate(transcript.segments):
+            logger.debug(
+                "Enriching segment %d/%d: %s", idx + 1, len(transcript.segments), segment.id
             )
 
-            # Attach audio_state to segment
-            segment.audio_state = audio_state
+            try:
+                audio_state = _enrich_segment_with_extractor(
+                    shared_extractor,
+                    wav_path,
+                    segment,
+                    enable_prosody=enable_prosody,
+                    enable_emotion=enable_emotion,
+                    enable_categorical_emotion=enable_categorical_emotion,
+                    speaker_baseline=speaker_baseline,
+                )
 
-            # Count success/partial/failure
-            status = audio_state.get("extraction_status", {})
-            errors = status.get("errors", [])
+                # Attach audio_state to segment
+                segment.audio_state = audio_state
 
-            if not errors:
-                success_count += 1
-            elif any(status.get(k) == "success" for k in ["prosody", "emotion_dimensional"]):
-                partial_count += 1
-            else:
+                # Count success/partial/failure
+                status = audio_state.get("extraction_status", {})
+                errors = status.get("errors", [])
+
+                if not errors:
+                    success_count += 1
+                elif any(status.get(k) == "success" for k in ["prosody", "emotion_dimensional"]):
+                    partial_count += 1
+                else:
+                    failed_count += 1
+
+            except Exception as e:
+                logger.error("Failed to enrich segment %s: %s", segment.id, e, exc_info=True)
+                segment.audio_state = {
+                    "prosody": None,
+                    "emotion": None,
+                    "rendering": "[audio: neutral]",
+                    "extraction_status": {
+                        "prosody": "failed",
+                        "emotion_dimensional": "failed",
+                        "emotion_categorical": "failed",
+                        "errors": [str(e)],
+                    },
+                }
                 failed_count += 1
-
-        except Exception as e:
-            logger.error("Failed to enrich segment %s: %s", segment.id, e, exc_info=True)
-            segment.audio_state = {
-                "prosody": None,
-                "emotion": None,
-                "rendering": "[audio: neutral]",
-                "extraction_status": {
-                    "prosody": "failed",
-                    "emotion_dimensional": "failed",
-                    "emotion_categorical": "failed",
-                    "errors": [str(e)],
-                },
-            }
-            failed_count += 1
 
     # Update transcript metadata
     if transcript.meta is None:

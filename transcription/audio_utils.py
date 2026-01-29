@@ -56,6 +56,26 @@ class AudioSegmentExtractor:
         except Exception as e:
             raise RuntimeError(f"Failed to open audio file '{self.wav_path}': {e}") from e
 
+        # Persistent file handle for context manager usage
+        self._file_handle: sf.SoundFile | None = None
+
+    def __enter__(self):
+        """
+        Context manager entry: open persistent file handle.
+
+        Enables efficient batch processing by keeping the file open across
+        multiple extract_segment calls.
+        """
+        if self._file_handle is None:
+            self._file_handle = sf.SoundFile(str(self.wav_path), "r")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit: close persistent file handle."""
+        if self._file_handle:
+            self._file_handle.close()
+            self._file_handle = None
+
     def extract_segment(
         self,
         start_seconds: float,
@@ -147,6 +167,17 @@ class AudioSegmentExtractor:
 
         # Extract the segment using seek
         try:
+            if self._file_handle:
+                # Use persistent handle if available (faster for batch operations)
+                self._file_handle.seek(start_frame)
+                audio_data = self._file_handle.read(num_frames, dtype="float32")
+
+                if audio_data.ndim > 1:
+                    audio_data = audio_data[:, 0]
+
+                return audio_data, self.sample_rate
+
+            # Otherwise open fresh handle (safer for long-running idle processes)
             with sf.SoundFile(str(self.wav_path), "r") as audio_file:
                 # Seek to start position
                 audio_file.seek(start_frame)
@@ -207,6 +238,15 @@ class AudioSegmentExtractor:
         num_frames = end_frame - start_frame
 
         try:
+            if self._file_handle:
+                self._file_handle.seek(start_frame)
+                audio_data = self._file_handle.read(num_frames, dtype="float32")
+
+                if audio_data.ndim > 1:
+                    audio_data = audio_data[:, 0]
+
+                return audio_data, self.sample_rate
+
             with sf.SoundFile(str(self.wav_path), "r") as audio_file:
                 audio_file.seek(start_frame)
                 audio_data = audio_file.read(num_frames, dtype="float32")
