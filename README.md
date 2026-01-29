@@ -46,6 +46,27 @@ nix develop           # or: uv sync --extra full --extra dev
 uv run slower-whisper transcribe --root .
 ```
 
+### Drop-in faster-whisper Replacement
+
+Already using `faster-whisper`? Just change the import:
+
+```python
+# Before
+from faster_whisper import WhisperModel
+
+# After
+from slower_whisper import WhisperModel
+
+model = WhisperModel("base")
+segments, info = model.transcribe("audio.wav")
+
+# Same API, plus optional diarization and enrichment
+segments, info = model.transcribe("meeting.wav", diarize=True, enrich=True)
+transcript = model.last_transcript  # Access enriched data
+```
+
+See [Migrating from faster-whisper](docs/FASTER_WHISPER_MIGRATION.md) for details.
+
 ---
 
 ## Local Gate (Canonical)
@@ -102,6 +123,7 @@ See [docs/SCHEMA.md](docs/SCHEMA.md) for the complete schema specification and s
 | Document | Description |
 |----------|-------------|
 | [docs/INDEX.md](docs/INDEX.md) | **Start here** — complete documentation map |
+| [docs/FASTER_WHISPER_MIGRATION.md](docs/FASTER_WHISPER_MIGRATION.md) | **Migrating from faster-whisper** |
 | [docs/QUICKSTART.md](docs/QUICKSTART.md) | First transcription tutorial |
 | [docs/SCHEMA.md](docs/SCHEMA.md) | JSON schema reference |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Configuration reference |

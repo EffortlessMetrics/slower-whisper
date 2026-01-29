@@ -601,6 +601,64 @@ slower-whisper transcribe --language en
 
 ---
 
+## Error Code Reference
+
+Quick reference for common error messages and their solutions.
+
+### Runtime Errors
+
+| Error Message | Cause | Solution |
+|--------------|-------|----------|
+| `RuntimeError: No audio found in file` | Empty or corrupted audio file | Check file with `ffprobe input.wav` |
+| `RuntimeError: Failed to load audio` | Unsupported format or codec | Convert with `ffmpeg -i input -ar 16000 output.wav` |
+| `RuntimeError: Model not found` | Model name misspelled or not downloaded | Use valid name: tiny, base, small, medium, large-v3 |
+| `RuntimeError: CUDA out of memory` | Insufficient GPU VRAM | Use `--device cpu` or smaller model |
+| `RuntimeError: CTranslate2 error` | CUDA/driver mismatch | Reinstall ctranslate2 or check driver version |
+
+### Import Errors
+
+| Error Message | Cause | Solution |
+|--------------|-------|----------|
+| `ModuleNotFoundError: No module named 'faster_whisper'` | Base deps not installed | `pip install .` or `uv sync` |
+| `ModuleNotFoundError: No module named 'librosa'` | Enrichment deps not installed | `pip install .[full]` or `uv sync --extra full` |
+| `ModuleNotFoundError: No module named 'pyannote'` | Diarization deps not installed | `pip install .[diarization]` |
+| `ImportError: cannot import name 'WhisperModel'` | Wrong package version | `pip install --upgrade faster-whisper` |
+
+### Configuration Errors
+
+| Error Message | Cause | Solution |
+|--------------|-------|----------|
+| `ValueError: Invalid compute_type for device` | Incompatible compute type | Use `int8` for CPU, `float16` for CUDA |
+| `ValueError: model must be one of` | Invalid model name | Check valid models in CONFIGURATION.md |
+| `FileNotFoundError: raw_audio directory not found` | Wrong --root path | Verify path exists: `ls /path/to/root/raw_audio/` |
+| `PermissionError: [Errno 13]` | No write permission to output dir | `chmod 755 whisper_json/` or run with appropriate permissions |
+
+### Network Errors
+
+| Error Message | Cause | Solution |
+|--------------|-------|----------|
+| `OSError: Can't load model weights` | Network issue during download | Check internet, retry, or use `HF_HOME` for manual cache |
+| `ConnectionError: Unable to reach Hugging Face` | Firewall/proxy blocking | Set `HTTP_PROXY`/`HTTPS_PROXY` env vars |
+| `ReadTimeoutError` | Slow connection during model download | Retry or download manually |
+
+### Diarization Errors
+
+| Error Message | Cause | Solution |
+|--------------|-------|----------|
+| `ValueError: No speakers detected` | Audio too short or silent | Provide audio with clear speech > 1 second |
+| `RuntimeError: pyannote model not found` | Missing HF token or model access | Accept terms at huggingface.co/pyannote/speaker-diarization |
+| `ValueError: min_speakers > max_speakers` | Invalid speaker config | Ensure `--min-speakers <= --max-speakers` |
+
+### Enrichment Errors
+
+| Error Message | Cause | Solution |
+|--------------|-------|----------|
+| `ValueError: Segment too short for analysis` | Segment < 0.1s | Adjust VAD settings for longer segments |
+| `RuntimeError: Parselmouth extraction failed` | Invalid audio segment | Check audio isn't silence/noise |
+| `RuntimeError: Emotion model failed` | Model loading issue | Reinstall transformers: `pip install -U transformers` |
+
+---
+
 ## Still Having Issues?
 
 ### Collect diagnostic information
@@ -635,7 +693,7 @@ When reporting issues, please include:
 4. Diagnostic output from above
 5. Sample audio file (if possible)
 
-**GitHub Issues:** https://github.com/EffotlessMetrics/slower-whisper/issues
+**GitHub Issues:** https://github.com/EffortlessMetrics/slower-whisper/issues
 
 ---
 
@@ -658,4 +716,4 @@ When reporting issues, please include:
 - [Quickstart Guide](QUICKSTART.md) - Getting started tutorial
 - [Installation Guide](INSTALLATION.md) - Detailed installation
 - [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Stage 2 documentation
-- [GitHub Issues](https://github.com/EffotlessMetrics/slower-whisper/issues) - Report problems
+- [GitHub Issues](https://github.com/EffortlessMetrics/slower-whisper/issues) - Report problems

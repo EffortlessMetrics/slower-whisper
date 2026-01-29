@@ -62,12 +62,18 @@ nix-clean run .#verify -- --quick
    - `event_id` is monotonically increasing per stream
    - FINALIZED events never dropped; PARTIAL can be dropped under backpressure
 
+10. **slower_whisper maintains faster-whisper API compatibility**
+    - `WhisperModel`, `Segment`, `Word`, `TranscriptionInfo` match faster-whisper signatures
+    - `Segment` supports both attribute access and tuple unpacking
+    - Extensions (`diarize`, `enrich`, `last_transcript`) are additive, not breaking
+
 ---
 
 ## Key Surfaces
 
 | Surface | Location |
 |---------|----------|
+| **faster-whisper compat** | `slower_whisper/` |
 | Batch pipeline | `transcription/pipeline.py` |
 | ASR engine | `transcription/asr_engine.py` |
 | Streaming | `transcription/streaming*.py` |
@@ -102,6 +108,7 @@ nix-clean run .#verify -- --quick
 |------|-------|
 | Forward plan | [ROADMAP.md](ROADMAP.md) |
 | Shipped history | [CHANGELOG.md](CHANGELOG.md) |
+| faster-whisper migration | [docs/FASTER_WHISPER_MIGRATION.md](docs/FASTER_WHISPER_MIGRATION.md) |
 | Streaming architecture | [docs/STREAMING_ARCHITECTURE.md](docs/STREAMING_ARCHITECTURE.md) |
 | GPU setup | [docs/GPU_SETUP.md](docs/GPU_SETUP.md) |
 | Type policy | [docs/TYPING_POLICY.md](docs/TYPING_POLICY.md) |

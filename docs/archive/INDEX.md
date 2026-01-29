@@ -1,5 +1,9 @@
 # Archive Index
 
+> **⚠️ ARCHIVED DOCUMENTATION — NOT FOR CURRENT USE**
+>
+> This directory contains historical documentation from November 2025. These documents are **outdated** and kept only for historical reference. For current documentation, see [../INDEX.md](../INDEX.md).
+
 This directory contains historical documentation from the development and transformation process of slower-whisper. These documents are kept for reference but are not part of the active documentation.
 
 ## Purpose
