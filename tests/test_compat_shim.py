@@ -1300,7 +1300,7 @@ class TestSegmentFallbackLogging:
         )
 
         with caplog.at_level(logging.DEBUG, logger="slower_whisper.compat"):
-            segment = Segment.from_internal(internal)
+            Segment.from_internal(internal)
 
         # Should log about using defaults
         assert any("default values" in record.message for record in caplog.records)
@@ -1331,7 +1331,7 @@ class TestSegmentFallbackLogging:
         )
 
         with caplog.at_level(logging.DEBUG, logger="slower_whisper.compat"):
-            segment = Segment.from_internal(internal)
+            Segment.from_internal(internal)
 
         # Should NOT log about defaults
         assert not any("default values" in record.message for record in caplog.records)
