@@ -544,6 +544,14 @@ class Segment:
                Populated when word_timestamps=True during transcription.
                Each Word contains: word, start, end, probability, and optional speaker.
                The structure is defined by WORD_ALIGNMENT_VERSION.
+
+    faster-whisper compatibility fields (v2.0+):
+        tokens: Token IDs from the ASR model.
+        avg_logprob: Average log probability of tokens.
+        compression_ratio: Compression ratio metric.
+        no_speech_prob: Probability that segment contains no speech.
+        temperature: Temperature used for generation.
+        seek: Seek position in audio frames.
     """
 
     id: int
@@ -554,6 +562,13 @@ class Segment:
     tone: str | None = None
     audio_state: dict[str, Any] | None = None
     words: list[Word] | None = None
+    # faster-whisper compatibility fields
+    tokens: list[int] | None = None
+    avg_logprob: float = 0.0
+    compression_ratio: float = 1.0
+    no_speech_prob: float = 0.0
+    temperature: float = 0.0
+    seek: int = 0
 
 
 @dataclass

@@ -128,6 +128,14 @@ segment.end
 segment.text
 segment.words  # List[Word] if word_timestamps=True
 
+# faster-whisper fields (now populated with real values)
+segment.tokens          # Token IDs from ASR model
+segment.avg_logprob     # Average log probability
+segment.compression_ratio  # Compression ratio metric
+segment.no_speech_prob  # No-speech probability
+segment.temperature     # Generation temperature
+segment.seek            # Seek position in frames
+
 # Tuple unpacking (legacy compatibility)
 id_, seek, start, end, text, tokens, avg_logprob, compression_ratio, no_speech_prob, words, temperature = segment
 
@@ -170,6 +178,50 @@ segment.audio_state  # {"energy_db": -20.0, ...}
 3. Consistent behavior with or without enrichment
 
 If you need streaming, use the [Streaming API](STREAMING_API.md) instead.
+
+---
+
+## Language Detection
+
+slower-whisper supports language detection via the `detect_language()` method:
+
+```python
+from slower_whisper import WhisperModel
+
+model = WhisperModel("base")
+
+# Detect language before transcription
+lang, confidence, all_probs = model.detect_language("audio.wav")
+print(f"Detected: {lang} (confidence: {confidence:.1%})")
+
+# Check supported languages
+print(f"Supported languages: {model.supported_languages[:10]}...")
+```
+
+### detect_language() Method
+
+```python
+lang, prob, all_probs = model.detect_language(
+    audio,                          # Path, file-like, or numpy array
+    vad_filter=False,               # Enable VAD filtering
+    vad_parameters=None,            # VAD configuration
+    language_detection_segments=1,  # Segments to analyze
+    language_detection_threshold=0.5,  # Confidence threshold
+)
+```
+
+Returns:
+- `lang`: ISO 639-1 language code (e.g., "en", "fr")
+- `prob`: Confidence score (0.0-1.0)
+- `all_probs`: List of (language, probability) tuples, or None
+
+### supported_languages Property
+
+```python
+# Get all supported languages
+languages = model.supported_languages
+# Returns: ['en', 'zh', 'de', 'es', 'ru', 'ko', 'fr', ...]
+```
 
 ---
 

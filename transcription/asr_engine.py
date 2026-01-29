@@ -339,8 +339,23 @@ class TranscriptionEngine:
 
     def _build_segments(self, raw_segments: Iterable[Any]) -> list[Segment]:
         """Convert raw Whisper segments into our Segment dataclass."""
-        # Collect validated segments with optional word-level data
-        validated: list[tuple[float, float, str, list[Word] | None]] = []
+        # Collect validated segments with optional word-level data and faster-whisper fields
+        # Tuple: (start, end, text, words, tokens, avg_logprob, compression_ratio,
+        #         no_speech_prob, temperature, seek)
+        validated: list[
+            tuple[
+                float,
+                float,
+                str,
+                list[Word] | None,
+                list[int] | None,
+                float,
+                float,
+                float,
+                float,
+                int,
+            ]
+        ] = []
         extract_words = getattr(self.cfg, "word_timestamps", False)
 
         for idx, seg in enumerate(raw_segments):
@@ -373,7 +388,29 @@ class TranscriptionEngine:
                 if raw_words:
                     words = self._build_words(raw_words, idx)
 
-            validated.append((start, end, text_str.strip(), words))
+            # Extract faster-whisper compatibility fields
+            raw_tokens = getattr(seg, "tokens", None)
+            tokens: list[int] | None = list(raw_tokens) if raw_tokens is not None else None
+            avg_logprob = float(getattr(seg, "avg_logprob", 0.0))
+            compression_ratio = float(getattr(seg, "compression_ratio", 1.0))
+            no_speech_prob = float(getattr(seg, "no_speech_prob", 0.0))
+            temperature = float(getattr(seg, "temperature", 0.0))
+            seek = int(getattr(seg, "seek", 0))
+
+            validated.append(
+                (
+                    start,
+                    end,
+                    text_str.strip(),
+                    words,
+                    tokens,
+                    avg_logprob,
+                    compression_ratio,
+                    no_speech_prob,
+                    temperature,
+                    seek,
+                )
+            )
 
         is_monotonic = all(
             validated[i][0] <= validated[i + 1][0] for i in range(len(validated) - 1)
@@ -389,8 +426,25 @@ class TranscriptionEngine:
                 end=end,
                 text=text,
                 words=words,
+                tokens=tokens,
+                avg_logprob=avg_logprob,
+                compression_ratio=compression_ratio,
+                no_speech_prob=no_speech_prob,
+                temperature=temperature,
+                seek=seek,
             )
-            for idx, (start, end, text, words) in enumerate(validated)
+            for idx, (
+                start,
+                end,
+                text,
+                words,
+                tokens,
+                avg_logprob,
+                compression_ratio,
+                no_speech_prob,
+                temperature,
+                seek,
+            ) in enumerate(validated)
         ]
         return seg_objs
 

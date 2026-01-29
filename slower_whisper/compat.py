@@ -178,18 +178,27 @@ class Segment:
         if seg.words:
             words = [Word.from_internal(w) for w in seg.words]
 
+        # Extract faster-whisper compatibility fields from internal segment
+        # These are now tracked in the internal Segment model
+        tokens = getattr(seg, "tokens", None) or []
+        avg_logprob = getattr(seg, "avg_logprob", 0.0)
+        compression_ratio = getattr(seg, "compression_ratio", 1.0)
+        no_speech_prob = getattr(seg, "no_speech_prob", 0.0)
+        temperature = getattr(seg, "temperature", 0.0)
+        seek = getattr(seg, "seek", 0)
+
         return cls(
             id=seg.id,
-            seek=0,  # Not tracked internally
+            seek=seek,
             start=seg.start,
             end=seg.end,
             text=seg.text,
-            tokens=[],  # Not tracked internally
-            avg_logprob=0.0,  # Not tracked internally
-            compression_ratio=1.0,  # Not tracked internally
-            no_speech_prob=0.0,  # Not tracked internally
+            tokens=list(tokens) if tokens else [],
+            avg_logprob=float(avg_logprob),
+            compression_ratio=float(compression_ratio),
+            no_speech_prob=float(no_speech_prob),
             words=words,
-            temperature=0.0,  # Not tracked internally
+            temperature=float(temperature),
             speaker=seg.speaker,
             audio_state=seg.audio_state,
         )
