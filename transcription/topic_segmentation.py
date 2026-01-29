@@ -705,58 +705,25 @@ class StreamingTopicSegmenter:
             speaker_ids=speaker_ids,
         )
 
-    def close_current_topic(self, end_time: float | None = None) -> TopicChunk | None:
-        """Close the current topic chunk and return it if one was open.
-
-        This method closes any open topic chunk, setting its end time and adding
-        it to the finalized topics list. Call this when you need to explicitly
-        close the current topic (e.g., at end of stream) without calling finalize().
-
-        Args:
-            end_time: Optional explicit end time. If not provided, uses the end
-                time of the last turn in the current topic.
-
-        Returns:
-            The closed TopicChunk if one was open and had turns, None otherwise.
-        """
-        # Check if there are any turns in the current topic that haven't been finalized
-        if self._current_topic_start_idx >= len(self._turns):
-            return None
-
-        final_turns = self._turns[self._current_topic_start_idx:]
-        if not final_turns:
-            return None
-
-        final_tokens = self._turn_tokens[self._current_topic_start_idx:]
-
-        topic = self._create_topic_chunk(
-            topic_idx=self._current_topic_idx,
-            turns=final_turns,
-            start_idx=self._current_topic_start_idx,
-            end_idx=len(self._turns) - 1,
-            turn_tokens=final_tokens,
-        )
-
-        # Override end time if provided
-        if end_time is not None:
-            topic.end = end_time
-
-        self._topics.append(topic)
-
-        # Update state to mark topic as closed
-        self._current_topic_idx += 1
-        self._current_topic_start_idx = len(self._turns)
-
-        return topic
-
     def finalize(self) -> list[TopicChunk]:
         """Finalize segmentation and return all topics.
 
         Returns:
             List of TopicChunk objects.
         """
-        # Close current topic if open
-        self.close_current_topic()
+        # Create final topic from remaining turns
+        if self._current_topic_start_idx < len(self._turns):
+            final_turns = self._turns[self._current_topic_start_idx:]
+            final_tokens = self._turn_tokens[self._current_topic_start_idx:]
+
+            topic = self._create_topic_chunk(
+                topic_idx=self._current_topic_idx,
+                turns=final_turns,
+                start_idx=self._current_topic_start_idx,
+                end_idx=len(self._turns) - 1,
+                turn_tokens=final_tokens,
+            )
+            self._topics.append(topic)
 
         return self._topics
 

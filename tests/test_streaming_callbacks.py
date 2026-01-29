@@ -750,13 +750,6 @@ class TestProtocolCompliance:
             def on_safety_alert(self, payload: Any) -> None:
                 pass
 
-            # v2.0 role and topic callbacks
-            def on_role_assigned(self, payload: Any) -> None:
-                pass
-
-            def on_topic_boundary(self, payload: Any) -> None:
-                pass
-
         callbacks = CompliantCallbacks()
         assert isinstance(callbacks, StreamCallbacks)
 
