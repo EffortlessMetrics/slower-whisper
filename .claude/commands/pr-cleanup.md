@@ -1,15 +1,7 @@
 ---
 description: Quality pass to make the current branch PR-ready with fixes, gate verification, and readiness report
 argument-hint: [optional: "minimal churn", "run full gate", "skip heavy tests", "prep for issue #N"]
-allowed-tools: >
-  Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git remote:*),
-  Bash(git merge-base:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*),
-  Bash(git add:*), Bash(git restore:*), Bash(git checkout:*), Bash(git stash:*), Bash(git commit:*),
-  Bash(ls:*), Bash(find:*), Bash(rg:*), Bash(sed:*), Bash(awk:*), Bash(wc:*),
-  Bash(mkdir:*), Bash(cat:*), Bash(tee:*), Bash(date:*),
-  Bash(pytest:*), Bash(ruff:*), Bash(mypy:*),
-  Bash(uv:*), Bash(pip-audit:*),
-  Bash(./scripts/*:*)
+allowed-tools: Bash, Read, Edit, Write, Glob, Grep, Task
 ---
 
 # PR Cleanup
@@ -18,23 +10,26 @@ Make this branch PR-ready through a quality-focused cleanup pass: identify issue
 
 **User context:** $ARGUMENTS
 
-## Context (auto-collected)
-
-- Branch: !`git branch --show-current`
-- Status: !`git status --porcelain=v1 -b`
-- Base branch: !`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo main`
-
-- Receipts directory:
-  !`BR=$(git branch --show-current | tr '/ ' '__'); TS=$(date +"%Y%m%d-%H%M%S"); DIR="target/pr-cleanup/${TS}-${BR}"; mkdir -p "$DIR"; echo "$DIR" | tee target/pr-cleanup/LAST_DIR`
-
-- Baseline summary:
-  !`DIR=$(cat target/pr-cleanup/LAST_DIR); BASE=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo main); MB=$(git merge-base HEAD origin/$BASE 2>/dev/null || git merge-base HEAD $BASE); git diff --name-only $MB..HEAD > "$DIR/files_before.txt"; git diff --numstat $MB..HEAD > "$DIR/numstat_before.txt"; awk '{add=$1; del=$2; if(add=="-"||del=="-"){next} A+=add; D+=del} END{printf "%d files | +%d -%d\n", NR, A, D}' "$DIR/numstat_before.txt"`
-
----
-
 ## Process
 
-### 1+2. Explore and gate (parallel batch)
+### 1. Gather context
+
+First, understand the current state:
+
+```bash
+# Branch and status
+git branch --show-current
+git status --short
+
+# Base branch
+git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo main
+
+# What changed (replace BASE with actual)
+git log --oneline origin/BASE..HEAD
+git diff --stat origin/BASE..HEAD
+```
+
+### 2. Explore and gate (parallel)
 
 Launch these concurrently:
 
@@ -45,7 +40,7 @@ Launch these concurrently:
 - **Interface touchpoints**: Public API, CLI flags, JSON schema fields, config options
 - **Risk patterns**: Device handling, callbacks, streaming state, optional deps
 
-Reference the repo invariants (from CLAUDE.md):
+Reference the repo invariants from CLAUDE.md:
 - Device resolution explicit: `--device auto|cpu|cuda`
 - compute_type follows resolved device
 - Callbacks catch exceptions → route to `on_error`
@@ -53,27 +48,27 @@ Reference the repo invariants (from CLAUDE.md):
 - Version matches package metadata
 - Optional deps degrade gracefully
 
-Save findings to `<receipts>/explore.md`.
-
 **Gate** — run the local CI gate:
 
 ```bash
-./scripts/ci-local.sh 2>&1 | tee <receipts>/gate_initial.log
+./scripts/ci-local.sh        # full gate
+# or
+./scripts/ci-local.sh fast   # quick check
 ```
 
-The gate runs:
-1. **Docs sanity**: Internal markdown links, snippet correctness
-2. **Pre-commit**: ruff lint + format, other hooks
-3. **Type checking**: mypy on transcription/ and strategic test files
-4. **Fast tests**: pytest -m "not slow and not heavy"
-5. **Verification suite**: slower-whisper-verify --quick
-6. **Nix checks**: flake check + verify app (full mode)
+The gate covers:
+1. Docs sanity: Internal markdown links, snippet correctness
+2. Pre-commit: ruff lint + format, other hooks
+3. Type checking: mypy on transcription/ and strategic test files
+4. Fast tests: pytest -m "not slow and not heavy"
+5. Verification suite: slower-whisper-verify --quick
+6. Nix checks: flake check + verify app (full mode)
 
 Capture failures for targeted fixes.
 
 ### 3. Plan fixes
 
-Use the **Plan** agent to prioritize based on exploration and gate findings:
+Prioritize based on exploration and gate findings:
 
 **Quick wins** (apply now):
 - Format/lint issues (auto-fixable)
@@ -89,8 +84,6 @@ Use the **Plan** agent to prioritize based on exploration and gate findings:
 - Pre-existing issues unrelated to this change
 - Refactors that expand scope
 - Performance optimizations
-
-Save plan to `<receipts>/fix_plan.md`.
 
 ### 4. Apply fixes
 
@@ -120,53 +113,22 @@ Commit fixes with clear messages:
 Re-run the full gate:
 
 ```bash
-./scripts/ci-local.sh 2>&1 | tee <receipts>/gate_final.log
+./scripts/ci-local.sh
 ```
 
 All checks must pass before marking ready.
 
-### 6. Produce readiness report
+### 6. Report readiness
 
-Write `<receipts>/cleanup_report.md` with:
+Summarize for the user:
 
-```markdown
-## Cleanup summary
+- **Issues found and fixed**: What was improved
+- **Interface impact**: API/CLI/schema changes
+- **Evidence**: Gate results, test counts
+- **Remaining items**: Deferred issues with reasoning
+- **PR readiness**: Ready or blocked by X
 
-What was improved and why. Focus on:
-- Issues found and fixed
-- Quality signals strengthened
-- Scope explicitly deferred
-
-## Interface impact
-
-- **Public API**: unchanged | additive | breaking
-- **CLI surface**: unchanged | changed
-- **JSON schema**: unchanged | changed
-
-## What changed during cleanup
-
-Key files touched, grouped by:
-- Formatting/lint fixes
-- Type annotation improvements
-- Test additions/fixes
-- Doc updates
-
-## Evidence
-
-- Initial gate: X failures (see gate_initial.log)
-- Final gate: ✓ all passing (see gate_final.log)
-- Test summary: N passed, M skipped
-
-## Remaining items
-
-Issues noted but deferred (with reasoning).
-
-## PR readiness
-
-**Ready** | **Blocked by X**
-
-If ready, suggest running `/pr-create` with context.
-```
+If ready, suggest running `/pr-create` with relevant context.
 
 ---
 
@@ -181,7 +143,6 @@ If ready, suggest running `/pr-create` with context.
 | Type errors (mypy) | Add annotations to changed code; ignore pre-existing |
 | Broken doc links | Update paths or remove stale references |
 | Missing test coverage | Add focused tests for new behavior |
-| Import sorting | Handled by ruff (I rules) |
 
 ### Invariant checks
 
@@ -209,28 +170,4 @@ Understand what's skipped and why:
 
 ---
 
-## Example cleanup session
-
-```
-Explore: Branch touches streaming_transcriber.py, adds callback parameter
-  - Semantic: new on_segment callback
-  - Mechanical: import reordering
-  - Risk: callback exception handling
-
-Initial gate: 2 failures
-  - mypy: missing return type on callback wrapper
-  - test: assertion missing in test_streaming_basic
-
-Fixes applied:
-  1. Added return type annotation → streaming_transcriber.py:52
-  2. Added assertion → tests/test_streaming.py:78
-  3. Ran ruff format (no changes needed)
-
-Final gate: ✓ all passing
-
-Ready for /pr-create "Closes #42"
-```
-
----
-
-Now: explore → run gate → plan fixes → apply → verify → report.
+Now: gather context → explore + gate (parallel) → plan fixes → apply → verify → report.
