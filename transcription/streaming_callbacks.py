@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from .audio_health import AudioHealthSnapshot
     from .conversation_physics import ConversationPhysicsSnapshot
+    from .safety_layer import SafetyAlertPayload
     from .streaming import StreamSegment
     from .streaming_semantic import CommitmentEntry, CorrectionEvent, SemanticUpdatePayload
 
@@ -323,6 +324,24 @@ class StreamCallbacks(Protocol):
         """
         ...
 
+    def on_safety_alert(self, payload: SafetyAlertPayload) -> None:
+        """Called when a safety alert is triggered.
+
+        Safety alerts are generated when the safety layer detects
+        content that requires attention, such as PII or flagged content.
+
+        Args:
+            payload: SafetyAlertPayload containing:
+                - segment_id: ID of the segment that triggered the alert
+                - segment_start: Start time of the segment
+                - segment_end: End time of the segment
+                - alert_type: Type of alert ("pii", "moderation", "combined")
+                - severity: Overall severity level
+                - action: Recommended action
+                - details: Additional details about the alert
+        """
+        ...
+
 
 class NoOpCallbacks:
     """Default no-op callback implementation.
@@ -361,6 +380,9 @@ class NoOpCallbacks:
         pass
 
     def on_commitment(self, commitment: CommitmentEntry) -> None:
+        pass
+
+    def on_safety_alert(self, payload: SafetyAlertPayload) -> None:
         pass
 
 

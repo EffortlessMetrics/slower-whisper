@@ -686,6 +686,10 @@ class TestProtocolCompliance:
             def on_commitment(self, commitment: Any) -> None:
                 pass
 
+            # v2.0 safety callback
+            def on_safety_alert(self, payload: Any) -> None:
+                pass
+
         callbacks = CompliantCallbacks()
         assert isinstance(callbacks, StreamCallbacks)
 
