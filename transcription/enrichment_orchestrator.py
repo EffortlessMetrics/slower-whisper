@@ -69,6 +69,145 @@ def _run_semantic_annotator(transcript: Transcript, config: EnrichmentConfig) ->
         return transcript
 
 
+def _run_post_processors(transcript: Transcript, config: EnrichmentConfig) -> Transcript:
+    """Run v2.0 post-processors on transcript.
+
+    Processes:
+    - Safety layer (PII + moderation + formatting)
+    - Role inference (agent/customer/facilitator)
+    - Topic segmentation
+    - Prosody v2 (boundary tone, monotony)
+    - Environment classification
+    """
+    # Check if any post-processing is enabled
+    has_post_processing = (
+        getattr(config, "enable_safety_layer", False)
+        or getattr(config, "enable_role_inference", False)
+        or getattr(config, "enable_topic_segmentation", False)
+        or getattr(config, "enable_prosody_v2", False)
+        or getattr(config, "enable_environment_classifier", False)
+    )
+
+    if not has_post_processing:
+        return transcript
+
+    # Safety layer processing (per-segment)
+    if getattr(config, "enable_safety_layer", False):
+        try:
+            from .safety_config import SafetyConfig
+            from .safety_layer import SafetyProcessor
+
+            safety_config = SafetyConfig(
+                enabled=True,
+                enable_pii_detection=True,
+                enable_content_moderation=True,
+                enable_smart_formatting=True,
+                pii_action="mask",
+                content_action="warn",
+            )
+            processor = SafetyProcessor(safety_config)
+
+            for segment in transcript.segments:
+                try:
+                    result = processor.process(segment.text)
+                    if segment.audio_state is None:
+                        segment.audio_state = {}
+                    segment.audio_state["safety"] = result.to_safety_state()
+                except Exception as e:
+                    logger.warning("Safety processing failed for segment: %s", e)
+        except ImportError:
+            logger.warning("Safety layer dependencies not available")
+
+    # Role inference (on turns)
+    if getattr(config, "enable_role_inference", False) and transcript.turns:
+        try:
+            from .role_inference import RoleInferenceConfig, RoleInferrer
+
+            role_config = RoleInferenceConfig(context="call_center")
+            inferrer = RoleInferrer(role_config)
+
+            # Convert turns to dicts for inference (handle both Turn objects and dicts)
+            turn_dicts = []
+            for t in transcript.turns:
+                if isinstance(t, dict):
+                    turn_dicts.append(t)
+                else:
+                    turn_dicts.append({
+                        "id": t.id,
+                        "speaker_id": t.speaker_id,
+                        "text": t.text,
+                        "start": t.start,
+                        "end": t.end,
+                    })
+
+            assignments = inferrer.infer_roles(turn_dicts)
+
+            # Store assignments in transcript
+            if not hasattr(transcript, "annotations") or transcript.annotations is None:
+                transcript.annotations = {}
+            transcript.annotations["roles"] = {
+                speaker_id: assignment.to_dict()
+                for speaker_id, assignment in assignments.items()
+            }
+        except ImportError:
+            logger.warning("Role inference dependencies not available")
+        except Exception as e:
+            logger.warning("Role inference failed: %s", e)
+
+    # Topic segmentation (on turns)
+    if getattr(config, "enable_topic_segmentation", False) and transcript.turns:
+        try:
+            from .topic_segmentation import TopicSegmentationConfig, TopicSegmenter
+
+            topic_config = TopicSegmentationConfig()
+            segmenter = TopicSegmenter(topic_config)
+
+            # Convert turns to dicts for segmentation (handle both Turn objects and dicts)
+            turn_dicts = []
+            for t in transcript.turns:
+                if isinstance(t, dict):
+                    turn_dicts.append(t)
+                else:
+                    turn_dicts.append({
+                        "id": t.id,
+                        "speaker_id": t.speaker_id,
+                        "text": t.text,
+                        "start": t.start,
+                        "end": t.end,
+                    })
+
+            topics = segmenter.segment(turn_dicts)
+
+            # Store topics in transcript
+            if not hasattr(transcript, "annotations") or transcript.annotations is None:
+                transcript.annotations = {}
+            transcript.annotations["topics"] = [t.to_dict() for t in topics]
+        except ImportError:
+            logger.warning("Topic segmentation dependencies not available")
+        except Exception as e:
+            logger.warning("Topic segmentation failed: %s", e)
+
+    # Environment classification (from audio health metrics)
+    if getattr(config, "enable_environment_classifier", False):
+        try:
+            from .environment_classifier import EnvironmentClassifier
+
+            classifier = EnvironmentClassifier()
+
+            for segment in transcript.segments:
+                if segment.audio_state:
+                    audio_health = segment.audio_state.get("audio_health", {})
+                    if audio_health:
+                        env_state = classifier.classify_from_snapshot(audio_health)
+                        segment.audio_state["environment"] = env_state.to_dict()
+        except ImportError:
+            logger.warning("Environment classifier dependencies not available")
+        except Exception as e:
+            logger.warning("Environment classification failed: %s", e)
+
+    return transcript
+
+
 def _enrich_directory_impl(
     root: str | Path,
     config: EnrichmentConfig,
@@ -143,6 +282,7 @@ def _enrich_directory_impl(
             if audio_ready:
                 transcript = run_speaker_analytics(transcript, config)
                 transcript = run_semantic_annotator(transcript, config)
+                transcript = _run_post_processors(transcript, config)
                 write_json(transcript, json_path)
                 enriched_transcripts.append(transcript)
                 continue
@@ -160,6 +300,7 @@ def _enrich_directory_impl(
             )
             enriched = run_speaker_analytics(enriched, config)
             enriched = run_semantic_annotator(enriched, config)
+            enriched = _run_post_processors(enriched, config)
 
             write_json(enriched, json_path)
             enriched_transcripts.append(enriched)
@@ -239,6 +380,7 @@ def _enrich_transcript_impl(
         )
         enriched = run_speaker_analytics(enriched, config)
         enriched = run_semantic_annotator(enriched, config)
+        enriched = _run_post_processors(enriched, config)
         return enriched
     except Exception as e:
         logger.warning(
@@ -249,4 +391,7 @@ def _enrich_transcript_impl(
         )
         for segment in transcript.segments:
             segment.audio_state = neutral_audio_state(str(e))
-        return run_semantic_annotator(run_speaker_analytics(transcript, config), config)
+        enriched = run_speaker_analytics(transcript, config)
+        enriched = run_semantic_annotator(enriched, config)
+        enriched = _run_post_processors(enriched, config)
+        return enriched

@@ -342,6 +342,39 @@ class StreamCallbacks(Protocol):
         """
         ...
 
+    def on_role_assigned(self, assignments: dict) -> None:
+        """Called when speaker roles are assigned.
+
+        Role assignments are computed after enough turns have been
+        processed (typically 5 turns or 30 seconds).
+
+        Args:
+            assignments: Dictionary mapping speaker_id to RoleAssignment dict:
+                - speaker_id: Speaker identifier
+                - role: Inferred role ("agent", "customer", "facilitator", "unknown")
+                - confidence: Confidence score (0.0-1.0)
+                - evidence: List of evidence strings
+        """
+        ...
+
+    def on_topic_boundary(self, payload: dict) -> None:
+        """Called when a topic boundary is detected.
+
+        Topic boundaries are detected when vocabulary shifts significantly
+        between rolling windows of turns.
+
+        Args:
+            payload: TopicBoundaryPayload dict containing:
+                - previous_topic_id: ID of the topic that ended
+                - new_topic_id: ID of the new topic starting
+                - boundary_turn_id: Turn ID where boundary was detected
+                - boundary_time: Time of the boundary in seconds
+                - similarity_score: Similarity score that triggered boundary
+                - keywords_previous: Keywords from previous topic
+                - keywords_new: Keywords from new topic
+        """
+        ...
+
 
 class NoOpCallbacks:
     """Default no-op callback implementation.
@@ -383,6 +416,12 @@ class NoOpCallbacks:
         pass
 
     def on_safety_alert(self, payload: SafetyAlertPayload) -> None:
+        pass
+
+    def on_role_assigned(self, assignments: dict) -> None:
+        pass
+
+    def on_topic_boundary(self, payload: dict) -> None:
         pass
 
 

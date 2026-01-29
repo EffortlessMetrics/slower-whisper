@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .audio_enrichment import _enrich_segment_with_extractor
 from .audio_utils import AudioSegmentExtractor
@@ -38,6 +38,9 @@ from .streaming_callbacks import (
     StreamingError,
     invoke_callback_safely,
 )
+
+if TYPE_CHECKING:
+    from .post_process import PostProcessConfig
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +61,8 @@ class StreamingEnrichmentConfig:
         enable_categorical_emotion: Extract categorical emotion labels.
         speaker_baseline: Optional baseline statistics for speaker-relative normalization.
                          If None, absolute thresholds are used.
+        post_process_config: Optional configuration for post-processing
+                            (safety, roles, topics, turn-taking, environment).
     """
 
     base_config: StreamConfig = field(default_factory=StreamConfig)
@@ -65,6 +70,7 @@ class StreamingEnrichmentConfig:
     enable_emotion: bool = False
     enable_categorical_emotion: bool = False
     speaker_baseline: dict[str, Any] | None = None
+    post_process_config: PostProcessConfig | None = None
 
 
 class StreamingEnrichmentSession:
@@ -183,6 +189,18 @@ class StreamingEnrichmentSession:
         self._current_turn_segments: list[StreamSegment] = []
         self._current_turn_speaker: str | None = None
         self._turn_counter = 0
+
+        # Initialize post-processor if configured
+        self._post_processor = None
+        if self.config.post_process_config:
+            from .post_process import PostProcessor
+
+            self._post_processor = PostProcessor(
+                config=self.config.post_process_config,
+                on_safety_alert=lambda p: invoke_callback_safely(self._callbacks, "on_safety_alert", p),
+                on_role_assigned=lambda a: invoke_callback_safely(self._callbacks, "on_role_assigned", a),
+                on_topic_boundary=lambda b: invoke_callback_safely(self._callbacks, "on_topic_boundary", b),
+            )
 
     def ingest_chunk(self, chunk: StreamChunk) -> list[StreamEvent]:
         """
@@ -320,6 +338,11 @@ class StreamingEnrichmentSession:
         self._current_turn_segments = []
         self._current_turn_speaker = None
         self._turn_counter = 0
+
+        # Reset post-processor state
+        if self._post_processor:
+            self._post_processor.reset()
+
         logger.debug("Session reset")
 
     def _enrich_stream_segment(self, segment: StreamSegment) -> StreamSegment:
@@ -337,13 +360,19 @@ class StreamingEnrichmentSession:
             New StreamSegment with audio_state populated. If enrichment fails
             or is disabled, audio_state will be None or contain error status.
         """
-        # Skip enrichment if all features disabled
-        if not (
+        # Check if any enrichment is enabled
+        has_audio_enrichment = (
             self.config.enable_prosody
             or self.config.enable_emotion
             or self.config.enable_categorical_emotion
-        ):
+        )
+        has_post_processing = self._post_processor is not None
+
+        # Skip enrichment if all features disabled
+        if not has_audio_enrichment and not has_post_processing:
             return segment
+
+        audio_state: dict[str, Any] = {}
 
         try:
             # Convert StreamSegment to temporary Segment for enrichment
@@ -355,16 +384,17 @@ class StreamingEnrichmentSession:
                 speaker={"id": segment.speaker_id} if segment.speaker_id else None,
             )
 
-            # Extract audio features using shared extractor
-            audio_state = _enrich_segment_with_extractor(
-                extractor=self._extractor,
-                wav_path=self.wav_path,
-                segment=temp_segment,
-                enable_prosody=self.config.enable_prosody,
-                enable_emotion=self.config.enable_emotion,
-                enable_categorical_emotion=self.config.enable_categorical_emotion,
-                speaker_baseline=self.config.speaker_baseline,
-            )
+            # Extract audio features using shared extractor (if enabled)
+            if has_audio_enrichment:
+                audio_state = _enrich_segment_with_extractor(
+                    extractor=self._extractor,
+                    wav_path=self.wav_path,
+                    segment=temp_segment,
+                    enable_prosody=self.config.enable_prosody,
+                    enable_emotion=self.config.enable_emotion,
+                    enable_categorical_emotion=self.config.enable_categorical_emotion,
+                    speaker_baseline=self.config.speaker_baseline,
+                )
 
             # Check for errors
             extraction_status = audio_state.get("extraction_status", {})
@@ -387,6 +417,28 @@ class StreamingEnrichmentSession:
                     recoverable=True,
                 )
                 invoke_callback_safely(self._callbacks, "on_error", error)
+
+            # Run post-processing if configured
+            if self._post_processor:
+                try:
+                    from .post_process import SegmentContext
+
+                    ctx = SegmentContext(
+                        session_id=str(id(self)),
+                        segment_id=f"seg_{self._segment_count}",
+                        speaker_id=segment.speaker_id,
+                        start=segment.start,
+                        end=segment.end,
+                        text=segment.text,
+                        audio_state=audio_state,
+                    )
+                    post_result = self._post_processor.process_segment(ctx)
+
+                    # Merge post-processing results into audio_state
+                    post_state = post_result.to_dict()
+                    audio_state.update(post_state)
+                except Exception as pe:
+                    logger.warning("Post-processing failed for segment: %s", pe)
 
             # Return new StreamSegment with audio_state
             return StreamSegment(
@@ -484,6 +536,13 @@ class StreamingEnrichmentSession:
             turn_dict,
         )
 
+        # Process turn through post-processor (for roles/topics)
+        if self._post_processor:
+            try:
+                self._post_processor.process_turn(turn_dict)
+            except Exception as e:
+                logger.warning("Post-processing failed for turn: %s", e)
+
         logger.debug(
             "Finalized turn %s: speaker=%s, segments=%d, duration=%.2fs",
             turn_dict["id"],
@@ -536,6 +595,32 @@ class StreamingEnrichmentSession:
             "text": " ".join(texts),
         }
 
+    def get_role_assignments(self) -> dict[str, Any]:
+        """
+        Get role assignments for speakers.
+
+        Returns empty dict if role inference is not enabled or not yet decided.
+
+        Returns:
+            Dictionary mapping speaker_id to RoleAssignment.
+        """
+        if self._post_processor:
+            return {k: v.to_dict() for k, v in self._post_processor.get_role_assignments().items()}
+        return {}
+
+    def get_topics(self) -> list[dict[str, Any]]:
+        """
+        Get topic chunks detected during the session.
+
+        Returns empty list if topic segmentation is not enabled.
+
+        Returns:
+            List of TopicChunk dictionaries.
+        """
+        if self._post_processor:
+            return [t.to_dict() for t in self._post_processor.get_topics()]
+        return []
+
     def get_stats(self) -> dict[str, Any]:
         """
         Get session statistics for monitoring.
@@ -547,6 +632,8 @@ class StreamingEnrichmentSession:
                 - enrichment_errors: Number of enrichment failures
                 - audio_duration_sec: Total audio file duration
                 - audio_sample_rate: Audio sample rate
+                - role_assignments: Number of speakers with assigned roles
+                - topics: Number of topic chunks
 
         Example:
             >>> stats = session.get_stats()
@@ -554,13 +641,20 @@ class StreamingEnrichmentSession:
             >>> print(f"Finalized {stats['segment_count']} segments")
             >>> print(f"Error rate: {stats['enrichment_errors'] / stats['segment_count']:.1%}")
         """
-        return {
+        stats = {
             "chunk_count": self._chunk_count,
             "segment_count": self._segment_count,
             "enrichment_errors": self._enrichment_errors,
             "audio_duration_sec": self._extractor.duration_seconds,
             "audio_sample_rate": self._extractor.sample_rate,
         }
+
+        # Add post-processing stats if enabled
+        if self._post_processor:
+            stats["role_assignments"] = len(self._post_processor.get_role_assignments())
+            stats["topics"] = len(self._post_processor.get_topics())
+
+        return stats
 
 
 # Export public API
