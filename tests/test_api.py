@@ -240,6 +240,10 @@ class TestNeutralAudioState:
         """Test creating neutral audio state without error message."""
         state = _neutral_audio_state()
 
+        # Schema version should be present for downstream consumers
+        assert "_schema_version" in state
+        assert state["_schema_version"] == "1.0.0"
+
         assert state["prosody"]["pitch"]["level"] == "unknown"
         assert state["prosody"]["pitch"]["mean_hz"] is None
         assert state["prosody"]["energy"]["level"] == "unknown"

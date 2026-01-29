@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import TranscriptionConfig
-from .models import Transcript
+from .models import AUDIO_STATE_VERSION, Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,10 @@ def _get_wav_duration_seconds(path: Path) -> float:
 
 
 def _neutral_audio_state(error: str | None = None) -> dict[str, Any]:
-    """Create a minimal audio_state placeholder used when enrichment fails."""
+    """Create a minimal audio_state placeholder used when enrichment fails.
+
+    Includes _schema_version for downstream consumers to trust the structure.
+    """
     extraction_status = {
         "prosody": "skipped",
         "emotion_dimensional": "skipped",
@@ -38,6 +41,7 @@ def _neutral_audio_state(error: str | None = None) -> dict[str, Any]:
         "errors": [error] if error else [],
     }
     return {
+        "_schema_version": AUDIO_STATE_VERSION,
         "prosody": {
             "pitch": {"level": "unknown", "mean_hz": None, "std_hz": None, "contour": "unknown"},
             "energy": {"level": "unknown", "db_rms": None, "variation": "unknown"},

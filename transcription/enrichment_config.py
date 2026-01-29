@@ -17,10 +17,13 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .config_merge import _merge_enrich_configs
 from .exceptions import ConfigurationError
+
+if TYPE_CHECKING:
+    from .post_process import PostProcessConfig
 
 
 @dataclass(slots=True)
@@ -442,3 +445,45 @@ class EnrichmentConfig:
             config = override_config
 
         return config
+
+    def to_post_process_config(self) -> PostProcessConfig | None:
+        """Create PostProcessConfig from enrichment settings.
+
+        Maps EnrichmentConfig flags to PostProcessConfig flags:
+        - enable_safety_layer -> enable_safety
+        - enable_role_inference -> enable_roles
+        - enable_topic_segmentation -> enable_topics
+        - turn_taking_policy -> enable_turn_taking + turn_taking_policy
+        - enable_environment_classifier -> enable_environment
+        - enable_prosody_v2 -> enable_prosody_extended
+
+        Returns:
+            PostProcessConfig if any post-processing features are enabled,
+            None otherwise.
+        """
+        from .post_process import PostProcessConfig
+
+        # Check if any features enabled
+        # Non-default turn_taking_policy means turn-taking is enabled
+        any_enabled = (
+            self.enable_safety_layer
+            or self.enable_role_inference
+            or self.enable_topic_segmentation
+            or self.turn_taking_policy != "balanced"
+            or self.enable_environment_classifier
+            or self.enable_prosody_v2
+        )
+
+        if not any_enabled:
+            return None
+
+        return PostProcessConfig(
+            enabled=True,
+            enable_safety=self.enable_safety_layer,
+            enable_roles=self.enable_role_inference,
+            enable_topics=self.enable_topic_segmentation,
+            enable_turn_taking=self.turn_taking_policy != "balanced",
+            turn_taking_policy=self.turn_taking_policy,
+            enable_environment=self.enable_environment_classifier,
+            enable_prosody_extended=self.enable_prosody_v2,
+        )

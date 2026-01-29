@@ -20,7 +20,7 @@ from typing import Any
 from .audio_rendering import render_audio_state
 from .audio_utils import AudioSegmentExtractor
 from .emotion import extract_emotion_categorical, extract_emotion_dimensional
-from .models import Segment, Transcript
+from .models import AUDIO_STATE_VERSION, Segment, Transcript
 from .prosody import compute_speaker_baseline, extract_prosody
 
 logger = logging.getLogger(__name__)
@@ -41,8 +41,9 @@ def _enrich_segment_with_extractor(
     If extractor is None, creates a new one (fallback for robustness).
     This avoids repeated file opens when processing multiple segments.
     """
-    # Initialize result structure
+    # Initialize result structure with schema version for downstream consumers
     audio_state: dict[str, Any] = {
+        "_schema_version": AUDIO_STATE_VERSION,
         "prosody": None,
         "emotion": None,
         "rendering": "[audio: neutral]",
@@ -361,6 +362,7 @@ def enrich_transcript_audio(
         except Exception as e:
             logger.error("Failed to enrich segment %s: %s", segment.id, e, exc_info=True)
             segment.audio_state = {
+                "_schema_version": AUDIO_STATE_VERSION,
                 "prosody": None,
                 "emotion": None,
                 "rendering": "[audio: neutral]",

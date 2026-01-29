@@ -190,6 +190,11 @@ class StreamingEnrichmentSession:
         self._current_turn_speaker: str | None = None
         self._turn_counter = 0
 
+        # Track turn-taking state for end-of-turn hint detection
+        self._last_segment_end: float = 0.0  # End time of last finalized segment
+        self._current_turn_start: float = 0.0  # Start time of current turn
+        self._last_chunk_start: float = 0.0  # Start time of most recent chunk (for gap detection)
+
         # Initialize post-processor if configured
         self._post_processor = None
         if self.config.post_process_config:
@@ -200,6 +205,7 @@ class StreamingEnrichmentSession:
                 on_safety_alert=lambda p: invoke_callback_safely(self._callbacks, "on_safety_alert", p),
                 on_role_assigned=lambda a: invoke_callback_safely(self._callbacks, "on_role_assigned", a),
                 on_topic_boundary=lambda b: invoke_callback_safely(self._callbacks, "on_topic_boundary", b),
+                on_end_of_turn_hint=lambda h: invoke_callback_safely(self._callbacks, "on_end_of_turn_hint", h),
             )
 
     def ingest_chunk(self, chunk: StreamChunk) -> list[StreamEvent]:
@@ -229,24 +235,41 @@ class StreamingEnrichmentSession:
         """
         self._chunk_count += 1
 
+        # Track chunk start time for trailing silence calculation
+        # When a segment is finalized due to a gap, the trailing silence is the
+        # gap between the segment's end and the new chunk's start
+        current_chunk_start = float(chunk["start"])
+
         # Get base events from underlying session
         base_events = self._base_session.ingest_chunk(chunk)
 
-        # Enrich FINAL segments, pass through PARTIAL segments
+        # Post-processing runs on FINAL segments only to:
+        # 1. Minimize latency on partial chunks (partials change frequently)
+        # 2. Ensure text is stable before safety/role/topic analysis
+        # 3. Avoid duplicate processing (partials supersede each other)
+        # PARTIAL segments are passed through unchanged - no enrichment, no callbacks.
         enriched_events: list[StreamEvent] = []
         for event in base_events:
             if event.type == StreamEventType.FINAL_SEGMENT:
-                enriched_segment = self._enrich_stream_segment(event.segment)
+                # Calculate trailing silence: gap between segment end and current chunk start
+                # This represents the silence AFTER the segment that caused it to finalize
+                trailing_silence_ms = max(0.0, (current_chunk_start - event.segment.end) * 1000.0)
+
+                enriched_segment = self._enrich_stream_segment(
+                    event.segment,
+                    trailing_silence_ms=trailing_silence_ms,
+                )
                 enriched_events.append(
                     StreamEvent(type=StreamEventType.FINAL_SEGMENT, segment=enriched_segment)
                 )
                 self._segment_count += 1
                 logger.debug(
-                    "Finalized and enriched segment %d: [%.2fs - %.2fs] '%s'",
+                    "Finalized and enriched segment %d: [%.2fs - %.2fs] '%s' (trailing_silence=%.0fms)",
                     self._segment_count,
                     enriched_segment.start,
                     enriched_segment.end,
                     enriched_segment.text[:50],
+                    trailing_silence_ms,
                 )
 
                 # Track speaker turns and detect boundaries
@@ -259,8 +282,12 @@ class StreamingEnrichmentSession:
                     enriched_segment,
                 )
             else:
-                # PARTIAL segments passed through without enrichment
+                # PARTIAL segments passed through without enrichment or callbacks.
+                # No safety checks, no role/topic processing - wait for FINAL.
                 enriched_events.append(event)
+
+        # Track current chunk start for next iteration
+        self._last_chunk_start = current_chunk_start
 
         return enriched_events
 
@@ -282,13 +309,22 @@ class StreamingEnrichmentSession:
             ...     if event.segment.audio_state:
             ...         print(event.segment.audio_state["rendering"])
         """
-        # Get final segment from base session
+        # Get final segment from base session (any partial becomes FINAL)
         base_events = self._base_session.end_of_stream()
 
-        # Enrich all final segments
+        # All segments from end_of_stream() are FINAL - apply full enrichment.
+        # This ensures trailing partial segments get the same treatment as
+        # segments finalized by gaps/speaker-changes during streaming.
+        # For end-of-stream, we use a long silence to indicate definitive turn end.
+        # This ensures LONG_PAUSE reason code is triggered.
+        end_of_stream_silence_ms = 10000.0  # 10 seconds - definitely end of turn
+
         enriched_events: list[StreamEvent] = []
         for event in base_events:
-            enriched_segment = self._enrich_stream_segment(event.segment)
+            enriched_segment = self._enrich_stream_segment(
+                event.segment,
+                trailing_silence_ms=end_of_stream_silence_ms,
+            )
             enriched_events.append(
                 StreamEvent(type=StreamEventType.FINAL_SEGMENT, segment=enriched_segment)
             )
@@ -304,7 +340,8 @@ class StreamingEnrichmentSession:
                 enriched_segment,
             )
 
-        # Finalize any remaining turn
+        # Finalize any remaining turn - this triggers on_speaker_turn callback
+        # and processes the turn through post-processor for roles/topics
         self._finalize_current_turn()
 
         logger.info(
@@ -338,6 +375,9 @@ class StreamingEnrichmentSession:
         self._current_turn_segments = []
         self._current_turn_speaker = None
         self._turn_counter = 0
+        self._last_segment_end = 0.0
+        self._current_turn_start = 0.0
+        self._last_chunk_start = 0.0
 
         # Reset post-processor state
         if self._post_processor:
@@ -345,7 +385,11 @@ class StreamingEnrichmentSession:
 
         logger.debug("Session reset")
 
-    def _enrich_stream_segment(self, segment: StreamSegment) -> StreamSegment:
+    def _enrich_stream_segment(
+        self,
+        segment: StreamSegment,
+        trailing_silence_ms: float = 0.0,
+    ) -> StreamSegment:
         """
         Enrich a finalized stream segment with audio features.
 
@@ -355,6 +399,8 @@ class StreamingEnrichmentSession:
 
         Args:
             segment: Finalized stream segment to enrich.
+            trailing_silence_ms: Silence duration after segment that caused finalization (ms).
+                                Used for turn-taking evaluation.
 
         Returns:
             New StreamSegment with audio_state populated. If enrichment fails
@@ -423,6 +469,17 @@ class StreamingEnrichmentSession:
                 try:
                     from .post_process import SegmentContext
 
+                    # Use trailing silence for turn-taking evaluation
+                    # This is the silence AFTER this segment that caused it to be finalized
+                    silence_duration_ms = trailing_silence_ms
+
+                    # Calculate turn duration (from current turn start to segment end)
+                    # If this is a new turn (first segment or speaker change), use segment duration
+                    if self._current_turn_start == 0.0 or segment.speaker_id != self._current_turn_speaker:
+                        # New turn starting
+                        self._current_turn_start = segment.start
+                    turn_duration_ms = (segment.end - self._current_turn_start) * 1000.0
+
                     ctx = SegmentContext(
                         session_id=str(id(self)),
                         segment_id=f"seg_{self._segment_count}",
@@ -432,7 +489,14 @@ class StreamingEnrichmentSession:
                         text=segment.text,
                         audio_state=audio_state,
                     )
-                    post_result = self._post_processor.process_segment(ctx)
+                    post_result = self._post_processor.process_segment(
+                        ctx,
+                        silence_duration_ms=silence_duration_ms,
+                        turn_duration_ms=turn_duration_ms,
+                    )
+
+                    # Update tracking for next segment
+                    self._last_segment_end = segment.end
 
                     # Merge post-processing results into audio_state
                     post_state = post_result.to_dict()

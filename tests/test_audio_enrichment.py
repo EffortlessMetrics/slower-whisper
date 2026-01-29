@@ -476,6 +476,43 @@ def test_partial_enrichment_emotion_only(synthetic_audio):
 
 
 # ============================================================================
+# Schema Version Tests
+# ============================================================================
+
+
+def test_audio_state_schema_version(synthetic_audio_file, sample_transcript):
+    """Test that audio_state includes _schema_version for downstream consumers."""
+    from transcription.audio_enrichment import enrich_transcript_audio
+    from transcription.models import AUDIO_STATE_VERSION
+
+    # Create a longer audio file with multiple segments
+    import soundfile as sf
+
+    sr = 16000
+    duration = 3.0
+    t = np.linspace(0, duration, int(sr * duration))
+    audio_full = 0.3 * np.sin(2 * np.pi * 440 * t).astype(np.float32)
+
+    audio_file = synthetic_audio_file.parent / "schema_test.wav"
+    sf.write(audio_file, audio_full, sr)
+
+    # Enrich the transcript
+    enriched = enrich_transcript_audio(
+        sample_transcript,
+        audio_file,
+        enable_prosody=True,
+        enable_emotion=False,  # Skip for speed
+        compute_baseline=False,
+    )
+
+    # Verify all segments have _schema_version in audio_state
+    for segment in enriched.segments:
+        assert segment.audio_state is not None
+        assert "_schema_version" in segment.audio_state
+        assert segment.audio_state["_schema_version"] == AUDIO_STATE_VERSION
+
+
+# ============================================================================
 # Skip-existing Logic Tests
 # ============================================================================
 

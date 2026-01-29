@@ -1628,3 +1628,556 @@ class TestEdgeCases:
             assert len(callbacks.speaker_turns) == 3
             speakers = [t["speaker_id"] for t in callbacks.speaker_turns]
             assert speakers == ["spk_a", "spk_b", "spk_a"]
+
+
+# =============================================================================
+# 10. Tests for Post-Processing FINAL-Only Gating
+# =============================================================================
+
+
+class TestPostProcessingFinalOnlyGating:
+    """Tests to verify post-processing callbacks ONLY fire on FINAL segments.
+
+    This test class explicitly validates the invariant that expensive post-processing
+    (safety, roles, topics) runs ONLY on FINAL segments, never on partial chunks.
+    This is critical for:
+    1. Minimizing latency on partial chunks
+    2. Ensuring text is stable before safety/role/topic analysis
+    3. Avoiding duplicate processing
+
+    See streaming_enrich.py ingest_chunk() comments for the gating logic.
+    """
+
+    def test_partial_segment_does_not_trigger_callbacks(
+        self,
+        mock_extractor: MagicMock,
+    ) -> None:
+        """PARTIAL segments do NOT trigger any post-processing callbacks.
+
+        This is the core invariant: partial chunks should pass through
+        without triggering safety alerts, role assignments, or topic boundaries.
+        """
+        from transcription.post_process import PostProcessConfig
+        from transcription.safety_config import SafetyConfig
+
+        # Recording callbacks for all post-processing events
+        safety_alerts: list[Any] = []
+        role_assignments: list[Any] = []
+        topic_boundaries: list[Any] = []
+        finalized_segments: list[Any] = []
+
+        class PostProcessCallbacks:
+            def on_segment_finalized(self, segment: StreamSegment) -> None:
+                finalized_segments.append(segment)
+
+            def on_safety_alert(self, payload: Any) -> None:
+                safety_alerts.append(payload)
+
+            def on_role_assigned(self, payload: Any) -> None:
+                role_assignments.append(payload)
+
+            def on_topic_boundary(self, payload: Any) -> None:
+                topic_boundaries.append(payload)
+
+        # Configure post-processing with safety, roles, and topics enabled
+        post_config = PostProcessConfig(
+            enabled=True,
+            enable_safety=True,
+            enable_roles=True,
+            enable_topics=True,
+            safety_config=SafetyConfig(
+                enabled=True,
+                enable_pii_detection=True,
+                pii_action="warn",
+                emit_alerts=True,
+            ),
+            role_decision_turns=1,  # Trigger role decision after just 1 turn
+        )
+
+        config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=10.0),  # High threshold to avoid auto-finalization
+            post_process_config=post_config,
+        )
+
+        with patch(
+            "transcription.streaming_enrich.AudioSegmentExtractor",
+            return_value=mock_extractor,
+        ):
+            session = StreamingEnrichmentSession(
+                wav_path=Path("/tmp/fake.wav"),
+                config=config,
+                callbacks=PostProcessCallbacks(),
+            )
+
+            # Ingest a chunk with potentially triggering content (PII)
+            # This should produce a PARTIAL segment only
+            events = session.ingest_chunk(
+                _chunk(0.0, 1.0, "My email is test@example.com", "spk_0")
+            )
+
+            # Should get exactly one PARTIAL event
+            assert len(events) == 1
+            assert events[0].type == StreamEventType.PARTIAL_SEGMENT
+
+            # CRITICAL: No callbacks should have been invoked for partial
+            assert len(finalized_segments) == 0, "on_segment_finalized should NOT fire for PARTIAL"
+            assert len(safety_alerts) == 0, "on_safety_alert should NOT fire for PARTIAL"
+            assert len(role_assignments) == 0, "on_role_assigned should NOT fire for PARTIAL"
+            assert len(topic_boundaries) == 0, "on_topic_boundary should NOT fire for PARTIAL"
+
+    def test_final_segment_does_trigger_callbacks(
+        self,
+        mock_extractor: MagicMock,
+    ) -> None:
+        """FINAL segments DO trigger appropriate post-processing callbacks.
+
+        When a segment is finalized (by gap, speaker change, or end_of_stream),
+        the callbacks should fire.
+        """
+        from transcription.post_process import PostProcessConfig
+        from transcription.safety_config import SafetyConfig
+
+        # Recording callbacks
+        safety_alerts: list[Any] = []
+        role_assignments: list[Any] = []
+        finalized_segments: list[Any] = []
+
+        class PostProcessCallbacks:
+            def on_segment_finalized(self, segment: StreamSegment) -> None:
+                finalized_segments.append(segment)
+
+            def on_safety_alert(self, payload: Any) -> None:
+                safety_alerts.append(payload)
+
+            def on_role_assigned(self, payload: Any) -> None:
+                role_assignments.append(payload)
+
+            def on_speaker_turn(self, turn: dict) -> None:
+                pass  # Just accept it
+
+        post_config = PostProcessConfig(
+            enabled=True,
+            enable_safety=True,
+            enable_roles=True,
+            safety_config=SafetyConfig(
+                enabled=True,
+                enable_pii_detection=True,
+                pii_action="warn",
+                emit_alerts=True,
+            ),
+            role_decision_turns=1,
+        )
+
+        config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=0.5),  # Low threshold to finalize on gap
+            post_process_config=post_config,
+        )
+
+        with patch(
+            "transcription.streaming_enrich.AudioSegmentExtractor",
+            return_value=mock_extractor,
+        ):
+            session = StreamingEnrichmentSession(
+                wav_path=Path("/tmp/fake.wav"),
+                config=config,
+                callbacks=PostProcessCallbacks(),
+            )
+
+            # First chunk - becomes partial
+            session.ingest_chunk(_chunk(0.0, 0.4, "My email is test@example.com", "spk_0"))
+            assert len(finalized_segments) == 0  # Still partial
+
+            # Second chunk with gap - finalizes first segment
+            events = session.ingest_chunk(_chunk(2.0, 2.5, "Hello", "spk_0"))
+
+            # Should have finalized the first segment
+            assert len(finalized_segments) == 1, "on_segment_finalized SHOULD fire for FINAL"
+            assert finalized_segments[0].text == "My email is test@example.com"
+
+    def test_end_of_stream_finalizes_and_triggers_callbacks(
+        self,
+        mock_extractor: MagicMock,
+    ) -> None:
+        """end_of_stream() finalizes pending partials and triggers all callbacks.
+
+        Any partial segment at stream end becomes final and should trigger
+        the full post-processing pipeline.
+        """
+        from transcription.post_process import PostProcessConfig
+
+        finalized_segments: list[Any] = []
+        speaker_turns: list[Any] = []
+        role_assignments: list[Any] = []
+
+        class PostProcessCallbacks:
+            def on_segment_finalized(self, segment: StreamSegment) -> None:
+                finalized_segments.append(segment)
+
+            def on_speaker_turn(self, turn: dict) -> None:
+                speaker_turns.append(turn)
+
+            def on_role_assigned(self, payload: Any) -> None:
+                role_assignments.append(payload)
+
+        post_config = PostProcessConfig(
+            enabled=True,
+            enable_roles=True,
+            role_decision_turns=1,
+        )
+
+        config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=10.0),  # High threshold - no auto-finalize
+            post_process_config=post_config,
+        )
+
+        with patch(
+            "transcription.streaming_enrich.AudioSegmentExtractor",
+            return_value=mock_extractor,
+        ):
+            session = StreamingEnrichmentSession(
+                wav_path=Path("/tmp/fake.wav"),
+                config=config,
+                callbacks=PostProcessCallbacks(),
+            )
+
+            # Ingest chunks without triggering finalization
+            session.ingest_chunk(_chunk(0.0, 1.0, "Hello", "spk_0"))
+            session.ingest_chunk(_chunk(1.1, 2.0, "How can I help?", "spk_0"))
+
+            # Nothing finalized yet
+            assert len(finalized_segments) == 0
+            assert len(speaker_turns) == 0
+
+            # end_of_stream should finalize everything
+            session.end_of_stream()
+
+            # Now callbacks should have fired
+            assert len(finalized_segments) == 1, "Segment should be finalized at end_of_stream"
+            assert len(speaker_turns) == 1, "Turn should be finalized at end_of_stream"
+            # Role assignment may or may not fire depending on turn count threshold
+
+    def test_partial_segments_not_enriched_no_audio_state(
+        self,
+        mock_extractor: MagicMock,
+    ) -> None:
+        """PARTIAL segments are not enriched - audio_state remains None.
+
+        Enrichment (prosody, emotion) is expensive and should only run on
+        final segments.
+        """
+        config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=10.0),
+            enable_prosody=True,
+            enable_emotion=True,
+        )
+
+        with patch(
+            "transcription.streaming_enrich.AudioSegmentExtractor",
+            return_value=mock_extractor,
+        ):
+            # Mock the enrichment function - should NOT be called for partial
+            with patch(
+                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                return_value={"prosody": {"pitch_mean": 150.0}},
+            ) as mock_enrich:
+                session = StreamingEnrichmentSession(
+                    wav_path=Path("/tmp/fake.wav"),
+                    config=config,
+                )
+
+                # Ingest - should produce partial only
+                events = session.ingest_chunk(_chunk(0.0, 1.0, "Test", "spk_0"))
+
+                # Should be partial with no enrichment
+                assert events[0].type == StreamEventType.PARTIAL_SEGMENT
+                assert events[0].segment.audio_state is None, (
+                    "PARTIAL segments should have no audio_state"
+                )
+
+                # Enrichment function should NOT have been called
+                mock_enrich.assert_not_called()
+
+    def test_topic_boundary_only_on_turn_finalization(
+        self,
+        mock_extractor: MagicMock,
+    ) -> None:
+        """Topic boundaries only fire when turns are finalized, not on partials.
+
+        Topic segmentation operates on complete turns, which are only
+        finalized on speaker change or end_of_stream.
+        """
+        from transcription.post_process import PostProcessConfig
+        from transcription.topic_segmentation import TopicSegmentationConfig
+
+        topic_boundaries: list[Any] = []
+        speaker_turns: list[Any] = []
+
+        class TopicCallbacks:
+            def on_topic_boundary(self, payload: Any) -> None:
+                topic_boundaries.append(payload)
+
+            def on_speaker_turn(self, turn: dict) -> None:
+                speaker_turns.append(turn)
+
+            def on_segment_finalized(self, segment: StreamSegment) -> None:
+                pass
+
+        post_config = PostProcessConfig(
+            enabled=True,
+            enable_topics=True,
+            topic_config=TopicSegmentationConfig(
+                min_topic_duration_sec=0.0,
+                similarity_threshold=0.5,
+            ),
+        )
+
+        config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=10.0),
+            post_process_config=post_config,
+        )
+
+        with patch(
+            "transcription.streaming_enrich.AudioSegmentExtractor",
+            return_value=mock_extractor,
+        ):
+            session = StreamingEnrichmentSession(
+                wav_path=Path("/tmp/fake.wav"),
+                config=config,
+                callbacks=TopicCallbacks(),
+            )
+
+            # Ingest several chunks - all stay partial
+            session.ingest_chunk(_chunk(0.0, 0.5, "Topic one discussion", "spk_0"))
+            session.ingest_chunk(_chunk(0.6, 1.0, "More topic one", "spk_0"))
+
+            # No turns finalized yet, no topic boundaries
+            assert len(speaker_turns) == 0
+            assert len(topic_boundaries) == 0
+
+            # Finalize stream
+            session.end_of_stream()
+
+            # Now turn should be finalized (topics may or may not detect boundary)
+            assert len(speaker_turns) == 1, "Turn should be finalized at end_of_stream"
+
+
+class TestEndOfTurnHintIntegration:
+    """Integration tests for END_OF_TURN_HINT emission through StreamingEnrichmentSession."""
+
+    def test_end_of_turn_hint_emitted_with_aggressive_policy(
+        self,
+        mock_extractor: MagicMock,
+    ) -> None:
+        """End-of-turn hint is emitted when aggressive policy detects turn end."""
+        from transcription.post_process import PostProcessConfig
+        from transcription.streaming_callbacks import EndOfTurnHintPayload
+
+        hints_received = []
+
+        class HintCallbacks:
+            def on_end_of_turn_hint(self, payload):
+                hints_received.append(payload)
+
+        post_config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=True,
+            turn_taking_policy="aggressive",
+        )
+
+        config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=2.0),  # Large gap to ensure finalization
+            post_process_config=post_config,
+        )
+
+        with patch(
+            "transcription.streaming_enrich.AudioSegmentExtractor",
+            return_value=mock_extractor,
+        ):
+            session = StreamingEnrichmentSession(
+                wav_path=Path("/tmp/fake.wav"),
+                config=config,
+                callbacks=HintCallbacks(),
+            )
+
+            # Ingest a segment with terminal punctuation
+            # Note: silence between chunks triggers finalization
+            session.ingest_chunk(_chunk(0.0, 1.5, "Hello, how can I help you?", "spk_0"))
+
+            # Gap causes finalization (>2.0 sec gap)
+            session.ingest_chunk(_chunk(4.0, 5.0, "Still here?", "spk_0"))
+
+            # At least one hint should have been emitted
+            # (first segment finalized with silence, terminal punct)
+            assert len(hints_received) >= 1
+            payload = hints_received[0]
+            assert isinstance(payload, EndOfTurnHintPayload)
+            assert payload.policy_name == "aggressive"
+            assert payload.terminal_punctuation is True
+            assert "terminal_punctuation" in payload.reason_codes
+
+    def test_end_of_turn_hint_not_emitted_without_turn_taking(
+        self,
+        mock_extractor: MagicMock,
+    ) -> None:
+        """No hint emitted when turn_taking is disabled."""
+        from transcription.post_process import PostProcessConfig
+
+        hints_received = []
+
+        class HintCallbacks:
+            def on_end_of_turn_hint(self, payload):
+                hints_received.append(payload)
+
+        # Turn taking disabled
+        post_config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=False,
+        )
+
+        config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=2.0),
+            post_process_config=post_config,
+        )
+
+        with patch(
+            "transcription.streaming_enrich.AudioSegmentExtractor",
+            return_value=mock_extractor,
+        ):
+            session = StreamingEnrichmentSession(
+                wav_path=Path("/tmp/fake.wav"),
+                config=config,
+                callbacks=HintCallbacks(),
+            )
+
+            # Ingest segments
+            session.ingest_chunk(_chunk(0.0, 1.0, "Hello?", "spk_0"))
+            session.ingest_chunk(_chunk(4.0, 5.0, "Still here?", "spk_0"))
+            session.end_of_stream()
+
+            # No hints should be emitted
+            assert len(hints_received) == 0
+
+    def test_policy_affects_hint_timing(
+        self,
+        mock_extractor: MagicMock,
+    ) -> None:
+        """Different policies produce different hint timing."""
+        from transcription.post_process import PostProcessConfig
+        from transcription.streaming_callbacks import EndOfTurnHintPayload
+
+        aggressive_hints = []
+        conservative_hints = []
+
+        class AggressiveCallbacks:
+            def on_end_of_turn_hint(self, payload):
+                aggressive_hints.append(payload)
+
+        class ConservativeCallbacks:
+            def on_end_of_turn_hint(self, payload):
+                conservative_hints.append(payload)
+
+        aggressive_config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=2.0),
+            post_process_config=PostProcessConfig(
+                enabled=True,
+                enable_turn_taking=True,
+                turn_taking_policy="aggressive",
+            ),
+        )
+
+        conservative_config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=2.0),
+            post_process_config=PostProcessConfig(
+                enabled=True,
+                enable_turn_taking=True,
+                turn_taking_policy="conservative",
+            ),
+        )
+
+        with patch(
+            "transcription.streaming_enrich.AudioSegmentExtractor",
+            return_value=mock_extractor,
+        ):
+            # Process same input with different policies
+            session_agg = StreamingEnrichmentSession(
+                wav_path=Path("/tmp/fake.wav"),
+                config=aggressive_config,
+                callbacks=AggressiveCallbacks(),
+            )
+            session_con = StreamingEnrichmentSession(
+                wav_path=Path("/tmp/fake.wav"),
+                config=conservative_config,
+                callbacks=ConservativeCallbacks(),
+            )
+
+            # Ingest same chunks
+            chunks = [
+                _chunk(0.0, 1.0, "Thanks.", "spk_0"),
+                _chunk(3.5, 4.5, "Okay.", "spk_0"),  # 2.5s gap
+            ]
+
+            for chunk in chunks:
+                session_agg.ingest_chunk(chunk)
+                session_con.ingest_chunk(chunk)
+
+            session_agg.end_of_stream()
+            session_con.end_of_stream()
+
+            # Aggressive should have more hints (lower thresholds)
+            # At minimum, aggressive fires on smaller silence windows
+            assert len(aggressive_hints) >= len(conservative_hints)
+
+    def test_hint_payload_includes_reason_codes(
+        self,
+        mock_extractor: MagicMock,
+    ) -> None:
+        """Verify hint payload has proper reason_codes."""
+        from transcription.post_process import PostProcessConfig
+        from transcription.streaming_callbacks import EndOfTurnHintPayload
+
+        hints_received = []
+
+        class HintCallbacks:
+            def on_end_of_turn_hint(self, payload):
+                hints_received.append(payload)
+
+        post_config = PostProcessConfig(
+            enabled=True,
+            enable_turn_taking=True,
+            turn_taking_policy="aggressive",
+        )
+
+        config = StreamingEnrichmentConfig(
+            base_config=StreamConfig(max_gap_sec=2.0),
+            post_process_config=post_config,
+        )
+
+        with patch(
+            "transcription.streaming_enrich.AudioSegmentExtractor",
+            return_value=mock_extractor,
+        ):
+            session = StreamingEnrichmentSession(
+                wav_path=Path("/tmp/fake.wav"),
+                config=config,
+                callbacks=HintCallbacks(),
+            )
+
+            # Ingest segment then large gap to trigger finalization
+            session.ingest_chunk(_chunk(0.0, 2.0, "I would like to order a pizza please.", "spk_0"))
+            session.ingest_chunk(_chunk(5.0, 6.0, "With extra cheese.", "spk_0"))
+
+            # Should have a hint
+            assert len(hints_received) >= 1
+            payload = hints_received[0]
+
+            # Verify payload structure
+            assert isinstance(payload.reason_codes, list)
+            assert payload.policy_name == "aggressive"
+            assert payload.silence_duration >= 0.0
+            assert isinstance(payload.confidence, float)
+
+            # Can convert to dict
+            d = payload.to_dict()
+            assert "reason_codes" in d
+            assert "silence_duration_ms" in d
+            assert "policy_name" in d
