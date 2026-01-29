@@ -686,3 +686,104 @@ class TestDataTypeConsistency:
 
         assert np.all(audio >= -1.0)
         assert np.all(audio <= 1.0)
+
+# ============================================================================
+# AudioSegmentExtractor - Context Manager Tests
+# ============================================================================
+
+from unittest.mock import MagicMock, patch
+
+class TestAudioSegmentExtractorContextManager:
+    """Tests for context manager functionality."""
+
+    @pytest.fixture
+    def mock_soundfile(self):
+        with patch("transcription.audio_utils.sf.SoundFile") as mock:
+            # Setup mock behavior
+            mock_instance = mock.return_value
+            mock_instance.__enter__.return_value = mock_instance
+            mock_instance.samplerate = 16000
+            mock_instance.channels = 1
+            mock_instance.__len__.return_value = 160000 # 10 seconds
+
+            # Return a dummy array for read
+            mock_instance.read.return_value = np.zeros(16000, dtype="float32")
+
+            yield mock
+
+    def test_context_manager_reuse(self, mock_soundfile, tmp_path):
+        """Context manager should reuse file handle."""
+        # Create a dummy file to pass existence check
+        wav_path = tmp_path / "test.wav"
+        wav_path.touch()
+
+        # 1. Initialization (should open and close once for metadata)
+        extractor = AudioSegmentExtractor(wav_path)
+        assert mock_soundfile.call_count == 1
+        mock_soundfile.return_value.__enter__.assert_called()
+        mock_soundfile.return_value.__exit__.assert_called()
+
+        # Reset mock to track next calls
+        mock_soundfile.reset_mock()
+        mock_instance = mock_soundfile.return_value
+        mock_instance.__enter__.return_value = mock_instance
+
+        # 2. Use context manager
+        with extractor:
+            # Should open the file once on enter
+            assert mock_soundfile.call_count == 1
+
+            # Extract multiple segments
+            extractor.extract_segment(0, 1)
+            extractor.extract_segment(1, 2)
+            extractor.extract_segment(2, 3)
+
+            # Should NOT open file again (call_count stays 1)
+            assert mock_soundfile.call_count == 1
+
+            # Should seek and read 3 times
+            assert mock_instance.seek.call_count == 3
+            assert mock_instance.read.call_count == 3
+
+        # 3. Exit context manager
+        # Should close the file
+        mock_instance.close.assert_called_once()
+        assert extractor._file_handle is None
+
+    def test_without_context_manager(self, mock_soundfile, tmp_path):
+        """Standard usage should still open/close per call."""
+        wav_path = tmp_path / "test.wav"
+        wav_path.touch()
+
+        extractor = AudioSegmentExtractor(wav_path)
+        mock_soundfile.reset_mock()
+
+        # Extract segment without context manager
+        extractor.extract_segment(0, 1)
+
+        # Should open and close for the call
+        assert mock_soundfile.call_count == 1
+        mock_soundfile.return_value.__enter__.assert_called()
+        mock_soundfile.return_value.__exit__.assert_called()
+
+    def test_context_manager_idempotency(self, mock_soundfile, tmp_path):
+        """Entering context manager multiple times handles _file_handle correctly."""
+        wav_path = tmp_path / "test.wav"
+        wav_path.touch()
+
+        extractor = AudioSegmentExtractor(wav_path)
+        mock_soundfile.reset_mock()
+
+        # If we manually call __enter__ twice
+        extractor.__enter__()
+        assert mock_soundfile.call_count == 1
+        handle1 = extractor._file_handle
+
+        extractor.__enter__()
+        assert mock_soundfile.call_count == 1 # Should not open again
+        handle2 = extractor._file_handle
+
+        assert handle1 is handle2
+
+        extractor.__exit__(None, None, None)
+        assert extractor._file_handle is None
