@@ -191,10 +191,11 @@ Repository = "https://github.com/EffortlessMetrics/slower-whisper"
 Issues = "https://github.com/EffortlessMetrics/slower-whisper/issues"
 
 [tool.setuptools]
-packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "transcription.integrations", "scripts", "integrations"]
+packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "transcription.integrations", "scripts", "integrations", "slower_whisper"]
 
 [tool.setuptools.package-data]
 transcription = ["py.typed"]
+slower_whisper = ["py.typed"]
 
 [tool.black]
 line-length = 100
