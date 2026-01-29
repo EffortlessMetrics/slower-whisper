@@ -50,7 +50,7 @@ from .outcomes import (
 from .privacy import build_privacy_parser, handle_privacy_command
 from .speaker_identity import build_speakers_parser, handle_speakers_command
 from .store.cli import build_store_parser, handle_store_command
-from .validation import DEFAULT_SCHEMA_PATH, validate_many
+from .validation import DEFAULT_SCHEMA_PATH, validate_transcript_json
 
 logger = logging.getLogger(__name__)
 
@@ -1163,14 +1163,38 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
 
 def _handle_validate_command(args: argparse.Namespace) -> int:
     schema_path = args.schema or DEFAULT_SCHEMA_PATH
-    failures = validate_many(args.transcripts, schema_path=schema_path)
-    if failures:
-        print("Validation failed:")
-        for err in failures:
-            print(f"- {err}")
-        return 1
 
-    print(f"[ok] {len(args.transcripts)} transcript(s) valid against {schema_path}")
+    print(f"\n{Colors.bold('=== Transcript Validation ===')}")
+    print(f"Schema: {schema_path}\n")
+
+    passed_count = 0
+    failed_count = 0
+
+    for path in args.transcripts:
+        try:
+            is_valid, errors = validate_transcript_json(path, schema_path=schema_path)
+
+            if is_valid:
+                print(f"{Colors.green('[PASS]')} {path.name}")
+                passed_count += 1
+            else:
+                print(f"{Colors.red('[FAIL]')} {path.name}")
+                failed_count += 1
+                for err in errors:
+                    print(f"  - {err}")
+        except Exception as e:
+            print(f"{Colors.red('[ERR ]')} {path.name}: {e}")
+            failed_count += 1
+
+    print(f"\n{Colors.bold('Summary:')}")
+    print(f"  Total:    {len(args.transcripts)}")
+    print(f"  Passed:   {Colors.green(str(passed_count))}")
+
+    failed_color = Colors.red if failed_count > 0 else str
+    print(f"  Failed:   {failed_color(str(failed_count))}")
+
+    if failed_count > 0:
+        return 1
     return 0
 
 
