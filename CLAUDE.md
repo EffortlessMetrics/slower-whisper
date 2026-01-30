@@ -67,6 +67,11 @@ nix-clean run .#verify -- --quick
     - `Segment` supports both attribute access and tuple unpacking
     - Extensions (`diarize`, `enrich`, `last_transcript`) are additive, not breaking
 
+11. **Post-processing runs in dependency order**
+    - `PostProcessor` executes: safety → environment → prosody → turn-taking
+    - Turn-level processors (roles, topics) run via `process_turn()` separately
+    - Callbacks never crash pipeline (exceptions caught and logged)
+
 ---
 
 ## Key Surfaces
@@ -89,6 +94,9 @@ nix-clean run .#verify -- --quick
 | WebSocket streaming | `transcription/streaming_ws.py` |
 | Streaming client | `transcription/streaming_client.py` |
 | Session registry | `transcription/session_registry.py` |
+| Post-processing | `transcription/post_process.py` |
+| Topic segmentation | `transcription/topic_segmentation.py` |
+| Turn-taking policies | `transcription/turn_taking_policy.py` |
 | API service | `transcription/service.py` |
 | Public API | `transcription/api.py` |
 

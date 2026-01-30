@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
 **Current Version:** v2.0.0
-**Last Updated:** 2026-01-26
+**Last Updated:** 2026-01-29
 <!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
 Roadmap = forward-looking execution plan.
@@ -19,6 +19,7 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 | Track 1: Benchmarks | ✅ Complete | All phases shipped (including Phase 3 gate mode) |
 | Track 2: Streaming | ✅ Complete | Docs polish, incremental diarization (#86) |
 | Track 3: Semantics | ✅ Complete | Semantic quality benchmark (#98) |
+| Track 5: Post-Processing | ✅ Complete | Topic segmentation, turn-taking policies shipped |
 
 ---
 
@@ -47,6 +48,7 @@ nix-clean flake check        # Nix checks
 
 | Version | Highlights |
 |---------|------------|
+| **v2.0.1-dev** | Post-processing orchestration, topic segmentation, turn-taking policies |
 | **v2.0.0** | WebSocket streaming API, REST session management, semantic adapter protocol, benchmark evaluation framework (ASR/DER/emotion/streaming), LLM guardrails, baseline infrastructure |
 | **v1.9.2** | Version constant fix (`transcription.__version__` now correct) |
 | **v1.9.1** | GPU UX (`--device auto` default, preflight banner), CI caching fixes |
@@ -554,6 +556,77 @@ class SemanticProvider(Protocol):
 | [#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59) | Remove deprecated APIs (`--enrich-config`, legacy scripts) | ✅ |
 | [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) | Expanded benchmark datasets (AMI, CALLHOME, LibriSpeech) | ⬜ |
 
+### Track 5: Post-Processing — ✅ Complete
+
+**Status:** Core post-processing infrastructure complete with topic segmentation and turn-taking policies.
+
+| Order | Deliverable | Status |
+|-------|-------------|--------|
+| 1 | `PostProcessConfig` unified configuration | ✅ `post_process.py` |
+| 2 | `PostProcessor` orchestration (safety, roles, topics, turn-taking, environment) | ✅ `post_process.py` |
+| 3 | Topic segmentation with TF-IDF similarity | ✅ `topic_segmentation.py` |
+| 4 | `StreamingTopicSegmenter` for real-time boundaries | ✅ `topic_segmentation.py` |
+| 5 | Turn-taking policy presets (aggressive/balanced/conservative) | ✅ `turn_taking_policy.py` |
+| 6 | `TurnTakingEvaluator` with confidence scoring | ✅ `turn_taking_policy.py` |
+| 7 | Preset configs (`post_process_config_for_call_center()`, `_for_meetings()`) | ✅ `post_process.py` |
+
+**Features delivered:**
+
+- **Topic Segmentation**: Rolling window TF-IDF similarity detection with configurable thresholds
+- **Turn-Taking Policies**: Three presets controlling END_OF_TURN_HINT behavior:
+  - `aggressive`: Fast response (300ms silence, 0.6 confidence)
+  - `balanced`: Default (700ms silence, 0.75 confidence)
+  - `conservative`: High accuracy (1200ms silence, 0.85 confidence)
+- **Unified Orchestration**: Single `PostProcessor` runs all enabled processors in dependency order
+- **Domain Presets**: Call center and meeting configurations with appropriate defaults
+
+<details>
+<summary><strong>Track 5 Design Notes: Post-Processing Architecture</strong></summary>
+
+#### PostProcessor Execution Order
+
+1. Safety processing (PII + moderation + formatting)
+2. Environment classification
+3. Extended prosody analysis
+4. Turn-taking evaluation
+
+Turn-level processors (roles, topics) run separately via `process_turn()`.
+
+#### Topic Boundary Detection
+
+```python
+# Similarity-based boundary detection
+similarity = cosine_similarity(prev_window_tfidf, curr_window_tfidf)
+should_split = (
+    similarity < config.similarity_threshold  # default: 0.35
+    or topic_duration >= config.max_topic_duration_sec  # default: 300s
+)
+```
+
+#### Turn-Taking Confidence Calculation
+
+```python
+# Weighted signal aggregation
+confidence = (
+    silence_strength * policy.silence_weight    # default: 0.40
+    + punct_strength * policy.punctuation_weight # default: 0.35
+    + prosody_strength * policy.prosody_weight   # default: 0.25
+)
+```
+
+#### Reason Codes
+
+| Code | Description |
+|------|-------------|
+| `SILENCE_THRESHOLD` | Silence exceeded configured threshold |
+| `TERMINAL_PUNCT` | Period, exclamation, or question mark detected |
+| `FALLING_INTONATION` | Prosodic boundary tone falling |
+| `COMPLETE_SENTENCE` | Heuristic sentence completion |
+| `QUESTION_DETECTED` | Question mark with question semantics |
+| `LONG_PAUSE` | Forced end due to max silence |
+
+</details>
+
 ---
 
 ### v2.0 Performance Targets
@@ -616,8 +689,14 @@ Placeholders, not commitments.
 └────────┬────────┘  └────────┬────────┘  └─────────────────┘
          │                    │
          └─────────┬──────────┘
-                   ▼
-          ┌─────────────────┐
+                   │
+          ┌────────▼────────┐
+          │  Track 5:       │
+          │  Post-Process   │
+          │ (topics, turns) │
+          └────────┬────────┘
+                   │
+          ┌────────▼────────┐
           │    v2.0.0       │
           │    Release      │
           └─────────────────┘
@@ -627,6 +706,7 @@ Placeholders, not commitments.
 - Benchmarks gate streaming (can't claim latency without measuring it)
 - Streaming depends on v1.9 callback contracts (✅ shipped)
 - Semantics depends on stable Turn/Chunk model from Track 2
+- Post-processing depends on streaming callbacks and turn model (✅ shipped)
 - Deprecated APIs removed only after docs point to replacements
 
 ---
