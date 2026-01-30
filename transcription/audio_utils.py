@@ -5,6 +5,8 @@ This module provides memory-efficient audio segment extraction using soundfile's
 seeking capabilities. Designed for 16kHz mono WAV files normalized by the pipeline.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
@@ -38,6 +40,7 @@ class AudioSegmentExtractor:
             RuntimeError: If the audio file cannot be opened.
         """
         self.wav_path = Path(wav_path)
+        self._file_handle: sf.SoundFile | None = None
 
         # Validate file exists
         if not self.wav_path.exists():
@@ -55,6 +58,28 @@ class AudioSegmentExtractor:
                 self.duration_seconds: float = self.total_frames / self.sample_rate
         except Exception as e:
             raise RuntimeError(f"Failed to open audio file '{self.wav_path}': {e}") from e
+
+    def __enter__(self) -> AudioSegmentExtractor:
+        """
+        Enter context manager: Keep file open for efficient batch access.
+
+        Returns:
+            Self instance.
+        """
+        if self._file_handle is None:
+            try:
+                self._file_handle = sf.SoundFile(str(self.wav_path), "r")
+            except Exception as e:
+                raise RuntimeError(f"Failed to open audio file '{self.wav_path}': {e}") from e
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """
+        Exit context manager: Close file handle.
+        """
+        if self._file_handle is not None:
+            self._file_handle.close()
+            self._file_handle = None
 
     def extract_segment(
         self,
@@ -147,19 +172,23 @@ class AudioSegmentExtractor:
 
         # Extract the segment using seek
         try:
-            with sf.SoundFile(str(self.wav_path), "r") as audio_file:
-                # Seek to start position
-                audio_file.seek(start_frame)
+            if self._file_handle is not None:
+                self._file_handle.seek(start_frame)
+                audio_data = self._file_handle.read(num_frames, dtype="float32")
+            else:
+                with sf.SoundFile(str(self.wav_path), "r") as audio_file:
+                    # Seek to start position
+                    audio_file.seek(start_frame)
 
-                # Read the required number of frames
-                audio_data = audio_file.read(num_frames, dtype="float32")
+                    # Read the required number of frames
+                    audio_data = audio_file.read(num_frames, dtype="float32")
 
-                # Handle multi-channel audio by taking first channel
-                # (should be mono for normalized files, but be defensive)
-                if audio_data.ndim > 1:
-                    audio_data = audio_data[:, 0]
+            # Handle multi-channel audio by taking first channel
+            # (should be mono for normalized files, but be defensive)
+            if audio_data.ndim > 1:
+                audio_data = audio_data[:, 0]
 
-                return audio_data, self.sample_rate
+            return audio_data, self.sample_rate
 
         except Exception as e:
             raise RuntimeError(
@@ -207,14 +236,18 @@ class AudioSegmentExtractor:
         num_frames = end_frame - start_frame
 
         try:
-            with sf.SoundFile(str(self.wav_path), "r") as audio_file:
-                audio_file.seek(start_frame)
-                audio_data = audio_file.read(num_frames, dtype="float32")
+            if self._file_handle is not None:
+                self._file_handle.seek(start_frame)
+                audio_data = self._file_handle.read(num_frames, dtype="float32")
+            else:
+                with sf.SoundFile(str(self.wav_path), "r") as audio_file:
+                    audio_file.seek(start_frame)
+                    audio_data = audio_file.read(num_frames, dtype="float32")
 
-                if audio_data.ndim > 1:
-                    audio_data = audio_data[:, 0]
+            if audio_data.ndim > 1:
+                audio_data = audio_data[:, 0]
 
-                return audio_data, self.sample_rate
+            return audio_data, self.sample_rate
 
         except Exception as e:
             raise RuntimeError(

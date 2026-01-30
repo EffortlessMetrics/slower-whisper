@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+import soundfile as sf
 
 from transcription.audio_utils import (
     AudioSegmentExtractor,
@@ -686,3 +687,86 @@ class TestDataTypeConsistency:
 
         assert np.all(audio >= -1.0)
         assert np.all(audio <= 1.0)
+
+# ============================================================================
+# AudioSegmentExtractor - Context Manager Optimization Tests
+# ============================================================================
+
+
+class TestAudioSegmentExtractorContextManager:
+    """Tests for AudioSegmentExtractor context manager functionality."""
+
+    def test_context_manager_reuses_file_handle(self, test_wav_file: Path) -> None:
+        """Verify that using the context manager reuses the internal file handle."""
+        from unittest.mock import patch
+
+        extractor = AudioSegmentExtractor(test_wav_file)
+
+        assert extractor._file_handle is None
+
+        with extractor:
+            assert extractor._file_handle is not None
+            assert not extractor._file_handle.closed
+
+            # Verify extract_segment uses the handle
+            with patch.object(extractor._file_handle, 'read', wraps=extractor._file_handle.read) as mock_read:
+                data, sr = extractor.extract_segment(0.0, 0.1)
+                assert len(data) > 0
+                mock_read.assert_called()
+
+            # Verify extract_segment_by_frames uses the handle
+            with patch.object(extractor._file_handle, 'read', wraps=extractor._file_handle.read) as mock_read:
+                data, sr = extractor.extract_segment_by_frames(0, 1600)
+                assert len(data) > 0
+                mock_read.assert_called()
+
+        assert extractor._file_handle is None
+
+    def test_fallback_behavior_without_context_manager(self, test_wav_file: Path) -> None:
+        """Verify that without context manager, file is opened/closed each time."""
+        from unittest.mock import patch
+
+        extractor = AudioSegmentExtractor(test_wav_file)
+        assert extractor._file_handle is None
+
+        # spy on sf.SoundFile to see if it's instantiated
+        with patch('soundfile.SoundFile', wraps=sf.SoundFile) as mock_sf:
+            data, sr = extractor.extract_segment(0.0, 0.1)
+            # It should be called once (open)
+            mock_sf.assert_called()
+
+        # And again
+        with patch('soundfile.SoundFile', wraps=sf.SoundFile) as mock_sf:
+            data, sr = extractor.extract_segment(0.1, 0.2)
+            mock_sf.assert_called()
+
+    def test_context_manager_avoids_repeated_opens(self, test_wav_file: Path) -> None:
+        """Verify that context manager avoids repeated sf.SoundFile calls."""
+        from unittest.mock import patch
+
+        extractor = AudioSegmentExtractor(test_wav_file)
+
+        with extractor:
+            # Inside context, sf.SoundFile constructor should NOT be called for extractions
+            # (It WAS called once for __enter__)
+
+            with patch('soundfile.SoundFile', wraps=sf.SoundFile) as mock_sf:
+                data, sr = extractor.extract_segment(0.0, 0.1)
+                data, sr = extractor.extract_segment(0.1, 0.2)
+
+                # Should NOT be called because we use the cached handle
+                mock_sf.assert_not_called()
+
+    def test_context_manager_handles_exception_in_enter(self, test_wav_file: Path) -> None:
+        """Verify exception handling in __enter__."""
+        from unittest.mock import patch
+
+        extractor = AudioSegmentExtractor(test_wav_file)
+
+        # Simulate file opening error
+        with patch('soundfile.SoundFile', side_effect=RuntimeError("Open failed")):
+            with pytest.raises(RuntimeError, match="Failed to open audio file"):
+                with extractor:
+                    pass
+
+        assert extractor._file_handle is None
