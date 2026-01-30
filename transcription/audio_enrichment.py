@@ -324,54 +324,72 @@ def enrich_transcript_audio(
     failed_count = 0
 
     # Create a single extractor to reuse across all segments (avoids repeated file opens)
+    extractor_context = None
     try:
-        shared_extractor = AudioSegmentExtractor(wav_path)
+        extractor_context = AudioSegmentExtractor(wav_path)
     except Exception as e:
         logger.error("Failed to create audio extractor for %s: %s", wav_path, e, exc_info=True)
         shared_extractor = None
+    else:
+        shared_extractor = extractor_context
 
-    for idx, segment in enumerate(transcript.segments):
-        logger.debug("Enriching segment %d/%d: %s", idx + 1, len(transcript.segments), segment.id)
+    # Define processing logic (reused for both context-manager and fallback cases)
+    def _process_segments(extractor: AudioSegmentExtractor | None) -> None:
+        nonlocal success_count, partial_count, failed_count
+        for idx, segment in enumerate(transcript.segments):
+            logger.debug("Enriching segment %d/%d: %s", idx + 1, len(transcript.segments), segment.id)
 
-        try:
-            audio_state = _enrich_segment_with_extractor(
-                shared_extractor,
-                wav_path,
-                segment,
-                enable_prosody=enable_prosody,
-                enable_emotion=enable_emotion,
-                enable_categorical_emotion=enable_categorical_emotion,
-                speaker_baseline=speaker_baseline,
-            )
+            try:
+                audio_state = _enrich_segment_with_extractor(
+                    extractor,
+                    wav_path,
+                    segment,
+                    enable_prosody=enable_prosody,
+                    enable_emotion=enable_emotion,
+                    enable_categorical_emotion=enable_categorical_emotion,
+                    speaker_baseline=speaker_baseline,
+                )
 
-            # Attach audio_state to segment
-            segment.audio_state = audio_state
+                # Attach audio_state to segment
+                segment.audio_state = audio_state
 
-            # Count success/partial/failure
-            status = audio_state.get("extraction_status", {})
-            errors = status.get("errors", [])
+                # Count success/partial/failure
+                status = audio_state.get("extraction_status", {})
+                errors = status.get("errors", [])
 
-            if not errors:
-                success_count += 1
-            elif any(status.get(k) == "success" for k in ["prosody", "emotion_dimensional"]):
-                partial_count += 1
-            else:
+                if not errors:
+                    success_count += 1
+                elif any(status.get(k) == "success" for k in ["prosody", "emotion_dimensional"]):
+                    partial_count += 1
+                else:
+                    failed_count += 1
+
+            except Exception as e:
+                logger.error("Failed to enrich segment %s: %s", segment.id, e, exc_info=True)
+                segment.audio_state = {
+                    "prosody": None,
+                    "emotion": None,
+                    "rendering": "[audio: neutral]",
+                    "extraction_status": {
+                        "prosody": "failed",
+                        "emotion_dimensional": "failed",
+                        "emotion_categorical": "failed",
+                        "errors": [str(e)],
+                    },
+                }
                 failed_count += 1
 
+    # Execute processing with context manager if possible
+    if shared_extractor:
+        try:
+            with shared_extractor:
+                _process_segments(shared_extractor)
         except Exception as e:
-            logger.error("Failed to enrich segment %s: %s", segment.id, e, exc_info=True)
-            segment.audio_state = {
-                "prosody": None,
-                "emotion": None,
-                "rendering": "[audio: neutral]",
-                "extraction_status": {
-                    "prosody": "failed",
-                    "emotion_dimensional": "failed",
-                    "emotion_categorical": "failed",
-                    "errors": [str(e)],
-                },
-            }
-            failed_count += 1
+            logger.error("Failed to use audio extractor context for %s: %s", wav_path, e, exc_info=True)
+            # Fallback to per-segment processing (likely to fail if file issue, but safe)
+            _process_segments(None)
+    else:
+        _process_segments(None)
 
     # Update transcript metadata
     if transcript.meta is None:
