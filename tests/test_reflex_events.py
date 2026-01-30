@@ -376,7 +376,15 @@ class TestPayloadsAreDataclasses:
     def test_end_of_turn_hint_fields(self) -> None:
         """EndOfTurnHintPayload has expected fields."""
         fields = {f.name for f in dataclasses.fields(EndOfTurnHintPayload)}
-        expected = {"confidence", "silence_duration", "terminal_punctuation", "partial_text"}
+        expected = {
+            "confidence",
+            "silence_duration",
+            "terminal_punctuation",
+            "partial_text",
+            "reason_codes",
+            "silence_duration_ms",
+            "policy_name",
+        }
         assert fields == expected
 
 

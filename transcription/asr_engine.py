@@ -271,6 +271,11 @@ class TranscriptionEngine:
             "language": self.cfg.language,
             "task": self.cfg.task,
         }
+
+        # Respect config (shim sets cfg.vad_filter)
+        vad_enabled = bool(getattr(self.cfg, "vad_filter", True))
+        include_vad = include_vad and vad_enabled
+
         if include_vad and self._supports_vad_filter:
             kwargs["vad_filter"] = True
         if include_vad and self._supports_vad_parameters:

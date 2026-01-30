@@ -19,6 +19,14 @@ are validated against the JSON schema in schemas/transcript-v2.schema.json.
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+# Schema versioning constants for downstream consumers.
+# - SCHEMA_VERSION: Top-level transcript JSON schema version (integer).
+#   Stored in transcript.annotations["_schema_version"].
+# - AUDIO_STATE_VERSION: Semver for segment.audio_state structure.
+#   Stored in segment.audio_state["_schema_version"].
+# - WORD_ALIGNMENT_VERSION: Semver for word-level alignment structure.
+#   Stored in segment.words metadata.
+# Increment these when making breaking changes to the respective structures.
 SCHEMA_VERSION: int = 2
 AUDIO_STATE_VERSION: str = "1.0.0"
 WORD_ALIGNMENT_VERSION: str = "1.0.0"

@@ -129,6 +129,14 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [MODEL_CACHE.md](MODEL_CACHE.md) | Model cache management | Cache location, cleanup, troubleshooting |
 | [REDACTION.md](REDACTION.md) | PII redaction capabilities | Privacy, data handling |
 
+### Post-Processing (v2.0.1+)
+
+| Module | Description | Topics |
+|--------|-------------|--------|
+| `transcription.post_process` | **Post-processing orchestration** | `PostProcessor`, `PostProcessConfig`, preset configs for call center/meetings |
+| `transcription.topic_segmentation` | **Topic segmentation** | TF-IDF similarity detection, `TopicSegmenter`, `StreamingTopicSegmenter` |
+| `transcription.turn_taking_policy` | **Turn-taking policies** | `TurnTakingPolicy`, `TurnTakingEvaluator`, aggressive/balanced/conservative presets |
+
 ### Advantage Layer (v2.0)
 
 | Document | Description | Topics |
@@ -482,6 +490,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2026-01-29
+**Last Updated:** 2026-01-30
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.

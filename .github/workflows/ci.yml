@@ -114,7 +114,7 @@ jobs:
     needs: [lint, format]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -130,16 +130,22 @@ jobs:
           uv venv .venv-smoke
           .venv-smoke/bin/pip install dist/*.whl
 
-      - name: Verify slower_whisper import
+      - name: Verify slower_whisper import (installed wheel)
         run: |
-          .venv-smoke/bin/python -c "
+          cd /tmp
+          "$GITHUB_WORKSPACE/.venv-smoke/bin/python" - <<'PY'
+          import slower_whisper
+          p = slower_whisper.__file__
+          print("slower_whisper.__file__ =", p)
+          assert "site-packages" in p, "Imported from source tree; wheel smoke invalid"
+
           from slower_whisper import WhisperModel, Segment, Word, TranscriptionInfo
           print('WhisperModel:', WhisperModel)
           print('Segment:', Segment)
           print('Word:', Word)
           print('TranscriptionInfo:', TranscriptionInfo)
           print('All exports verified!')
-          "
+          PY
 
   test:
     name: Test (Python ${{ matrix.python-version }})

@@ -9,7 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- (v2.0.1+)
+#### Post-Processing Orchestration
+
+- **`PostProcessConfig`**: Unified configuration for all post-processors (safety, roles, topics, turn-taking, environment, extended prosody)
+- **`PostProcessor`**: Orchestrates enabled processors in dependency order with callback support
+- **`SegmentContext`**: Context dataclass for segment processing with full metadata
+- **`PostProcessResult`/`TurnProcessResult`**: Structured results from segment and turn processing
+- **Preset configurations**: `post_process_config_for_call_center()`, `post_process_config_for_meetings()`, `post_process_config_minimal()`
+
+#### Topic Segmentation
+
+- **`TopicSegmentationConfig`**: Configurable window sizes, similarity thresholds, and duration constraints
+- **`TopicSegmenter`**: Batch topic segmentation using rolling window TF-IDF cosine similarity
+- **`StreamingTopicSegmenter`**: Real-time topic boundary detection with callback support
+- **`TopicChunk`**: Topic data structure with keywords, turn IDs, speaker IDs, and summary text
+- **`TopicBoundaryPayload`**: Event payload for topic boundary callbacks
+- **TF-IDF utilities**: `tokenize()`, `compute_tf()`, `compute_idf()`, `compute_tfidf()`, `cosine_similarity()`
+
+#### Turn-Taking Policies
+
+- **`TurnTakingPolicy`**: Configurable turn-taking behavior with silence thresholds, confidence requirements, and signal weights
+- **Three preset policies**:
+  - `AGGRESSIVE_POLICY`: Fast response (300ms silence, 0.6 confidence threshold)
+  - `BALANCED_POLICY`: Default behavior (700ms silence, 0.75 confidence threshold)
+  - `CONSERVATIVE_POLICY`: High accuracy (1200ms silence, 0.85 confidence threshold)
+- **`TurnTakingEvaluator`**: Evaluates end-of-turn conditions using silence, punctuation, and prosody signals
+- **`EndOfTurnEvaluation`**: Result with confidence scores and reason codes
+- **`EndOfTurnSignal`**: Individual signal contributing to turn-end detection
+- **Reason codes**: `SILENCE_THRESHOLD`, `TERMINAL_PUNCT`, `FALLING_INTONATION`, `COMPLETE_SENTENCE`, `QUESTION_DETECTED`, `LONG_PAUSE`
 
 ### Changed
 

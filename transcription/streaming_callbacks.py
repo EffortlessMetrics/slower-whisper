@@ -17,12 +17,15 @@ See docs/STREAMING_ARCHITECTURE.md for usage patterns.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+from .topic_segmentation import TopicBoundaryPayload
 
 if TYPE_CHECKING:
     from .audio_health import AudioHealthSnapshot
     from .conversation_physics import ConversationPhysicsSnapshot
+    from .safety_layer import SafetyAlertPayload
     from .streaming import StreamSegment
     from .streaming_semantic import CommitmentEntry, CorrectionEvent, SemanticUpdatePayload
 
@@ -93,12 +96,73 @@ class EndOfTurnHintPayload:
         terminal_punctuation: Whether terminal punctuation was detected
             (period, question mark, exclamation mark).
         partial_text: The partial transcript that triggered the hint.
+        reason_codes: List of reason codes explaining why hint was triggered.
+            Possible values: "terminal_punctuation", "silence_threshold",
+            "boundary_tone", "complete_sentence", "question_detected", "long_pause".
+        silence_duration_ms: Silence duration in milliseconds (for precision).
+        policy_name: Name of the turn-taking policy that was applied.
     """
 
     confidence: float
     silence_duration: float
     terminal_punctuation: bool
     partial_text: str
+    reason_codes: list[str] = field(default_factory=list)
+    silence_duration_ms: float = 0.0
+    policy_name: str = "balanced"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "confidence": self.confidence,
+            "silence_duration": self.silence_duration,
+            "terminal_punctuation": self.terminal_punctuation,
+            "partial_text": self.partial_text,
+            "reason_codes": list(self.reason_codes),
+            "silence_duration_ms": self.silence_duration_ms,
+            "policy_name": self.policy_name,
+        }
+
+
+@dataclass(slots=True)
+class RoleAssignedPayload:
+    """Payload for role assignment callback.
+
+    Emitted when speaker roles are inferred after sufficient turns
+    have been processed (typically after role_decision_turns or
+    role_decision_seconds threshold is reached).
+
+    Attributes:
+        assignments: Dictionary mapping speaker_id to RoleAssignment dict.
+            Each assignment contains: speaker_id, role, confidence, evidence,
+            original_label.
+        timestamp: When roles were decided (end time of triggering turn).
+        trigger: What caused the role decision:
+            - "turn_count": Reached role_decision_turns threshold
+            - "elapsed_time": Reached role_decision_seconds threshold
+            - "finalize": Forced decision at session end
+    """
+
+    assignments: dict[str, Any]  # speaker_id -> RoleAssignment.to_dict()
+    timestamp: float
+    trigger: str  # "turn_count" | "elapsed_time" | "finalize"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "assignments": self.assignments,
+            "timestamp": self.timestamp,
+            "trigger": self.trigger,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RoleAssignedPayload:
+        """Create from dictionary."""
+        return cls(
+            assignments=data.get("assignments", {}),
+            timestamp=data.get("timestamp", 0.0),
+            trigger=data.get("trigger", "unknown"),
+        )
 
 
 @runtime_checkable
@@ -323,6 +387,57 @@ class StreamCallbacks(Protocol):
         """
         ...
 
+    def on_safety_alert(self, payload: SafetyAlertPayload) -> None:
+        """Called when a safety alert is triggered.
+
+        Safety alerts are generated when the safety layer detects
+        content that requires attention, such as PII or flagged content.
+
+        Args:
+            payload: SafetyAlertPayload containing:
+                - segment_id: ID of the segment that triggered the alert
+                - segment_start: Start time of the segment
+                - segment_end: End time of the segment
+                - alert_type: Type of alert ("pii", "moderation", "combined")
+                - severity: Overall severity level
+                - action: Recommended action
+                - details: Additional details about the alert
+        """
+        ...
+
+    def on_role_assigned(self, payload: RoleAssignedPayload) -> None:
+        """Called when speaker roles are assigned.
+
+        Role assignments are computed after enough turns have been
+        processed (typically 5 turns or 30 seconds).
+
+        Args:
+            payload: RoleAssignedPayload containing:
+                - assignments: Dictionary mapping speaker_id to RoleAssignment dict
+                  with keys: speaker_id, role, confidence, evidence, original_label
+                - timestamp: When roles were decided
+                - trigger: What caused decision ("turn_count", "elapsed_time", "finalize")
+        """
+        ...
+
+    def on_topic_boundary(self, payload: TopicBoundaryPayload) -> None:
+        """Called when a topic boundary is detected.
+
+        Topic boundaries are detected when vocabulary shifts significantly
+        between rolling windows of turns.
+
+        Args:
+            payload: TopicBoundaryPayload containing:
+                - previous_topic_id: ID of the topic that ended
+                - new_topic_id: ID of the new topic starting
+                - boundary_turn_id: Turn ID where boundary was detected
+                - boundary_time: Time of the boundary in seconds
+                - similarity_score: Similarity score that triggered boundary
+                - keywords_previous: Keywords from previous topic
+                - keywords_new: Keywords from new topic
+        """
+        ...
+
 
 class NoOpCallbacks:
     """Default no-op callback implementation.
@@ -361,6 +476,15 @@ class NoOpCallbacks:
         pass
 
     def on_commitment(self, commitment: CommitmentEntry) -> None:
+        pass
+
+    def on_safety_alert(self, payload: SafetyAlertPayload) -> None:
+        pass
+
+    def on_role_assigned(self, payload: RoleAssignedPayload) -> None:
+        pass
+
+    def on_topic_boundary(self, payload: TopicBoundaryPayload) -> None:
         pass
 
 
@@ -432,6 +556,8 @@ __all__ = [
     "VADActivityPayload",
     "BargeInPayload",
     "EndOfTurnHintPayload",
+    "RoleAssignedPayload",
+    "TopicBoundaryPayload",
     "NoOpCallbacks",
     "invoke_callback_safely",
 ]

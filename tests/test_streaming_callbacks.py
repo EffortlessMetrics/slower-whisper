@@ -344,6 +344,66 @@ class TestStreamingError:
         assert error.recoverable is False
 
 
+class TestRoleAssignedPayload:
+    """Tests for the RoleAssignedPayload dataclass."""
+
+    def test_creation(self) -> None:
+        """RoleAssignedPayload can be created with all fields."""
+        from transcription.streaming_callbacks import RoleAssignedPayload
+
+        payload = RoleAssignedPayload(
+            assignments={"spk_0": {"role": "agent", "confidence": 0.9}},
+            timestamp=10.5,
+            trigger="turn_count",
+        )
+
+        assert payload.assignments == {"spk_0": {"role": "agent", "confidence": 0.9}}
+        assert payload.timestamp == 10.5
+        assert payload.trigger == "turn_count"
+
+    def test_to_dict(self) -> None:
+        """RoleAssignedPayload.to_dict() returns expected structure."""
+        from transcription.streaming_callbacks import RoleAssignedPayload
+
+        payload = RoleAssignedPayload(
+            assignments={"spk_0": {"role": "customer"}},
+            timestamp=5.0,
+            trigger="elapsed_time",
+        )
+
+        d = payload.to_dict()
+        assert d["assignments"] == {"spk_0": {"role": "customer"}}
+        assert d["timestamp"] == 5.0
+        assert d["trigger"] == "elapsed_time"
+
+    def test_from_dict_roundtrip(self) -> None:
+        """RoleAssignedPayload can round-trip through dict."""
+        from transcription.streaming_callbacks import RoleAssignedPayload
+
+        original = RoleAssignedPayload(
+            assignments={"spk_0": {"role": "agent"}, "spk_1": {"role": "customer"}},
+            timestamp=30.0,
+            trigger="finalize",
+        )
+
+        d = original.to_dict()
+        restored = RoleAssignedPayload.from_dict(d)
+
+        assert restored.assignments == original.assignments
+        assert restored.timestamp == original.timestamp
+        assert restored.trigger == original.trigger
+
+    def test_from_dict_with_missing_fields(self) -> None:
+        """RoleAssignedPayload.from_dict handles missing fields gracefully."""
+        from transcription.streaming_callbacks import RoleAssignedPayload
+
+        restored = RoleAssignedPayload.from_dict({})
+
+        assert restored.assignments == {}
+        assert restored.timestamp == 0.0
+        assert restored.trigger == "unknown"
+
+
 # =============================================================================
 # 4. Test StreamingEnrichmentSession with Callbacks
 # =============================================================================
@@ -684,6 +744,17 @@ class TestProtocolCompliance:
                 pass
 
             def on_commitment(self, commitment: Any) -> None:
+                pass
+
+            # v2.0 safety callback
+            def on_safety_alert(self, payload: Any) -> None:
+                pass
+
+            # v2.0 role and topic callbacks
+            def on_role_assigned(self, payload: Any) -> None:
+                pass
+
+            def on_topic_boundary(self, payload: Any) -> None:
                 pass
 
         callbacks = CompliantCallbacks()
