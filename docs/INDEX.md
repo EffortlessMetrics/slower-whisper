@@ -111,6 +111,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | Document | Description | Use When |
 |----------|-------------|----------|
 | [QUICKSTART.md](QUICKSTART.md) | 5-minute tutorial for first transcription | Starting from scratch |
+| [FASTER_WHISPER_MIGRATION.md](FASTER_WHISPER_MIGRATION.md) | **Drop-in replacement for faster-whisper** | Migrating from faster-whisper |
 | [ADVANTAGE_LAYER_QUICKSTART.md](ADVANTAGE_LAYER_QUICKSTART.md) | **End-to-end workflow: store, outcomes, privacy, webhooks, RAG** | Using the full advantage layer |
 | [CONFIGURATION.md](CONFIGURATION.md) | Complete configuration guide | Setting up options, using config files, understanding precedence |
 | [QUICKSTART_AUDIO_ENRICHMENT.md](QUICKSTART_AUDIO_ENRICHMENT.md) | Quick guide to audio enrichment | Adding audio features |
@@ -127,6 +128,14 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [SPEAKER_DIARIZATION.md](SPEAKER_DIARIZATION.md) | Speaker diarization design and implementation | Who spoke when, turn structure |
 | [MODEL_CACHE.md](MODEL_CACHE.md) | Model cache management | Cache location, cleanup, troubleshooting |
 | [REDACTION.md](REDACTION.md) | PII redaction capabilities | Privacy, data handling |
+
+### Post-Processing (v2.0.1+)
+
+| Module | Description | Topics |
+|--------|-------------|--------|
+| `transcription.post_process` | **Post-processing orchestration** | `PostProcessor`, `PostProcessConfig`, preset configs for call center/meetings |
+| `transcription.topic_segmentation` | **Topic segmentation** | TF-IDF similarity detection, `TopicSegmenter`, `StreamingTopicSegmenter` |
+| `transcription.turn_taking_policy` | **Turn-taking policies** | `TurnTakingPolicy`, `TurnTakingEvaluator`, aggressive/balanced/conservative presets |
 
 ### Advantage Layer (v2.0)
 
@@ -347,9 +356,10 @@ These documents are historical artifacts from the development process and transf
 4. [Examples](../examples/) - Working examples
 
 ### "I want to use the Python API"
-1. [API Quick Reference](API_QUICK_REFERENCE.md) - Function reference
-2. [API Examples](../examples/API_EXAMPLES_README.md) - Usage examples
-3. [Architecture](ARCHITECTURE.md) - Understanding the design
+1. [Migrating from faster-whisper](FASTER_WHISPER_MIGRATION.md) - Drop-in replacement guide
+2. [API Quick Reference](API_QUICK_REFERENCE.md) - Function reference
+3. [API Examples](../examples/API_EXAMPLES_README.md) - Usage examples
+4. [Architecture](ARCHITECTURE.md) - Understanding the design
 
 ### "I want to analyze enriched transcripts with LLMs"
 1. [LLM Prompt Patterns](LLM_PROMPT_PATTERNS.md) - Reference prompts and rendering strategies
@@ -416,7 +426,7 @@ These documents are historical artifacts from the development process and transf
 - Discussions - Ask questions and share knowledge
 
 ### Related Projects
-- [faster-whisper](https://github.com/guillaumekln/faster-whisper) - Fast Whisper implementation
+- [faster-whisper](https://github.com/guillaumekln/faster-whisper) - Fast Whisper implementation (slower-whisper provides a [drop-in replacement](FASTER_WHISPER_MIGRATION.md))
 - [OpenAI Whisper](https://github.com/openai/whisper) - Original Whisper model
 - [Parselmouth](https://parselmouth.readthedocs.io/) - Praat phonetics library
 - [Transformers](https://huggingface.co/docs/transformers/) - HuggingFace models
@@ -480,6 +490,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2026-01-21
+**Last Updated:** 2026-01-30
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.

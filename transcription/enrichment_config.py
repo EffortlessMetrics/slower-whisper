@@ -17,10 +17,13 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .config_merge import _merge_enrich_configs
 from .exceptions import ConfigurationError
+
+if TYPE_CHECKING:
+    from .post_process import PostProcessConfig
 
 
 @dataclass(slots=True)
@@ -42,6 +45,14 @@ class EnrichmentConfig:
     enable_semantic_annotator: bool = False
     semantic_annotator: Any | None = field(default=None, repr=False, compare=False)
 
+    # Conversation Intelligence features (v2.0)
+    enable_safety_layer: bool = False  # Combined PII/moderation/formatting
+    enable_role_inference: bool = False  # Agent/customer/facilitator detection
+    enable_topic_segmentation: bool = False  # Topic boundary detection
+    enable_prosody_v2: bool = False  # Extended prosody (boundary tone, monotony)
+    enable_environment_classifier: bool = False  # Audio environment classification
+    turn_taking_policy: str = "balanced"  # aggressive/balanced/conservative
+
     # Runtime
     device: str = "cpu"  # "cpu" or "cuda"
 
@@ -59,6 +70,10 @@ class EnrichmentConfig:
         """Validate configuration values."""
         if self.pause_threshold is not None and self.pause_threshold < 0.0:
             raise ConfigurationError(f"pause_threshold must be >= 0.0, got {self.pause_threshold}")
+        if self.turn_taking_policy not in ("aggressive", "balanced", "conservative"):
+            raise ConfigurationError(
+                f"turn_taking_policy must be aggressive/balanced/conservative, got {self.turn_taking_policy}"
+            )
 
     @classmethod
     def from_file(cls, path: str | Path) -> EnrichmentConfig:
@@ -122,6 +137,11 @@ class EnrichmentConfig:
             "enable_turn_metadata",
             "enable_speaker_stats",
             "enable_semantic_annotator",
+            "enable_safety_layer",
+            "enable_role_inference",
+            "enable_topic_segmentation",
+            "enable_prosody_v2",
+            "enable_environment_classifier",
         ]
         for field_name in bool_fields:
             if field_name in data and not isinstance(data[field_name], bool):
@@ -140,6 +160,14 @@ class EnrichmentConfig:
                 if pause_val < 0.0:
                     raise ValueError(f"pause_threshold must be >= 0.0, got {pause_val}")
 
+        # Validate turn_taking_policy if present
+        if "turn_taking_policy" in data:
+            policy = data["turn_taking_policy"]
+            if policy not in ("aggressive", "balanced", "conservative"):
+                raise ValueError(
+                    f"turn_taking_policy must be aggressive/balanced/conservative, got {policy}"
+                )
+
         # Filter out unknown fields
         valid_fields = {
             "skip_existing",
@@ -149,6 +177,12 @@ class EnrichmentConfig:
             "enable_turn_metadata",
             "enable_speaker_stats",
             "enable_semantic_annotator",
+            "enable_safety_layer",
+            "enable_role_inference",
+            "enable_topic_segmentation",
+            "enable_prosody_v2",
+            "enable_environment_classifier",
+            "turn_taking_policy",
             "device",
             "dimensional_model_name",
             "categorical_model_name",
@@ -206,6 +240,11 @@ class EnrichmentConfig:
             "ENABLE_TURN_METADATA": "enable_turn_metadata",
             "ENABLE_SPEAKER_STATS": "enable_speaker_stats",
             "ENABLE_SEMANTIC_ANNOTATOR": "enable_semantic_annotator",
+            "ENABLE_SAFETY_LAYER": "enable_safety_layer",
+            "ENABLE_ROLE_INFERENCE": "enable_role_inference",
+            "ENABLE_TOPIC_SEGMENTATION": "enable_topic_segmentation",
+            "ENABLE_PROSODY_V2": "enable_prosody_v2",
+            "ENABLE_ENVIRONMENT_CLASSIFIER": "enable_environment_classifier",
         }
 
         for env_suffix, field_name in bool_mapping.items():
@@ -254,6 +293,15 @@ class EnrichmentConfig:
                 raise ValueError(
                     f"Invalid {prefix}PAUSE_THRESHOLD: {pause_thresh}. Must be a non-negative float."
                 ) from e
+
+        # String field (turn_taking_policy)
+        if policy := os.getenv(f"{prefix}TURN_TAKING_POLICY"):
+            if policy.lower() not in ("aggressive", "balanced", "conservative"):
+                raise ValueError(
+                    f"Invalid {prefix}TURN_TAKING_POLICY: {policy}. "
+                    "Must be aggressive/balanced/conservative"
+                )
+            config_dict["turn_taking_policy"] = policy.lower()
 
         config = cls(**config_dict)
         # Track which fields were explicitly set from environment
@@ -364,6 +412,24 @@ class EnrichmentConfig:
                 enable_semantic_annotator=filtered_overrides.get(
                     "enable_semantic_annotator", config.enable_semantic_annotator
                 ),
+                enable_safety_layer=filtered_overrides.get(
+                    "enable_safety_layer", config.enable_safety_layer
+                ),
+                enable_role_inference=filtered_overrides.get(
+                    "enable_role_inference", config.enable_role_inference
+                ),
+                enable_topic_segmentation=filtered_overrides.get(
+                    "enable_topic_segmentation", config.enable_topic_segmentation
+                ),
+                enable_prosody_v2=filtered_overrides.get(
+                    "enable_prosody_v2", config.enable_prosody_v2
+                ),
+                enable_environment_classifier=filtered_overrides.get(
+                    "enable_environment_classifier", config.enable_environment_classifier
+                ),
+                turn_taking_policy=filtered_overrides.get(
+                    "turn_taking_policy", config.turn_taking_policy
+                ),
                 device=filtered_overrides.get("device", config.device),
                 dimensional_model_name=filtered_overrides.get(
                     "dimensional_model_name", config.dimensional_model_name
@@ -379,3 +445,45 @@ class EnrichmentConfig:
             config = override_config
 
         return config
+
+    def to_post_process_config(self) -> PostProcessConfig | None:
+        """Create PostProcessConfig from enrichment settings.
+
+        Maps EnrichmentConfig flags to PostProcessConfig flags:
+        - enable_safety_layer -> enable_safety
+        - enable_role_inference -> enable_roles
+        - enable_topic_segmentation -> enable_topics
+        - turn_taking_policy -> enable_turn_taking + turn_taking_policy
+        - enable_environment_classifier -> enable_environment
+        - enable_prosody_v2 -> enable_prosody_extended
+
+        Returns:
+            PostProcessConfig if any post-processing features are enabled,
+            None otherwise.
+        """
+        from .post_process import PostProcessConfig
+
+        # Check if any features enabled
+        # Non-default turn_taking_policy means turn-taking is enabled
+        any_enabled = (
+            self.enable_safety_layer
+            or self.enable_role_inference
+            or self.enable_topic_segmentation
+            or self.turn_taking_policy != "balanced"
+            or self.enable_environment_classifier
+            or self.enable_prosody_v2
+        )
+
+        if not any_enabled:
+            return None
+
+        return PostProcessConfig(
+            enabled=True,
+            enable_safety=self.enable_safety_layer,
+            enable_roles=self.enable_role_inference,
+            enable_topics=self.enable_topic_segmentation,
+            enable_turn_taking=self.turn_taking_policy != "balanced",
+            turn_taking_policy=self.turn_taking_policy,
+            enable_environment=self.enable_environment_classifier,
+            enable_prosody_extended=self.enable_prosody_v2,
+        )

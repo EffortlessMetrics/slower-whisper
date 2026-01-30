@@ -271,6 +271,11 @@ class TranscriptionEngine:
             "language": self.cfg.language,
             "task": self.cfg.task,
         }
+
+        # Respect config (shim sets cfg.vad_filter)
+        vad_enabled = bool(getattr(self.cfg, "vad_filter", True))
+        include_vad = include_vad and vad_enabled
+
         if include_vad and self._supports_vad_filter:
             kwargs["vad_filter"] = True
         if include_vad and self._supports_vad_parameters:
@@ -339,8 +344,23 @@ class TranscriptionEngine:
 
     def _build_segments(self, raw_segments: Iterable[Any]) -> list[Segment]:
         """Convert raw Whisper segments into our Segment dataclass."""
-        # Collect validated segments with optional word-level data
-        validated: list[tuple[float, float, str, list[Word] | None]] = []
+        # Collect validated segments with optional word-level data and faster-whisper fields
+        # Tuple: (start, end, text, words, tokens, avg_logprob, compression_ratio,
+        #         no_speech_prob, temperature, seek)
+        validated: list[
+            tuple[
+                float,
+                float,
+                str,
+                list[Word] | None,
+                list[int] | None,
+                float,
+                float,
+                float,
+                float,
+                int,
+            ]
+        ] = []
         extract_words = getattr(self.cfg, "word_timestamps", False)
 
         for idx, seg in enumerate(raw_segments):
@@ -373,7 +393,29 @@ class TranscriptionEngine:
                 if raw_words:
                     words = self._build_words(raw_words, idx)
 
-            validated.append((start, end, text_str.strip(), words))
+            # Extract faster-whisper compatibility fields
+            raw_tokens = getattr(seg, "tokens", None)
+            tokens: list[int] | None = list(raw_tokens) if raw_tokens is not None else None
+            avg_logprob = float(getattr(seg, "avg_logprob", 0.0))
+            compression_ratio = float(getattr(seg, "compression_ratio", 1.0))
+            no_speech_prob = float(getattr(seg, "no_speech_prob", 0.0))
+            temperature = float(getattr(seg, "temperature", 0.0))
+            seek = int(getattr(seg, "seek", 0))
+
+            validated.append(
+                (
+                    start,
+                    end,
+                    text_str.strip(),
+                    words,
+                    tokens,
+                    avg_logprob,
+                    compression_ratio,
+                    no_speech_prob,
+                    temperature,
+                    seek,
+                )
+            )
 
         is_monotonic = all(
             validated[i][0] <= validated[i + 1][0] for i in range(len(validated) - 1)
@@ -389,8 +431,25 @@ class TranscriptionEngine:
                 end=end,
                 text=text,
                 words=words,
+                tokens=tokens,
+                avg_logprob=avg_logprob,
+                compression_ratio=compression_ratio,
+                no_speech_prob=no_speech_prob,
+                temperature=temperature,
+                seek=seek,
             )
-            for idx, (start, end, text, words) in enumerate(validated)
+            for idx, (
+                start,
+                end,
+                text,
+                words,
+                tokens,
+                avg_logprob,
+                compression_ratio,
+                no_speech_prob,
+                temperature,
+                seek,
+            ) in enumerate(validated)
         ]
         return seg_objs
 
@@ -512,10 +571,19 @@ class TranscriptionEngine:
 
         self.using_dummy = used_dummy
 
+        # Extract duration_after_vad from faster-whisper's TranscriptionInfo
+        duration_after_vad: float | None = None
+        if info is not None and hasattr(info, "duration_after_vad"):
+            try:
+                duration_after_vad = float(info.duration_after_vad)
+            except (TypeError, ValueError):
+                pass
+
         transcript = Transcript(
             file_name=audio_path.name,
             language=self._normalize_language(info),
             segments=seg_objs,
+            duration_after_vad=duration_after_vad,
         )
         actual_device = "cpu" if used_dummy else self.cfg.device
         actual_compute_type = "n/a" if used_dummy else (self.cfg.compute_type or "unknown")

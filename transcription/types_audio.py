@@ -134,6 +134,104 @@ class ExtractionStatus(TypedDict, total=False):
     errors: list[str]
 
 
+class BoundaryToneState(TypedDict, total=False):
+    """Boundary tone analysis from extended prosody.
+
+    Attributes:
+        tone: Detected boundary tone type (rising/falling/flat/unknown)
+        final_slope_hz_per_sec: Pitch slope in final window (Hz/sec)
+        confidence: Detection confidence (0.0-1.0)
+        window_duration_ms: Duration of analysis window
+    """
+
+    tone: str
+    final_slope_hz_per_sec: float | None
+    confidence: float
+    window_duration_ms: float
+
+
+class MonotonyState(TypedDict, total=False):
+    """Monotony analysis from extended prosody.
+
+    Attributes:
+        level: Categorical monotony level
+        range_utilization: Pitch range utilization percentage (0-100)
+        pitch_range_hz: Actual pitch range in Hz
+        expected_range_hz: Expected pitch range for speaker type
+    """
+
+    level: str
+    range_utilization: float
+    pitch_range_hz: float | None
+    expected_range_hz: float
+
+
+class PitchSlopeState(TypedDict, total=False):
+    """Pitch slope analysis from extended prosody.
+
+    Attributes:
+        slope_hz_per_sec: Overall pitch slope in Hz/sec
+        direction: Slope direction (rising/falling/flat)
+        r_squared: Goodness of fit for linear regression
+    """
+
+    slope_hz_per_sec: float
+    direction: str
+    r_squared: float
+
+
+class ProsodyExtendedState(TypedDict, total=False):
+    """Extended prosody features (Prosody 2.0).
+
+    Attributes:
+        boundary_tone: Boundary tone analysis
+        monotony: Monotony/expressiveness analysis
+        pitch_slope: Overall pitch trend analysis
+    """
+
+    boundary_tone: BoundaryToneState
+    monotony: MonotonyState
+    pitch_slope: PitchSlopeState
+
+
+class EnvironmentState(TypedDict, total=False):
+    """Audio environment classification.
+
+    Attributes:
+        tag: Primary environment classification (clean/noisy/muffled/hissy/clipping)
+        confidence: Classification confidence (0.0-1.0)
+        contributing_factors: Factors that contributed to classification
+        secondary_tags: Additional applicable tags
+        quality_score: Overall audio quality score
+    """
+
+    tag: str
+    confidence: float
+    contributing_factors: list[str]
+    secondary_tags: list[str]
+    quality_score: float
+
+
+class SafetyState(TypedDict, total=False):
+    """Safety processing state.
+
+    Attributes:
+        processed: Whether safety processing was applied
+        action: Recommended action (allow/warn/mask/block)
+        pii: PII detection results
+        moderation: Content moderation results
+        formatting: Smart formatting results
+        original_text: Original text before processing
+    """
+
+    processed: bool
+    action: str
+    pii: dict[str, object]
+    moderation: dict[str, object]
+    formatting: dict[str, object]
+    original_text: str
+
+
 class AudioState(TypedDict, total=False):
     """Top-level audio enrichment container.
 
@@ -145,9 +243,15 @@ class AudioState(TypedDict, total=False):
         emotion: Emotional features (valence, arousal)
         rendering: Human-readable text rendering of audio features
         extraction_status: Per-feature extraction success/failure tracking
+        prosody_extended: Extended prosody features (v2.0)
+        environment: Audio environment classification
+        safety: Safety processing state
     """
 
     prosody: ProsodyState
     emotion: EmotionState
     rendering: str
     extraction_status: ExtractionStatus
+    prosody_extended: ProsodyExtendedState
+    environment: EnvironmentState
+    safety: SafetyState

@@ -15,7 +15,7 @@ from typing import Any
 
 from .config import EnrichmentConfig, Paths
 from .exceptions import EnrichmentError
-from .models import Transcript
+from .models import AUDIO_STATE_VERSION, SCHEMA_VERSION, Transcript
 from .writers import load_transcript_from_json, write_json
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,143 @@ def _run_semantic_annotator(transcript: Transcript, config: EnrichmentConfig) ->
     except Exception as exc:  # noqa: BLE001
         logger.warning("Semantic annotator failed: %s", exc, exc_info=True)
         return transcript
+
+
+def _convert_turn_to_dict(turn: Any) -> dict[str, Any]:
+    """Convert a Turn object or dict to a dict for post-processing.
+
+    Args:
+        turn: Turn object or dict.
+
+    Returns:
+        Dictionary with id, speaker_id, text, start, end.
+    """
+    if isinstance(turn, dict):
+        return turn
+    return {
+        "id": turn.id,
+        "speaker_id": turn.speaker_id,
+        "text": turn.text,
+        "start": turn.start,
+        "end": turn.end,
+    }
+
+
+def _run_post_processors(transcript: Transcript, config: EnrichmentConfig) -> Transcript:
+    """Run v2.0 post-processors on transcript using unified PostProcessor.
+
+    Uses the PostProcessor class for unified orchestration of:
+    - Safety layer (PII + moderation + formatting)
+    - Role inference (agent/customer/facilitator)
+    - Topic segmentation with proper finalization
+    - Turn-taking evaluation
+    - Environment classification
+    - Extended prosody analysis
+
+    The function processes segments and turns through PostProcessor,
+    calls finalize() to close any open topic chunks, and stores
+    results in transcript.annotations.
+
+    Args:
+        transcript: Transcript to enrich.
+        config: EnrichmentConfig with post-processing settings.
+
+    Returns:
+        Enriched transcript with annotations.
+    """
+    # Use config translation helper to get PostProcessConfig
+    pp_cfg = config.to_post_process_config()
+
+    if pp_cfg is None:
+        # No post-processing features enabled
+        return transcript
+
+    # Ensure annotations dict exists and set schema version
+    if transcript.annotations is None:
+        transcript.annotations = {}
+    transcript.annotations["_schema_version"] = SCHEMA_VERSION
+
+    try:
+        from .post_process import PostProcessor, SegmentContext
+
+        # Create unified PostProcessor
+        pp = PostProcessor(config=pp_cfg)
+
+        # Process segments
+        for idx, seg in enumerate(transcript.segments):
+            try:
+                # Build segment context
+                ctx = SegmentContext(
+                    session_id=getattr(transcript, "id", None) or "batch",
+                    segment_id=f"seg_{seg.id}" if seg.id is not None else f"seg_{idx}",
+                    speaker_id=(seg.speaker.get("id") if seg.speaker else None),
+                    start=seg.start,
+                    end=seg.end,
+                    text=seg.text,
+                    audio_state=seg.audio_state or {},
+                )
+
+                # Process segment through unified processor
+                result = pp.process_segment(ctx)
+
+                # Merge results into audio_state
+                result_dict = result.to_dict()
+                if result_dict:
+                    if seg.audio_state is None:
+                        seg.audio_state = {"_schema_version": AUDIO_STATE_VERSION}
+                    elif "_schema_version" not in seg.audio_state:
+                        seg.audio_state["_schema_version"] = AUDIO_STATE_VERSION
+                    seg.audio_state.update(result_dict)
+
+            except Exception as e:
+                logger.warning("Segment post-processing failed for seg %d: %s", idx, e)
+
+        # Process turns for role inference and topic segmentation
+        if transcript.turns:
+            for turn in transcript.turns:
+                try:
+                    turn_dict = _convert_turn_to_dict(turn)
+                    pp.process_turn(turn_dict)
+                except Exception as e:
+                    logger.warning("Turn post-processing failed: %s", e)
+
+        # CRITICAL: Call finalize() to close open topic chunks and trigger final role inference
+        # This ensures:
+        # 1. Current topic chunk is closed with proper end_time
+        # 2. Role inference is triggered if not already decided
+        # 3. Final callbacks are emitted (not used in batch mode, but maintains consistency)
+        try:
+            pp.finalize()
+        except Exception as e:
+            logger.warning("Post-processor finalization failed: %s", e)
+
+        # Store role assignments (already computed by finalize())
+        if pp_cfg.enable_roles:
+            try:
+                roles = pp.get_role_assignments()
+                if roles:
+                    transcript.annotations["roles"] = {
+                        speaker_id: assignment.to_dict()
+                        for speaker_id, assignment in roles.items()
+                    }
+            except Exception as e:
+                logger.warning("Failed to get role assignments: %s", e)
+
+        # Store topic chunks (finalize() already closed them properly)
+        if pp_cfg.enable_topics:
+            try:
+                topics = pp.get_topics()
+                if topics:
+                    transcript.annotations["topics"] = [t.to_dict() for t in topics]
+            except Exception as e:
+                logger.warning("Failed to get topic chunks: %s", e)
+
+    except ImportError as e:
+        logger.warning("Post-processing dependencies not available: %s", e)
+    except Exception as e:
+        logger.warning("Post-processing failed: %s", e, exc_info=True)
+
+    return transcript
 
 
 def _enrich_directory_impl(
@@ -143,6 +280,7 @@ def _enrich_directory_impl(
             if audio_ready:
                 transcript = run_speaker_analytics(transcript, config)
                 transcript = run_semantic_annotator(transcript, config)
+                transcript = _run_post_processors(transcript, config)
                 write_json(transcript, json_path)
                 enriched_transcripts.append(transcript)
                 continue
@@ -160,6 +298,7 @@ def _enrich_directory_impl(
             )
             enriched = run_speaker_analytics(enriched, config)
             enriched = run_semantic_annotator(enriched, config)
+            enriched = _run_post_processors(enriched, config)
 
             write_json(enriched, json_path)
             enriched_transcripts.append(enriched)
@@ -239,6 +378,7 @@ def _enrich_transcript_impl(
         )
         enriched = run_speaker_analytics(enriched, config)
         enriched = run_semantic_annotator(enriched, config)
+        enriched = _run_post_processors(enriched, config)
         return enriched
     except Exception as e:
         logger.warning(
@@ -249,4 +389,7 @@ def _enrich_transcript_impl(
         )
         for segment in transcript.segments:
             segment.audio_state = neutral_audio_state(str(e))
-        return run_semantic_annotator(run_speaker_analytics(transcript, config), config)
+        enriched = run_speaker_analytics(transcript, config)
+        enriched = run_semantic_annotator(enriched, config)
+        enriched = _run_post_processors(enriched, config)
+        return enriched

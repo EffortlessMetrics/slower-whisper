@@ -23,6 +23,34 @@ This is a facts-only status page. Plan and strategy live in [ROADMAP.md](../ROAD
 
 ---
 
+## Recent Additions
+
+### faster-whisper Compatibility Shim
+
+**Status:** New in v2.0.0
+
+The `slower_whisper` package provides a drop-in replacement for `faster-whisper`:
+
+```python
+# Just change this import:
+from slower_whisper import WhisperModel
+
+model = WhisperModel("base")
+segments, info = model.transcribe("audio.wav")
+
+# Same API, plus optional diarization and enrichment
+segments, info = model.transcribe("meeting.wav", diarize=True, enrich=True)
+```
+
+- **WhisperModel** - Same constructor and `transcribe()` parameters
+- **Segment** - Supports both attribute access and tuple unpacking
+- **Word** / **TranscriptionInfo** - Compatible types
+- **Extensions** - `diarize=True`, `enrich=True`, `model.last_transcript`
+
+See [FASTER_WHISPER_MIGRATION.md](FASTER_WHISPER_MIGRATION.md) for full migration guide.
+
+---
+
 ## Track Status
 
 ### API Polish Bundle
