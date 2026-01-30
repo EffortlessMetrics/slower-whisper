@@ -41,3 +41,15 @@ def test_colors_methods(monkeypatch):
     assert Colors.magenta("test") == "\033[35mtest\033[0m"
     assert Colors.bold("test") == "\033[1mtest\033[0m"
     assert Colors.dim("test") == "\033[2mtest\033[0m"
+
+
+def test_symbols_constants():
+    """Test that Symbols constants are available."""
+    from transcription.color_utils import Symbols
+
+    assert Symbols.CHECK == "✔"
+    assert Symbols.CROSS == "✘"
+    assert Symbols.WARN == "⚠"
+    assert Symbols.INFO == "ℹ"
+    assert Symbols.ARROW == "➜"
+    assert Symbols.SKIP == "➖"

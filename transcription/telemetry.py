@@ -857,7 +857,7 @@ def format_doctor_report(report: DoctorReport, use_color: bool = True) -> str:
     Returns:
         Formatted string for terminal output
     """
-    from .color_utils import Colors
+    from .color_utils import Colors, Symbols
 
     lines = []
     lines.append("")
@@ -866,12 +866,20 @@ def format_doctor_report(report: DoctorReport, use_color: bool = True) -> str:
     lines.append("")
 
     # Status symbols
-    symbols = {
-        CheckStatus.PASS: (Colors.green("[PASS]") if use_color else "[PASS]"),
-        CheckStatus.WARN: (Colors.yellow("[WARN]") if use_color else "[WARN]"),
-        CheckStatus.FAIL: (Colors.red("[FAIL]") if use_color else "[FAIL]"),
-        CheckStatus.SKIP: (Colors.dim("[SKIP]") if use_color else "[SKIP]"),
-    }
+    if use_color:
+        symbols = {
+            CheckStatus.PASS: Colors.green(Symbols.CHECK),
+            CheckStatus.WARN: Colors.yellow(Symbols.WARN),
+            CheckStatus.FAIL: Colors.red(Symbols.CROSS),
+            CheckStatus.SKIP: Colors.dim(Symbols.SKIP),
+        }
+    else:
+        symbols = {
+            CheckStatus.PASS: "[PASS]",
+            CheckStatus.WARN: "[WARN]",
+            CheckStatus.FAIL: "[FAIL]",
+            CheckStatus.SKIP: "[SKIP]",
+        }
 
     for check in report.checks:
         symbol = symbols[check.status]
