@@ -482,11 +482,11 @@ def test_partial_enrichment_emotion_only(synthetic_audio):
 
 def test_audio_state_schema_version(synthetic_audio_file, sample_transcript):
     """Test that audio_state includes _schema_version for downstream consumers."""
-    from transcription.audio_enrichment import enrich_transcript_audio
-    from transcription.models import AUDIO_STATE_VERSION
-
     # Create a longer audio file with multiple segments
     import soundfile as sf
+
+    from transcription.audio_enrichment import enrich_transcript_audio
+    from transcription.models import AUDIO_STATE_VERSION
 
     sr = 16000
     duration = 3.0

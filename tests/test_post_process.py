@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from transcription.post_process import (
     PostProcessConfig,
     PostProcessor,

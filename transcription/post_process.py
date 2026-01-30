@@ -29,6 +29,7 @@ Example:
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -194,7 +195,7 @@ class PostProcessConfig:
         return config
 
     @classmethod
-    def from_enrichment_config(cls, config: "EnrichmentConfig") -> "PostProcessConfig | None":
+    def from_enrichment_config(cls, config: EnrichmentConfig) -> PostProcessConfig | None:
         """Create PostProcessConfig from EnrichmentConfig.
 
         This is a convenience method that delegates to EnrichmentConfig.to_post_process_config().
@@ -367,7 +368,7 @@ class PostProcessor:
     def process_segment(
         self,
         ctx: SegmentContext,
-        audio: "np.ndarray | None" = None,
+        audio: np.ndarray | None = None,
         sr: int = 16000,
         silence_duration_ms: float = 0.0,
         turn_duration_ms: float = 0.0,
@@ -488,7 +489,7 @@ class PostProcessor:
 
         return result
 
-    def _map_reason_codes(self, reason_codes: list[str]) -> list[str]:
+    def _map_reason_codes(self, reason_codes: Sequence[str]) -> list[str]:
         """Map internal reason codes to API-friendly lowercase snake_case.
 
         Args:
@@ -673,12 +674,12 @@ class PostProcessor:
                     assignments_dict = {
                         k: v.to_dict() for k, v in self._role_assignments.items()
                     }
-                    payload = RoleAssignedPayload(
+                    role_payload = RoleAssignedPayload(
                         assignments=assignments_dict,
                         timestamp=self._last_end_time,
                         trigger="finalize",
                     )
-                    self._invoke_callback_safely(self._on_role_assigned, payload)
+                    self._invoke_callback_safely(self._on_role_assigned, role_payload)
             except Exception as e:
                 logger.warning("Final role inference failed: %s", e)
 

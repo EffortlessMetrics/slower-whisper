@@ -25,7 +25,6 @@ from .topic_segmentation import TopicBoundaryPayload
 if TYPE_CHECKING:
     from .audio_health import AudioHealthSnapshot
     from .conversation_physics import ConversationPhysicsSnapshot
-    from .role_inference import RoleAssignment
     from .safety_layer import SafetyAlertPayload
     from .streaming import StreamSegment
     from .streaming_semantic import CommitmentEntry, CorrectionEvent, SemanticUpdatePayload
