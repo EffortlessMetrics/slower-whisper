@@ -353,7 +353,6 @@ class TestEndOfTurnHintEmission:
     def test_aggressive_fires_sooner_than_conservative(self):
         """Aggressive policy fires hints sooner than conservative."""
         from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
-        from transcription.streaming_callbacks import EndOfTurnHintPayload
 
         aggressive_hints = []
         conservative_hints = []
@@ -412,7 +411,6 @@ class TestEndOfTurnHintEmission:
     def test_hint_includes_all_reason_codes(self):
         """Hint payload includes all applicable reason codes."""
         from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
-        from transcription.streaming_callbacks import EndOfTurnHintPayload
 
         hints_received = []
 

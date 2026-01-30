@@ -29,14 +29,13 @@ from transcription.post_process import PostProcessConfig
 from transcription.role_inference import RoleInferenceConfig
 from transcription.safety_config import SafetyConfig
 from transcription.safety_layer import SafetyAlertPayload
-from transcription.streaming import StreamConfig, StreamEventType, StreamSegment
+from transcription.streaming import StreamConfig, StreamSegment
 from transcription.streaming_callbacks import RoleAssignedPayload
 from transcription.streaming_enrich import (
     StreamingEnrichmentConfig,
     StreamingEnrichmentSession,
 )
 from transcription.topic_segmentation import TopicBoundaryPayload, TopicSegmentationConfig
-
 
 # =============================================================================
 # TrackingCallbacks - Records all callback invocations for verification

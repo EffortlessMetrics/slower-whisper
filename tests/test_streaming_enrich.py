@@ -1788,7 +1788,7 @@ class TestPostProcessingFinalOnlyGating:
             assert len(finalized_segments) == 0  # Still partial
 
             # Second chunk with gap - finalizes first segment
-            events = session.ingest_chunk(_chunk(2.0, 2.5, "Hello", "spk_0"))
+            session.ingest_chunk(_chunk(2.0, 2.5, "Hello", "spk_0"))
 
             # Should have finalized the first segment
             assert len(finalized_segments) == 1, "on_segment_finalized SHOULD fire for FINAL"
@@ -2063,7 +2063,6 @@ class TestEndOfTurnHintIntegration:
     ) -> None:
         """Different policies produce different hint timing."""
         from transcription.post_process import PostProcessConfig
-        from transcription.streaming_callbacks import EndOfTurnHintPayload
 
         aggressive_hints = []
         conservative_hints = []
@@ -2133,7 +2132,6 @@ class TestEndOfTurnHintIntegration:
     ) -> None:
         """Verify hint payload has proper reason_codes."""
         from transcription.post_process import PostProcessConfig
-        from transcription.streaming_callbacks import EndOfTurnHintPayload
 
         hints_received = []
 
