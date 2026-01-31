@@ -344,23 +344,7 @@ class TranscriptionEngine:
 
     def _build_segments(self, raw_segments: Iterable[Any]) -> list[Segment]:
         """Convert raw Whisper segments into our Segment dataclass."""
-        # Collect validated segments with optional word-level data and faster-whisper fields
-        # Tuple: (start, end, text, words, tokens, avg_logprob, compression_ratio,
-        #         no_speech_prob, temperature, seek)
-        validated: list[
-            tuple[
-                float,
-                float,
-                str,
-                list[Word] | None,
-                list[int] | None,
-                float,
-                float,
-                float,
-                float,
-                int,
-            ]
-        ] = []
+        seg_objs: list[Segment] = []
         extract_words = getattr(self.cfg, "word_timestamps", False)
 
         for idx, seg in enumerate(raw_segments):
@@ -402,55 +386,36 @@ class TranscriptionEngine:
             temperature = float(getattr(seg, "temperature", 0.0))
             seek = int(getattr(seg, "seek", 0))
 
-            validated.append(
-                (
-                    start,
-                    end,
-                    text_str.strip(),
-                    words,
-                    tokens,
-                    avg_logprob,
-                    compression_ratio,
-                    no_speech_prob,
-                    temperature,
-                    seek,
+            # Performance optimization:
+            # Directly create Segment objects to avoid creating an intermediate list of tuples.
+            # We re-verify sorting at the end.
+            seg_objs.append(
+                Segment(
+                    id=idx,
+                    start=start,
+                    end=end,
+                    text=text_str.strip(),
+                    words=words,
+                    tokens=tokens,
+                    avg_logprob=avg_logprob,
+                    compression_ratio=compression_ratio,
+                    no_speech_prob=no_speech_prob,
+                    temperature=temperature,
+                    seek=seek,
                 )
             )
 
         is_monotonic = all(
-            validated[i][0] <= validated[i + 1][0] for i in range(len(validated) - 1)
+            seg_objs[i].start <= seg_objs[i + 1].start for i in range(len(seg_objs) - 1)
         )
+
         if not is_monotonic:
             # Keep segments in chronological order if the backend emitted them out of order.
-            validated = sorted(validated, key=lambda seg: (seg[0], seg[1]))
+            seg_objs.sort(key=lambda seg: (seg.start, seg.end))
+            # Re-assign IDs to match the sorted order.
+            for i, seg in enumerate(seg_objs):
+                seg.id = i
 
-        seg_objs = [
-            Segment(
-                id=idx,
-                start=start,
-                end=end,
-                text=text,
-                words=words,
-                tokens=tokens,
-                avg_logprob=avg_logprob,
-                compression_ratio=compression_ratio,
-                no_speech_prob=no_speech_prob,
-                temperature=temperature,
-                seek=seek,
-            )
-            for idx, (
-                start,
-                end,
-                text,
-                words,
-                tokens,
-                avg_logprob,
-                compression_ratio,
-                no_speech_prob,
-                temperature,
-                seek,
-            ) in enumerate(validated)
-        ]
         return seg_objs
 
     def _build_words(self, raw_words: Iterable[Any], segment_idx: int) -> list[Word]:
