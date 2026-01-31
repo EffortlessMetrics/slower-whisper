@@ -92,3 +92,14 @@ class Colors:
     @classmethod
     def dim(cls, text: str) -> str:
         return cls.colorize(text, cls.DIM)
+
+
+class Symbols:
+    """Unicode symbols for CLI output."""
+
+    CHECK: ClassVar[str] = "✔"
+    CROSS: ClassVar[str] = "✘"
+    INFO: ClassVar[str] = "ℹ"
+    WARN: ClassVar[str] = "⚠"
+    ARROW: ClassVar[str] = "➜"
+    DOT: ClassVar[str] = "•"
