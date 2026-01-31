@@ -8,7 +8,7 @@
 
 The benchmark dataset cache strategy is **well-architected and consistent**. All datasets properly use `CachePaths.benchmarks_root` with no hardcoded paths in dataset discovery code. Minor improvements recommended below.
 
-For detailed analysis, see: [`docs/BENCHMARK_CACHE_STRATEGY_ANALYSIS.md`](docs/BENCHMARK_CACHE_STRATEGY_ANALYSIS.md)
+For detailed analysis, see: [`BENCHMARK_CACHE_STRATEGY_ANALYSIS.md`](BENCHMARK_CACHE_STRATEGY_ANALYSIS.md)
 
 ---
 
@@ -95,19 +95,19 @@ Add after the "Testing Philosophy" section:
 1. **AMI Meeting Corpus** (`ami/`)
    - **Tasks:** Speaker diarization, meeting summarization, action items
    - **Size:** ~100 hours of meeting recordings
-   - **Setup:** See [`docs/AMI_SETUP.md`](docs/AMI_SETUP.md)
+   - **Setup:** See [`AMI_SETUP.md`](AMI_SETUP.md)
    - **License:** CC BY 4.0 (manual download required)
 
 2. **IEMOCAP** (`iemocap/`)
    - **Tasks:** Emotion recognition (categorical and dimensional)
    - **Size:** ~12 hours of emotional speech across 5 sessions
-   - **Setup:** See [`docs/IEMOCAP_SETUP.md`](docs/IEMOCAP_SETUP.md)
+   - **Setup:** See [`IEMOCAP_SETUP.md`](IEMOCAP_SETUP.md)
    - **License:** USC SAIL (academic use, manual download)
 
 3. **LibriCSS** (`libricss/`)
    - **Tasks:** Overlapping speech, continuous diarization
    - **Size:** Derived from LibriSpeech (multi-talker scenarios)
-   - **Setup:** See [`docs/LIBRICSS_SETUP.md`](docs/LIBRICSS_SETUP.md)
+   - **Setup:** See [`LIBRICSS_SETUP.md`](LIBRICSS_SETUP.md)
    - **License:** CC BY 4.0
 
 ### Usage

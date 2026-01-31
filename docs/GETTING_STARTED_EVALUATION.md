@@ -102,7 +102,7 @@ Expected output:
   Ready to run: uv run python benchmarks/eval_summaries.py --dataset ami --n 2
 ```
 
-If this fails, see [docs/AMI_DIRECTORY_LAYOUT.md](docs/AMI_DIRECTORY_LAYOUT.md) for troubleshooting.
+If this fails, see [AMI_DIRECTORY_LAYOUT.md](AMI_DIRECTORY_LAYOUT.md) for troubleshooting.
 
 ---
 
@@ -252,7 +252,7 @@ This tells you: **audio cues improved coverage by 0.7 points with no faithfulnes
 
 ### Short-term (This Week)
 
-- Read [docs/EVALUATION_LOOP_QUICKREF.md](docs/EVALUATION_LOOP_QUICKREF.md) for workflow tips
+- Read [EVALUATION_LOOP_QUICKREF.md](EVALUATION_LOOP_QUICKREF.md) for workflow tips
 - Get comfortable with the iteration loop
 - Try 3-5 experiments to build muscle memory
 - Find a baseline you're happy with
@@ -270,7 +270,7 @@ This tells you: **audio cues improved coverage by 0.7 points with no faithfulnes
 
 ### "No samples found"
 → Run `./verify_ami_setup.sh` to diagnose
-→ See [docs/AMI_DIRECTORY_LAYOUT.md](docs/AMI_DIRECTORY_LAYOUT.md)
+→ See [AMI_DIRECTORY_LAYOUT.md](AMI_DIRECTORY_LAYOUT.md)
 
 ### Evaluation crashes mid-run
 → Try `--n 1` to isolate which meeting is problematic
@@ -318,10 +318,10 @@ jq '.failure_analysis' results.json
 
 ## Related Documentation
 
-- **Quick reference:** [docs/EVALUATION_LOOP_QUICKREF.md](docs/EVALUATION_LOOP_QUICKREF.md)
-- **Full guide:** [docs/BENCHMARK_EVALUATION_QUICKSTART.md](docs/BENCHMARK_EVALUATION_QUICKSTART.md)
-- **AMI setup:** [docs/AMI_SETUP.md](docs/AMI_SETUP.md)
-- **Directory layout:** [docs/AMI_DIRECTORY_LAYOUT.md](docs/AMI_DIRECTORY_LAYOUT.md)
+- **Quick reference:** [EVALUATION_LOOP_QUICKREF.md](EVALUATION_LOOP_QUICKREF.md)
+- **Full guide:** [BENCHMARK_EVALUATION_QUICKSTART.md](BENCHMARK_EVALUATION_QUICKSTART.md)
+- **AMI setup:** [AMI_SETUP.md](AMI_SETUP.md)
+- **Directory layout:** [AMI_DIRECTORY_LAYOUT.md](AMI_DIRECTORY_LAYOUT.md)
 - **Experiment log:** [EVALUATION_LOG.md](EVALUATION_LOG.md)
 
 ---

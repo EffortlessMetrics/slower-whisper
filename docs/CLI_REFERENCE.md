@@ -202,4 +202,4 @@ cat transcripts/meeting.txt
 - `ModuleNotFoundError: faster_whisper`: install base deps (`uv sync` or `pip install -e .`).
 - Enrichment errors about torch/transformers: install extras (`uv sync --extra full` or `pip install -e ".[full]"`).
 
-See [README.md](README.md), [docs/QUICKSTART.md](docs/QUICKSTART.md), and [docs/AUDIO_ENRICHMENT.md](docs/AUDIO_ENRICHMENT.md) for deeper guidance.
+See [README.md](../README.md), [QUICKSTART.md](QUICKSTART.md), and [AUDIO_ENRICHMENT.md](AUDIO_ENRICHMENT.md) for deeper guidance.

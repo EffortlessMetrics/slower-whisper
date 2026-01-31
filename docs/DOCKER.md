@@ -581,5 +581,5 @@ docker compose top dev
 
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
 - [NVIDIA Docker Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/user-guide.html)
-- [slower-whisper Architecture](docs/ARCHITECTURE.md)
-- [slower-whisper README](README.md)
+- [slower-whisper Architecture](ARCHITECTURE.md)
+- [slower-whisper README](../README.md)

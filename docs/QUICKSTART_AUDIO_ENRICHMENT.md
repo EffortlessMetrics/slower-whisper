@@ -148,7 +148,7 @@ print("Done! Check meeting1_enriched.json")
 
 ## Next Steps
 
-- See [docs/AUDIO_ENRICHMENT.md](docs/AUDIO_ENRICHMENT.md) for full documentation
+- See [AUDIO_ENRICHMENT.md](AUDIO_ENRICHMENT.md) for full documentation
 - Customize emotion/prosody thresholds in your scripts
 - Combine with text analysis for richer insights
 - Export enriched JSON for downstream analysis
