@@ -198,9 +198,7 @@ class TestSafetyProcessor:
             pii_action="mask",
         )
         processor = SafetyProcessor(config)
-        result = processor.process(
-            "Email john@example.com at five pm, this is bullshit"
-        )
+        result = processor.process("Email john@example.com at five pm, this is bullshit")
         # Check all features triggered
         assert result.has_pii
         assert result.has_flagged_content
@@ -315,7 +313,9 @@ class TestStreamingSafetyProcessor:
         """Processes segment content."""
         config = SafetyConfig(enabled=True, enable_smart_formatting=True)
         processor = StreamingSafetyProcessor(config)
-        segment = MockStreamSegment(segment_id="seg-0", start=0.0, end=5.0, text="Meeting at five pm")
+        segment = MockStreamSegment(
+            segment_id="seg-0", start=0.0, end=5.0, text="Meeting at five pm"
+        )
         result = processor.process_segment(segment)
         assert "5:00 PM" in result.processed_text
 
@@ -323,7 +323,9 @@ class TestStreamingSafetyProcessor:
         """Attaches safety state to segment."""
         config = SafetyConfig(enabled=True, enable_smart_formatting=True)
         processor = StreamingSafetyProcessor(config)
-        segment = MockStreamSegment(segment_id="seg-0", start=0.0, end=5.0, text="Meeting at five pm")
+        segment = MockStreamSegment(
+            segment_id="seg-0", start=0.0, end=5.0, text="Meeting at five pm"
+        )
         processor.process_segment(segment)
         assert segment.audio_state is not None
         assert "safety" in segment.audio_state
@@ -338,7 +340,9 @@ class TestStreamingSafetyProcessor:
         )
         processor = StreamingSafetyProcessor(config)
 
-        seg1 = MockStreamSegment(segment_id="seg-0", start=0.0, end=5.0, text="Email: john@example.com")
+        seg1 = MockStreamSegment(
+            segment_id="seg-0", start=0.0, end=5.0, text="Email: john@example.com"
+        )
         seg2 = MockStreamSegment(segment_id="seg-1", start=5.0, end=10.0, text="This is bullshit")
 
         processor.process_segment(seg1)
@@ -354,7 +358,9 @@ class TestStreamingSafetyProcessor:
         config = SafetyConfig(enabled=True, enable_pii_detection=True)
         processor = StreamingSafetyProcessor(config)
 
-        segment = MockStreamSegment(segment_id="seg-0", start=0.0, end=5.0, text="Email: john@example.com")
+        segment = MockStreamSegment(
+            segment_id="seg-0", start=0.0, end=5.0, text="Email: john@example.com"
+        )
         processor.process_segment(segment)
         assert processor.state.total_segments_processed == 1
 
@@ -419,7 +425,9 @@ class TestCallbackIntegration:
         callbacks = TestCallbacks()
         processor = StreamingSafetyProcessor(config, callbacks)
 
-        segment = MockStreamSegment(segment_id="seg-0", start=0.0, end=5.0, text="Email: john@example.com")
+        segment = MockStreamSegment(
+            segment_id="seg-0", start=0.0, end=5.0, text="Email: john@example.com"
+        )
         processor.process_segment(segment)
 
         assert len(alerts) == 1
@@ -441,7 +449,9 @@ class TestCallbackIntegration:
         callbacks = TestCallbacks()
         processor = StreamingSafetyProcessor(config, callbacks)
 
-        segment = MockStreamSegment(segment_id="seg-0", start=0.0, end=5.0, text="Email: john@example.com")
+        segment = MockStreamSegment(
+            segment_id="seg-0", start=0.0, end=5.0, text="Email: john@example.com"
+        )
         processor.process_segment(segment)
 
         assert len(alerts) == 0

@@ -102,8 +102,14 @@ class TestRoleInferrer:
         inferrer = RoleInferrer()
         turns = [
             {"speaker_id": "spk_0", "text": "Thank you for calling support, how can I help you?"},
-            {"speaker_id": "spk_1", "text": "Hi, I'm calling about my order. I haven't received it."},
-            {"speaker_id": "spk_0", "text": "I'd be happy to help. Let me check your order status."},
+            {
+                "speaker_id": "spk_1",
+                "text": "Hi, I'm calling about my order. I haven't received it.",
+            },
+            {
+                "speaker_id": "spk_0",
+                "text": "I'd be happy to help. Let me check your order status.",
+            },
             {"speaker_id": "spk_1", "text": "Thank you. My account number is 12345."},
             {"speaker_id": "spk_0", "text": "I can see your order here. Is there anything else?"},
         ]
@@ -119,7 +125,10 @@ class TestRoleInferrer:
         config = RoleInferenceConfig(context="meeting")
         inferrer = RoleInferrer(config)
         turns = [
-            {"speaker_id": "spk_0", "text": "Welcome everyone. Let's move on to the next agenda item."},
+            {
+                "speaker_id": "spk_0",
+                "text": "Welcome everyone. Let's move on to the next agenda item.",
+            },
             {"speaker_id": "spk_1", "text": "I have an update on the project."},
         ]
         assignments = inferrer.infer_roles(turns)
@@ -288,7 +297,10 @@ class TestEdgeCases:
         """Multiple triggers accumulate evidence."""
         inferrer = RoleInferrer()
         turns = [
-            {"speaker_id": "spk_0", "text": "Thank you for calling. How can I help? I'd be happy to assist. Let me check that for you."},
+            {
+                "speaker_id": "spk_0",
+                "text": "Thank you for calling. How can I help? I'd be happy to assist. Let me check that for you.",
+            },
         ]
         assignments = inferrer.infer_roles(turns)
 

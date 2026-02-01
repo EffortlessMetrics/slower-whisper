@@ -268,12 +268,7 @@ def _parse_number_phrase(text: str) -> tuple[int | None, int, int]:
         Tuple of (value, start_index, end_index), or (None, 0, 0) if no match.
     """
     # Build pattern for number words
-    number_words = (
-        list(ONES.keys())
-        + list(TENS.keys())
-        + list(MAGNITUDES.keys())
-        + ["and", "a"]
-    )
+    number_words = list(ONES.keys()) + list(TENS.keys()) + list(MAGNITUDES.keys()) + ["and", "a"]
     pattern = r"\b(" + "|".join(number_words) + r")(?:\s+(?:" + "|".join(number_words) + r"))*\b"
 
     match = re.search(pattern, text.lower())
@@ -418,7 +413,9 @@ class SmartFormatter:
 
             if dollar_value is not None:
                 total = dollar_value + cents_value / 100
-                formatted = f"{self.config.currency_symbol}{total:.{self.config.currency_decimal_places}f}"
+                formatted = (
+                    f"{self.config.currency_symbol}{total:.{self.config.currency_decimal_places}f}"
+                )
                 matches.append(
                     FormatMatch(
                         start=match.start(),
@@ -477,11 +474,30 @@ class SmartFormatter:
         ordinal_names = "|".join(ORDINALS.keys())
         number_names = "|".join(
             [k for k in ONES.keys() if ONES[k] <= 31]
-            + ["twenty", "thirty", "twenty one", "twenty-one", "twenty two", "twenty-two",
-               "twenty three", "twenty-three", "twenty four", "twenty-four",
-               "twenty five", "twenty-five", "twenty six", "twenty-six",
-               "twenty seven", "twenty-seven", "twenty eight", "twenty-eight",
-               "twenty nine", "twenty-nine", "thirty one", "thirty-one"]
+            + [
+                "twenty",
+                "thirty",
+                "twenty one",
+                "twenty-one",
+                "twenty two",
+                "twenty-two",
+                "twenty three",
+                "twenty-three",
+                "twenty four",
+                "twenty-four",
+                "twenty five",
+                "twenty-five",
+                "twenty six",
+                "twenty-six",
+                "twenty seven",
+                "twenty-seven",
+                "twenty eight",
+                "twenty-eight",
+                "twenty nine",
+                "twenty-nine",
+                "thirty one",
+                "thirty-one",
+            ]
         )
 
         # Pattern: "january fifteenth" or "january fifteen"

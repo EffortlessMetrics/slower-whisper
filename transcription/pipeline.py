@@ -149,6 +149,16 @@ def run_pipeline(
 
     engine = TranscriptionEngine(cfg.asr)
 
+    # Pre-resolve imports if needed to avoid repeated imports in loop
+    _maybe_run_diarization = None
+    _maybe_build_chunks = None
+
+    if diarization_config:
+        from .diarization_orchestrator import _maybe_run_diarization
+
+        if getattr(diarization_config, "enable_chunking", False):
+            from .transcription_helpers import _maybe_build_chunks
+
     logger.info("=== Step 3: Transcribing normalized audio ===")
     total = len(norm_files)
     processed = skipped = failed = 0
@@ -165,11 +175,13 @@ def run_pipeline(
         srt_path = paths.transcripts_dir / f"{stem}.srt"
 
         if cfg.skip_existing_json and json_path.exists():
-            if diarization_config and getattr(diarization_config, "enable_chunking", False):
+            if (
+                diarization_config
+                and getattr(diarization_config, "enable_chunking", False)
+                and _maybe_build_chunks
+            ):
                 try:
                     transcript = writers.load_transcript_from_json(json_path)
-                    from .transcription_helpers import _maybe_build_chunks
-
                     transcript = _maybe_build_chunks(transcript, diarization_config)
                     writers.write_json(transcript, json_path)
                 except Exception as exc:
@@ -209,13 +221,12 @@ def run_pipeline(
 
                 logger.info("[diarize-existing] %s (reusing existing transcript)", wav.name)
                 try:
-                    from .diarization_orchestrator import _maybe_run_diarization
-
-                    transcript = _maybe_run_diarization(
-                        transcript=transcript,
-                        wav_path=wav,
-                        config=diarization_config,
-                    )
+                    if _maybe_run_diarization:
+                        transcript = _maybe_run_diarization(
+                            transcript=transcript,
+                            wav_path=wav,
+                            config=diarization_config,
+                        )
                 except Exception as exc:
                     logger.error(
                         "Failed to run diarization for %s: %s",
@@ -285,16 +296,13 @@ def run_pipeline(
 
         # v1.1+: Run diarization (or record disabled state) if config provided
         if diarization_config:
-            from .diarization_orchestrator import _maybe_run_diarization
-
-            transcript = _maybe_run_diarization(
-                transcript=transcript,
-                wav_path=wav,
-                config=diarization_config,
-            )
-            if getattr(diarization_config, "enable_chunking", False):
-                from .transcription_helpers import _maybe_build_chunks
-
+            if _maybe_run_diarization:
+                transcript = _maybe_run_diarization(
+                    transcript=transcript,
+                    wav_path=wav,
+                    config=diarization_config,
+                )
+            if getattr(diarization_config, "enable_chunking", False) and _maybe_build_chunks:
                 transcript = _maybe_build_chunks(transcript, diarization_config)
 
         writers.write_json(transcript, json_path)

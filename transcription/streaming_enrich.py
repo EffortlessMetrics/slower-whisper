@@ -202,10 +202,18 @@ class StreamingEnrichmentSession:
 
             self._post_processor = PostProcessor(
                 config=self.config.post_process_config,
-                on_safety_alert=lambda p: invoke_callback_safely(self._callbacks, "on_safety_alert", p),
-                on_role_assigned=lambda a: invoke_callback_safely(self._callbacks, "on_role_assigned", a),
-                on_topic_boundary=lambda b: invoke_callback_safely(self._callbacks, "on_topic_boundary", b),
-                on_end_of_turn_hint=lambda h: invoke_callback_safely(self._callbacks, "on_end_of_turn_hint", h),
+                on_safety_alert=lambda p: invoke_callback_safely(
+                    self._callbacks, "on_safety_alert", p
+                ),
+                on_role_assigned=lambda a: invoke_callback_safely(
+                    self._callbacks, "on_role_assigned", a
+                ),
+                on_topic_boundary=lambda b: invoke_callback_safely(
+                    self._callbacks, "on_topic_boundary", b
+                ),
+                on_end_of_turn_hint=lambda h: invoke_callback_safely(
+                    self._callbacks, "on_end_of_turn_hint", h
+                ),
             )
 
     def ingest_chunk(self, chunk: StreamChunk) -> list[StreamEvent]:
@@ -475,7 +483,10 @@ class StreamingEnrichmentSession:
 
                     # Calculate turn duration (from current turn start to segment end)
                     # If this is a new turn (first segment or speaker change), use segment duration
-                    if self._current_turn_start == 0.0 or segment.speaker_id != self._current_turn_speaker:
+                    if (
+                        self._current_turn_start == 0.0
+                        or segment.speaker_id != self._current_turn_speaker
+                    ):
                         # New turn starting
                         self._current_turn_start = segment.start
                     turn_duration_ms = (segment.end - self._current_turn_start) * 1000.0

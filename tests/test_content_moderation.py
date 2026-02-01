@@ -234,10 +234,12 @@ class TestCustomPatterns:
     def test_add_patterns_bulk(self):
         """Can add multiple patterns at once."""
         moderator = LexiconModerator()
-        moderator.add_patterns([
-            ContentPattern("alpha", "low", "greek"),
-            ContentPattern("beta", "medium", "greek"),
-        ])
+        moderator.add_patterns(
+            [
+                ContentPattern("alpha", "low", "greek"),
+                ContentPattern("beta", "medium", "greek"),
+            ]
+        )
         result = moderator.check("alpha and beta testing")
         assert result.is_flagged
         assert len(result.matches) == 2

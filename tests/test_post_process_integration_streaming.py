@@ -170,9 +170,7 @@ class TestSafetyAlertCallback:
             )
 
             # Ingest chunk with email (PII)
-            session.ingest_chunk(
-                _chunk(0.0, 0.4, "Contact me at test@example.com please", "spk_0")
-            )
+            session.ingest_chunk(_chunk(0.0, 0.4, "Contact me at test@example.com please", "spk_0"))
 
             # Force finalization with a gap
             session.ingest_chunk(_chunk(2.0, 2.5, "Hello", "spk_0"))
@@ -231,9 +229,7 @@ class TestSafetyAlertCallback:
             )
 
             # Ingest chunk with phone number (PII)
-            session.ingest_chunk(
-                _chunk(0.0, 0.4, "Call me at 555-123-4567", "spk_0")
-            )
+            session.ingest_chunk(_chunk(0.0, 0.4, "Call me at 555-123-4567", "spk_0"))
 
             # Force finalization
             session.ingest_chunk(_chunk(2.0, 2.5, "Thanks", "spk_0"))
@@ -347,17 +343,11 @@ class TestRoleAssignedCallback:
                 _chunk(0.0, 2.0, "Thank you for calling, how can I help you today?", "spk_a")
             )
             # Speaker change finalizes turn
-            session.ingest_chunk(
-                _chunk(2.1, 4.0, "Hi, I'm calling about my account", "spk_b")
-            )
+            session.ingest_chunk(_chunk(2.1, 4.0, "Hi, I'm calling about my account", "spk_b"))
             # Another speaker change
-            session.ingest_chunk(
-                _chunk(4.1, 6.0, "Sure, let me check that for you", "spk_a")
-            )
+            session.ingest_chunk(_chunk(4.1, 6.0, "Sure, let me check that for you", "spk_a"))
             # Final speaker change creates 3rd turn and triggers role decision
-            session.ingest_chunk(
-                _chunk(6.1, 8.0, "My account number is 12345", "spk_b")
-            )
+            session.ingest_chunk(_chunk(6.1, 8.0, "My account number is 12345", "spk_b"))
 
             # Finalize to ensure all turns are processed
             session.end_of_stream()
@@ -419,17 +409,13 @@ class TestRoleAssignedCallback:
                 payload = tracking_callbacks.role_assignments[0]
 
                 # Must be dataclass, not dict
-                assert not isinstance(payload, dict), (
-                    "Payload should NOT be a raw dict"
-                )
+                assert not isinstance(payload, dict), "Payload should NOT be a raw dict"
                 assert isinstance(payload, RoleAssignedPayload), (
                     "Payload should be RoleAssignedPayload dataclass"
                 )
 
                 # Should have to_dict method
-                assert hasattr(payload, "to_dict"), (
-                    "Payload should have to_dict() method"
-                )
+                assert hasattr(payload, "to_dict"), "Payload should have to_dict() method"
                 dict_repr = payload.to_dict()
                 assert isinstance(dict_repr, dict)
                 assert "assignments" in dict_repr
@@ -487,23 +473,28 @@ class TestTopicBoundaryCallback:
             )
 
             # First topic: Technology vocabulary
-            for i, text in enumerate([
-                "Let's discuss the software architecture and code review process",
-                "The database optimization improved query performance significantly",
-                "We need to refactor the authentication module and API endpoints",
-                "The deployment pipeline uses continuous integration and testing",
-            ]):
+            for i, text in enumerate(
+                [
+                    "Let's discuss the software architecture and code review process",
+                    "The database optimization improved query performance significantly",
+                    "We need to refactor the authentication module and API endpoints",
+                    "The deployment pipeline uses continuous integration and testing",
+                ]
+            ):
                 session.ingest_chunk(_chunk(i * 2.0, i * 2.0 + 1.5, text, "spk_0"))
                 # Speaker change to finalize turns
                 session.ingest_chunk(_chunk(i * 2.0 + 1.6, i * 2.0 + 1.9, "Okay", "spk_1"))
 
             # Second topic: Completely different vocabulary (cooking)
-            for i, text in enumerate([
-                "Now let's talk about the recipe ingredients and cooking time",
-                "The sauce requires tomatoes onions garlic and fresh basil",
-                "Baking temperature should be three hundred fifty degrees",
-                "The dessert needs flour sugar butter eggs and vanilla",
-            ], start=5):
+            for i, text in enumerate(
+                [
+                    "Now let's talk about the recipe ingredients and cooking time",
+                    "The sauce requires tomatoes onions garlic and fresh basil",
+                    "Baking temperature should be three hundred fifty degrees",
+                    "The dessert needs flour sugar butter eggs and vanilla",
+                ],
+                start=5,
+            ):
                 session.ingest_chunk(_chunk(i * 2.0, i * 2.0 + 1.5, text, "spk_0"))
                 session.ingest_chunk(_chunk(i * 2.0 + 1.6, i * 2.0 + 1.9, "Got it", "spk_1"))
 
@@ -586,17 +577,13 @@ class TestTopicBoundaryCallback:
 
             # If boundaries were detected, verify they are properly typed
             for payload in tracking_callbacks.topic_boundaries:
-                assert not isinstance(payload, dict), (
-                    "Payload should NOT be a raw dict"
-                )
+                assert not isinstance(payload, dict), "Payload should NOT be a raw dict"
                 assert isinstance(payload, TopicBoundaryPayload), (
                     "Payload should be TopicBoundaryPayload dataclass"
                 )
 
                 # Should have to_dict method
-                assert hasattr(payload, "to_dict"), (
-                    "Payload should have to_dict() method"
-                )
+                assert hasattr(payload, "to_dict"), "Payload should have to_dict() method"
                 dict_repr = payload.to_dict()
                 assert isinstance(dict_repr, dict)
 
@@ -652,9 +639,7 @@ class TestEndOfStreamFinalizeCallbacks:
             session.ingest_chunk(
                 _chunk(0.0, 1.0, "Thank you for calling, how can I help?", "spk_agent")
             )
-            session.ingest_chunk(
-                _chunk(1.1, 2.0, "I need help with my order", "spk_customer")
-            )
+            session.ingest_chunk(_chunk(1.1, 2.0, "I need help with my order", "spk_customer"))
 
             # No role assignments yet (threshold not reached)
             assert len(tracking_callbacks.role_assignments) == 0
@@ -713,9 +698,7 @@ class TestEndOfStreamFinalizeCallbacks:
             topics = session.get_topics()
 
             # Should have at least one topic
-            assert len(topics) >= 1, (
-                "Should have at least one finalized topic after end_of_stream"
-            )
+            assert len(topics) >= 1, "Should have at least one finalized topic after end_of_stream"
 
     def test_end_of_stream_finalizes_pending_turn(
         self,
@@ -936,15 +919,9 @@ class TestCallbackPayloadsAreTyped:
             )
 
             # Generate content that triggers all callbacks
-            session.ingest_chunk(
-                _chunk(0.0, 0.4, "Contact test@email.com for help", "spk_agent")
-            )
-            session.ingest_chunk(
-                _chunk(2.0, 2.4, "My number is 555-123-4567", "spk_customer")
-            )
-            session.ingest_chunk(
-                _chunk(4.0, 4.4, "Let me check that for you", "spk_agent")
-            )
+            session.ingest_chunk(_chunk(0.0, 0.4, "Contact test@email.com for help", "spk_agent"))
+            session.ingest_chunk(_chunk(2.0, 2.4, "My number is 555-123-4567", "spk_customer"))
+            session.ingest_chunk(_chunk(4.0, 4.4, "Let me check that for you", "spk_agent"))
             session.end_of_stream()
 
             # Verify safety payloads are typed
