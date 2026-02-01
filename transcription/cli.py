@@ -26,7 +26,7 @@ from .cli_commands.shared import (
     get_cache_size,
     setup_progress_logging,
 )
-from .color_utils import Colors
+from .color_utils import Colors, Symbols
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -878,9 +878,7 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                     return 0
 
                 # Retry with overwrite=True
-                copied_files = copy_sample_to_project(
-                    args.dataset, project_dir, overwrite=True
-                )
+                copied_files = copy_sample_to_project(args.dataset, project_dir, overwrite=True)
 
             print(f"\nCopied {len(copied_files)} files to {project_dir}:")
             for f in copied_files:
@@ -998,15 +996,28 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     result = run_pipeline(app_cfg, diarization_config=cfg)
 
     # Display structured results
+    use_color = Colors.should_use_color()
     print(f"\n{Colors.bold('=== Transcription Summary ===')}")
     print(f"Total files:      {result.total_files}")
-    print(f"Processed:        {Colors.green(str(result.processed))}")
-    print(f"Skipped:          {Colors.yellow(str(result.skipped))}")
+    if use_color:
+        print(f"{Symbols.CHECK} Processed:      {Colors.green(str(result.processed))}")
+        print(f"{Symbols.DOT} Skipped:        {Colors.yellow(str(result.skipped))}")
+    else:
+        print(f"Processed:        {str(result.processed)}")
+        print(f"Skipped:          {str(result.skipped)}")
+
     if result.diarized_only > 0:
-        print(f"Diarized only:    {Colors.cyan(str(result.diarized_only))}")
+        if use_color:
+            print(f"{Symbols.INFO} Diarized only:  {Colors.cyan(str(result.diarized_only))}")
+        else:
+            print(f"Diarized only:    {str(result.diarized_only)}")
 
     failed_color = Colors.red if result.failed > 0 else str
-    print(f"Failed:           {failed_color(str(result.failed))}")
+    if use_color:
+        symbol = Symbols.CROSS if result.failed > 0 else Symbols.DOT
+        print(f"{symbol} Failed:         {failed_color(str(result.failed))}")
+    else:
+        print(f"Failed:           {failed_color(str(result.failed))}")
 
     # Show RTF if available
     if result.total_audio_seconds > 0 and result.total_time_seconds > 0:
@@ -1031,7 +1042,11 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
         print(f"\n{Colors.bold('Next steps:')}")
         # Include --root if non-default to make the command copy-pasteable
         root_arg = f" --root {root}" if root != Path(".") else ""
-        print(f"  Run stage 2 enrichment:  {Colors.cyan(f'slower-whisper enrich{root_arg}')}")
+        cmd = f"slower-whisper enrich{root_arg}"
+        if use_color:
+            print(f"  {Symbols.ARROW} Run stage 2 enrichment:  {Colors.cyan(cmd)}")
+        else:
+            print(f"  Run stage 2 enrichment:  {cmd}")
 
     if result.failed > 0:
         return 1
@@ -1122,14 +1137,28 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
             failures.append((json_path.name, error_msg))
 
     # Display structured results
+    use_color = Colors.should_use_color()
     print(f"\n{Colors.bold('=== Enrichment Summary ===')}")
     print(f"Total files:      {total_files}")
-    print(f"Enriched:         {Colors.green(str(enriched_count))}")
+    if use_color:
+        print(f"{Symbols.CHECK} Enriched:       {Colors.green(str(enriched_count))}")
+    else:
+        print(f"Enriched:         {str(enriched_count)}")
+
     if skipped_count > 0:
-        print(f"Skipped:          {Colors.yellow(str(skipped_count))} (already enriched)")
+        if use_color:
+            print(
+                f"{Symbols.DOT} Skipped:        {Colors.yellow(str(skipped_count))} (already enriched)"
+            )
+        else:
+            print(f"Skipped:          {str(skipped_count)} (already enriched)")
 
     failed_color = Colors.red if failed_count > 0 else str
-    print(f"Failed:           {failed_color(str(failed_count))}")
+    if use_color:
+        symbol = Symbols.CROSS if failed_count > 0 else Symbols.DOT
+        print(f"{symbol} Failed:         {failed_color(str(failed_count))}")
+    else:
+        print(f"Failed:           {failed_color(str(failed_count))}")
 
     # Show first 5 failures with error messages
     if failures:
@@ -1152,9 +1181,11 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
             except ValueError:
                 example_file = str(target)
 
-        print(
-            f"  Export transcripts:      {Colors.cyan(f'slower-whisper export {example_file} --format csv')}"
-        )
+        cmd = f"slower-whisper export {example_file} --format csv"
+        if use_color:
+            print(f"  {Symbols.ARROW} Export transcripts:      {Colors.cyan(cmd)}")
+        else:
+            print(f"  Export transcripts:      {cmd}")
 
     if failed_count > 0:
         return 1
