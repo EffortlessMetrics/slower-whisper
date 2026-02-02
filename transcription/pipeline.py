@@ -165,33 +165,59 @@ def run_pipeline(
         srt_path = paths.transcripts_dir / f"{stem}.srt"
 
         if cfg.skip_existing_json and json_path.exists():
-            if diarization_config and getattr(diarization_config, "enable_chunking", False):
+            # Check what operations we need to perform on existing files
+            enable_chunking = diarization_config and getattr(
+                diarization_config, "enable_chunking", False
+            )
+            enable_diarization = diarization_config and diarization_config.enable_diarization
+
+            # If we need to process, we must load the transcript first.
+            # Optimization: Load ONCE for both chunking and diarization checks.
+            transcript = None
+            load_error = None
+            if enable_chunking or enable_diarization:
                 try:
                     transcript = writers.load_transcript_from_json(json_path)
-                    from .transcription_helpers import _maybe_build_chunks
-
-                    transcript = _maybe_build_chunks(transcript, diarization_config)
-                    writers.write_json(transcript, json_path)
                 except Exception as exc:
+                    load_error = exc
+
+            # 1. Update chunks if enabled
+            if enable_chunking:
+                if transcript:
+                    try:
+                        from .transcription_helpers import _maybe_build_chunks
+
+                        transcript = _maybe_build_chunks(transcript, diarization_config)
+                        writers.write_json(transcript, json_path)
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to update chunks for %s: %s",
+                            json_path.name,
+                            exc,
+                            exc_info=True,
+                        )
+                elif load_error:
+                    # Log error but continue (matches original behavior where chunking error isn't fatal)
                     logger.error(
-                        "Failed to update chunks for %s: %s",
+                        "Failed to update chunks for %s (load failed): %s",
                         json_path.name,
-                        exc,
+                        load_error,
                         exc_info=True,
                     )
 
-            if diarization_config and diarization_config.enable_diarization:
+            # 2. Update diarization if enabled
+            if enable_diarization:
                 # Upgrade existing transcript with diarization without re-transcribing
-                try:
-                    transcript = writers.load_transcript_from_json(json_path)
-                except Exception as exc:
-                    logger.error("Failed to load %s: %s", json_path.name, exc, exc_info=True)
+                if not transcript:
+                    # If we failed to load, fail the file (matches original behavior)
+                    err = load_error or "Transcript not loaded"
+                    logger.error("Failed to load %s: %s", json_path.name, err, exc_info=True)
                     failed += 1
                     file_results.append(
                         PipelineFileResult(
                             file_name=wav.name,
                             status="error",
-                            error_message=f"Load failed: {exc}",
+                            error_message=f"Load failed: {err}",
                         )
                     )
                     continue
