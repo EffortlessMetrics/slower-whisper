@@ -26,7 +26,7 @@ from .cli_commands.shared import (
     get_cache_size,
     setup_progress_logging,
 )
-from .color_utils import Colors
+from .color_utils import Colors, Symbols
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -1022,7 +1022,7 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
         print(f"\n{Colors.red(f'Failures ({len(failures)}):')}")
         for fail in failures[:5]:
             error_msg = fail.error_message or "Unknown error"
-            print(f"  - {Colors.bold(fail.file_name)}: {error_msg}")
+            print(f"  {Colors.red(Symbols.cross())} {Colors.bold(fail.file_name)}: {error_msg}")
         if len(failures) > 5:
             print(f"  ... and {len(failures) - 5} more")
 
@@ -1031,7 +1031,9 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
         print(f"\n{Colors.bold('Next steps:')}")
         # Include --root if non-default to make the command copy-pasteable
         root_arg = f" --root {root}" if root != Path(".") else ""
-        print(f"  Run stage 2 enrichment:  {Colors.cyan(f'slower-whisper enrich{root_arg}')}")
+        print(
+            f"  {Symbols.arrow()} Run stage 2 enrichment:  {Colors.cyan(f'slower-whisper enrich{root_arg}')}"
+        )
 
     if result.failed > 0:
         return 1
@@ -1135,7 +1137,7 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
     if failures:
         print(f"\n{Colors.red(f'Failures ({len(failures)}):')}")
         for file_name, error_msg in failures[:5]:
-            print(f"  - {Colors.bold(file_name)}: {error_msg}")
+            print(f"  {Colors.red(Symbols.cross())} {Colors.bold(file_name)}: {error_msg}")
         if len(failures) > 5:
             print(f"  ... and {len(failures) - 5} more")
 
@@ -1153,7 +1155,7 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
                 example_file = str(target)
 
         print(
-            f"  Export transcripts:      {Colors.cyan(f'slower-whisper export {example_file} --format csv')}"
+            f"  {Symbols.arrow()} Export transcripts:      {Colors.cyan(f'slower-whisper export {example_file} --format csv')}"
         )
 
     if failed_count > 0:
