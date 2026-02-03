@@ -20,6 +20,7 @@ import shutil
 import tarfile
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -111,13 +112,19 @@ def verify_sha256(file_path: Path, expected_sha256: str) -> bool:
     return sha256.hexdigest() == expected_sha256
 
 
-def download_file(url: str, dest: Path, show_progress: bool = True) -> None:
+def download_file(
+    url: str,
+    dest: Path,
+    show_progress: bool = True,
+    progress_callback: Callable[[float, float, float], None] | None = None,
+) -> None:
     """Download a file from URL to dest with progress reporting.
 
     Args:
         url: Download URL
         dest: Destination file path
         show_progress: Show download progress (default: True)
+        progress_callback: Optional callback receiving (percent, mb_downloaded, mb_total)
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
 
@@ -128,6 +135,10 @@ def download_file(url: str, dest: Path, show_progress: bool = True) -> None:
         percent = min(100, downloaded * 100 / total_size)
         mb_downloaded = downloaded / (1024 * 1024)
         mb_total = total_size / (1024 * 1024)
+
+        if progress_callback:
+            progress_callback(percent, mb_downloaded, mb_total)
+
         logger.info(
             f"Downloading: {percent:5.1f}% ({mb_downloaded:6.1f}/{mb_total:6.1f} MB)",
             extra={"percent": percent, "mb_downloaded": mb_downloaded, "mb_total": mb_total},
@@ -176,6 +187,7 @@ def download_sample_dataset(
     dataset_name: SampleDatasetName,
     cache_dir: Path | None = None,
     force_download: bool = False,
+    progress_callback: Callable[[float, float, float], None] | None = None,
 ) -> Path:
     """Download and cache a sample dataset.
 
@@ -183,6 +195,7 @@ def download_sample_dataset(
         dataset_name: Name of dataset to download
         cache_dir: Override cache directory (default: auto-detect)
         force_download: Re-download even if cached (default: False)
+        progress_callback: Optional callback for download progress
 
     Returns:
         Path to extracted dataset directory
@@ -233,7 +246,9 @@ def download_sample_dataset(
         f"Starting download of '{dataset.name}'",
         extra={"dataset": dataset.name, "url": dataset.url},
     )
-    download_file(dataset.url, archive_path)
+    download_file(
+        dataset.url, archive_path, show_progress=True, progress_callback=progress_callback
+    )
 
     # Verify integrity
     if dataset.sha256:

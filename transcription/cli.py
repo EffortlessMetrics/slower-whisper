@@ -839,7 +839,20 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
 
     elif args.samples_action == "download":
         try:
-            download_sample_dataset(args.dataset, force_download=args.force)
+
+            def progress_callback(percent: float, downloaded: float, total: float) -> None:
+                # Use carriage return to update line
+                sys.stdout.write(
+                    f"\rDownloading: {percent:5.1f}% ({downloaded:6.1f}/{total:6.1f} MB)"
+                )
+                sys.stdout.flush()
+
+            download_sample_dataset(
+                args.dataset, force_download=args.force, progress_callback=progress_callback
+            )
+            # Ensure next output starts on a fresh line
+            print()
+
             test_files = get_sample_test_files(args.dataset)
             print("\nTest files ready:")
             for f in test_files:
@@ -878,9 +891,7 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                     return 0
 
                 # Retry with overwrite=True
-                copied_files = copy_sample_to_project(
-                    args.dataset, project_dir, overwrite=True
-                )
+                copied_files = copy_sample_to_project(args.dataset, project_dir, overwrite=True)
 
             print(f"\nCopied {len(copied_files)} files to {project_dir}:")
             for f in copied_files:
