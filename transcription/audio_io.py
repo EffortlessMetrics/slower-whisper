@@ -568,10 +568,27 @@ def normalize_all(paths: Paths) -> None:
     for src in sorted(paths.raw_dir.iterdir()):
         if src.is_file():
             dst = paths.norm_dir / f"{src.stem}.wav"
+
+            # Optimization: Skip if destination exists and is newer than source
+            # This avoids ThreadPoolExecutor overhead for up-to-date files
+            if dst.exists():
+                try:
+                    src_mtime = src.stat().st_mtime
+                    dst_mtime = dst.stat().st_mtime
+                    if dst_mtime >= src_mtime:
+                        logger.debug(
+                            "Skipping up-to-date file",
+                            extra={"file": src.name, "output": dst.name},
+                        )
+                        continue
+                except OSError:
+                    # If stat fails, default to processing
+                    pass
+
             files_to_process.append((src, dst))
 
     if not files_to_process:
-        logger.info("No files found in raw_audio/ directory")
+        logger.info("No files to process (all up-to-date or empty directory)")
         return
 
     # Process files in parallel using ThreadPoolExecutor
