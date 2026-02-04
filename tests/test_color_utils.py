@@ -29,6 +29,15 @@ def test_colors_disabled_dumb_term(monkeypatch):
     assert Colors.red("test") == "test"
 
 
+def test_should_use_color_alias(monkeypatch):
+    """Test that should_use_color alias works."""
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+
+    assert Colors.should_use_color() is True
+    assert Colors._should_use_color() is True
+
+
 def test_colors_methods(monkeypatch):
     """Test all color methods produce correct output."""
     monkeypatch.setenv("FORCE_COLOR", "1")
@@ -41,3 +50,23 @@ def test_colors_methods(monkeypatch):
     assert Colors.magenta("test") == "\033[35mtest\033[0m"
     assert Colors.bold("test") == "\033[1mtest\033[0m"
     assert Colors.dim("test") == "\033[2mtest\033[0m"
+
+
+def test_symbols_constants():
+    """Test that Symbols constants are defined."""
+    from transcription.color_utils import Symbols
+
+    # Check Unicode symbols
+    assert Symbols.CHECK == "✔"
+    assert Symbols.CROSS == "✖"
+    assert Symbols.WARN == "⚠"
+    assert Symbols.INFO == "ℹ"
+    assert Symbols.SKIP == "➡"
+
+    # Check ASCII fallbacks
+    assert Symbols.CHECK_ASCII == "[OK]"
+    assert Symbols.PASS_ASCII == "[PASS]"
+    assert Symbols.CROSS_ASCII == "[FAIL]"
+    assert Symbols.WARN_ASCII == "[WARN]"
+    assert Symbols.INFO_ASCII == "[INFO]"
+    assert Symbols.SKIP_ASCII == "[SKIP]"
