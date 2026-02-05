@@ -569,9 +569,7 @@ class PostProcessor:
                     timestamp = turn.get("end", 0.0)
 
                     # Convert RoleAssignment objects to dicts
-                    assignments_dict = {
-                        k: v.to_dict() for k, v in self._role_assignments.items()
-                    }
+                    assignments_dict = {k: v.to_dict() for k, v in self._role_assignments.items()}
 
                     payload = RoleAssignedPayload(
                         assignments=assignments_dict,
@@ -671,9 +669,7 @@ class PostProcessor:
 
                 # Emit callback with "finalize" trigger
                 if self._on_role_assigned and self._role_assignments:
-                    assignments_dict = {
-                        k: v.to_dict() for k, v in self._role_assignments.items()
-                    }
+                    assignments_dict = {k: v.to_dict() for k, v in self._role_assignments.items()}
                     role_payload = RoleAssignedPayload(
                         assignments=assignments_dict,
                         timestamp=self._last_end_time,

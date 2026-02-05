@@ -62,7 +62,7 @@ class TestSamplesCopyUX:
         # First call raises error, second call succeeds
         mock_copy.side_effect = [
             SampleExistsError("Conflict", [Path("file1.wav")]),
-            [Path("file1.wav")]
+            [Path("file1.wav")],
         ]
 
         # Patch isatty to True and input to 'y'
@@ -81,7 +81,9 @@ class TestSamplesCopyUX:
         """--force should pass overwrite=True immediately."""
         mock_copy.return_value = [Path("file1.wav")]
 
-        exit_code = main(["samples", "copy", "mini_diarization", "--root", str(tmp_path), "--force"])
+        exit_code = main(
+            ["samples", "copy", "mini_diarization", "--root", str(tmp_path), "--force"]
+        )
 
         assert exit_code == 0
         mock_copy.assert_called_once()
