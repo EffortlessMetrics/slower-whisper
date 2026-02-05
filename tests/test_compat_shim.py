@@ -291,9 +291,7 @@ class TestTranscriptionInfo:
             ],
         )
 
-        info = TranscriptionInfo.from_transcript(
-            transcript, transcription_options={"beam_size": 5}
-        )
+        info = TranscriptionInfo.from_transcript(transcript, transcription_options={"beam_size": 5})
 
         assert info.language == "en"
         assert info.duration == 10.0
@@ -830,9 +828,7 @@ class TestWhisperModelTranscribe:
         finally:
             Path(audio_path).unlink(missing_ok=True)
 
-    def test_transcription_options_stored_in_info(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_transcription_options_stored_in_info(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Verify transcription options are stored in TranscriptionInfo."""
         mock_transcript = _create_mock_transcript()
 
@@ -1154,9 +1150,7 @@ class TestVadDurationTracking:
 class TestLanguageDetectionCaching:
     """Tests for language detection caching."""
 
-    def test_detect_language_caches_result(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_detect_language_caches_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """detect_language() caches results for same file path."""
         mock_transcript = _create_mock_transcript()
         mock_transcript.language = "es"
@@ -1251,9 +1245,7 @@ class TestSampleRateHandling:
         # Verify transcribe_file was called
         assert mock_engine.transcribe_file.called
 
-    def test_detect_language_accepts_sample_rate(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_detect_language_accepts_sample_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """detect_language() accepts sample_rate parameter for numpy arrays."""
         pytest.importorskip("numpy")
         pytest.importorskip("soundfile")
@@ -1283,9 +1275,7 @@ class TestSampleRateHandling:
 class TestSegmentFallbackLogging:
     """Tests for fallback logging in Segment.from_internal()."""
 
-    def test_segment_from_internal_logs_defaults(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_segment_from_internal_logs_defaults(self, caplog: pytest.LogCaptureFixture) -> None:
         """Segment.from_internal() logs debug message when using defaults."""
         import logging
 

@@ -1711,9 +1711,7 @@ class TestPostProcessingFinalOnlyGating:
 
             # Ingest a chunk with potentially triggering content (PII)
             # This should produce a PARTIAL segment only
-            events = session.ingest_chunk(
-                _chunk(0.0, 1.0, "My email is test@example.com", "spk_0")
-            )
+            events = session.ingest_chunk(_chunk(0.0, 1.0, "My email is test@example.com", "spk_0"))
 
             # Should get exactly one PARTIAL event
             assert len(events) == 1
