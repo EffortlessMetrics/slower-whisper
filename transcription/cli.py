@@ -26,7 +26,7 @@ from .cli_commands.shared import (
     get_cache_size,
     setup_progress_logging,
 )
-from .color_utils import Colors
+from .color_utils import Colors, Symbols
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -932,7 +932,7 @@ def _handle_export_command(args: argparse.Namespace) -> int:
     transcript = api_module.load_transcript(args.transcript)
     output_path = args.output or _default_export_path(args.transcript, args.format)
     export_transcript(transcript, args.format, output_path, unit=args.unit)
-    print(f"[done] Wrote {args.format} to {output_path}")
+    print(f"{Symbols.check()} Wrote {args.format} to {output_path}")
     return 0
 
 
@@ -1000,13 +1000,17 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     # Display structured results
     print(f"\n{Colors.bold('=== Transcription Summary ===')}")
     print(f"Total files:      {result.total_files}")
-    print(f"Processed:        {Colors.green(str(result.processed))}")
-    print(f"Skipped:          {Colors.yellow(str(result.skipped))}")
+    print(f"{Symbols.check()} Processed:        {Colors.green(str(result.processed))}")
+
+    skipped_symbol = Symbols.warn() if result.skipped > 0 else Symbols.dot()
+    print(f"{skipped_symbol} Skipped:          {Colors.yellow(str(result.skipped))}")
+
     if result.diarized_only > 0:
-        print(f"Diarized only:    {Colors.cyan(str(result.diarized_only))}")
+        print(f"{Symbols.info()} Diarized only:    {Colors.cyan(str(result.diarized_only))}")
 
     failed_color = Colors.red if result.failed > 0 else str
-    print(f"Failed:           {failed_color(str(result.failed))}")
+    failed_symbol = Symbols.cross() if result.failed > 0 else Symbols.dot()
+    print(f"{failed_symbol} Failed:           {failed_color(str(result.failed))}")
 
     # Show RTF if available
     if result.total_audio_seconds > 0 and result.total_time_seconds > 0:
@@ -1124,12 +1128,13 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
     # Display structured results
     print(f"\n{Colors.bold('=== Enrichment Summary ===')}")
     print(f"Total files:      {total_files}")
-    print(f"Enriched:         {Colors.green(str(enriched_count))}")
+    print(f"{Symbols.check()} Enriched:         {Colors.green(str(enriched_count))}")
     if skipped_count > 0:
-        print(f"Skipped:          {Colors.yellow(str(skipped_count))} (already enriched)")
+        print(f"{Symbols.warn()} Skipped:          {Colors.yellow(str(skipped_count))} (already enriched)")
 
     failed_color = Colors.red if failed_count > 0 else str
-    print(f"Failed:           {failed_color(str(failed_count))}")
+    failed_symbol = Symbols.cross() if failed_count > 0 else Symbols.dot()
+    print(f"{failed_symbol} Failed:           {failed_color(str(failed_count))}")
 
     # Show first 5 failures with error messages
     if failures:
@@ -1170,7 +1175,7 @@ def _handle_validate_command(args: argparse.Namespace) -> int:
             print(f"- {err}")
         return 1
 
-    print(f"[ok] {len(args.transcripts)} transcript(s) valid against {schema_path}")
+    print(f"{Symbols.check()} {len(args.transcripts)} transcript(s) valid against {schema_path}")
     return 0
 
 
