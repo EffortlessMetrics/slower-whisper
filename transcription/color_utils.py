@@ -92,3 +92,58 @@ class Colors:
     @classmethod
     def dim(cls, text: str) -> str:
         return cls.colorize(text, cls.DIM)
+
+
+class Symbols:
+    """Unicode symbols with ASCII fallbacks."""
+
+    CHECK = "✔"
+    CROSS = "✘"
+    WARN = "⚠"
+    INFO = "ℹ"
+    ARROW = "➜"
+    SKIP = "−"
+
+    # ASCII fallbacks
+    CHECK_ASCII = "[v]"
+    CROSS_ASCII = "[x]"
+    WARN_ASCII = "[!]"
+    INFO_ASCII = "[i]"
+    ARROW_ASCII = "->"
+    SKIP_ASCII = "[-]"
+
+    @classmethod
+    def check(cls) -> str:
+        if Colors._should_use_color():
+            return Colors.green(cls.CHECK)
+        return cls.CHECK_ASCII
+
+    @classmethod
+    def cross(cls) -> str:
+        if Colors._should_use_color():
+            return Colors.red(cls.CROSS)
+        return cls.CROSS_ASCII
+
+    @classmethod
+    def warn(cls) -> str:
+        if Colors._should_use_color():
+            return Colors.yellow(cls.WARN)
+        return cls.WARN_ASCII
+
+    @classmethod
+    def info(cls) -> str:
+        if Colors._should_use_color():
+            return Colors.blue(cls.INFO)
+        return cls.INFO_ASCII
+
+    @classmethod
+    def arrow(cls) -> str:
+        if Colors._should_use_color():
+            return cls.ARROW
+        return cls.ARROW_ASCII
+
+    @classmethod
+    def skip(cls) -> str:
+        if Colors._should_use_color():
+            return Colors.dim(cls.SKIP)
+        return cls.SKIP_ASCII

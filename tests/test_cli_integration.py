@@ -804,7 +804,7 @@ def test_export_cli_writes_csv(sample_transcript_file: Path, tmp_path: Path, cap
     assert "id,start,end,speaker,text" in csv_text
     assert "turn_0" in csv_text and "turn_1" in csv_text
     captured = capsys.readouterr()
-    assert "[done] Wrote csv" in captured.out
+    assert "[v] Wrote csv" in captured.out
 
 
 def test_validate_cli_reports_failures(sample_transcript_file: Path, tmp_path: Path, capsys):
@@ -813,7 +813,7 @@ def test_validate_cli_reports_failures(sample_transcript_file: Path, tmp_path: P
     ok_exit = main(["validate", str(sample_transcript_file)])
     ok_output = capsys.readouterr()
     assert ok_exit == 0
-    assert "[ok] 1 transcript(s) valid" in ok_output.out
+    assert "[v] 1 transcript(s) valid" in ok_output.out
 
     invalid = tmp_path / "bad_transcript.json"
     invalid.write_text(

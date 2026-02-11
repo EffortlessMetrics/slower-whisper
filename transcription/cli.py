@@ -26,7 +26,7 @@ from .cli_commands.shared import (
     get_cache_size,
     setup_progress_logging,
 )
-from .color_utils import Colors
+from .color_utils import Colors, Symbols
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -932,7 +932,7 @@ def _handle_export_command(args: argparse.Namespace) -> int:
     transcript = api_module.load_transcript(args.transcript)
     output_path = args.output or _default_export_path(args.transcript, args.format)
     export_transcript(transcript, args.format, output_path, unit=args.unit)
-    print(f"[done] Wrote {args.format} to {output_path}")
+    print(f"{Symbols.check()} Wrote {args.format} to {output_path}")
     return 0
 
 
@@ -1165,12 +1165,12 @@ def _handle_validate_command(args: argparse.Namespace) -> int:
     schema_path = args.schema or DEFAULT_SCHEMA_PATH
     failures = validate_many(args.transcripts, schema_path=schema_path)
     if failures:
-        print("Validation failed:")
+        print(f"{Symbols.cross()} Validation failed:")
         for err in failures:
-            print(f"- {err}")
+            print(f"  - {err}")
         return 1
 
-    print(f"[ok] {len(args.transcripts)} transcript(s) valid against {schema_path}")
+    print(f"{Symbols.check()} {len(args.transcripts)} transcript(s) valid against {schema_path}")
     return 0
 
 
