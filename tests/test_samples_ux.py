@@ -86,3 +86,32 @@ class TestSamplesCopyUX:
         assert exit_code == 0
         mock_copy.assert_called_once()
         assert mock_copy.call_args.kwargs["overwrite"] is True
+
+
+class TestSamplesDownloadUX:
+    """Test UX interactions for samples download command."""
+
+    @pytest.fixture
+    def mock_download(self):
+        """Mock download_sample_dataset to control behavior."""
+        with patch("transcription.samples.download_sample_dataset") as mock:
+            yield mock
+
+    @pytest.fixture
+    def mock_get_files(self):
+        """Mock get_sample_test_files to control behavior."""
+        with patch("transcription.samples.get_sample_test_files") as mock:
+            yield mock
+
+    def test_download_success_shows_next_steps(
+        self, mock_download, mock_get_files, capsys
+    ):
+        """Successful download should suggest copying."""
+        mock_get_files.return_value = [Path("file1.wav")]
+
+        exit_code = main(["samples", "download", "mini_diarization"])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Next step:" in captured.out
+        assert "slower-whisper samples copy mini_diarization" in captured.out
