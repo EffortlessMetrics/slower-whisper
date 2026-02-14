@@ -441,6 +441,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[2, 3, 4],
         help="Number of speakers to generate (default: 2).",
     )
+    p_samples_generate.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Overwrite existing files without confirmation.",
+    )
 
     # ============================================================================
     # export subcommand
@@ -902,6 +908,21 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
 
         if args.speakers == 2:
             output_file = output_dir / "synthetic_2speaker.wav"
+
+            if output_file.exists() and not args.force:
+                if not sys.stdin.isatty():
+                    print(
+                        f"Error: File exists: {output_file}. Use --force to overwrite.",
+                        file=sys.stderr,
+                    )
+                    return 1
+
+                print(Colors.red(f"File exists: {output_file}"))
+                confirm = input(f"{Colors.red('Overwrite?')} [y/N] ")
+                if confirm.lower() not in ("y", "yes"):
+                    print("Aborted.")
+                    return 0
+
             try:
                 generate_synthetic_2speaker(output_file)
                 print("\nReady to transcribe with:")
