@@ -426,9 +426,7 @@ def extract_prosody_extended(
         return result
 
     # Analyze boundary tone
-    result.boundary_tone = analyze_boundary_tone(
-        pitch_times, pitch_values, boundary_window_ms
-    )
+    result.boundary_tone = analyze_boundary_tone(pitch_times, pitch_values, boundary_window_ms)
 
     # Analyze monotony
     result.monotony = analyze_monotony(pitch_values, speaker_type)

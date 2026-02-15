@@ -134,9 +134,7 @@ class TestTopicSegmentationConfig:
 
     def test_custom_stopwords(self):
         """Custom stopwords are combined with default."""
-        config = TopicSegmentationConfig(
-            custom_stopwords={"customword"}
-        )
+        config = TopicSegmentationConfig(custom_stopwords={"customword"})
         stopwords = config.get_stopwords()
         assert "customword" in stopwords
         assert "the" in stopwords  # Default stopword
@@ -238,11 +236,21 @@ class TestTopicSegmenter:
 
         # Create turns with clear topic shift
         budget_turns = [
-            {"id": f"t{i}", "text": "budget finance quarterly reports", "start": i * 5, "end": (i + 1) * 5}
+            {
+                "id": f"t{i}",
+                "text": "budget finance quarterly reports",
+                "start": i * 5,
+                "end": (i + 1) * 5,
+            }
             for i in range(8)
         ]
         marketing_turns = [
-            {"id": f"t{i + 8}", "text": "marketing campaign advertising social media", "start": (i + 8) * 5, "end": (i + 9) * 5}
+            {
+                "id": f"t{i + 8}",
+                "text": "marketing campaign advertising social media",
+                "start": (i + 8) * 5,
+                "end": (i + 9) * 5,
+            }
             for i in range(8)
         ]
 
@@ -298,12 +306,14 @@ class TestStreamingTopicSegmenter:
         segmenter = StreamingTopicSegmenter(config)
 
         for i in range(10):
-            segmenter.add_turn({
-                "id": f"t{i}",
-                "text": f"Turn {i} content about topic",
-                "start": i * 5,
-                "end": (i + 1) * 5,
-            })
+            segmenter.add_turn(
+                {
+                    "id": f"t{i}",
+                    "text": f"Turn {i} content about topic",
+                    "start": i * 5,
+                    "end": (i + 1) * 5,
+                }
+            )
 
         topics = segmenter.finalize()
         assert len(topics) >= 1
@@ -325,20 +335,24 @@ class TestStreamingTopicSegmenter:
 
         # Add turns with topic shift
         for i in range(6):
-            segmenter.add_turn({
-                "id": f"t{i}",
-                "text": "budget finance accounting",
-                "start": i * 5,
-                "end": (i + 1) * 5,
-            })
+            segmenter.add_turn(
+                {
+                    "id": f"t{i}",
+                    "text": "budget finance accounting",
+                    "start": i * 5,
+                    "end": (i + 1) * 5,
+                }
+            )
 
         for i in range(6, 12):
-            segmenter.add_turn({
-                "id": f"t{i}",
-                "text": "marketing advertising campaign",
-                "start": i * 5,
-                "end": (i + 1) * 5,
-            })
+            segmenter.add_turn(
+                {
+                    "id": f"t{i}",
+                    "text": "marketing advertising campaign",
+                    "start": i * 5,
+                    "end": (i + 1) * 5,
+                }
+            )
 
         # Boundary may or may not have been detected depending on threshold
         # Just verify no errors occurred
@@ -348,12 +362,14 @@ class TestStreamingTopicSegmenter:
         segmenter = StreamingTopicSegmenter()
 
         for i in range(5):
-            segmenter.add_turn({
-                "id": f"t{i}",
-                "text": "Content",
-                "start": i * 5,
-                "end": (i + 1) * 5,
-            })
+            segmenter.add_turn(
+                {
+                    "id": f"t{i}",
+                    "text": "Content",
+                    "start": i * 5,
+                    "end": (i + 1) * 5,
+                }
+            )
 
         segmenter.reset()
 
@@ -370,18 +386,22 @@ class TestStreamingTopicSegmenter:
         segmenter = StreamingTopicSegmenter(config)
 
         # Add some turns
-        segmenter.add_turn({
-            "id": "t0",
-            "text": "Hello discussion",
-            "start": 0,
-            "end": 5,
-        })
-        segmenter.add_turn({
-            "id": "t1",
-            "text": "More discussion",
-            "start": 5,
-            "end": 10,
-        })
+        segmenter.add_turn(
+            {
+                "id": "t0",
+                "text": "Hello discussion",
+                "start": 0,
+                "end": 5,
+            }
+        )
+        segmenter.add_turn(
+            {
+                "id": "t1",
+                "text": "More discussion",
+                "start": 5,
+                "end": 10,
+            }
+        )
 
         # Close the current topic
         closed_topic = segmenter.close_current_topic()
@@ -401,12 +421,14 @@ class TestStreamingTopicSegmenter:
         )
         segmenter = StreamingTopicSegmenter(config)
 
-        segmenter.add_turn({
-            "id": "t0",
-            "text": "Test content",
-            "start": 0,
-            "end": 5,
-        })
+        segmenter.add_turn(
+            {
+                "id": "t0",
+                "text": "Test content",
+                "start": 0,
+                "end": 5,
+            }
+        )
 
         # Close with explicit end time
         closed_topic = segmenter.close_current_topic(end_time=15.5)
@@ -430,12 +452,14 @@ class TestStreamingTopicSegmenter:
         )
         segmenter = StreamingTopicSegmenter(config)
 
-        segmenter.add_turn({
-            "id": "t0",
-            "text": "Test content",
-            "start": 0,
-            "end": 5,
-        })
+        segmenter.add_turn(
+            {
+                "id": "t0",
+                "text": "Test content",
+                "start": 0,
+                "end": 5,
+            }
+        )
 
         # Close first time
         first_result = segmenter.close_current_topic()
@@ -457,12 +481,14 @@ class TestStreamingTopicSegmenter:
         )
         segmenter = StreamingTopicSegmenter(config)
 
-        segmenter.add_turn({
-            "id": "t0",
-            "text": "Test content",
-            "start": 0,
-            "end": 5,
-        })
+        segmenter.add_turn(
+            {
+                "id": "t0",
+                "text": "Test content",
+                "start": 0,
+                "end": 5,
+            }
+        )
 
         # Finalize should close the topic
         topics = segmenter.finalize()
@@ -481,20 +507,24 @@ class TestStreamingTopicSegmenter:
 
         # Add turns with topic shift to trigger boundary
         for i in range(6):
-            segmenter.add_turn({
-                "id": f"t{i}",
-                "text": "budget finance accounting",
-                "start": i * 5,
-                "end": (i + 1) * 5,
-            })
+            segmenter.add_turn(
+                {
+                    "id": f"t{i}",
+                    "text": "budget finance accounting",
+                    "start": i * 5,
+                    "end": (i + 1) * 5,
+                }
+            )
 
         for i in range(6, 12):
-            segmenter.add_turn({
-                "id": f"t{i}",
-                "text": "marketing advertising campaign",
-                "start": i * 5,
-                "end": (i + 1) * 5,
-            })
+            segmenter.add_turn(
+                {
+                    "id": f"t{i}",
+                    "text": "marketing advertising campaign",
+                    "start": i * 5,
+                    "end": (i + 1) * 5,
+                }
+            )
 
         # Close remaining turns
         closed = segmenter.close_current_topic(end_time=100.0)

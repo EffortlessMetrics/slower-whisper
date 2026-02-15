@@ -187,7 +187,9 @@ class EnvironmentClassifier:
         # Check for clipping (highest priority issue)
         if metrics.clipping_ratio >= self.config.clipping_ratio_threshold:
             score = min(metrics.clipping_ratio / 0.1, 1.0)  # Normalize to 0-1
-            tags_with_scores.append(("clipping", score, f"clipping_ratio={metrics.clipping_ratio:.2%}"))
+            tags_with_scores.append(
+                ("clipping", score, f"clipping_ratio={metrics.clipping_ratio:.2%}")
+            )
 
         # Check for noisy environment
         if metrics.snr_db is not None and metrics.snr_db < self.config.noisy_snr_threshold:
@@ -200,7 +202,9 @@ class EnvironmentClassifier:
             and metrics.spectral_centroid_hz < self.config.muffled_centroid_threshold
         ):
             score = 1.0 - (metrics.spectral_centroid_hz / self.config.muffled_centroid_threshold)
-            tags_with_scores.append(("muffled", score, f"spectral_centroid={metrics.spectral_centroid_hz:.0f}Hz"))
+            tags_with_scores.append(
+                ("muffled", score, f"spectral_centroid={metrics.spectral_centroid_hz:.0f}Hz")
+            )
 
         # Check for hissy audio
         if (
