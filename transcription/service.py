@@ -87,6 +87,25 @@ enrich_audio = _service_enrich.enrich_audio
 # FastAPI Application Setup
 # =============================================================================
 
+tags_metadata = [
+    {
+        "name": "Transcription",
+        "description": "Core transcription endpoints using faster-whisper.",
+    },
+    {
+        "name": "Enrichment",
+        "description": "Audio analysis and feature extraction (prosody, emotion).",
+    },
+    {
+        "name": "Streaming",
+        "description": "Real-time streaming transcription endpoints.",
+    },
+    {
+        "name": "System",
+        "description": "Health checks, metrics, and system status.",
+    },
+]
+
 app = FastAPI(
     title="Slower-Whisper API",
     description=(
@@ -95,6 +114,7 @@ app = FastAPI(
         "prosodic and emotional features from the audio waveform."
     ),
     version=__version__,
+    openapi_tags=tags_metadata,
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
