@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: slower-whisper
+message: "If you use slower-whisper in research or reporting, please cite it using this metadata."
+type: software
+version: 2.0.0
+license: Apache-2.0
+repository-code: https://github.com/EffortlessMetrics/slower-whisper
+url: https://github.com/EffortlessMetrics/slower-whisper
+abstract: >-
+  Local-first conversation ETL that converts audio into schema-versioned transcripts
+  with speakers, timestamps, enrichment, and reproducible receipts.
+authors:
+  - given-names: Effortless
+    family-names: Metrics
+    email: git@effortlesssteven.com
+keywords:
+  - whisper
+  - asr
+  - transcription
+  - diarization
+  - streaming
+  - prosody
+  - emotion-recognition
+  - json-schema

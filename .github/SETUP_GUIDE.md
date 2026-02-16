@@ -68,7 +68,7 @@ For coverage reporting and badges:
    - Click "Publishing" → "Add a new pending publisher"
    - Fill in:
      - **PyPI Project Name**: `slower-whisper`
-     - **Owner**: `YOUR_GITHUB_USERNAME`
+     - **Owner**: `EffortlessMetrics`
      - **Repository name**: `slower-whisper`
      - **Workflow name**: `release.yml`
      - **Environment name**: `pypi` (leave blank if not using environments)
@@ -216,10 +216,11 @@ Add these to your README.md:
 ```markdown
 # slower-whisper
 
-[![CI](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/YOUR_USERNAME/slower-whisper/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/slower-whisper)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml)
+[![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
+[![codecov](https://codecov.io/gh/EffortlessMetrics/slower-whisper/branch/main/graph/badge.svg)](https://codecov.io/gh/EffortlessMetrics/slower-whisper)
+[![Python](https://img.shields.io/badge/python-3.12--3.14-blue)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/EffortlessMetrics/slower-whisper/blob/main/LICENSE)
 ```
 
 See `.github/workflows/badges.md` for more options.

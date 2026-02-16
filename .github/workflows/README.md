@@ -20,7 +20,6 @@ Runs on every push to `main` and on all pull requests.
 
 3. **Type Check** (`type-check`)
    - Runs `mypy` for static type checking
-   - Currently set to `continue-on-error: true` while types are being improved
    - Checks `transcription` and `tests` directories
 
 4. **Test** (`test`)
@@ -55,7 +54,7 @@ gh run list --workflow=ci.yml
 
 ### 🚀 `release.yml` - Release to PyPI
 
-Triggered on version tags (e.g., `v1.0.0`) or manual dispatch.
+Triggered on version tags (e.g., `v2.0.0`) or manual dispatch.
 
 **Jobs:**
 
@@ -71,10 +70,10 @@ Triggered on version tags (e.g., `v1.0.0`) or manual dispatch.
 # 1. Update version in pyproject.toml
 # 2. Commit changes
 git add pyproject.toml
-git commit -m "Bump version to 1.0.1"
+git commit -m "Bump version to 2.0.1"
 
 # 3. Create and push tag
-git tag v1.0.1
+git tag v2.0.1
 git push origin main --tags
 
 # 4. Workflow automatically runs and publishes
@@ -83,7 +82,7 @@ git push origin main --tags
 **Manual Release (TestPyPI):**
 
 ```bash
-gh workflow run release.yml -f version=1.0.1-rc1
+gh workflow run release.yml -f version=2.0.1-rc1
 ```
 
 **PyPI Trusted Publishing Setup:**
@@ -92,7 +91,7 @@ gh workflow run release.yml -f version=1.0.1-rc1
 2. Navigate to "Publishing" section
 3. Add a new publisher:
    - PyPI Project Name: `slower-whisper`
-   - Owner: `YOUR_GITHUB_USERNAME`
+   - Owner: `EffortlessMetrics`
    - Repository name: `slower-whisper`
    - Workflow name: `release.yml`
    - Environment name: `pypi`
@@ -175,14 +174,19 @@ open htmlcov/index.html
 
 ## Branch Protection Rules
 
-Recommended settings for `main` branch:
+Source of truth: [`.github/settings.yml`](../settings.yml) manages branch protection as code.
+
+Current `main` requirements:
 
 1. **Require status checks to pass**:
-   - `CI Success` (from ci.yml)
+   - `CI Success` (from `ci.yml`)
+   - `Verify (quick)` (from `verify.yml`)
 
-2. **Require branches to be up to date**
+2. **Require branches to be up to date** (`strict: true`)
 
-3. **Do not allow bypassing**
+3. **Require one approving review and CODEOWNERS review**
+
+4. **Enforce rules for admins**
 
 ## Secrets Required
 
@@ -202,8 +206,8 @@ Runs the `slower-whisper-verify` CLI inside the Nix dev shell.
 - Nightly schedule (`0 6 * * *`) and manual dispatch (full mode)
 
 **Jobs:**
-1. **Verify (quick)** — `nix develop --command uv sync --extra full --extra diarization --extra dev` then `uv run slower-whisper-verify --quick`
-2. **Verify (full)** — same install step, then `uv run slower-whisper-verify` (includes Docker + K8s; uses `HF_TOKEN` secret for real pyannote)
+1. **Verify (quick)** — `nix run .#verify -- --quick`
+2. **Verify (full)** — `nix develop .# --command uv run slower-whisper-verify` (includes Docker + K8s; uses `HF_TOKEN` secret for real pyannote)
 
 **Caches:**
 - `.venv` and `.cache/uv` (Python deps)
@@ -229,7 +233,7 @@ Runs the `slower-whisper-verify` CLI inside the Nix dev shell.
 
 ### Release workflow not triggering?
 
-- Verify tag format: `v*.*.*` (e.g., `v1.0.0`)
+- Verify tag format: `v*.*.*` (e.g., `v2.0.0`)
 - Check branch protection rules aren't blocking
 - Ensure PyPI trusted publishing is configured
 
@@ -252,7 +256,8 @@ gh run view --log
 Add to your README.md:
 
 ```markdown
-[![CI](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml)
+[![CI](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml)
+[![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
 ```
 
 See `.github/workflows/badges.md` for more badge options.

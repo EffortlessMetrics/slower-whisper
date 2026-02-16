@@ -62,6 +62,9 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [SECURITY.md](../SECURITY.md) | Security policy and vulnerability reporting | Security-conscious users |
 | [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Community standards and expectations | Community members |
 | [CLAUDE.md](../CLAUDE.md) | Project guidance for AI coding assistants | Developers using AI tools |
+| [CITATION.cff](../CITATION.cff) | Citation metadata for software use in papers and reports | Researchers and downstream users |
+| [.github/SUPPORT.md](../.github/SUPPORT.md) | Support routes and issue filing expectations | Users and contributors |
+| [.github/settings.yml](../.github/settings.yml) | Repository settings as code (topics, labels, branch protection) | Maintainers |
 
 ### API & CLI References (docs/)
 
@@ -303,6 +306,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [TIER2_IMPLEMENTATION_PLAN.md](TIER2_IMPLEMENTATION_PLAN.md) | Tier 2 feature implementation plan |
 | [V1.1_SKELETON_SUMMARY.md](V1.1_SKELETON_SUMMARY.md) | v1.1 skeleton summary |
 | [V1.1_GITHUB_ISSUES.md](V1.1_GITHUB_ISSUES.md) | v1.1 GitHub issues tracking |
+| [PROJECT_METADATA.md](PROJECT_METADATA.md) | Canonical metadata and governance map |
 | [GITHUB_UI_TASKS.md](GITHUB_UI_TASKS.md) | GitHub UI tasks |
 
 ---
@@ -494,6 +498,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2026-01-31
+**Last Updated:** 2026-02-16
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.

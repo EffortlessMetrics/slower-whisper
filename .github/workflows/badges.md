@@ -1,35 +1,40 @@
 # CI/CD Status Badges
 
-Add these badges to your README.md to show the status of your CI/CD workflows:
+Add these badges to your README.md to show current project status.
 
 ## CI Status
 ```markdown
-[![CI](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml)
+[![CI](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml)
+```
+
+## Verification Status
+```markdown
+[![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
 ```
 
 ## Code Coverage
 ```markdown
-[![codecov](https://codecov.io/gh/YOUR_USERNAME/slower-whisper/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/slower-whisper)
+[![codecov](https://codecov.io/gh/EffortlessMetrics/slower-whisper/branch/main/graph/badge.svg)](https://codecov.io/gh/EffortlessMetrics/slower-whisper)
 ```
 
 ## Release Status
 ```markdown
-[![Release](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/release.yml)
+[![Release](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/release.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/release.yml)
 ```
 
 ## PyPI Version
 ```markdown
-[![PyPI version](https://badge.fury.io/py/slower-whisper.svg)](https://badge.fury.io/py/slower-whisper)
+[![PyPI](https://img.shields.io/pypi/v/slower-whisper)](https://pypi.org/project/slower-whisper/)
 ```
 
 ## Python Versions
 ```markdown
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.12--3.14-blue)](https://www.python.org/downloads/)
 ```
 
 ## License
 ```markdown
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/EffortlessMetrics/slower-whisper/blob/main/LICENSE)
 ```
 
 ---
@@ -39,12 +44,9 @@ Add these badges to your README.md to show the status of your CI/CD workflows:
 ```markdown
 # slower-whisper
 
-[![CI](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/slower-whisper/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/YOUR_USERNAME/slower-whisper/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/slower-whisper)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-Local transcription pipeline with audio enrichment
+[![CI](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml)
+[![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
+[![PyPI](https://img.shields.io/pypi/v/slower-whisper)](https://pypi.org/project/slower-whisper/)
+[![Python](https://img.shields.io/badge/python-3.12--3.14-blue)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/EffortlessMetrics/slower-whisper/blob/main/LICENSE)
 ```
-
-**Note:** Replace `YOUR_USERNAME` with your actual GitHub username.

@@ -1,0 +1,96 @@
+# Repository settings managed as code.
+# Apply with https://github.com/probot/settings or equivalent automation.
+repository:
+  name: slower-whisper
+  description: "Audio to receipts. Local-first conversation ETL with schema-versioned transcripts, streaming, and benchmarked contracts."
+  homepage: "https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/INDEX.md"
+  topics:
+    - whisper
+    - asr
+    - speech-recognition
+    - transcription
+    - diarization
+    - streaming
+    - conversation-intelligence
+    - llm
+    - fastapi
+    - python
+    - cuda
+    - privacy
+    - benchmarking
+    - json-schema
+  private: false
+  has_issues: true
+  has_projects: false
+  has_wiki: false
+  default_branch: main
+  allow_squash_merge: true
+  allow_merge_commit: false
+  allow_rebase_merge: false
+  allow_auto_merge: true
+  delete_branch_on_merge: true
+
+labels:
+  - name: bug
+    color: D73A4A
+    description: Something is broken and needs a fix.
+  - name: documentation
+    color: 0E8A16
+    description: Improvements or corrections to docs and guides.
+  - name: enhancement
+    color: A2EEEF
+    description: New functionality or capabilities.
+  - name: question
+    color: D876E3
+    description: Clarification or investigation needed.
+  - name: dependencies
+    color: 1D76DB
+    description: Dependency updates and related maintenance.
+  - name: github-actions
+    color: 5319E7
+    description: CI/CD workflow and automation changes.
+  - name: python
+    color: 3776AB
+    description: Python runtime, packaging, or typing work.
+  - name: api
+    color: C5DEF5
+    description: Public API surface and service behavior.
+  - name: streaming
+    color: FBCA04
+    description: Streaming protocol, callbacks, and event flow.
+  - name: benchmarks
+    color: BFDADC
+    description: Benchmark tracks, baselines, and regression checks.
+  - name: semantics
+    color: 7057FF
+    description: Semantic adapters, annotation quality, and prompts.
+  - name: security
+    color: B60205
+    description: Security hardening and vulnerability response.
+  - name: blocked
+    color: 000000
+    description: Work blocked by external dependency or decision.
+  - name: needs-receipts
+    color: E99695
+    description: Change needs validation receipts before merge.
+  - name: good first issue
+    color: 7057FF
+    description: Good starter task for new contributors.
+  - name: help wanted
+    color: 008672
+    description: Community help is welcome on this work.
+
+branches:
+  - name: main
+    protection:
+      required_status_checks:
+        strict: true
+        contexts:
+          - CI Success
+          - Verify (quick)
+      enforce_admins: true
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: true
+      restrictions: null

@@ -2,6 +2,8 @@
 
 This file contains tasks that must be completed manually via the GitHub web interface.
 
+Repository metadata (description, topics, labels, branch protection) is now managed in [`.github/settings.yml`](../.github/settings.yml). Use this checklist only for UI-only actions that cannot be encoded in repository files.
+
 ## Priority 1: Critical (Do First)
 
 ### Fix GitHub Actions Billing Issue
@@ -29,23 +31,23 @@ section in your settings
 
 ---
 
-## Priority 2: v1.0.0 Release (After billing is fixed)
+## Priority 2: Release (After billing is fixed)
 
-### Create GitHub Release for v1.0.0
+### Create GitHub Release for Current Stable Version
 
 **Status:** 📋 Ready to execute
 
 **Steps:**
 1. Go to: https://github.com/EffortlessMetrics/slower-whisper/releases/new
-2. **Tag:** `v1.0.0` (should already exist, or create it pointing to commit `e8ebd35`)
-3. **Title:** `slower-whisper v1.0.0 – Production-ready audio transcription & enrichment`
-4. **Description:** Copy from `docs/releases/v1.0.0-release-notes.md`
+2. **Tag:** latest version tag (for example, `v2.0.0`)
+3. **Title:** `slower-whisper vX.Y.Z`
+4. **Description:** Summarize from `CHANGELOG.md` and `docs/releases/RELEASE.md`
 5. Check: ✅ **Set as the latest release**
 6. Click **Publish release**
 
 **Verification:**
 - Check that release appears at: https://github.com/EffortlessMetrics/slower-whisper/releases
-- Verify release badge shows v1.0.0
+- Verify release badge shows the new tag
 - Confirm download links work
 
 ---
@@ -54,49 +56,18 @@ section in your settings
 
 ### Update Repository About Section
 
-**Status:** 📋 Ready to execute
+**Status:** ✅ Managed as code
 
-**Steps:**
+**Primary path:**
+1. Edit [`.github/settings.yml`](../.github/settings.yml).
+2. Apply settings via your configured settings automation.
+3. Verify repo About section and topics on the main page.
+
+**Manual fallback (if settings automation is unavailable):**
 1. Go to: https://github.com/EffortlessMetrics/slower-whisper
-2. Click **⚙️** (Settings icon) next to **About** on the right sidebar
-3. Update fields:
-
-   **Description:**
-   ```
-   Local-first Whisper-based transcription and audio enrichment toolkit
-   (ffmpeg + faster-whisper). Stage 1: GPU ASR. Stage 2: prosody & emotion
-   features for LLM-ready transcripts.
-   ```
-
-   **Website:** (leave empty or add docs URL if you create one)
-
-   **Topics** (add these tags):
-   - `whisper`
-   - `audio`
-   - `asr`
-   - `speech-recognition`
-   - `machine-learning`
-   - `nlp`
-   - `fastapi`
-   - `docker`
-   - `kubernetes`
-   - `python`
-   - `gpu`
-   - `cuda`
-   - `prosody`
-   - `emotion-recognition`
-
-4. Check these boxes:
-   - ✅ **Releases**
-   - ✅ **Packages** (if you plan to publish Docker images)
-   - ⬜ **Deployments** (leave unchecked unless using GitHub Deployments)
-
-5. Click **Save changes**
-
-**Verification:**
-- Topics appear as clickable tags below the repo name
-- Description is visible on repo home page
-- Release count shows correctly
+2. Click **⚙️** next to **About**
+3. Copy values from [`.github/settings.yml`](../.github/settings.yml)
+4. Save changes
 
 ---
 
@@ -197,8 +168,8 @@ section in your settings
 **Expected Results:**
 - ✅ Lint (ruff check) - Pass
 - ✅ Format check (ruff format) - Pass
-- ✅ Type check (mypy) - Pass (or continue-on-error)
-- ✅ Test (Python 3.11, 3.12) - Pass
+- ✅ Type check (mypy) - Pass
+- ✅ Test (Python 3.12, 3.13) - Pass
 - ✅ Integration tests - Pass
 - ✅ Docker builds - Pass (4 variants)
 
@@ -208,28 +179,18 @@ section in your settings
 
 **Status:** 📋 Recommended for production
 
-**Steps:**
+**Primary path:**
+1. Keep [`.github/settings.yml`](../.github/settings.yml) updated.
+2. Ensure your repository settings automation applies it.
+
+**Manual fallback (if automation is unavailable):**
 1. Go to: https://github.com/EffortlessMetrics/slower-whisper/settings/branches
-2. Click **Add rule** for branch `main`
-3. Configure:
-
-   **Branch name pattern:** `main`
-
-   **Protect matching branches:**
-   - ✅ Require a pull request before merging
-     - ⬜ Require approvals: 1 (optional, for teams)
-   - ✅ Require status checks to pass before merging
-     - ✅ Require branches to be up to date before merging
-     - Select required checks:
-       - `Lint (ruff check)`
-       - `Format check (ruff format)`
-       - `Test (Python 3.12)`
-       - `Integration tests`
-   - ✅ Require conversation resolution before merging
-   - ⬜ Require signed commits (optional, high security)
-   - ✅ Include administrators (apply rules to admins too)
-
-4. Click **Create** or **Save changes**
+2. Configure rule for `main` with:
+   - Required status checks: `CI Success`, `Verify (quick)`
+   - Require branches to be up to date
+   - Require pull request with one approval
+   - Require CODEOWNERS review
+   - Apply to admins
 
 **Benefits:**
 - Prevents direct pushes to main
@@ -247,7 +208,7 @@ Mark items as you complete them:
 - [ ] Verify CI/CD workflows run successfully
 
 **Priority 2: Release**
-- [ ] Create v1.0.0 GitHub Release
+- [ ] Create GitHub Release for current stable version
 - [ ] Verify release appears correctly
 - [ ] Test download links
 
@@ -271,7 +232,7 @@ Mark items as you complete them:
 ## Notes
 
 - **Billing issue is blocking:** Fix this first before anything else
-- **Release notes are ready:** Just copy from `docs/releases/v1.0.0-release-notes.md`
+- **Release metadata:** Source from `CHANGELOG.md` + `docs/releases/RELEASE.md`
 - **Workflows are configured correctly:** The failures are due to billing, not code
 - **Repository is clean:** All code changes have been committed and pushed
 
@@ -288,5 +249,5 @@ If you encounter issues with any of these tasks:
 
 ---
 
-**Last Updated:** 2025-11-17
+**Last Updated:** 2026-02-16
 **Created By:** Automated during repository cleanup and polish phase

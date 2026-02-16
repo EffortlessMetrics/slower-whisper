@@ -4,9 +4,11 @@
 
 Local-first transcripts with speakers, timestamps, enrichment, and a stable JSON contract for LLM pipelines.
 
-![Python](https://img.shields.io/badge/python-3.11--3.12-blue)
-![License](https://img.shields.io/badge/license-Apache%202.0-blue)
-![Status](https://img.shields.io/badge/status-production%20ready-success)
+[![CI](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml)
+[![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
+[![PyPI](https://img.shields.io/pypi/v/slower-whisper)](https://pypi.org/project/slower-whisper/)
+[![Python](https://img.shields.io/badge/python-3.12--3.14-blue)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 ---
 
@@ -136,6 +138,14 @@ See [docs/SCHEMA.md](docs/SCHEMA.md) for the complete schema specification and s
 | [ROADMAP.md](ROADMAP.md) | Development roadmap |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
+| [SECURITY.md](SECURITY.md) | Security policy and disclosure process |
+
+| Metadata File | Description |
+|---------------|-------------|
+| [.github/settings.yml](.github/settings.yml) | Repository metadata, labels, and branch protection as code |
+| [.github/SUPPORT.md](.github/SUPPORT.md) | Support channels and reporting guidance |
+| [CITATION.cff](CITATION.cff) | Citation metadata for research and reports |
+| [docs/PROJECT_METADATA.md](docs/PROJECT_METADATA.md) | Canonical map of governance and package metadata surfaces |
 
 ---
 
