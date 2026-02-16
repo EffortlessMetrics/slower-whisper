@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Support policy
+    url: https://github.com/EffortlessMetrics/slower-whisper/blob/main/.github/SUPPORT.md
+    about: Where to ask for help and what to include for faster triage.
   - name: Audit path (15 minutes)
     url: https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/audit/AUDIT_PATH.md
     about: Validate claims quickly or attach strong receipts to your report.

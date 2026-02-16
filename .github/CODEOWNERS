@@ -1,0 +1,9 @@
+# Default ownership for repository review requirements.
+* @EffortlessMetrics
+
+# Critical governance and release surfaces.
+.github/ @EffortlessMetrics
+docs/ @EffortlessMetrics
+transcription/ @EffortlessMetrics
+slower_whisper/ @EffortlessMetrics
+pyproject.toml @EffortlessMetrics

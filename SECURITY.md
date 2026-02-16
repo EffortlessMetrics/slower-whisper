@@ -6,8 +6,8 @@ We actively support the following versions with security updates:
 
 | Version | Supported          | Status |
 | ------- | ------------------ | ------ |
-| 1.0.x   | :white_check_mark: | Current stable release |
-| < 1.0   | :x:                | Pre-release, not supported |
+| 2.0.x   | :white_check_mark: | Current stable release |
+| < 2.0   | :x:                | End-of-life, not supported |
 
 **Recommendation:** Always use the latest stable release for security fixes.
 
@@ -88,7 +88,7 @@ pip install slower-whisper
 # Install from source (verify git tag)
 git clone https://github.com/EffortlessMetrics/slower-whisper.git
 cd slower-whisper
-git verify-tag v1.0.0  # Verify GPG signature
+git verify-tag v2.0.0  # Verify GPG signature
 pip install -e .
 ```
 

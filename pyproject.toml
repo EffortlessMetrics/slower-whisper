@@ -186,9 +186,14 @@ slower-whisper-dogfood = "transcription.dogfood:main"
 
 [project.urls]
 Homepage = "https://github.com/EffortlessMetrics/slower-whisper"
-Documentation = "https://github.com/EffortlessMetrics/slower-whisper#readme"
+Documentation = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/INDEX.md"
 Repository = "https://github.com/EffortlessMetrics/slower-whisper"
 Issues = "https://github.com/EffortlessMetrics/slower-whisper/issues"
+Changelog = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/CHANGELOG.md"
+Roadmap = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/ROADMAP.md"
+Security = "https://github.com/EffortlessMetrics/slower-whisper/security/policy"
+Support = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/.github/SUPPORT.md"
+Funding = "https://github.com/sponsors/EffortlessMetrics"
 
 [tool.setuptools]
 packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "transcription.integrations", "scripts", "integrations", "slower_whisper"]
