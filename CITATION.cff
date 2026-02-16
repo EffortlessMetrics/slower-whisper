@@ -2,7 +2,7 @@ cff-version: 1.2.0
 title: slower-whisper
 message: "If you use slower-whisper in research or reporting, please cite it using this metadata."
 type: software
-version: 2.0.0
+version: 2.0.1
 license: Apache-2.0
 repository-code: https://github.com/EffortlessMetrics/slower-whisper
 url: https://github.com/EffortlessMetrics/slower-whisper

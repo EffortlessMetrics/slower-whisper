@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slower-whisper"
-version = "2.0.0"
+version = "2.0.1"
 description = "Audio to receipts. Local-first conversation ETL: schema-versioned transcripts with speakers, timestamps, prosody, and a stable JSON contract for LLM pipelines."
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
