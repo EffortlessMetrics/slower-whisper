@@ -94,7 +94,8 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | Document | Description |
 |----------|-------------|
 | [releases/RELEASE.md](releases/RELEASE.md) | Release playbook and checklist pointers |
-| [releases/RELEASE_CHECKLIST_v2.0.0.md](releases/RELEASE_CHECKLIST_v2.0.0.md) | **v2.0.0 release checklist (current)** |
+| [releases/RELEASE_CHECKLIST_v2.0.0.md](releases/RELEASE_CHECKLIST_v2.0.0.md) | v2.0.0 release checklist (reference) |
+| [releases/v2.0.1.md](releases/v2.0.1.md) | v2.0.1 release notes |
 | [releases/RELEASE_CHECKLIST.md](releases/RELEASE_CHECKLIST.md) | v1.1.0 release checklist (reference) |
 | [releases/PRE_RELEASE_TEST_PLAN.md](releases/PRE_RELEASE_TEST_PLAN.md) | Pre-release validation steps |
 | [releases/FINAL_VERIFICATION_CHECKLIST.md](releases/FINAL_VERIFICATION_CHECKLIST.md) | Final verification before tagging |

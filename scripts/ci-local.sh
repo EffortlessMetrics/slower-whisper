@@ -49,6 +49,53 @@ run_check() {
     fi
 }
 
+# Ensure binary wheels can load their native libs when .venv uses Nix Python
+# outside a nix develop shell.
+ensure_native_wheel_runtime() {
+    # Fast path: runtime already healthy.
+    if uv run python -c "import numpy" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local python_lib
+    local gcc_lib
+    local python_store
+    local zlib_store
+
+    python_lib="$(ldd .venv/bin/python 2>/dev/null | awk '/libpython3\.[0-9]+\.so/ {print $3; exit}')"
+    gcc_lib="$(dirname "$(ldd .venv/bin/python 2>/dev/null | awk '/libgcc_s.so.1/ {print $3; exit}')")"
+
+    if [[ -z "${python_lib:-}" || -z "${gcc_lib:-}" ]]; then
+        return 0
+    fi
+
+    # Interpreter derivation root in /nix/store.
+    python_store="$(echo "$python_lib" | sed -E 's#/lib/libpython3\.[0-9]+\.so(\.[0-9]+)?$##')"
+    if [[ ! "$python_store" =~ ^/nix/store/ ]]; then
+        return 0
+    fi
+
+    if ! command -v nix-store >/dev/null 2>&1; then
+        return 0
+    fi
+
+    zlib_store="$(nix-store -q --references "$python_store" 2>/dev/null | awk '/-zlib-[0-9]/ {print; exit}')"
+    if [[ -z "${zlib_store:-}" || ! -d "$zlib_store/lib" ]]; then
+        return 0
+    fi
+
+    export LD_LIBRARY_PATH="$gcc_lib:$zlib_store/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    echo "✓ Auto-configured LD_LIBRARY_PATH for Nix Python wheel runtime"
+
+    if ! uv run python -c "import numpy" >/dev/null 2>&1; then
+        echo -e "${RED}NumPy import still failing after runtime path auto-config.${NC}"
+        echo "Run inside nix develop (or use nix-clean wrappers) and retry."
+        return 1
+    fi
+
+    return 0
+}
+
 # Ensure dependencies are installed
 echo -e "${BLUE}▶ Checking Python dependencies...${NC}"
 if [ ! -d ".venv" ]; then
@@ -56,6 +103,15 @@ if [ ! -d ".venv" ]; then
     uv sync --frozen --extra full --extra diarization --extra dev
 else
     echo "✓ .venv exists"
+fi
+echo ""
+
+if ! ensure_native_wheel_runtime; then
+    FAILED_CHECKS+=("Python runtime libs")
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${RED}✗ Local CI bootstrap failed${NC}"
+    echo ""
+    exit 1
 fi
 echo ""
 
