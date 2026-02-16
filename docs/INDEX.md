@@ -131,6 +131,10 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 
 ### Post-Processing (v2.0.1+)
 
+| Document | Description | Topics |
+|----------|-------------|--------|
+| [POST_PROCESSING.md](POST_PROCESSING.md) | **Post-processing guide** | `PostProcessor`, topic segmentation, turn-taking policies, presets |
+
 | Module | Description | Topics |
 |--------|-------------|--------|
 | `transcription.post_process` | **Post-processing orchestration** | `PostProcessor`, `PostProcessConfig`, preset configs for call center/meetings |
@@ -490,6 +494,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2026-01-30
+**Last Updated:** 2026-01-31
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.

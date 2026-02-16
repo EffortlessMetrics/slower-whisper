@@ -780,12 +780,12 @@ config = SemanticLLMConfig(backend="anthropic", model="claude-3-haiku")
 
 ## Related Documentation
 
-- [ROADMAP.md](/ROADMAP.md) - Development timeline and versioning philosophy
+- [ROADMAP.md](../ROADMAP.md) - Development timeline and versioning philosophy
 - [CLI_REFERENCE.md](CLI_REFERENCE.md) - Complete CLI documentation
 - [API_QUICK_REFERENCE.md](API_QUICK_REFERENCE.md) - Python API reference
 - [STREAMING_ARCHITECTURE.md](STREAMING_ARCHITECTURE.md) - Real-time streaming details
 - [CONFIGURATION.md](CONFIGURATION.md) - Configuration management
-- [CHANGELOG.md](/CHANGELOG.md) - Version history
+- [CHANGELOG.md](../CHANGELOG.md) - Version history
 
 ---
 

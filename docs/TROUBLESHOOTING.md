@@ -714,6 +714,6 @@ When reporting issues, please include:
 
 **See Also:**
 - [Quickstart Guide](QUICKSTART.md) - Getting started tutorial
-- [Installation Guide](INSTALLATION.md) - Detailed installation
+- [Installation Guide](INSTALL.md) - Detailed installation
 - [Audio Enrichment Guide](AUDIO_ENRICHMENT.md) - Stage 2 documentation
 - [GitHub Issues](https://github.com/EffortlessMetrics/slower-whisper/issues) - Report problems

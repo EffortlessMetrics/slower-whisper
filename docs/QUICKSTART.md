@@ -466,7 +466,7 @@ pip install transformers torch
 ### Learn More
 - **[Audio Enrichment Guide](AUDIO_ENRICHMENT.md)** - Comprehensive Stage 2 documentation
 - **[Prosody Details](PROSODY.md)** - Deep dive into prosody features
-- **[Prosody Reference](PROSODY_REFERENCE.md)** - Quick feature lookup
+- **[Prosody Reference](PROSODY_QUICK_REFERENCE.md)** - Quick feature lookup
 - **[Examples](../examples/)** - Example analysis scripts
 
 ### Advanced Usage
