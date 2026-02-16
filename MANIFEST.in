@@ -6,6 +6,7 @@
 include README.md
 include LICENSE
 include CHANGELOG.md
+include CITATION.cff
 include CONTRIBUTING.md
 include INSTALL.md
 

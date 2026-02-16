@@ -43,10 +43,13 @@ When CI check names change, update this file in the same PR as the workflow chan
 When release or governance metadata changes, keep these aligned:
 
 1. `pyproject.toml` project metadata (`version`, classifiers, URLs)
-2. `transcription.__version__` behavior (guarded by tests)
-3. `README.md` badges and policy links
-4. `docs/INDEX.md` navigation entries
-5. `.github/settings.yml` status checks and labels
+2. `CITATION.cff` release metadata (`version`)
+3. `ROADMAP.md` headers (`Current Version`, `Last Updated`)
+4. `CHANGELOG.md` release heading and date
+5. `transcription.__version__` behavior (metadata-derived; no manual bump)
+6. `README.md` badges and policy links
+7. `docs/INDEX.md` navigation entries
+8. `.github/settings.yml` status checks and labels
 
 ---
 
