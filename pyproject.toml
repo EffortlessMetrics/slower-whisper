@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "slower-whisper"
 version = "2.0.1"
-description = "Audio to receipts. Local-first conversation ETL: schema-versioned transcripts with speakers, timestamps, prosody, and a stable JSON contract for LLM pipelines."
+description = "Local-first Python conversation ETL: Whisper-compatible transcription, schema-versioned transcripts, streaming, and reproducible receipts."
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 license = {text = "Apache-2.0"}
@@ -16,9 +16,12 @@ keywords = [
     "asr",
     "whisper",
     "faster-whisper",
+    "speech-recognition",
     "transcription",
     "diarization",
     "streaming",
+    "websocket",
+    "sse",
     "prosody",
     "emotion-recognition",
     "local-first",
@@ -26,6 +29,8 @@ keywords = [
     "json-schema",
     "conversation-intelligence",
     "llm",
+    "fastapi",
+    "benchmarking",
     "rag",
 ]
 classifiers = [
@@ -37,8 +42,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Text Processing :: Linguistic",
 ]
 
@@ -187,6 +194,8 @@ slower-whisper-dogfood = "transcription.dogfood:main"
 [project.urls]
 Homepage = "https://github.com/EffortlessMetrics/slower-whisper"
 Documentation = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/INDEX.md"
+API = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/API_QUICK_REFERENCE.md"
+Benchmarks = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/BENCHMARKS.md"
 Repository = "https://github.com/EffortlessMetrics/slower-whisper"
 Issues = "https://github.com/EffortlessMetrics/slower-whisper/issues"
 Changelog = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/CHANGELOG.md"

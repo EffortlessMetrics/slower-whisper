@@ -374,8 +374,12 @@ class TestEndOfTurnHintEmission:
             turn_taking_policy="conservative",
         )
 
-        aggressive_processor = PostProcessor(aggressive_config, on_end_of_turn_hint=on_aggressive_hint)
-        conservative_processor = PostProcessor(conservative_config, on_end_of_turn_hint=on_conservative_hint)
+        aggressive_processor = PostProcessor(
+            aggressive_config, on_end_of_turn_hint=on_aggressive_hint
+        )
+        conservative_processor = PostProcessor(
+            conservative_config, on_end_of_turn_hint=on_conservative_hint
+        )
 
         # Test with moderate silence (400ms) - aggressive threshold is 300ms, conservative is 1200ms
         ctx = SegmentContext(

@@ -1,50 +1,52 @@
-# MANIFEST.in - Specify additional files to include in source distribution
-# This file is used by setuptools when building sdist (.tar.gz)
-# Wheels automatically include Python packages specified in pyproject.toml
+# MANIFEST.in - source distribution file selection for setuptools
 
-# Include documentation
+# Core project metadata
 include README.md
 include LICENSE
 include CHANGELOG.md
 include CITATION.cff
 include CONTRIBUTING.md
-include INSTALL.md
+include SECURITY.md
+include ROADMAP.md
+include CLAUDE.md
+include AGENTS.md
 
-# Include requirements files
+# Packaging/build metadata
+include pyproject.toml
+include MANIFEST.in
+include uv.lock
+include flake.nix
+include flake.lock
+include Makefile
+include pytest.ini
+include pyrightconfig.json
+include .pre-commit-config.yaml
+
+# Dependency pins
 include requirements.txt
 include requirements-base.txt
 include requirements-enrich.txt
 include requirements-dev.txt
 
-# Include configuration files
-include pyproject.toml
-include pytest.ini
-include .pre-commit-config.yaml
+# Typed package markers
+include transcription/py.typed
+include slower_whisper/py.typed
 
-# Include examples
-recursive-include examples *.py
-recursive-include examples *.md
+# Docs and examples
+recursive-include docs *.md *.rst *.txt *.json *.yaml *.yml
+recursive-include examples *.py *.md *.json *.txt
 
-# Include documentation
-recursive-include docs *.md
-recursive-include docs *.rst
+# Benchmarks and tests
+recursive-include benchmarks *.py *.md *.json *.jsonl *.txt *.csv *.schema *.wav *.rttm
+recursive-include tests *.py *.json *.wav *.feature
 
-# Include tests (for source distribution users who want to run tests)
-recursive-include tests *.py
-recursive-include tests *.json
-recursive-include tests *.wav
+# Operational/deployment assets
+recursive-include scripts *.py *.sh *.md
+recursive-include config *
+recursive-include k8s *
+recursive-include .github *.yml *.yaml *.md
 
-# Include GitHub workflows (for transparency)
-recursive-include .github *.yml
-recursive-include .github *.yaml
-recursive-include .github *.md
-
-# Include Docker files
-include Dockerfile
-include docker-compose.yml
-include .dockerignore
-
-# Exclude compiled files
+# Exclude compiled/temporary artifacts
 global-exclude __pycache__
 global-exclude *.py[cod]
 global-exclude *.so
@@ -52,7 +54,7 @@ global-exclude .DS_Store
 global-exclude *.swp
 global-exclude *.swo
 
-# Exclude build artifacts
+# Exclude build and local output directories
 prune build
 prune dist
 prune *.egg-info
@@ -62,7 +64,7 @@ prune .mypy_cache
 prune .ruff_cache
 prune .benchmarks
 
-# Exclude data directories (users create these themselves)
+# Exclude local data directories created at runtime
 prune raw_audio
 prune input_audio
 prune transcripts

@@ -47,6 +47,9 @@ Compatibility:
     tuple-style access (segment[4]) for backwards compatibility.
 """
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
 from .compat import Segment, TranscriptionInfo, Word
 from .model import WhisperModel
 
@@ -57,8 +60,7 @@ __all__ = [
     "TranscriptionInfo",
 ]
 
-# Version matches the main package
 try:
-    from transcription import __version__
-except ImportError:
-    __version__ = "2.0.0"
+    __version__ = _pkg_version("slower-whisper")
+except PackageNotFoundError:
+    __version__ = "0.0.0-dev"

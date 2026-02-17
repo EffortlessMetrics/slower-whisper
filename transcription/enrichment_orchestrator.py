@@ -183,8 +183,7 @@ def _run_post_processors(transcript: Transcript, config: EnrichmentConfig) -> Tr
                 roles = pp.get_role_assignments()
                 if roles:
                     transcript.annotations["roles"] = {
-                        speaker_id: assignment.to_dict()
-                        for speaker_id, assignment in roles.items()
+                        speaker_id: assignment.to_dict() for speaker_id, assignment in roles.items()
                     }
             except Exception as e:
                 logger.warning("Failed to get role assignments: %s", e)

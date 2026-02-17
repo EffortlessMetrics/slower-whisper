@@ -1,8 +1,8 @@
 # slower-whisper
 
-## Audio → Receipts
+Audio in, receipts out.
 
-Local-first transcripts with speakers, timestamps, enrichment, and a stable JSON contract for LLM pipelines.
+`slower-whisper` is a local-first Python toolkit for conversation ETL. It turns raw audio into schema-versioned transcript data with optional speaker/audio enrichment and reproducible run metadata.
 
 [![CI](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml)
 [![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
@@ -10,47 +10,92 @@ Local-first transcripts with speakers, timestamps, enrichment, and a stable JSON
 [![Python](https://img.shields.io/badge/python-3.12--3.14-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
----
+## What You Get
 
-### What this is
+- Local-first transcription and enrichment (no hosted runtime required)
+- Stable schema-versioned transcript JSON (`schema_version = 2`)
+- Optional speaker diarization, prosody, and emotion extraction
+- Streaming contracts for WebSocket/SSE pipelines
+- Benchmark CLI with baseline/gating support
+- A `faster-whisper` compatibility shim for migration
 
-**slower-whisper is ETL for conversations.** It transforms raw audio into schema-versioned structured data that captures not just *what* was said, but *who* said it, *when*, and *how*.
+## Python Package Map (Crate Equivalents)
 
-Text-only LLMs can't hear tone, pacing, or hesitation. Omnimodal LLMs burn capacity doing ASR/diarization implicitly. This system pre-computes the acoustic ground truth—timestamps, speaker turns, prosody, emotion—so your LLM can focus on reasoning instead of signal processing.
+| Surface | Purpose | Typical Entry Points |
+|---------|---------|----------------------|
+| `transcription` | Core public API (batch, file, bytes, enrichment, models, streaming primitives) | `transcribe_directory`, `transcribe_file`, `transcribe_bytes`, `enrich_directory` |
+| `slower_whisper` | `faster-whisper` compatible import surface | `WhisperModel`, `Segment`, `Word`, `TranscriptionInfo` |
+| `transcription.service*` | FastAPI service and transport layers | `transcription/service.py` |
+| `transcription.streaming*` | Real-time session/event contracts, client/server helpers | `streaming.py`, `streaming_ws.py`, `streaming_client.py` |
+| `transcription.benchmark_cli` + `benchmarks/` | Multi-track evaluation and regression gates | `slower-whisper benchmark ...` |
+| `transcription.store`, `transcription.outcomes`, `transcription.integrations` | Store/outcomes/integration surfaces for downstream automation | package modules + CLI subcommands |
 
-### Why this exists
+## Install
 
-**FinOps for LLMs.** Deterministic triage runs first: rule-based keyword extraction, DSP-derived prosody, speaker math. Only the interesting segments need expensive model inference. The cheap layer filters; the expensive layer reasons.
-
-**Truth layer.** LLMs hallucinate tone and pacing. They can't reliably separate speakers or produce stable timestamps. slower-whisper does that with deterministic math (IoU speaker assignment, Praat pitch extraction, librosa energy) and hands the LLM hard facts instead of guesses.
-
-**Local-first.** All processing runs on your hardware. Data never leaves. Model weights are fetched once on first use.
-
-### Key properties
-
-- **Schema-versioned JSON** (v2) with stability tiers and backward compatibility
-- **Modular dependencies** — install only what you need (2.5GB base → 8GB+ full)
-- **5 semantic adapters** — local keywords, local LLM, OpenAI, Anthropic, or bring your own
-- **Streaming built-in** — WebSocket + SSE for real-time pipelines
-- **Receipt provenance** — config hash, run IDs, git commit for reproducibility
-
----
-
-## 5-Minute Quickstart
+Base install (transcription only):
 
 ```bash
-# Clone and enter dev shell
-git clone https://github.com/EffortlessMetrics/slower-whisper.git
-cd slower-whisper
-nix develop           # or: uv sync --extra full --extra dev
-
-# Transcribe (place audio in raw_audio/, outputs to whisper_json/)
-uv run slower-whisper transcribe --root .
+uv add slower-whisper
+# or: pip install slower-whisper
 ```
 
-### Drop-in faster-whisper Replacement
+Extras by use case:
 
-Already using `faster-whisper`? Just change the import:
+| Extra | Adds |
+|-------|------|
+| `enrich-basic` | Base DSP stack (`numpy`, `librosa`, `soundfile`) |
+| `enrich-prosody` | Praat-based prosody (`praat-parselmouth`) |
+| `emotion` | Emotion models (`torch`, `torchaudio`, `transformers`) |
+| `diarization` | Speaker diarization (`pyannote.audio`) |
+| `full` / `enrich` | Full enrichment bundle |
+| `api` | FastAPI service runtime |
+| `integrations` | LangChain + LlamaIndex adapters |
+| `dev` | Contributor toolchain |
+
+Examples:
+
+```bash
+uv sync
+uv sync --extra full
+uv sync --extra api
+uv sync --extra full --extra dev
+```
+
+## 5-Minute CLI Quickstart
+
+```bash
+git clone https://github.com/EffortlessMetrics/slower-whisper.git
+cd slower-whisper
+
+# Recommended dev environment
+nix develop
+uv sync --extra full --extra dev
+
+# Stage 1 transcription (reads raw_audio/, writes whisper_json/)
+uv run slower-whisper transcribe --root .
+
+# Optional stage 2 enrichment
+uv run slower-whisper enrich --root .
+```
+
+## Python API Quickstart
+
+```python
+from pathlib import Path
+
+from transcription import TranscriptionConfig, transcribe_file
+
+cfg = TranscriptionConfig(model="base", device="auto", language="en")
+transcript = transcribe_file(
+    audio_path=Path("raw_audio/meeting.wav"),
+    root=Path("."),
+    config=cfg,
+)
+
+print(transcript.full_text)
+```
+
+## `faster-whisper` Drop-In Migration
 
 ```python
 # Before
@@ -59,98 +104,60 @@ from faster_whisper import WhisperModel
 # After
 from slower_whisper import WhisperModel
 
-model = WhisperModel("base")
-segments, info = model.transcribe("audio.wav")
+model = WhisperModel("base", device="auto")
+segments, info = model.transcribe("audio.wav", word_timestamps=True)
 
-# Same API, plus optional diarization and enrichment
-segments, info = model.transcribe("meeting.wav", diarize=True, enrich=True)
-transcript = model.last_transcript  # Access enriched data
+# slower-whisper extension
+transcript = model.last_transcript
 ```
 
-See [Migrating from faster-whisper](docs/FASTER_WHISPER_MIGRATION.md) for details.
+See [docs/FASTER_WHISPER_MIGRATION.md](docs/FASTER_WHISPER_MIGRATION.md) for option mapping and compatibility notes.
 
----
-
-## Local Gate (Canonical)
-
-CI may be rate-limited; **local gate is canonical**. CI is additive.
+## Benchmarking
 
 ```bash
-./scripts/ci-local.sh        # full gate
-./scripts/ci-local.sh fast   # quick check
+# Inspect tracks and staged datasets
+uv run slower-whisper benchmark list
+uv run slower-whisper benchmark status
+
+# Run an ASR smoke benchmark
+uv run slower-whisper benchmark run --track asr --dataset smoke
+
+# Compare against stored baseline (gate mode fails on regression)
+uv run slower-whisper benchmark compare --track asr --dataset smoke --gate
 ```
 
-**Note:** Inside devshell, use `nix-clean` wrapper for nix commands (avoids ABI issues).
+For benchmark details, see [benchmarks/README.md](benchmarks/README.md) and [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
-**PR requirement:** Paste gate receipts before merging.
-
----
-
-## Installation
-
-### Nix (Recommended)
+## Local Gate
 
 ```bash
-nix develop
-uv sync --extra full --extra dev
+./scripts/ci-local.sh
+./scripts/ci-local.sh fast
 ```
 
-### UV (Fallback)
-
-```bash
-# Install system deps (ffmpeg, libsndfile) via apt/brew/choco
-uv sync --extra full --extra dev   # contributors
-uv sync --extra full               # runtime only
-uv sync                            # transcription only (~2.5GB)
-```
-
----
-
-## Output Format
-
-```json
-{
-  "schema_version": 2,
-  "file": "meeting.wav",
-  "segments": [{"id": 0, "start": 0.0, "end": 4.2, "text": "Hello."}]
-}
-```
-
-See [docs/SCHEMA.md](docs/SCHEMA.md) for the complete schema specification and stability contract.
-
----
+Inside devshell, use `nix-clean` wrapper for raw nix commands.
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [docs/INDEX.md](docs/INDEX.md) | **Start here** — complete documentation map |
-| [docs/FASTER_WHISPER_MIGRATION.md](docs/FASTER_WHISPER_MIGRATION.md) | **Migrating from faster-whisper** |
-| [docs/QUICKSTART.md](docs/QUICKSTART.md) | First transcription tutorial |
-| [docs/SCHEMA.md](docs/SCHEMA.md) | JSON schema reference |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Configuration reference |
-| [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) | CLI command reference |
+| Document | Purpose |
+|----------|---------|
+| [docs/INDEX.md](docs/INDEX.md) | Documentation map |
+| [docs/QUICKSTART.md](docs/QUICKSTART.md) | First-run walkthrough |
+| [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) | CLI reference |
 | [docs/API_QUICK_REFERENCE.md](docs/API_QUICK_REFERENCE.md) | Python API reference |
-| [docs/GPU_SETUP.md](docs/GPU_SETUP.md) | GPU configuration |
+| [docs/STREAMING_ARCHITECTURE.md](docs/STREAMING_ARCHITECTURE.md) | Streaming contract and architecture |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Config and precedence |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Benchmark command reference |
+| [docs/PROJECT_METADATA.md](docs/PROJECT_METADATA.md) | Metadata/governance surfaces |
 
-| Project File | Description |
-|--------------|-------------|
-| [ROADMAP.md](ROADMAP.md) | Development roadmap |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
-| [SECURITY.md](SECURITY.md) | Security policy and disclosure process |
+## Project Metadata Surfaces
 
-| Metadata File | Description |
-|---------------|-------------|
-| [.github/settings.yml](.github/settings.yml) | Repository metadata, labels, and branch protection as code |
-| [.github/SUPPORT.md](.github/SUPPORT.md) | Support channels and reporting guidance |
-| [CITATION.cff](CITATION.cff) | Citation metadata for research and reports |
-| [docs/PROJECT_METADATA.md](docs/PROJECT_METADATA.md) | Canonical map of governance and package metadata surfaces |
-
----
+- Package metadata: [pyproject.toml](pyproject.toml)
+- Citation metadata: [CITATION.cff](CITATION.cff)
+- Release/change history: [CHANGELOG.md](CHANGELOG.md)
+- Current plan/status: [ROADMAP.md](ROADMAP.md)
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) file.
-
-**Privacy:** All processing runs locally. Only model weights are fetched on first use.
+Apache License 2.0. See [LICENSE](LICENSE).

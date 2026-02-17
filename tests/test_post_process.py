@@ -171,10 +171,34 @@ class TestPostProcessor:
 
         # Process multiple turns
         turns = [
-            {"id": "turn_0", "speaker_id": "spk_0", "text": "Let's talk about billing issues.", "start": 0, "end": 2},
-            {"id": "turn_1", "speaker_id": "spk_1", "text": "I have a billing question.", "start": 2, "end": 4},
-            {"id": "turn_2", "speaker_id": "spk_0", "text": "Now let me discuss technical support.", "start": 4, "end": 6},
-            {"id": "turn_3", "speaker_id": "spk_1", "text": "I need technical help with my device.", "start": 6, "end": 8},
+            {
+                "id": "turn_0",
+                "speaker_id": "spk_0",
+                "text": "Let's talk about billing issues.",
+                "start": 0,
+                "end": 2,
+            },
+            {
+                "id": "turn_1",
+                "speaker_id": "spk_1",
+                "text": "I have a billing question.",
+                "start": 2,
+                "end": 4,
+            },
+            {
+                "id": "turn_2",
+                "speaker_id": "spk_0",
+                "text": "Now let me discuss technical support.",
+                "start": 4,
+                "end": 6,
+            },
+            {
+                "id": "turn_3",
+                "speaker_id": "spk_1",
+                "text": "I need technical help with my device.",
+                "start": 6,
+                "end": 8,
+            },
         ]
 
         for turn in turns:
@@ -198,8 +222,20 @@ class TestPostProcessor:
 
         # Process turns with role-indicative text
         turns = [
-            {"id": "turn_0", "speaker_id": "spk_0", "text": "Thank you for calling, how can I help you today?", "start": 0, "end": 3},
-            {"id": "turn_1", "speaker_id": "spk_1", "text": "I'm calling about my account.", "start": 3, "end": 6},
+            {
+                "id": "turn_0",
+                "speaker_id": "spk_0",
+                "text": "Thank you for calling, how can I help you today?",
+                "start": 0,
+                "end": 3,
+            },
+            {
+                "id": "turn_1",
+                "speaker_id": "spk_1",
+                "text": "I'm calling about my account.",
+                "start": 3,
+                "end": 6,
+            },
         ]
 
         for turn in turns:
@@ -218,7 +254,9 @@ class TestPostProcessor:
         processor = PostProcessor(config)
 
         # Process some turns
-        processor.process_turn({"id": "turn_0", "speaker_id": "spk_0", "text": "Test", "start": 0, "end": 1})
+        processor.process_turn(
+            {"id": "turn_0", "speaker_id": "spk_0", "text": "Test", "start": 0, "end": 1}
+        )
 
         processor.reset()
 
@@ -318,13 +356,15 @@ class TestCallbacks:
         )
 
         # Process enough turns to trigger role decision
-        processor.process_turn({
-            "id": "turn_0",
-            "speaker_id": "spk_0",
-            "text": "How can I help you?",
-            "start": 0,
-            "end": 2,
-        })
+        processor.process_turn(
+            {
+                "id": "turn_0",
+                "speaker_id": "spk_0",
+                "text": "How can I help you?",
+                "start": 0,
+                "end": 2,
+            }
+        )
 
         # Callback should have been triggered with typed payload
         assert len(payloads_received) == 1
@@ -509,8 +549,20 @@ class TestPostProcessorFinalize:
         # Process turns but don't trigger automatic boundary
         turns = [
             {"id": "turn_0", "speaker_id": "spk_0", "text": "Hello there.", "start": 0, "end": 2},
-            {"id": "turn_1", "speaker_id": "spk_1", "text": "Hi, how are you?", "start": 2, "end": 5},
-            {"id": "turn_2", "speaker_id": "spk_0", "text": "I'm doing well.", "start": 5, "end": 8},
+            {
+                "id": "turn_1",
+                "speaker_id": "spk_1",
+                "text": "Hi, how are you?",
+                "start": 2,
+                "end": 5,
+            },
+            {
+                "id": "turn_2",
+                "speaker_id": "spk_0",
+                "text": "I'm doing well.",
+                "start": 5,
+                "end": 8,
+            },
         ]
 
         for turn in turns:
@@ -550,8 +602,20 @@ class TestPostProcessorFinalize:
 
         # Process turns but not enough to trigger automatic role decision
         turns = [
-            {"id": "turn_0", "speaker_id": "spk_0", "text": "How can I help you?", "start": 0, "end": 2},
-            {"id": "turn_1", "speaker_id": "spk_1", "text": "I need assistance.", "start": 2, "end": 5},
+            {
+                "id": "turn_0",
+                "speaker_id": "spk_0",
+                "text": "How can I help you?",
+                "start": 0,
+                "end": 2,
+            },
+            {
+                "id": "turn_1",
+                "speaker_id": "spk_1",
+                "text": "I need assistance.",
+                "start": 2,
+                "end": 5,
+            },
         ]
 
         for turn in turns:
@@ -660,8 +724,20 @@ class TestPostProcessorFinalize:
 
         # Process turns
         turns = [
-            {"id": "turn_0", "speaker_id": "spk_0", "text": "Discuss the budget.", "start": 0, "end": 3},
-            {"id": "turn_1", "speaker_id": "spk_1", "text": "Budget looks good.", "start": 3, "end": 6},
+            {
+                "id": "turn_0",
+                "speaker_id": "spk_0",
+                "text": "Discuss the budget.",
+                "start": 0,
+                "end": 3,
+            },
+            {
+                "id": "turn_1",
+                "speaker_id": "spk_1",
+                "text": "Budget looks good.",
+                "start": 3,
+                "end": 6,
+            },
         ]
 
         for turn in turns:
@@ -703,13 +779,15 @@ class TestPostProcessorFinalize:
         processor.process_segment(ctx)
 
         # Process a turn with earlier end time
-        processor.process_turn({
-            "id": "turn_0",
-            "speaker_id": "spk_0",
-            "text": "Test turn",
-            "start": 0,
-            "end": 5.0,
-        })
+        processor.process_turn(
+            {
+                "id": "turn_0",
+                "speaker_id": "spk_0",
+                "text": "Test turn",
+                "start": 0,
+                "end": 5.0,
+            }
+        )
 
         processor.finalize()
 
@@ -725,13 +803,15 @@ class TestPostProcessorFinalize:
         processor = PostProcessor(config)
 
         # Process and finalize
-        processor.process_turn({
-            "id": "turn_0",
-            "speaker_id": "spk_0",
-            "text": "Test",
-            "start": 0,
-            "end": 1,
-        })
+        processor.process_turn(
+            {
+                "id": "turn_0",
+                "speaker_id": "spk_0",
+                "text": "Test",
+                "start": 0,
+                "end": 1,
+            }
+        )
         processor.finalize()
 
         assert processor._finalized is True
@@ -757,7 +837,14 @@ class TestBatchPipelineIntegration:
             Segment(id=0, start=0.0, end=2.0, text="Hello there.", speaker={"id": "spk_0"}),
         ]
         turns = [
-            Turn(id="turn_0", speaker_id="spk_0", segment_ids=[0], start=0.0, end=2.0, text="Hello there."),
+            Turn(
+                id="turn_0",
+                speaker_id="spk_0",
+                segment_ids=[0],
+                start=0.0,
+                end=2.0,
+                text="Hello there.",
+            ),
         ]
         transcript = Transcript(file_name="test.wav", language="en", segments=segments, turns=turns)
 
@@ -806,9 +893,30 @@ class TestBatchPipelineIntegration:
             Segment(id=2, start=4.0, end=6.0, text="Third segment.", speaker={"id": "spk_0"}),
         ]
         turns = [
-            Turn(id="turn_0", speaker_id="spk_0", segment_ids=[0], start=0.0, end=2.0, text="First segment."),
-            Turn(id="turn_1", speaker_id="spk_1", segment_ids=[1], start=2.0, end=4.0, text="Second segment."),
-            Turn(id="turn_2", speaker_id="spk_0", segment_ids=[2], start=4.0, end=6.0, text="Third segment."),
+            Turn(
+                id="turn_0",
+                speaker_id="spk_0",
+                segment_ids=[0],
+                start=0.0,
+                end=2.0,
+                text="First segment.",
+            ),
+            Turn(
+                id="turn_1",
+                speaker_id="spk_1",
+                segment_ids=[1],
+                start=2.0,
+                end=4.0,
+                text="Second segment.",
+            ),
+            Turn(
+                id="turn_2",
+                speaker_id="spk_0",
+                segment_ids=[2],
+                start=4.0,
+                end=6.0,
+                text="Third segment.",
+            ),
         ]
         transcript = Transcript(file_name="test.wav", language="en", segments=segments, turns=turns)
 
@@ -834,12 +942,34 @@ class TestBatchPipelineIntegration:
 
         # Create transcript with safety-relevant content
         segments = [
-            Segment(id=0, start=0.0, end=2.0, text="My email is test@example.com", speaker={"id": "spk_0"}),
-            Segment(id=1, start=2.0, end=4.0, text="How can I help you today?", speaker={"id": "spk_1"}),
+            Segment(
+                id=0,
+                start=0.0,
+                end=2.0,
+                text="My email is test@example.com",
+                speaker={"id": "spk_0"},
+            ),
+            Segment(
+                id=1, start=2.0, end=4.0, text="How can I help you today?", speaker={"id": "spk_1"}
+            ),
         ]
         turns = [
-            Turn(id="turn_0", speaker_id="spk_0", segment_ids=[0], start=0.0, end=2.0, text="My email is test@example.com"),
-            Turn(id="turn_1", speaker_id="spk_1", segment_ids=[1], start=2.0, end=4.0, text="How can I help you today?"),
+            Turn(
+                id="turn_0",
+                speaker_id="spk_0",
+                segment_ids=[0],
+                start=0.0,
+                end=2.0,
+                text="My email is test@example.com",
+            ),
+            Turn(
+                id="turn_1",
+                speaker_id="spk_1",
+                segment_ids=[1],
+                start=2.0,
+                end=4.0,
+                text="How can I help you today?",
+            ),
         ]
         transcript = Transcript(file_name="test.wav", language="en", segments=segments, turns=turns)
 

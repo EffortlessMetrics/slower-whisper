@@ -52,8 +52,23 @@ run_check() {
 # Ensure binary wheels can load their native libs when .venv uses Nix Python
 # outside a nix develop shell.
 ensure_native_wheel_runtime() {
+    local numpy_err
+    local post_fix_err
+
     # Fast path: runtime already healthy.
     if uv run python -c "import numpy" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    numpy_err="$(uv run python -c "import numpy" 2>&1 >/dev/null || true)"
+
+    # Fresh envs may not have NumPy yet; don't treat that as a native lib failure.
+    if grep -q "No module named 'numpy'" <<<"$numpy_err"; then
+        return 0
+    fi
+
+    # Only attempt linker path repair for known native-library signatures.
+    if ! grep -Eq "(libstdc\\+\\+\\.so\\.6|libz\\.so\\.1|GLIBCXX_|CXXABI_|cannot open shared object file)" <<<"$numpy_err"; then
         return 0
     fi
 
@@ -87,8 +102,22 @@ ensure_native_wheel_runtime() {
     export LD_LIBRARY_PATH="$gcc_lib:$zlib_store/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     echo "✓ Auto-configured LD_LIBRARY_PATH for Nix Python wheel runtime"
 
-    if ! uv run python -c "import numpy" >/dev/null 2>&1; then
+    if uv run python -c "import numpy" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    post_fix_err="$(uv run python -c "import numpy" 2>&1 >/dev/null || true)"
+    if grep -q "No module named 'numpy'" <<<"$post_fix_err"; then
+        return 0
+    fi
+
+    if ! grep -Eq "(libstdc\\+\\+\\.so\\.6|libz\\.so\\.1|GLIBCXX_|CXXABI_|cannot open shared object file)" <<<"$post_fix_err"; then
+        return 0
+    fi
+
+    if [[ -n "$post_fix_err" ]]; then
         echo -e "${RED}NumPy import still failing after runtime path auto-config.${NC}"
+        echo "$post_fix_err"
         echo "Run inside nix develop (or use nix-clean wrappers) and retry."
         return 1
     fi
@@ -186,11 +215,15 @@ docs_sanity_check() {
 
 run_check "Docs sanity" docs_sanity_check
 
-# Check 1: Pre-commit hooks (includes ruff lint + format)
+# Check 1: Formatting (fail early with a clear local signal)
+run_check "Formatting (ruff)" \
+    uv run ruff format . --check
+
+# Check 2: Pre-commit hooks (includes ruff lint + format)
 run_check "Pre-commit hooks" \
     uv run pre-commit run --all-files
 
-# Check 2: Type-check (typed surface)
+# Check 3: Type-check (typed surface)
 run_check "Type-check (mypy)" \
     uv run mypy \
         transcription/ \
@@ -199,11 +232,11 @@ run_check "Type-check (mypy)" \
         tests/test_turn_helpers.py \
         tests/test_audio_state_schema.py
 
-# Check 3: Fast tests
+# Check 4: Fast tests
 run_check "Fast tests (pytest -m 'not slow and not heavy')" \
     uv run pytest -q -m "not slow and not heavy"
 
-# Check 4: Quick verification
+# Check 5: Quick verification
 run_check "Verification suite" \
     uv run slower-whisper-verify --quick
 
@@ -212,7 +245,7 @@ if [ "$MODE" = "fast" ]; then
     echo -e "${YELLOW}⚡ Fast mode: skipping nix checks${NC}"
     echo ""
 else
-    # Check 5: Nix flake check (lint + format via nixpkgs ruff)
+    # Check 6: Nix flake check (lint + format via nixpkgs ruff)
     # Use nix-clean if available (inside devshell), otherwise plain nix
     if type nix-clean &>/dev/null; then
         NIX_CMD="nix-clean"
@@ -220,11 +253,16 @@ else
         NIX_CMD="nix"
     fi
 
+    # Keep Python wheel runtime fixes from contaminating Nix's own dynamic linker env.
+    run_nix_clean_env() {
+        env -u LD_LIBRARY_PATH -u LD_PRELOAD "$@"
+    }
+
     run_check "Nix flake check" \
-        $NIX_CMD flake check
+        run_nix_clean_env "$NIX_CMD" flake check
 
     run_check "Nix verify app" \
-        $NIX_CMD run .#verify -- --quick
+        run_nix_clean_env "$NIX_CMD" run .#verify -- --quick
 fi
 
 # Summary
