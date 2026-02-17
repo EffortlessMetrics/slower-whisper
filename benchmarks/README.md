@@ -25,7 +25,7 @@ The benchmark system is track-based and supports baseline comparison for regress
 | Track | Primary Metrics | Typical Datasets |
 |-------|------------------|------------------|
 | `asr` | `wer`, `cer`, `rtf` | `smoke`, `librispeech`, `commonvoice_en_smoke` |
-| `diarization` | `der`, `jer`, `speaker_count_accuracy` | `smoke`, `ami`, `callhome`, `libricss` |
+| `diarization` | `der`, `jer`, `speaker_count_accuracy` | `smoke`, `smoke_tones`, `ami`, `callhome`, `libricss` |
 | `streaming` | `latency_p50`, `latency_p99`, `throughput`, `rtf` | `librispeech`, `ami` |
 | `semantic` | tags mode: `topic_f1`, `risk_f1`, `action_*`; summary mode: quality scores | `ami` |
 | `emotion` | `accuracy`, `f1_weighted`, confusion metrics | `iemocap` |
@@ -41,6 +41,9 @@ uv run slower-whisper benchmark status
 
 # Run ASR smoke benchmark
 uv run slower-whisper benchmark run --track asr --dataset smoke
+
+# Run diarization smoke benchmark (speech fixtures; defaults to stub mode unless overridden)
+uv run slower-whisper benchmark run --track diarization --dataset smoke
 
 # Run deterministic semantic tags benchmark
 uv run slower-whisper benchmark run --track semantic --dataset ami --mode tags --limit 10

@@ -3,9 +3,9 @@
   "id": "diarization-smoke",
   "track": "diarization",
   "split": "smoke",
-  "description": "Minimal diarization test set for quick validation - synthetic tone-based audio with known speaker patterns",
+  "description": "Minimal diarization test set for quick validation - synthetic speech audio with known two-speaker turn patterns",
   "source": {
-    "name": "slower-whisper synthetic smoke tests",
+    "name": "slower-whisper synthetic speech smoke tests",
     "url": "https://github.com/EffortlessMetrics/slower-whisper",
     "citation": null
   },
@@ -24,74 +24,74 @@
   "annotation_format": {
     "type": "rttm",
     "source": "synthetic",
-    "notes": "Deterministic RTTM annotations matching synthetic audio generation"
+    "notes": "Deterministic RTTM annotations generated from scripted two-speaker TTS turns"
   },
   "samples": [
     {
-      "id": "synthetic_2speaker",
-      "audio": "../../../data/diarization/synthetic_2speaker.wav",
-      "audio_sha256": "980e4b85f5074197d3a2f638b17892de3d426fe9cc234291da2ddd1bc3ff7fb5",
-      "reference_rttm": "../../../data/diarization/synthetic_2speaker.rttm",
-      "rttm_sha256": "2e7bfa9fcbaa5cde8d89af856b4ad4968e258d455df9e3efcb6b0b3b78ba1565",
-      "duration_s": 12.6,
+      "id": "meeting_dual_voice",
+      "audio": "../../../data/diarization/meeting_dual_voice.wav",
+      "audio_sha256": "b9620e0a358c1827b3fce55733b8538cb0b1eada44842d0ee3eb6147431693f0",
+      "reference_rttm": "../../../data/diarization/meeting_dual_voice.rttm",
+      "rttm_sha256": "063dd7ed97a727cd9d5cacc804d22fb128985f992af6a8ceee2a568400a67d27",
+      "duration_s": 13.205,
       "expected_speaker_count": 2,
       "license": "MIT",
-      "source": "synthetic",
-      "notes": "Deterministic 2-speaker A/B tone pattern with 200ms gaps between turns"
+      "source": "synthetic-tts",
+      "notes": "Alternating 2-speaker meeting recap with short pauses."
     },
     {
-      "id": "overlap_tones",
-      "audio": "../../../data/diarization/overlap_tones.wav",
-      "audio_sha256": "a32d6da62e524a4164b5bdbd1161cd2a12fa5e5248d9592bb161bef3544bc2f6",
-      "reference_rttm": "../../../data/diarization/overlap_tones.rttm",
-      "rttm_sha256": "5359560bf10df65692b772f796128dee025043a9555cd505b73eade7c2890dd8",
-      "duration_s": 6.0,
+      "id": "support_handoff_dual_voice",
+      "audio": "../../../data/diarization/support_handoff_dual_voice.wav",
+      "audio_sha256": "9ff26ccfd162ad487013da6a08ad4b644e52234dd7826cc4cae6b26ac8d8530f",
+      "reference_rttm": "../../../data/diarization/support_handoff_dual_voice.rttm",
+      "rttm_sha256": "a478d0aa1cf184b76ff85ab7ff626f81613d8822b2220ef2458df3fda532609a",
+      "duration_s": 12.49,
       "expected_speaker_count": 2,
       "license": "MIT",
-      "source": "synthetic",
-      "notes": "Two-tone synthetic with overlapping exchanges at 2.0-2.5s and 5.0-5.6s"
+      "source": "synthetic-tts",
+      "notes": "Alternating support handoff with distinct speaker timbre."
     },
     {
-      "id": "call_mixed",
-      "audio": "../../../data/diarization/call_mixed.wav",
-      "audio_sha256": "93c148338b9229dbf17e732be69cce90b7d955518f3c9096975ce23754648340",
-      "reference_rttm": "../../../data/diarization/call_mixed.rttm",
-      "rttm_sha256": "add8d63396c00f484d44de4dfe318a814c7ad78845fd7774752e8a5616e141ef",
-      "duration_s": 15.5,
+      "id": "planning_sync_dual_voice",
+      "audio": "../../../data/diarization/planning_sync_dual_voice.wav",
+      "audio_sha256": "646804fadb207f75e528a373cc7db1856f600ea777d31f90a6c3b15c110e81fb",
+      "reference_rttm": "../../../data/diarization/planning_sync_dual_voice.rttm",
+      "rttm_sha256": "3ed6ffe09cc1941a56df0aef3af19d04af3118524fcde35eb05597e07fced6fe",
+      "duration_s": 13.775,
       "expected_speaker_count": 2,
       "license": "MIT",
-      "source": "synthetic",
-      "notes": "Longer alternating call-style pattern with short pauses; minimal overlap"
+      "source": "synthetic-tts",
+      "notes": "Alternating planning sync with concise turn boundaries."
     }
   ],
   "expected_baseline": {
     "der": {
-      "value": 15.0,
-      "tolerance": 10.0,
+      "value": 25.0,
+      "tolerance": 25.0,
       "unit": "%",
-      "notes": "Synthetic tones should be well-separated; DER may vary with diarization model."
+      "notes": "Real pyannote backend on speech smoke should remain comfortably below 50% DER."
     },
     "jer": {
-      "value": 20.0,
-      "tolerance": 15.0,
+      "value": 35.0,
+      "tolerance": 30.0,
       "unit": "%",
-      "notes": "JER higher than DER due to boundary sensitivity."
+      "notes": "JER is expected to be higher than DER due to turn boundary sensitivity."
     },
     "speaker_count_accuracy": {
       "value": 100.0,
       "tolerance": 0.0,
       "unit": "%",
-      "notes": "2-speaker synthetic audio should always detect 2 speakers."
+      "notes": "All clips are deterministic two-speaker alternations."
     }
   },
   "meta": {
-    "created_at": "2026-01-21T00:00:00Z",
-    "total_duration_s": 34.1,
+    "created_at": "2026-02-17T00:00:00Z",
+    "total_duration_s": 39.47,
     "sample_count": 3,
-    "language": null,
-    "domain": "synthetic",
-    "speech_type": "synthetic-tones",
+    "language": "en",
+    "domain": "business-conversation",
+    "speech_type": "synthetic",
     "quality": "clean",
-    "notes": "Committed to repository for fast smoke testing. Uses distinct frequency tones for deterministic speaker discrimination without requiring speech models."
+    "notes": "Committed to repository for fast smoke testing using deterministic two-speaker TTS clips and RTTM references."
   }
 }

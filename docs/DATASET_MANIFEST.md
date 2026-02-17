@@ -161,14 +161,15 @@ Smoke datasets are minimal datasets committed to the repository for quick CI val
 - Always available (no download required)
 - Synthetic or permissively licensed
 - Deterministic results
-- Fast to run (<30 seconds)
+- Fast to run (typically <60 seconds)
 
 ### Available Smoke Datasets
 
 | Dataset | Track | Samples | Duration | Description |
 |---------|-------|---------|----------|-------------|
 | asr-smoke | ASR | 3 | 21s | Synthetic TTS audio |
-| diarization-smoke | Diarization | 3 | 34s | Synthetic tone patterns |
+| diarization-smoke | Diarization | 3 | 39.47s | Synthetic dual-voice speech |
+| diarization-smoke-tones | Diarization | 3 | 34.1s | Legacy deterministic tone fixtures |
 
 ### Using Smoke Datasets
 

@@ -96,7 +96,7 @@ The CI script:
 - PRs run `.github/workflows/verify.yml` in quick mode via `nix develop --command uv run slower-whisper-verify --quick`.
 - Nightly schedule/manual dispatch runs the same workflow in full mode (`uv run slower-whisper-verify`), which includes Docker + K8s checks and benefits from `HF_TOKEN` when running real pyannote.
 - A separate `verify-api` job (schedule/manual) installs `--extra api` and runs `uv run slower-whisper-verify --api` to exercise FastAPI/LLM surfaces without slowing PRs.
-- Both quick/full verify invoke `benchmarks/check_diarization_stub.py` to ensure the stub diarization report (`benchmarks/DIARIZATION_REPORT.json`) stays sane without requiring HF_TOKEN.
+- Both quick/full verify invoke `benchmarks/check_diarization_stub.py` to run a fresh stub-mode diarization eval on committed smoke fixtures (no HF_TOKEN required).
 - Both paths share the Nix dev shell, so local runs match CI output.
 
 ### API Mode

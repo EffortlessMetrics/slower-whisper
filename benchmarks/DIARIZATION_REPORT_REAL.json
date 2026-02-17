@@ -1,70 +1,70 @@
 {
   "config": {
-    "dataset": "/home/steven/code/Python/slower-whisper/benchmarks/data/diarization",
-    "manifest": "/home/steven/code/Python/slower-whisper/benchmarks/data/diarization/manifest.jsonl",
+    "dataset": "benchmarks/data/diarization",
+    "manifest": "benchmarks/data/diarization/manifest.jsonl",
     "device": "cpu",
     "min_speakers": null,
     "max_speakers": null,
     "pyannote_mode": "auto"
   },
-  "manifest_hash": "34f8caa31589541c795dcc217df1688440bf25ee45d92669073eafdde0fe0120",
+  "manifest_hash": "c21b86b9971b0502f51eff00254819c45aeebf3cfd7f8c67d7a266a968dcd831",
   "aggregate": {
     "num_samples": 3,
     "num_with_der": 3,
-    "avg_der": 1.0,
-    "min_der": 1.0,
-    "max_der": 1.0,
-    "speaker_count_accuracy": 0.0,
-    "total_runtime": 12.868957890983438
+    "avg_der": 0.12170176080380361,
+    "min_der": 0.11252399232245677,
+    "max_der": 0.13325170357751304,
+    "speaker_count_accuracy": 1.0,
+    "total_runtime": 174.71105539699784
   },
   "results": [
     {
-      "id": "synthetic_2speaker",
+      "id": "meeting_dual_voice",
       "der": {
-        "value": 1.0,
-        "missed": 12.0,
+        "value": 0.11932958651144103,
+        "missed": 1.486249999999998,
         "false_alarm": null,
         "confusion": 0.0,
         "detail": null
       },
-      "speaker_count": 0,
+      "speaker_count": 2,
       "expected_speaker_count": 2,
-      "speaker_count_delta": -2,
-      "runtime_seconds": 11.59451163301128,
+      "speaker_count_delta": 0,
+      "runtime_seconds": 137.02710594798555,
       "error": null,
-      "notes": "Deterministic 2-speaker A/B tone pattern with 200ms gaps between turns."
+      "notes": "Alternating 2-speaker meeting recap with short pauses."
     },
     {
-      "id": "overlap_tones",
+      "id": "support_handoff_dual_voice",
       "der": {
-        "value": 1.0,
-        "missed": 6.8999999999999995,
+        "value": 0.13325170357751304,
+        "missed": 1.5643750000000034,
         "false_alarm": null,
         "confusion": 0.0,
         "detail": null
       },
-      "speaker_count": 0,
+      "speaker_count": 2,
       "expected_speaker_count": 2,
-      "speaker_count_delta": -2,
-      "runtime_seconds": 0.20468230498954654,
+      "speaker_count_delta": 0,
+      "runtime_seconds": 27.053252018027706,
       "error": null,
-      "notes": "Two-tone synthetic with overlapping exchanges at 2.0-2.5s and 5.0-5.6s."
+      "notes": "Alternating support handoff with distinct speaker timbre."
     },
     {
-      "id": "call_mixed",
+      "id": "planning_sync_dual_voice",
       "der": {
-        "value": 1.0,
-        "missed": 14.299999999999999,
+        "value": 0.11252399232245677,
+        "missed": 1.4656249999999995,
         "false_alarm": null,
         "confusion": 0.0,
         "detail": null
       },
-      "speaker_count": 0,
+      "speaker_count": 2,
       "expected_speaker_count": 2,
-      "speaker_count_delta": -2,
-      "runtime_seconds": 1.069763952982612,
+      "speaker_count_delta": 0,
+      "runtime_seconds": 10.630697430984583,
       "error": null,
-      "notes": "Longer alternating call-style pattern with short pauses; minimal overlap."
+      "notes": "Alternating planning sync with concise turn boundaries."
     }
   ]
 }

@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "id": "diarization-smoke-tones",
+  "track": "diarization",
+  "split": "smoke",
+  "description": "Legacy deterministic tone-based diarization smoke fixtures for protocol and mapping regression checks",
+  "source": {
+    "name": "slower-whisper synthetic tone smoke tests",
+    "url": "https://github.com/EffortlessMetrics/slower-whisper",
+    "citation": null
+  },
+  "license": {
+    "id": "MIT",
+    "name": "MIT License",
+    "url": "https://opensource.org/licenses/MIT"
+  },
+  "download": null,
+  "audio_format": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "encoding": "pcm_s16le",
+    "bit_depth": 16
+  },
+  "annotation_format": {
+    "type": "rttm",
+    "source": "synthetic",
+    "notes": "Deterministic RTTM annotations matching synthetic tone generation"
+  },
+  "samples": [
+    {
+      "id": "synthetic_2speaker",
+      "audio": "../../../data/diarization/synthetic_2speaker.wav",
+      "audio_sha256": "980e4b85f5074197d3a2f638b17892de3d426fe9cc234291da2ddd1bc3ff7fb5",
+      "reference_rttm": "../../../data/diarization/synthetic_2speaker.rttm",
+      "rttm_sha256": "2e7bfa9fcbaa5cde8d89af856b4ad4968e258d455df9e3efcb6b0b3b78ba1565",
+      "duration_s": 12.6,
+      "expected_speaker_count": 2,
+      "license": "MIT",
+      "source": "synthetic-tones",
+      "notes": "Deterministic 2-speaker A/B tone pattern with 200ms gaps between turns"
+    },
+    {
+      "id": "overlap_tones",
+      "audio": "../../../data/diarization/overlap_tones.wav",
+      "audio_sha256": "a32d6da62e524a4164b5bdbd1161cd2a12fa5e5248d9592bb161bef3544bc2f6",
+      "reference_rttm": "../../../data/diarization/overlap_tones.rttm",
+      "rttm_sha256": "5359560bf10df65692b772f796128dee025043a9555cd505b73eade7c2890dd8",
+      "duration_s": 6.0,
+      "expected_speaker_count": 2,
+      "license": "MIT",
+      "source": "synthetic-tones",
+      "notes": "Two-tone synthetic with overlapping exchanges at 2.0-2.5s and 5.0-5.6s"
+    },
+    {
+      "id": "call_mixed",
+      "audio": "../../../data/diarization/call_mixed.wav",
+      "audio_sha256": "93c148338b9229dbf17e732be69cce90b7d955518f3c9096975ce23754648340",
+      "reference_rttm": "../../../data/diarization/call_mixed.rttm",
+      "rttm_sha256": "add8d63396c00f484d44de4dfe318a814c7ad78845fd7774752e8a5616e141ef",
+      "duration_s": 15.5,
+      "expected_speaker_count": 2,
+      "license": "MIT",
+      "source": "synthetic-tones",
+      "notes": "Longer alternating call-style pattern with short pauses; minimal overlap"
+    }
+  ],
+  "expected_baseline": {
+    "der": {
+      "value": 45.0,
+      "tolerance": 20.0,
+      "unit": "%",
+      "notes": "Tone fixtures are best-effort and mainly used for deterministic protocol checks."
+    },
+    "jer": {
+      "value": 55.0,
+      "tolerance": 20.0,
+      "unit": "%",
+      "notes": "JER remains high for pure tone clips due to boundary sensitivity."
+    },
+    "speaker_count_accuracy": {
+      "value": 100.0,
+      "tolerance": 0.0,
+      "unit": "%",
+      "notes": "Deterministic tone clips always represent exactly two speakers."
+    }
+  },
+  "meta": {
+    "created_at": "2026-02-17T00:00:00Z",
+    "total_duration_s": 34.1,
+    "sample_count": 3,
+    "language": null,
+    "domain": "synthetic",
+    "speech_type": "synthetic-tones",
+    "quality": "clean",
+    "notes": "Committed legacy tone fixtures retained for deterministic mapping/protocol regression checks."
+  }
+}

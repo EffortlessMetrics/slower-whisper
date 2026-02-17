@@ -774,43 +774,16 @@ def iter_smoke_asr(
         count += 1
 
 
-def iter_smoke_diarization(
+def _iter_diarization_manifest_samples(
+    *,
+    manifest_path: Path,
+    dataset_label: str,
     limit: int | None = None,
 ) -> Iterable[EvalSample]:
-    """Iterate over diarization smoke test samples.
-
-    Smoke tests are minimal datasets committed to the repository for quick CI
-    validation. They use synthetic tone-based audio with known speaker patterns.
-
-    The samples are defined in:
-        benchmarks/datasets/diarization/smoke/manifest.json
-
-    Args:
-        limit: Maximum number of samples to return (None = all)
-
-    Yields:
-        EvalSample objects with:
-            - dataset="diarization-smoke"
-            - id=sample["id"]
-            - audio_path: Path to audio file
-            - reference_speakers: Parsed from RTTM file
-
-    Raises:
-        FileNotFoundError: If manifest or audio files not found
-
-    Example:
-        >>> for sample in iter_smoke_diarization(limit=2):
-        ...     print(f"{sample.id}: {len(sample.reference_speakers)} speakers")
-    """
-    # Manifest is in the project benchmarks directory
-    module_dir = Path(__file__).parent.parent
-    manifest_path = (
-        module_dir / "benchmarks" / "datasets" / "diarization" / "smoke" / "manifest.json"
-    )
-
+    """Iterate over manifest-defined diarization samples."""
     if not manifest_path.exists():
         raise FileNotFoundError(
-            f"Diarization smoke manifest not found at {manifest_path}.\n"
+            f"Diarization manifest not found at {manifest_path}.\n"
             f"This should be committed to the repository."
         )
 
@@ -819,7 +792,7 @@ def iter_smoke_diarization(
 
     samples = manifest.get("samples", [])
     if not samples:
-        logger.warning(f"No samples found in diarization smoke manifest: {manifest_path}")
+        logger.warning(f"No samples found in diarization manifest: {manifest_path}")
         return
 
     count = 0
@@ -835,23 +808,20 @@ def iter_smoke_diarization(
             logger.debug(f"Skipping sample with missing id or audio: {sample}")
             continue
 
-        # Resolve paths relative to manifest directory
         audio_path = (manifest_path.parent / audio_rel).resolve()
         rttm_path = (manifest_path.parent / rttm_rel).resolve() if rttm_rel else None
-
         if not audio_path.exists():
             logger.warning(
                 f"Audio file not found for sample '{sample_id}': {audio_path}. Skipping."
             )
             continue
 
-        # Parse RTTM to get reference speakers
         reference_speakers = None
         if rttm_path and rttm_path.exists():
             reference_speakers = _parse_rttm_file(rttm_path)
 
         yield EvalSample(
-            dataset="diarization-smoke",
+            dataset=dataset_label,
             id=sample_id,
             audio_path=audio_path,
             reference_speakers=reference_speakers,
@@ -863,6 +833,32 @@ def iter_smoke_diarization(
             },
         )
         count += 1
+
+
+def iter_smoke_diarization(limit: int | None = None) -> Iterable[EvalSample]:
+    """Iterate over speech-based diarization smoke samples."""
+    module_dir = Path(__file__).parent.parent
+    manifest_path = (
+        module_dir / "benchmarks" / "datasets" / "diarization" / "smoke" / "manifest.json"
+    )
+    yield from _iter_diarization_manifest_samples(
+        manifest_path=manifest_path,
+        dataset_label="diarization-smoke",
+        limit=limit,
+    )
+
+
+def iter_smoke_diarization_tones(limit: int | None = None) -> Iterable[EvalSample]:
+    """Iterate over legacy tone-based diarization smoke samples."""
+    module_dir = Path(__file__).parent.parent
+    manifest_path = (
+        module_dir / "benchmarks" / "datasets" / "diarization" / "smoke_tones" / "manifest.json"
+    )
+    yield from _iter_diarization_manifest_samples(
+        manifest_path=manifest_path,
+        dataset_label="diarization-smoke-tones",
+        limit=limit,
+    )
 
 
 def _parse_rttm_file(rttm_path: Path) -> list[dict[str, Any]]:
@@ -1184,7 +1180,27 @@ def list_available_benchmarks() -> dict[str, dict[str, Any]]:
                 / "manifest.json"
             ).exists(),
             "setup_doc": "Committed to repository - always available",
-            "description": "Minimal diarization smoke tests for CI (synthetic tones)",
+            "description": "Minimal diarization smoke tests for CI (synthetic speech)",
+            "tasks": ["diarization"],
+        },
+        "smoke_tones": {
+            "path": str(
+                Path(__file__).parent.parent
+                / "benchmarks"
+                / "datasets"
+                / "diarization"
+                / "smoke_tones"
+            ),
+            "available": (
+                Path(__file__).parent.parent
+                / "benchmarks"
+                / "datasets"
+                / "diarization"
+                / "smoke_tones"
+                / "manifest.json"
+            ).exists(),
+            "setup_doc": "Committed to repository - always available",
+            "description": "Legacy deterministic tone fixtures for diarization protocol checks",
             "tasks": ["diarization"],
         },
         "ami": {

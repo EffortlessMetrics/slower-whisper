@@ -181,13 +181,15 @@ uv run python benchmarks/eval_summaries.py --dataset ami --n 5 \
 
 ### Diarization Evaluation (`eval_diarization.py`)
 
-**Status:** ✅ Implemented (tiny synthetic fixtures; real pyannote run requires HF_TOKEN)
+**Status:** ✅ Implemented (speech smoke fixtures + optional real pyannote run)
 
 **What it measures:**
 - Diarization Error Rate (DER)
 - Speaker count accuracy
 
-**Recent result (stub):** `SLOWER_WHISPER_PYANNOTE_MODE=stub`, CPU on 3 synthetic clips: avg DER **0.451**, speaker-count accuracy **1.0** (see `benchmarks/DIARIZATION_REPORT.*` from manifest sha256 `34f8caa31589541c795dcc217df1688440bf25ee45d92669073eafdde0fe0120`).
+**Recent result (stub):** `SLOWER_WHISPER_PYANNOTE_MODE=stub`, CPU on 3 synthetic dual-voice clips: avg DER **0.541**, speaker-count accuracy **1.0** (see `benchmarks/DIARIZATION_REPORT.*` from manifest sha256 `c21b86b9971b0502f51eff00254819c45aeebf3cfd7f8c67d7a266a968dcd831`).
+
+**Recent result (real backend):** `SLOWER_WHISPER_PYANNOTE_MODE=auto`, CPU on the same 3 clips: avg DER **0.122**, speaker-count accuracy **1.0** (see `benchmarks/DIARIZATION_REPORT_REAL.*`).
 
 **Workflow:**
 1. Ensure dataset at `benchmarks/data/diarization` (fixtures already included).
@@ -215,7 +217,7 @@ uv run python benchmarks/eval_summaries.py --dataset ami --n 5 \
 
 **At a glance:**
 - Stub quick run: `benchmarks/DIARIZATION_REPORT.json` (used for CI regression guard).
-- Real pyannote run: `benchmarks/DIARIZATION_REPORT_REAL.json` (requires HF_TOKEN; not generated in this workspace).
+- Real pyannote run: `benchmarks/DIARIZATION_REPORT_REAL.json` (best-effort in CI when HF_TOKEN is present).
 
 ### Emotion Evaluation (`eval_emotion.py`)
 
