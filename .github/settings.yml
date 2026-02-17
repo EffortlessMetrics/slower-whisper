@@ -79,6 +79,27 @@ labels:
   - name: help wanted
     color: 008672
     description: Community help is welcome on this work.
+  - name: post-processing
+    color: F9A825
+    description: Post-processing pipeline and processor work.
+  - name: performance
+    color: 0E8A16
+    description: Performance optimization and regression.
+  - name: breaking-change
+    color: B60205
+    description: Changes that break existing contracts.
+  - name: wontfix
+    color: CCCCCC
+    description: Intentional non-fix, by design.
+  - name: duplicate
+    color: CFD3D7
+    description: Duplicate of existing issue.
+  - name: stale
+    color: E4E669
+    description: No recent activity, pending closure.
+  - name: slower-whisper
+    color: 1D76DB
+    description: faster-whisper compatibility shim.
 
 branches:
   - name: main

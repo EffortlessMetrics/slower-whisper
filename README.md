@@ -19,6 +19,14 @@ Audio in, receipts out.
 - Benchmark CLI with baseline/gating support
 - A `faster-whisper` compatibility shim for migration
 
+## Why slower-whisper
+
+- **Local-first** — all processing runs on your hardware; audio never leaves your machine
+- **Contract-driven** — stable JSON schema (v2) with typed fields, stability tiers, and backward-compatibility guarantees
+- **Schema-versioned** — every transcript carries `schema_version`, `receipt`, and `run_id` for reproducibility
+- **Not a cloud API** — no accounts, no rate limits, no per-minute billing; bring your own GPU or run on CPU
+- **Pluggable enrichment** — diarization, prosody, emotion, and semantic adapters are optional layers, not monolithic dependencies
+
 ## Python Package Map (Crate Equivalents)
 
 | Surface | Purpose | Typical Entry Points |
@@ -163,6 +171,13 @@ Component README quick links:
 - Citation metadata: [CITATION.cff](CITATION.cff)
 - Release/change history: [CHANGELOG.md](CHANGELOG.md)
 - Current plan/status: [ROADMAP.md](ROADMAP.md)
+
+## Community & Support
+
+- **Issues** — [Bug reports and feature requests](https://github.com/EffortlessMetrics/slower-whisper/issues)
+- **Security** — [Report a vulnerability](https://github.com/EffortlessMetrics/slower-whisper/security/advisories/new) (see [SECURITY.md](SECURITY.md))
+- **Support** — [Getting help](.github/SUPPORT.md)
+- **Contributing** — See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, PR process, and coding standards
 
 ## License
 

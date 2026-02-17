@@ -4,6 +4,18 @@ Welcome to the **slower-whisper** documentation -- ETL for conversations, audio 
 
 ---
 
+## Start Here
+
+New to slower-whisper? These five pages cover the essentials:
+
+1. **[README](../README.md)** — Project overview, installation, and architecture map
+2. **[Quickstart](QUICKSTART.md)** — Your first transcription in 5 minutes
+3. **[CLI Reference](CLI_REFERENCE.md)** — All commands and options
+4. **[API Quick Reference](API_QUICK_REFERENCE.md)** — Python function reference
+5. **[Configuration](CONFIGURATION.md)** — Config files, env vars, CLI flags, and precedence
+
+---
+
 ## What is slower-whisper?
 
 **slower-whisper is ETL for conversations.** It transforms raw audio into schema-versioned structured data that captures not just *what* was said, but *who* said it, *when*, and *how*.

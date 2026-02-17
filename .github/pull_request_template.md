@@ -72,3 +72,4 @@ nix-clean flake check
 - [ ] I have run `./scripts/ci-local.sh fast` and all checks pass locally
 - [ ] My code follows the project's style guidelines
 - [ ] I have updated documentation as needed
+- [ ] This PR introduces no breaking changes to public API, CLI, or JSON schema
