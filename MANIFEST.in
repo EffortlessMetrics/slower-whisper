@@ -33,11 +33,11 @@ include transcription/py.typed
 include slower_whisper/py.typed
 
 # Docs and examples
-recursive-include docs *.md *.rst *.txt *.json *.yaml *.yml
+recursive-include docs *.md *.txt *.json *.py
 recursive-include examples *.py *.md *.json *.txt
 
 # Benchmarks and tests
-recursive-include benchmarks *.py *.md *.json *.jsonl *.txt *.csv *.schema *.wav *.rttm
+recursive-include benchmarks *.py *.md *.json *.jsonl *.txt *.csv *.wav *.rttm
 recursive-include tests *.py *.json *.wav *.feature
 
 # Operational/deployment assets
@@ -58,6 +58,9 @@ global-exclude *.swo
 prune build
 prune dist
 prune *.egg-info
+prune docs/_build
+prune benchmarks/results
+prune benchmarks/test_audio
 prune htmlcov
 prune .pytest_cache
 prune .mypy_cache

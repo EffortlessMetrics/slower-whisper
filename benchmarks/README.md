@@ -46,6 +46,17 @@ uv run slower-whisper benchmark run --track asr --dataset smoke
 uv run slower-whisper benchmark run --track semantic --dataset ami --mode tags --limit 10
 ```
 
+## CLI Action Map
+
+| Action | Command |
+|--------|---------|
+| List tracks/datasets | `slower-whisper benchmark list` |
+| Show infra status | `slower-whisper benchmark status` |
+| Run evaluation | `slower-whisper benchmark run --track <track> --dataset <dataset>` |
+| Save baseline | `slower-whisper benchmark save-baseline --track <track> --dataset <dataset>` |
+| Compare vs baseline | `slower-whisper benchmark compare --track <track> --dataset <dataset>` |
+| List saved baselines | `slower-whisper benchmark baselines` |
+
 ## Baselines and Regression Gates
 
 Create a baseline:

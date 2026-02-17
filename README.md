@@ -151,6 +151,12 @@ Inside devshell, use `nix-clean` wrapper for raw nix commands.
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Benchmark command reference |
 | [docs/PROJECT_METADATA.md](docs/PROJECT_METADATA.md) | Metadata/governance surfaces |
 
+Component README quick links:
+
+- [benchmarks/README.md](benchmarks/README.md)
+- [scripts/README.md](scripts/README.md)
+- [k8s/README.md](k8s/README.md)
+
 ## Project Metadata Surfaces
 
 - Package metadata: [pyproject.toml](pyproject.toml)

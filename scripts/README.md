@@ -65,5 +65,7 @@ Typical usage:
 - Prefer `./scripts/ci-local.sh` as the default contributor gate.
 - Many scripts assume execution from repo root.
 - Some scripts require optional dependencies or external tools (`gh`, Docker, kubectl, dataset credentials).
+- Prefer `uv run ...` for Python scripts to ensure the project environment is used.
+- For release-sensitive changes, capture script output in PR receipts.
 
 For contributor policy and required checks, see [../CONTRIBUTING.md](../CONTRIBUTING.md) and [../CLAUDE.md](../CLAUDE.md).

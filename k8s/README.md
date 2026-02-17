@@ -69,6 +69,8 @@ Validate manifests from repo root:
 ./scripts/validate_k8s.sh
 ```
 
+For an executable walkthrough with copy/paste commands, use [k8s/QUICK_START.md](QUICK_START.md).
+
 ## Related Docs
 
 - [k8s/QUICK_START.md](QUICK_START.md)
