@@ -72,6 +72,11 @@ nix-clean run .#verify -- --quick
     - Turn-level processors (roles, topics) run via `process_turn()` separately
     - Callbacks never crash pipeline (exceptions caught and logged)
 
+12. **E2E smoke tests use real models**
+    - `tests/test_smoke_*.py` run real tiny model on committed audio fixtures
+    - Keyword assertions, not exact match — resilient to model updates
+    - Gated by `SLOWER_WHISPER_TEST_REAL=1` env var; excluded from default `pytest`
+
 ---
 
 ## Key Surfaces
@@ -99,6 +104,7 @@ nix-clean run .#verify -- --quick
 | Turn-taking policies | `transcription/turn_taking_policy.py` |
 | API service | `transcription/service.py` |
 | Public API | `transcription/api.py` |
+| E2E tests (real ASR) | `tests/test_smoke_*.py` |
 
 ---
 
