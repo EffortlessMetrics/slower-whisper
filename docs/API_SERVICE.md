@@ -793,4 +793,4 @@ AutoModel.from_pretrained('audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim
 
 ## License
 
-This API service is part of slower-whisper and is licensed under the Apache 2.0 License.
+This API service is part of slower-whisper and is dual-licensed under Apache 2.0 or MIT.

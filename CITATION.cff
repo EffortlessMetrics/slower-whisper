@@ -4,7 +4,7 @@ message: "If you use slower-whisper in research or reporting, please cite it usi
 type: software
 version: 2.0.1
 date-released: 2026-02-16
-license: Apache-2.0
+license: Apache-2.0 OR MIT
 repository-code: https://github.com/EffortlessMetrics/slower-whisper
 url: https://github.com/EffortlessMetrics/slower-whisper
 abstract: >-

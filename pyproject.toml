@@ -8,7 +8,7 @@ version = "2.0.1"
 description = "Local-first Python conversation ETL: Whisper-compatible transcription, schema-versioned transcripts, streaming, and reproducible receipts."
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
-license = "Apache-2.0"
+license = "Apache-2.0 OR MIT"
 authors = [
     {name = "Effortless Metrics", email = "git@effortlesssteven.com"}
 ]

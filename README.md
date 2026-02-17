@@ -8,7 +8,7 @@ Audio in, receipts out.
 [![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
 [![PyPI](https://img.shields.io/pypi/v/slower-whisper)](https://pypi.org/project/slower-whisper/)
 [![Python](https://img.shields.io/badge/python-3.12--3.14-blue)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)](LICENSE)
 
 ## What You Get
 
@@ -166,4 +166,4 @@ Component README quick links:
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Dual-licensed under Apache 2.0 or MIT, at your option. See [LICENSE](LICENSE), [LICENSE-APACHE](LICENSE-APACHE), and [LICENSE-MIT](LICENSE-MIT).
