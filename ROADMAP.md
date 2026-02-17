@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
-**Current Version:** v2.0.0
-**Last Updated:** 2026-01-30
+**Current Version:** v2.0.1
+**Last Updated:** 2026-02-16
 <!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
 Roadmap = forward-looking execution plan.
@@ -48,7 +48,7 @@ nix-clean flake check        # Nix checks
 
 | Version | Highlights |
 |---------|------------|
-| **v2.0.1-dev** | Post-processing orchestration, topic segmentation, turn-taking policies |
+| **v2.0.1** | Post-processing orchestration, topic segmentation, turn-taking policies |
 | **v2.0.0** | WebSocket streaming API, REST session management, semantic adapter protocol, benchmark evaluation framework (ASR/DER/emotion/streaming), LLM guardrails, baseline infrastructure |
 | **v1.9.2** | Version constant fix (`transcription.__version__` now correct) |
 | **v1.9.1** | GPU UX (`--device auto` default, preflight banner), CI caching fixes |

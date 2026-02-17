@@ -297,7 +297,9 @@ class TestEnvironmentClassifierConsumesAudioHealth:
         # audio_state should be created with schema version but no environment
         # since there's no audio_health to classify
         if seg.audio_state:
-            assert "environment" not in seg.audio_state or seg.audio_state.get("environment") is None
+            assert (
+                "environment" not in seg.audio_state or seg.audio_state.get("environment") is None
+            )
 
 
 # ============================================================================
@@ -360,13 +362,17 @@ class TestRoleInferenceProducesTranscriptLevelAssignments:
     def test_role_inference_with_agent_customer_triggers(self):
         """Role inference assigns roles based on trigger phrases."""
         segments = [
-            make_segment(0, 0.0, 3.0, "Thank you for calling, how can I help you today?", speaker_id="spk_0"),
+            make_segment(
+                0, 0.0, 3.0, "Thank you for calling, how can I help you today?", speaker_id="spk_0"
+            ),
             make_segment(1, 3.0, 6.0, "I'm calling about my account.", speaker_id="spk_1"),
             make_segment(2, 6.0, 9.0, "Let me check that for you.", speaker_id="spk_0"),
             make_segment(3, 9.0, 12.0, "I have a problem with billing.", speaker_id="spk_1"),
         ]
         turns = [
-            make_turn("turn_0", "spk_0", "Thank you for calling, how can I help you today?", 0.0, 3.0, [0]),
+            make_turn(
+                "turn_0", "spk_0", "Thank you for calling, how can I help you today?", 0.0, 3.0, [0]
+            ),
             make_turn("turn_1", "spk_1", "I'm calling about my account.", 3.0, 6.0, [1]),
             make_turn("turn_2", "spk_0", "Let me check that for you.", 6.0, 9.0, [2]),
             make_turn("turn_3", "spk_1", "I have a problem with billing.", 9.0, 12.0, [3]),
@@ -533,18 +539,51 @@ class TestAllFeaturesEnabledTogether:
             }
         }
         segments = [
-            make_segment(0, 0.0, 3.0, "Thank you for calling, how can I help you today?",
-                        speaker_id="spk_0", audio_state=audio_state.copy()),
-            make_segment(1, 3.0, 6.0, "I'm calling about my account at test@example.com.",
-                        speaker_id="spk_1", audio_state=audio_state.copy()),
-            make_segment(2, 6.0, 9.0, "Let me check that for you.",
-                        speaker_id="spk_0", audio_state=audio_state.copy()),
-            make_segment(3, 9.0, 12.0, "I need help with billing.",
-                        speaker_id="spk_1", audio_state=audio_state.copy()),
+            make_segment(
+                0,
+                0.0,
+                3.0,
+                "Thank you for calling, how can I help you today?",
+                speaker_id="spk_0",
+                audio_state=audio_state.copy(),
+            ),
+            make_segment(
+                1,
+                3.0,
+                6.0,
+                "I'm calling about my account at test@example.com.",
+                speaker_id="spk_1",
+                audio_state=audio_state.copy(),
+            ),
+            make_segment(
+                2,
+                6.0,
+                9.0,
+                "Let me check that for you.",
+                speaker_id="spk_0",
+                audio_state=audio_state.copy(),
+            ),
+            make_segment(
+                3,
+                9.0,
+                12.0,
+                "I need help with billing.",
+                speaker_id="spk_1",
+                audio_state=audio_state.copy(),
+            ),
         ]
         turns = [
-            make_turn("turn_0", "spk_0", "Thank you for calling, how can I help you today?", 0.0, 3.0, [0]),
-            make_turn("turn_1", "spk_1", "I'm calling about my account at test@example.com.", 3.0, 6.0, [1]),
+            make_turn(
+                "turn_0", "spk_0", "Thank you for calling, how can I help you today?", 0.0, 3.0, [0]
+            ),
+            make_turn(
+                "turn_1",
+                "spk_1",
+                "I'm calling about my account at test@example.com.",
+                3.0,
+                6.0,
+                [1],
+            ),
             make_turn("turn_2", "spk_0", "Let me check that for you.", 6.0, 9.0, [2]),
             make_turn("turn_3", "spk_1", "I need help with billing.", 9.0, 12.0, [3]),
         ]
@@ -589,10 +628,22 @@ class TestAllFeaturesEnabledTogether:
             }
         }
         segments = [
-            make_segment(0, 0.0, 2.0, "How can I help you today?",
-                        speaker_id="spk_0", audio_state=audio_state.copy()),
-            make_segment(1, 2.0, 4.0, "I need help with my order.",
-                        speaker_id="spk_1", audio_state=audio_state.copy()),
+            make_segment(
+                0,
+                0.0,
+                2.0,
+                "How can I help you today?",
+                speaker_id="spk_0",
+                audio_state=audio_state.copy(),
+            ),
+            make_segment(
+                1,
+                2.0,
+                4.0,
+                "I need help with my order.",
+                speaker_id="spk_1",
+                audio_state=audio_state.copy(),
+            ),
         ]
         turns = [
             make_turn("turn_0", "spk_0", "How can I help you today?", 0.0, 2.0, [0]),
@@ -699,18 +750,27 @@ class TestSchemaVersionPresent:
         # Original data should be preserved
         assert "audio_health" in seg.audio_state
 
-    @pytest.mark.parametrize("feature", [
-        "enable_safety_layer",
-        "enable_role_inference",
-        "enable_topic_segmentation",
-        "enable_environment_classifier",
-    ])
+    @pytest.mark.parametrize(
+        "feature",
+        [
+            "enable_safety_layer",
+            "enable_role_inference",
+            "enable_topic_segmentation",
+            "enable_environment_classifier",
+        ],
+    )
     def test_any_feature_sets_schema_version(self, feature: str):
         """Any enabled feature results in schema version being set."""
         audio_state = {"audio_health": {"snr_db": 15.0, "quality_score": 0.6}}
         segments = [
-            make_segment(0, 0.0, 2.0, "Test", speaker_id="spk_0",
-                        audio_state=audio_state if feature == "enable_environment_classifier" else None),
+            make_segment(
+                0,
+                0.0,
+                2.0,
+                "Test",
+                speaker_id="spk_0",
+                audio_state=audio_state if feature == "enable_environment_classifier" else None,
+            ),
         ]
         turns = [
             make_turn("turn_0", "spk_0", "Test", 0.0, 2.0, [0]),

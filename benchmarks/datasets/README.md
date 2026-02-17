@@ -27,7 +27,9 @@ datasets/
 │   │   └── manifest.json
 │   ├── callhome-english/         # CALLHOME American English telephone speech
 │   │   └── manifest.json
-│   └── smoke/                    # Quick smoke tests (committed to repo)
+│   ├── smoke/                    # Speech smoke tests (committed to repo)
+│   │   └── manifest.json
+│   └── smoke_tones/              # Legacy tone smoke tests (committed to repo)
 │       └── manifest.json
 └── README.md
 ```
@@ -134,12 +136,14 @@ Each `manifest.json` follows a standard schema (version 1):
 Small synthetic datasets for quick validation. Always available, no download required.
 
 - `asr/smoke`: 3 TTS audio samples covering call center and meeting scenarios
-- `diarization/smoke`: 3 synthetic tone patterns with known speaker boundaries
+- `diarization/smoke`: 3 synthetic dual-voice speech clips with RTTM references
+- `diarization/smoke_tones`: 3 legacy tone fixtures for protocol/mapping checks
 
 **Usage:**
 ```bash
 slower-whisper benchmark --track asr --dataset smoke
 slower-whisper benchmark --track diarization --dataset smoke
+slower-whisper benchmark --track diarization --dataset smoke_tones
 ```
 
 ### Full Datasets (Download Required)

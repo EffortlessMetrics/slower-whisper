@@ -8,6 +8,7 @@ This document provides a comprehensive overview of benchmark datasets available 
 |---------|-------|------|---------|----------|---------|
 | smoke | ASR | Smoke | MIT | No | 3 |
 | diarization-smoke | Diarization | Smoke | MIT | No | 3 |
+| diarization-smoke-tones | Diarization | Smoke | MIT | No | 3 |
 | librispeech-test-clean | ASR | Full | CC-BY-4.0 | Yes | 2,620 |
 | librispeech-dev-clean | ASR | Full | CC-BY-4.0 | Yes | 2,703 |
 | librispeech-test-other | ASR | Full | CC-BY-4.0 | Yes | 2,939 |
@@ -155,12 +156,36 @@ See [docs/COMMONVOICE_SETUP.md](../docs/COMMONVOICE_SETUP.md) for setup.
 
 **Type:** Smoke (always available)
 
-Minimal diarization test set using synthetic tone-based audio with known speaker patterns.
+Minimal diarization test set using synthetic speech audio with known two-speaker turn patterns.
 
 | Property | Value |
 |----------|-------|
 | Samples | 3 |
-| Duration | 34 seconds |
+| Duration | 39.47 seconds |
+| Speakers | 2 per sample |
+| Audio Format | 16kHz mono WAV |
+| Annotation | RTTM |
+| License | MIT |
+
+**Samples included:**
+- `meeting_dual_voice` - Meeting recap with alternating speakers
+- `support_handoff_dual_voice` - Support handoff with turn boundaries
+- `planning_sync_dual_voice` - Planning sync with concise alternation
+
+**Expected baseline:** DER <50% for smoke checks, Speaker count accuracy 100%
+
+---
+
+### diarization-smoke-tones
+
+**Type:** Smoke (always available)
+
+Legacy deterministic tone fixtures kept for protocol/mapping regression checks.
+
+| Property | Value |
+|----------|-------|
+| Samples | 3 |
+| Duration | 34.1 seconds |
 | Speakers | 2 per sample |
 | Audio Format | 16kHz mono WAV |
 | Annotation | RTTM |
@@ -168,10 +193,8 @@ Minimal diarization test set using synthetic tone-based audio with known speaker
 
 **Samples included:**
 - `synthetic_2speaker` - Deterministic A/B tone pattern
-- `overlap_tones` - Two-tone with overlapping exchanges
-- `call_mixed` - Longer alternating call-style pattern
-
-**Expected baseline:** DER ~15%, Speaker count accuracy 100%
+- `overlap_tones` - Two-tone overlap stress case
+- `call_mixed` - Alternating call-style tones
 
 ---
 
@@ -317,6 +340,7 @@ All datasets use SHA256 hashes for integrity verification:
 |---------|---------|-------------------|----------------|
 | smoke | MIT | No | Yes |
 | diarization-smoke | MIT | No | Yes |
+| diarization-smoke-tones | MIT | No | Yes |
 | LibriSpeech | CC-BY-4.0 | Yes (papers) | Yes |
 | Common Voice | CC0-1.0 | No | Yes (with terms) |
 | AMI | CC-BY-4.0 | Yes (required) | Yes |

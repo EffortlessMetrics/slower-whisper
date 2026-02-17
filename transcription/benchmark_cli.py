@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +52,7 @@ from .benchmarks import (
     iter_librispeech,
     iter_smoke_asr,
     iter_smoke_diarization,
+    iter_smoke_diarization_tones,
     list_available_benchmarks,
 )
 from .semantic import KeywordSemanticAnnotator
@@ -86,7 +88,7 @@ BENCHMARK_TRACKS: dict[str, TrackConfig] = {
     "diarization": TrackConfig(
         name="Speaker Diarization",
         description="Evaluate speaker segmentation using DER metrics",
-        supported_datasets=["smoke", "ami", "callhome", "libricss"],
+        supported_datasets=["smoke", "smoke_tones", "ami", "callhome", "libricss"],
         metrics=["der", "jer", "speaker_count_accuracy"],
         default_dataset="smoke",
     ),
@@ -818,6 +820,10 @@ class DiarizationBenchmarkRunner(BenchmarkRunner):
     def __init__(self, track: str, dataset: str, split: str = "test"):
         super().__init__(track, dataset, split)
         self._diarizer: Diarizer | None = None
+        # Keep smoke runs deterministic and HF-token independent unless explicitly overridden.
+        self._pyannote_mode_override: str | None = None
+        if dataset in {"smoke", "smoke_tones"} and not os.getenv("SLOWER_WHISPER_PYANNOTE_MODE"):
+            self._pyannote_mode_override = "stub"
 
     @property
     def diarizer(self):
@@ -827,9 +833,28 @@ class DiarizationBenchmarkRunner(BenchmarkRunner):
             self._diarizer = Diarizer()
         return self._diarizer
 
+    @contextmanager
+    def _with_mode_override(self):
+        key = "SLOWER_WHISPER_PYANNOTE_MODE"
+        if not self._pyannote_mode_override:
+            yield
+            return
+
+        previous = os.getenv(key)
+        os.environ[key] = self._pyannote_mode_override
+        try:
+            yield
+        finally:
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+
     def get_samples(self, limit: int | None = None) -> list[EvalSample]:
         if self.dataset == "smoke":
             return list(iter_smoke_diarization(limit=limit))
+        elif self.dataset == "smoke_tones":
+            return list(iter_smoke_diarization_tones(limit=limit))
         elif self.dataset == "ami":
             return list(iter_ami_meetings(split=self.split, limit=limit))
         elif self.dataset == "callhome":
@@ -860,7 +885,8 @@ class DiarizationBenchmarkRunner(BenchmarkRunner):
             }
 
         # 1. Run diarization
-        turns = self.diarizer.run(sample.audio_path)
+        with self._with_mode_override():
+            turns = self.diarizer.run(sample.audio_path)
 
         # 2. Prepare reference annotation
         ref = Annotation()
@@ -1837,6 +1863,21 @@ def _perform_dry_run_validation(track: str, dataset: str) -> int:
     if dataset == "commonvoice_en_smoke":
         manifest_dir = project_root / "benchmarks" / "datasets" / "asr" / "commonvoice_en_smoke"
         manifest_path = manifest_dir / "manifest.json"
+    elif dataset == "smoke":
+        if track == "asr":
+            manifest_dir = project_root / "benchmarks" / "datasets" / "asr" / "smoke"
+        elif track == "diarization":
+            manifest_dir = project_root / "benchmarks" / "datasets" / "diarization" / "smoke"
+        else:
+            print(f"{WARN} Manifest found: No (unsupported track '{track}' for smoke dataset)")
+            return 1
+        manifest_path = manifest_dir / "manifest.json"
+    elif dataset == "smoke_tones":
+        if track != "diarization":
+            print(f"{WARN} Manifest found: No (dataset '{dataset}' only valid for diarization)")
+            return 1
+        manifest_dir = project_root / "benchmarks" / "datasets" / "diarization" / "smoke_tones"
+        manifest_path = manifest_dir / "manifest.json"
     elif dataset == "librispeech":
         # LibriSpeech doesn't use a manifest file in the same way
         benchmarks_root = get_benchmarks_root()
@@ -2120,10 +2161,17 @@ def handle_benchmark_run(
         return _perform_dry_run_validation(track, dataset)
 
     # Check dataset availability
+    availability_key = dataset
+    if track == "diarization" and dataset == "smoke":
+        availability_key = "diarization-smoke"
+
     available = list_available_benchmarks()
-    if dataset in available and not available[dataset]["available"]:
+    if availability_key in available and not available[availability_key]["available"]:
         print(f"Warning: Dataset '{dataset}' is not staged.", file=sys.stderr)
-        print(f"See {available[dataset]['setup_doc']} for setup instructions.", file=sys.stderr)
+        print(
+            f"See {available[availability_key]['setup_doc']} for setup instructions.",
+            file=sys.stderr,
+        )
         # Continue anyway - runner will fail with helpful error
 
     print(f"Running benchmark: {track}")

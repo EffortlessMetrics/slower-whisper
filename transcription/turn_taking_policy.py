@@ -507,9 +507,7 @@ class TurnTakingEvaluator:
 
         # Calculate weighted average
         total_weight = (
-            self.policy.silence_weight
-            + self.policy.punctuation_weight
-            + self.policy.prosody_weight
+            self.policy.silence_weight + self.policy.punctuation_weight + self.policy.prosody_weight
         )
 
         if total_weight == 0:

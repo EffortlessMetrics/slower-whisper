@@ -20,22 +20,135 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Common English stopwords to exclude from TF-IDF
-STOPWORDS = frozenset([
-    "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
-    "can", "could", "did", "do", "does", "doing", "done", "for", "from", "had",
-    "has", "have", "having", "he", "her", "here", "hers", "herself", "him",
-    "himself", "his", "how", "i", "if", "in", "into", "is", "it", "its",
-    "itself", "just", "ll", "m", "me", "might", "more", "most", "must", "my",
-    "myself", "no", "nor", "not", "now", "of", "off", "ok", "okay", "on",
-    "once", "only", "or", "other", "our", "ours", "ourselves", "out", "over",
-    "own", "re", "s", "same", "shall", "she", "should", "so", "some", "such",
-    "t", "than", "that", "the", "their", "theirs", "them", "themselves", "then",
-    "there", "these", "they", "this", "those", "through", "to", "too", "um",
-    "uh", "under", "until", "up", "ve", "very", "was", "we", "well", "were",
-    "what", "when", "where", "which", "while", "who", "whom", "why", "will",
-    "with", "would", "yeah", "yes", "you", "your", "yours", "yourself",
-    "yourselves",
-])
+STOPWORDS = frozenset(
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "been",
+        "being",
+        "but",
+        "by",
+        "can",
+        "could",
+        "did",
+        "do",
+        "does",
+        "doing",
+        "done",
+        "for",
+        "from",
+        "had",
+        "has",
+        "have",
+        "having",
+        "he",
+        "her",
+        "here",
+        "hers",
+        "herself",
+        "him",
+        "himself",
+        "his",
+        "how",
+        "i",
+        "if",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "itself",
+        "just",
+        "ll",
+        "m",
+        "me",
+        "might",
+        "more",
+        "most",
+        "must",
+        "my",
+        "myself",
+        "no",
+        "nor",
+        "not",
+        "now",
+        "of",
+        "off",
+        "ok",
+        "okay",
+        "on",
+        "once",
+        "only",
+        "or",
+        "other",
+        "our",
+        "ours",
+        "ourselves",
+        "out",
+        "over",
+        "own",
+        "re",
+        "s",
+        "same",
+        "shall",
+        "she",
+        "should",
+        "so",
+        "some",
+        "such",
+        "t",
+        "than",
+        "that",
+        "the",
+        "their",
+        "theirs",
+        "them",
+        "themselves",
+        "then",
+        "there",
+        "these",
+        "they",
+        "this",
+        "those",
+        "through",
+        "to",
+        "too",
+        "um",
+        "uh",
+        "under",
+        "until",
+        "up",
+        "ve",
+        "very",
+        "was",
+        "we",
+        "well",
+        "were",
+        "what",
+        "when",
+        "where",
+        "which",
+        "while",
+        "who",
+        "whom",
+        "why",
+        "will",
+        "with",
+        "would",
+        "yeah",
+        "yes",
+        "you",
+        "your",
+        "yours",
+        "yourself",
+        "yourselves",
+    ]
+)
 
 
 @dataclass(slots=True)
@@ -217,10 +330,7 @@ def compute_idf(documents: list[list[str]]) -> dict[str, float]:
             doc_freq[term] += 1
 
     # IDF with smoothing: log((N + 1) / (df + 1)) + 1
-    return {
-        term: math.log((n_docs + 1) / (freq + 1)) + 1
-        for term, freq in doc_freq.items()
-    }
+    return {term: math.log((n_docs + 1) / (freq + 1)) + 1 for term, freq in doc_freq.items()}
 
 
 def compute_tfidf(tokens: list[str], idf: dict[str, float]) -> dict[str, float]:
@@ -260,8 +370,8 @@ def cosine_similarity(vec1: dict[str, float], vec2: dict[str, float]) -> float:
     dot_product = sum(vec1[t] * vec2[t] for t in common_terms)
 
     # Compute magnitudes
-    mag1 = math.sqrt(sum(v ** 2 for v in vec1.values()))
-    mag2 = math.sqrt(sum(v ** 2 for v in vec2.values()))
+    mag1 = math.sqrt(sum(v**2 for v in vec1.values()))
+    mag2 = math.sqrt(sum(v**2 for v in vec2.values()))
 
     if mag1 == 0 or mag2 == 0:
         return 0.0
@@ -626,8 +736,8 @@ class StreamingTopicSegmenter:
             TopicBoundaryPayload.
         """
         # Create topic chunk for completed topic
-        topic_turns = self._turns[self._current_topic_start_idx:turn_idx]
-        topic_tokens = self._turn_tokens[self._current_topic_start_idx:turn_idx]
+        topic_turns = self._turns[self._current_topic_start_idx : turn_idx]
+        topic_tokens = self._turn_tokens[self._current_topic_start_idx : turn_idx]
 
         topic = self._create_topic_chunk(
             topic_idx=self._current_topic_idx,
@@ -723,11 +833,11 @@ class StreamingTopicSegmenter:
         if self._current_topic_start_idx >= len(self._turns):
             return None
 
-        final_turns = self._turns[self._current_topic_start_idx:]
+        final_turns = self._turns[self._current_topic_start_idx :]
         if not final_turns:
             return None
 
-        final_tokens = self._turn_tokens[self._current_topic_start_idx:]
+        final_tokens = self._turn_tokens[self._current_topic_start_idx :]
 
         topic = self._create_topic_chunk(
             topic_idx=self._current_topic_idx,

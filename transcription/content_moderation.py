@@ -311,11 +311,7 @@ class LexiconModerator:
 
                 if preserve_first and preserve_last:
                     # f***k
-                    masked = (
-                        original[0]
-                        + self.config.mask_character * (length - 2)
-                        + original[-1]
-                    )
+                    masked = original[0] + self.config.mask_character * (length - 2) + original[-1]
                 elif preserve_first:
                     # f***
                     masked = original[0] + self.config.mask_character * (length - 1)

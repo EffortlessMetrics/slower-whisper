@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- (none)
+
+### Changed
+
+- (none)
+
+### Fixed
+
+- (none)
+
+## [2.0.1] - 2026-02-16
+
+### Added
+
 #### Post-Processing Orchestration
 
 - **`PostProcessConfig`**: Unified configuration for all post-processors (safety, roles, topics, turn-taking, environment, extended prosody)
@@ -40,11 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- (v2.0.1+)
+- (none)
 
 ### Fixed
 
-- (v2.0.1+)
+- (none)
 
 ## [2.0.0] - 2026-01-26
 
@@ -903,7 +917,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
 - [Issue Tracker](https://github.com/EffortlessMetrics/slower-whisper/issues)
 - [Releases](https://github.com/EffortlessMetrics/slower-whisper/releases)
 
-[Unreleased]: https://github.com/EffortlessMetrics/slower-whisper/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/EffortlessMetrics/slower-whisper/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/EffortlessMetrics/slower-whisper/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.9.2...v2.0.0
 [1.9.2]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.9.0...v1.9.1

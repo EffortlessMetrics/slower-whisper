@@ -134,8 +134,18 @@ class TestDateFormatting:
         """All months are recognized."""
         formatter = SmartFormatter()
         months = [
-            "january", "february", "march", "april", "may", "june",
-            "july", "august", "september", "october", "november", "december"
+            "january",
+            "february",
+            "march",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
         ]
         for month in months:
             result = formatter.format(f"{month} first")
@@ -365,8 +375,7 @@ class TestFormattedText:
             formatted="5:00 PM",
             matches=[
                 FormatMatch(
-                    start=0, end=7, original="five pm",
-                    formatted="5:00 PM", format_type="time"
+                    start=0, end=7, original="five pm", formatted="5:00 PM", format_type="time"
                 )
             ],
         )

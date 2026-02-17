@@ -65,9 +65,12 @@ Evaluates speaker diarization quality using Diarization Error Rate (DER).
 | `jer`  | Jaccard Error Rate (lower is better) |
 | `speaker_count_accuracy` | How often speaker count is correct |
 
-**Supported datasets:** AMI, LibriCSS
+**Supported datasets:** smoke, smoke_tones, AMI, CALLHOME, LibriCSS
 
 ```bash
+# Quick smoke validation on committed speech fixtures
+slower-whisper benchmark run --track diarization --dataset smoke
+
 # Quick DER check on AMI test meetings
 slower-whisper benchmark run --track diarization --dataset ami --split test --limit 5
 
@@ -164,12 +167,16 @@ Smoke datasets are minimal test sets committed to the repository for quick CI va
 | Dataset | Track | Samples | Duration | Description |
 |---------|-------|---------|----------|-------------|
 | `smoke` | ASR | 3 | 21s | Synthetic TTS audio |
-| `diarization-smoke` | Diarization | 3 | 34s | Synthetic tone patterns |
+| `smoke` | Diarization | 3 | 39.47s | Synthetic dual-voice speech |
+| `smoke_tones` | Diarization | 3 | 34.1s | Legacy deterministic tone fixtures |
 
 ```bash
 # Run smoke tests (always works)
 slower-whisper benchmark run --track asr --dataset smoke
 slower-whisper benchmark run --track diarization --dataset smoke
+
+# Optional legacy tone smoke set
+slower-whisper benchmark run --track diarization --dataset smoke_tones
 ```
 
 ### LibriSpeech (ASR)
@@ -273,6 +280,8 @@ IEMOCAP requires registration and signed EULA. See [IEMOCAP_SETUP.md](IEMOCAP_SE
 | Dataset | Track | License | Download | Best For |
 |---------|-------|---------|----------|----------|
 | smoke | ASR | MIT | Committed | Quick CI validation |
+| smoke | Diarization | MIT | Committed | Quick speech diarization sanity check |
+| smoke_tones | Diarization | MIT | Committed | Deterministic mapping/protocol checks |
 | LibriSpeech | ASR | CC-BY-4.0 | Auto | WER evaluation |
 | AMI | Diarization | CC-BY-4.0 | Manual | Meeting diarization |
 | CALLHOME | Diarization | LDC | Manual | Telephone diarization |

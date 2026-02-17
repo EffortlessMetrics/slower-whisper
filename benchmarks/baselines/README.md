@@ -11,7 +11,8 @@ baselines/
 │   └── smoke.json          # CI smoke test baseline (always available)
 ├── diarization/
 │   ├── ami.json            # Full AMI Meeting Corpus baseline
-│   └── smoke.json          # CI smoke test baseline (always available)
+│   ├── smoke.json          # Speech smoke baseline (always available)
+│   └── smoke_tones.json    # Legacy tone smoke baseline (always available)
 ├── streaming/
 │   └── librispeech.json
 ├── semantic/

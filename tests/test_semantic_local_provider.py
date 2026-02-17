@@ -312,17 +312,16 @@ class TestLocalLLMSemanticAdapter:
 
     def test_adapter_unavailable_returns_empty_annotation(self) -> None:
         """Test that unavailable adapter returns low-confidence annotation."""
-        adapter = LocalLLMSemanticAdapter()
-        context = ChunkContext(speaker_id="test", start=0.0, end=10.0)
+        # Force unavailable state to avoid loading/inferencing real local models in fast tests.
+        with patch("transcription.local_llm_provider.is_available", return_value=False):
+            adapter = LocalLLMSemanticAdapter()
+            context = ChunkContext(speaker_id="test", start=0.0, end=10.0)
 
-        # If provider not available, should return empty annotation
-        result = adapter.annotate_chunk("Test text", context)
+            result = adapter.annotate_chunk("Test text", context)
 
         assert isinstance(result, SemanticAnnotation)
         assert result.provider == "local-llm"
-        # If unavailable, confidence will be 0
-        if not is_available():
-            assert result.confidence == 0.0
+        assert result.confidence == 0.0
 
 
 class TestCreateAdapter:
@@ -561,11 +560,11 @@ class TestProtocolCompliance:
         """Verify LocalLLMSemanticAdapter satisfies SemanticAdapter protocol."""
         from transcription.semantic_adapter import SemanticAdapter
 
-        adapter: SemanticAdapter = LocalLLMSemanticAdapter()
-        context = ChunkContext()
-
-        # Should have annotate_chunk method
-        result = adapter.annotate_chunk("Test", context)
+        with patch("transcription.local_llm_provider.is_available", return_value=False):
+            adapter: SemanticAdapter = LocalLLMSemanticAdapter()
+            context = ChunkContext()
+            # Should have annotate_chunk method
+            result = adapter.annotate_chunk("Test", context)
         assert isinstance(result, SemanticAnnotation)
 
         # Should have health_check method
@@ -574,13 +573,11 @@ class TestProtocolCompliance:
 
     def test_local_provider_matches_adapter_interface(self) -> None:
         """Verify LocalSemanticProvider has same interface as adapter."""
-        provider = LocalSemanticProvider()
-        context = ChunkContext()
-
-        # Should have annotate_chunk method
-        # Note: This will fail if torch/transformers not installed,
-        # but will return valid annotation with confidence 0
-        result = provider.annotate_chunk("Test", context)
+        with patch("transcription.local_llm_provider.is_available", return_value=False):
+            provider = LocalSemanticProvider()
+            context = ChunkContext()
+            # Should have annotate_chunk method
+            result = provider.annotate_chunk("Test", context)
         assert isinstance(result, SemanticAnnotation)
 
         # Should have health_check method

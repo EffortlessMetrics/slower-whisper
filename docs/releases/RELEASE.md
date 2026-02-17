@@ -6,9 +6,10 @@ and `../RELEASE_CHECKLIST_NIX.md`.
 
 ## Quick preflight
 
-- Run sanity checks: `make verify-quick`
+- Run sanity checks: `./scripts/ci-local.sh fast` (or `make verify-quick`)
 - Ensure changelog is current: `CHANGELOG.md`
-- Confirm version updates: `pyproject.toml` and `transcription/__init__.py`
+- Confirm version updates: `pyproject.toml`, `CITATION.cff`, and `ROADMAP.md`
+- `transcription.__version__` is metadata-derived via `importlib.metadata`; do not bump it manually
 - Docs and examples refreshed (README, docs/INDEX, examples/*)
 
 ## Release workflow
@@ -22,8 +23,8 @@ make clean
 
 1. Finalize version + changelog
 
-- Set the new version in `pyproject.toml` and `transcription/__init__.py`.
-- Update release date and sections in `CHANGELOG.md`.
+- Set the new version in `pyproject.toml` and `CITATION.cff`.
+- Update `ROADMAP.md` (`Current Version`, `Last Updated`) and release sections in `CHANGELOG.md`.
 - Commit: `git commit -am "Release vX.Y.Z"` (or similar).
 
 1. Run verification
@@ -49,11 +50,12 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin main vX.Y.Z
 ```
 
-1. Optional: publish to PyPI
+Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which publishes to PyPI and creates the GitHub release.
+
+1. Optional: manual TestPyPI dry run (no production publish)
 
 ```bash
-uv run twine upload --repository testpypi dist/*   # sanity pass
-uv run twine upload dist/*                         # production
+gh workflow run release.yml -f version=X.Y.Z-rc1
 ```
 
 1. GitHub Release

@@ -603,8 +603,10 @@ def cmd_status(args: argparse.Namespace) -> int:
     print("-" * 70)
     smoke_asr = MANIFEST_DIR / "asr" / "smoke" / "manifest.json"
     smoke_diar = MANIFEST_DIR / "diarization" / "smoke" / "manifest.json"
+    smoke_diar_tones = MANIFEST_DIR / "diarization" / "smoke_tones" / "manifest.json"
     print(f"  asr-smoke        {'OK' if smoke_asr.exists() else 'Missing'}")
     print(f"  diarization-smoke {'OK' if smoke_diar.exists() else 'Missing'}")
+    print(f"  diarization-smoke-tones {'OK' if smoke_diar_tones.exists() else 'Missing'}")
 
     return 0
 

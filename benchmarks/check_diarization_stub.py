@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
-REPORT_PATH = Path("benchmarks/DIARIZATION_REPORT.json")
+DATASET_PATH = Path("benchmarks/data/diarization")
+MANIFEST_PATH = DATASET_PATH / "manifest.jsonl"
 
 
 def _is_finite(value: object) -> bool:
@@ -16,17 +20,53 @@ def _is_finite(value: object) -> bool:
 
 
 def main() -> int:
-    if not REPORT_PATH.exists():
-        print("[check_diarization_stub] missing benchmarks/DIARIZATION_REPORT.json")
-        print("  Regenerate with SLOWER_WHISPER_PYANNOTE_MODE=stub benchmarks/eval_diarization.py")
+    if not DATASET_PATH.exists() or not MANIFEST_PATH.exists():
+        print("[check_diarization_stub] missing diarization smoke fixtures")
+        print(f"  expected dataset: {DATASET_PATH}")
+        print(f"  expected manifest: {MANIFEST_PATH}")
         return 1
 
-    data = json.loads(REPORT_PATH.read_text())
+    with tempfile.TemporaryDirectory(prefix="diar_stub_eval_") as tmp:
+        output_json = Path(tmp) / "diarization_stub_eval.json"
+        output_md = Path(tmp) / "diarization_stub_eval.md"
+        cmd = [
+            sys.executable,
+            "benchmarks/eval_diarization.py",
+            "--dataset",
+            str(DATASET_PATH),
+            "--manifest",
+            str(MANIFEST_PATH),
+            "--device",
+            "cpu",
+            "--pyannote-mode",
+            "stub",
+            "--output-json",
+            str(output_json),
+            "--output-md",
+            str(output_md),
+            "--overwrite",
+        ]
+        proc = subprocess.run(cmd, text=True, capture_output=True)
+        if proc.returncode != 0:
+            print(f"[check_diarization_stub] eval_diarization failed (exit={proc.returncode})")
+            if proc.stdout:
+                print(proc.stdout.strip())
+            if proc.stderr:
+                print(proc.stderr.strip())
+            return 1
+
+        if not output_json.exists():
+            print("[check_diarization_stub] eval_diarization did not produce output JSON")
+            return 1
+
+        data = json.loads(output_json.read_text())
+
     aggregate = data.get("aggregate") or {}
     config = data.get("config") or {}
 
     avg_der = aggregate.get("avg_der")
     speaker_acc = aggregate.get("speaker_count_accuracy")
+    num_samples = aggregate.get("num_samples")
     pyannote_mode = config.get("pyannote_mode")
 
     errors: list[str] = []
@@ -38,6 +78,12 @@ def main() -> int:
         errors.append(f"speaker_count_accuracy not finite: {speaker_acc}")
     elif float(speaker_acc) < 1.0:
         errors.append(f"speaker_count_accuracy dropped: {speaker_acc}")
+
+    if not _is_finite(num_samples) or float(num_samples) < 1.0:
+        errors.append(f"num_samples invalid: {num_samples}")
+
+    if pyannote_mode != "stub":
+        errors.append(f"unexpected pyannote_mode: {pyannote_mode}")
 
     if errors:
         for err in errors:

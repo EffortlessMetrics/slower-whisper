@@ -1,47 +1,71 @@
 # Development Scripts
 
-This directory contains development and maintenance scripts used during development and testing of slower-whisper.
+This directory contains maintenance and verification scripts used by maintainers and contributors.
 
-## Scripts
+Most users do not need these scripts for normal `slower-whisper` runtime usage.
 
-### test_entry_points.py / test_entry_points.sh
+## Primary Local Gates
 
-Verify that CLI entry points are correctly installed and functional after package installation.
+| Script | Purpose |
+|--------|---------|
+| `ci-local.sh` | Canonical local gate (full/fast modes) |
+| `verify_all.py` / `verify_all.sh` | Aggregate verification entry points |
+| `verify_bdd.sh` / `verify_bdd_legacy.sh` | BDD-focused verification |
 
-**Usage:**
+Typical usage:
+
 ```bash
-# Python version
-uv run python scripts/test_entry_points.py
-
-# Shell version
-./scripts/test_entry_points.sh
+./scripts/ci-local.sh
+./scripts/ci-local.sh fast
 ```
 
-Tests:
-- Package importability
-- CLI command availability (`slower-whisper`)
-- Version string consistency
-- Help output correctness
+## Packaging and Entry-Point Checks
 
-### verify_code_examples.py
+| Script | Purpose |
+|--------|---------|
+| `test_entry_points.py` | Programmatic validation of installed entry points |
+| `test_entry_points.sh` | Shell wrapper for entry-point checks |
+| `regenerate-requirements.sh` | Regenerate pinned requirements files |
 
-Extract and validate Python code examples from documentation files (README.md, docs/ARCHITECTURE.md, docs/API_QUICK_REFERENCE.md).
+## Benchmark/Dataset Tooling
 
-**Usage:**
-```bash
-uv run python scripts/verify_code_examples.py
-```
+| Script | Purpose |
+|--------|---------|
+| `setup_benchmark_datasets.py` | Stage and validate benchmark datasets |
+| `download_datasets.py` / `fetch_datasets.py` | Dataset download helpers |
+| `download_librispeech.sh` | LibriSpeech convenience download |
+| `validate_gold_labels.py` | Validate semantic gold labels |
+| `verify_ami_setup.sh` / `fix_ami_annotations.py` | AMI setup and annotation repair helpers |
+| `check-calibration.py` | Calibration checks for audit artifacts |
+| `check_model_cache.py` | Verify local model cache state |
 
-Validates:
-- Python syntax correctness
-- Import statement accuracy
-- Function signature consistency
-- Variable naming conventions
+## Documentation Tooling
 
-**Purpose:** Ensures documentation code examples stay synchronized with actual API changes.
+| Script | Purpose |
+|--------|---------|
+| `verify_code_examples.py` | Validate executable Python snippets in docs |
+| `render-doc-snippets.py` | Regenerate snippet fixtures used in docs |
+| `docs-build.sh` | Build documentation |
+| `generate-roadmap-status.py` | Regenerate roadmap status summaries |
+| `generate-pr-ledger.py` | Generate audit/ledger artifacts for PR analysis |
 
-## For Contributors
+## Deployment and Ops Helpers
 
-These scripts are part of the development workflow but are not required for end users. They help maintain code quality and documentation accuracy during development.
+| Script | Purpose |
+|--------|---------|
+| `docker_smoke_test.sh` | Smoke test Docker build/runtime |
+| `validate_k8s.sh` | Validate Kubernetes manifests |
+| `setup-env.sh` | Local environment bootstrap |
+| `dogfood.sh` | Dogfooding workflow runner |
+| `collect-telemetry.py` | Collect telemetry artifacts |
+| `ci-benchmarks.sh` | Benchmark-oriented CI helper |
 
-For general development guidelines, see [../CONTRIBUTING.md](../CONTRIBUTING.md).
+## Notes
+
+- Prefer `./scripts/ci-local.sh` as the default contributor gate.
+- Many scripts assume execution from repo root.
+- Some scripts require optional dependencies or external tools (`gh`, Docker, kubectl, dataset credentials).
+- Prefer `uv run ...` for Python scripts to ensure the project environment is used.
+- For release-sensitive changes, capture script output in PR receipts.
+
+For contributor policy and required checks, see [../CONTRIBUTING.md](../CONTRIBUTING.md) and [../CLAUDE.md](../CLAUDE.md).

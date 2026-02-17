@@ -17,17 +17,18 @@
 ---
 
 ## Quality (synthetic fixtures)
-- Dataset: `benchmarks/data/diarization` (manifest sha256 `34f8caa31589541c795dcc217df1688440bf25ee45d92669073eafdde0fe0120`).
-- Stub backend: `SLOWER_WHISPER_PYANNOTE_MODE=stub`, device `cpu` → avg DER **0.451**, speaker-count accuracy **1.0** (3/3), total runtime **1.24s**. See `benchmarks/DIARIZATION_REPORT.{md,json}` (also used by the CI stub regression check).
-- Real backend: `SLOWER_WHISPER_PYANNOTE_MODE=auto` with `HF_TOKEN` + pyannote model (default `pyannote/speaker-diarization-3.1`, override via `SLOWER_WHISPER_PYANNOTE_MODEL`). Generates `benchmarks/DIARIZATION_REPORT_REAL.{md,json}` when run; not executed in this workspace because HF_TOKEN/model access was unavailable.
+- Dataset: `benchmarks/data/diarization` (manifest sha256 `c21b86b9971b0502f51eff00254819c45aeebf3cfd7f8c67d7a266a968dcd831`).
+- Stub backend: `SLOWER_WHISPER_PYANNOTE_MODE=stub`, device `cpu` → avg DER **0.541**, speaker-count accuracy **1.0** (3/3), total runtime **1.59s**. See `benchmarks/DIARIZATION_REPORT.{md,json}` (also used by the CI stub regression check).
+- Real backend: `SLOWER_WHISPER_PYANNOTE_MODE=auto` with `HF_TOKEN` + pyannote model (default `pyannote/speaker-diarization-3.1`, override via `SLOWER_WHISPER_PYANNOTE_MODEL`) → avg DER **0.122**, speaker-count accuracy **1.0** (3/3), total runtime **174.71s** on CPU. See `benchmarks/DIARIZATION_REPORT_REAL.{md,json}`.
+- The benchmark CLI defaults diarization `smoke` dataset runs to `stub` mode unless `SLOWER_WHISPER_PYANNOTE_MODE` is explicitly set.
 - Optimized for 2–4 speakers with light overlap; stub DER is only for regression tracking (real pyannote numbers will differ).
 - Per-file details live in `benchmarks/DIARIZATION_REPORT.md` (regenerated from `benchmarks/eval_diarization.py`).
 
 | file                    | DER   | ref_speakers | pred_speakers | speaker_count_ok |
 | ----------------------- | ----- | ------------ | ------------- | ---------------- |
-| synthetic_2speaker      | 0.550 | 2            | 2             | yes              |
-| overlap_tones           | 0.377 | 2            | 2             | yes              |
-| call_mixed              | 0.427 | 2            | 2             | yes              |
+| meeting_dual_voice      | 0.550 | 2            | 2             | yes              |
+| support_handoff_dual_voice | 0.541 | 2         | 2             | yes              |
+| planning_sync_dual_voice | 0.533 | 2           | 2             | yes              |
 
 To regenerate the stub run shown above:
 

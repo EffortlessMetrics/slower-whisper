@@ -230,6 +230,61 @@ class TestDryRunValidation:
         assert "Samples defined: 15" in output
         assert "from selection.csv" in output
 
+    def test_dry_run_diarization_smoke_returns_zero(self) -> None:
+        """Dry-run supports diarization speech smoke manifest validation."""
+        from transcription.benchmark_cli import handle_benchmark_run
+
+        exit_code = handle_benchmark_run(
+            track="diarization",
+            dataset="smoke",
+            split="test",
+            limit=None,
+            output=None,
+            verbose=False,
+            mode=None,
+            dry_run=True,
+        )
+
+        assert exit_code == 0
+
+    def test_dry_run_diarization_smoke_tones_returns_zero(self) -> None:
+        """Dry-run supports legacy diarization tone smoke manifest validation."""
+        from transcription.benchmark_cli import handle_benchmark_run
+
+        exit_code = handle_benchmark_run(
+            track="diarization",
+            dataset="smoke_tones",
+            split="test",
+            limit=None,
+            output=None,
+            verbose=False,
+            mode=None,
+            dry_run=True,
+        )
+
+        assert exit_code == 0
+
+
+def test_diarization_smoke_runner_defaults_to_stub_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Smoke diarization runner defaults to stub mode when env is not explicitly set."""
+    from transcription.benchmark_cli import DiarizationBenchmarkRunner
+
+    monkeypatch.delenv("SLOWER_WHISPER_PYANNOTE_MODE", raising=False)
+    runner = DiarizationBenchmarkRunner(track="diarization", dataset="smoke")
+    assert runner._pyannote_mode_override == "stub"
+
+    tones_runner = DiarizationBenchmarkRunner(track="diarization", dataset="smoke_tones")
+    assert tones_runner._pyannote_mode_override == "stub"
+
+
+def test_diarization_smoke_runner_respects_explicit_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicit SLOWER_WHISPER_PYANNOTE_MODE disables smoke-mode override."""
+    from transcription.benchmark_cli import DiarizationBenchmarkRunner
+
+    monkeypatch.setenv("SLOWER_WHISPER_PYANNOTE_MODE", "auto")
+    runner = DiarizationBenchmarkRunner(track="diarization", dataset="smoke")
+    assert runner._pyannote_mode_override is None
+
 
 def test_benchmark_run_passes_llm_delay_to_runner() -> None:
     """LLM delay is forwarded to the benchmark runner factory."""
