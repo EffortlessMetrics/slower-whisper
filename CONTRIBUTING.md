@@ -33,7 +33,7 @@ guide has you covered. We welcome contributions of all kinds and skill levels!
 Before contributing, it's helpful to understand who slower-whisper serves and
 how we prioritize features:
 
-### Primary Users (v1.x Focus)
+### Primary Users
 
 #### 1. Infrastructure / Platform Engineers
 
@@ -59,7 +59,7 @@ how we prioritize features:
 - ✅ Reproducible pipelines (same input → same output)
 - ✅ Export to research tools (Praat, ELAN)
 
-### Secondary Users (v1.2+)
+### Secondary Users
 
 #### 3. LLM Application Developers
 

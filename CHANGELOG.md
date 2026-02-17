@@ -7,17 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- (none)
-
-### Changed
-
-- (none)
-
-### Fixed
-
-- (none)
+No changes yet — see [ROADMAP.md](ROADMAP.md) for what's planned next.
 
 ## [2.0.1] - 2026-02-16
 

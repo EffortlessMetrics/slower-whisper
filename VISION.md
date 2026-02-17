@@ -82,7 +82,7 @@ It **is**:
 
 We serve **three primary user types**, each with different needs:
 
-#### Primary Users (v1.x Focus)
+#### Primary Users
 
 **1. Infrastructure / Platform Engineers**
 
@@ -110,7 +110,7 @@ Analyzing conversations for academic research:
 - ✅ Export to research tools (Praat, ELAN)
 - ❌ Don't care about: Kubernetes, real-time streaming
 
-#### Secondary Users (v1.2+ and Community-Driven)
+#### Secondary Users
 
 **3. LLM Application Developers**
 
@@ -125,13 +125,13 @@ Building conversation-aware LLM apps:
 - ✅ Easy chunking and formatting
 - ❌ Don't care about: Low-level prosody details, Docker internals
 
-**Note:** We prioritize groups 1 and 2 in v1.x. Group 3 features (LLM adapters) are added in v1.2-v1.3 but can also be community-contributed.
+**Note:** All three user groups are actively supported as of v2.0. Community contributions welcome across all surfaces.
 
 #### Non-Target Users (Explicitly Out of Scope)
 
 - **B2C end-users** — They use products built *on* slower-whisper, not slower-whisper directly
 - **Enterprise SaaS buyers** — They want turn-key solutions, not infrastructure
-- **Real-time captioning consumers** — They need apps, not libraries (v2.0+ may enable app builders)
+- **Real-time captioning consumers** — They need apps, not libraries (streaming shipped in v2.0 enables app builders to serve them)
 
 ---
 
@@ -441,13 +441,7 @@ Be the "standard input" for:
 
 See [ROADMAP.md](ROADMAP.md) for detailed feature timelines.
 
-**Key milestones:**
-
-- **v1.1 (Q1 2026)**: Speaker diarization + schema v2 lock-in
-- **v1.2 (Q2 2026)**: Turn structure + chunking + LLM prompt builders
-- **v1.3 (Q3 2026)**: Local SLM integration (Stage 3) + evaluation harness
-- **v2.0 (Q4 2026)**: Streaming / real-time + plugin architecture
-- **v3.0 (2027+)**: Semantic understanding + domain specialization
+**Current state (v2.0.1):** All tracks through v2.0 are shipped — diarization, streaming, semantic adapters, benchmarks, post-processing. See [ROADMAP.md](ROADMAP.md) for the forward plan.
 
 ---
 
