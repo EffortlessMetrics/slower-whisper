@@ -12,8 +12,8 @@ abstract: >-
   schema-versioned transcripts with speakers, timestamps, enrichment, and
   reproducible receipts.
 authors:
-  - given-names: Effortless
-    family-names: Metrics
+  - given-names: Steven
+    family-names: Zimmerman
     email: git@effortlesssteven.com
 keywords:
   - whisper
