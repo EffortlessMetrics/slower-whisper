@@ -59,7 +59,7 @@ dependencies = [
 # Adds: soundfile, numpy, librosa stack (scipy, scikit-learn, numba)
 enrich-basic = [
     "soundfile>=0.13.1",
-    "numpy>=2,<2.4",  # Upper bound from numba 0.63.x; bump when numba supports 2.4+
+    "numpy>=2,<2.5",  # Upper bound from numba 0.63.x; bump when numba supports 2.4+
     "librosa>=0.11.0",
     # Floor numba to prevent solver from backtracking to ancient versions
     # that claim numpy 2.4+ compatibility but fail on modern Python.
