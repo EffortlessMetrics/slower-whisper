@@ -41,7 +41,7 @@ class TestWord:
 
     def test_word_from_internal(self) -> None:
         """Word can be created from internal Word type."""
-        from transcription.models import Word as InternalWord
+        from slower_whisper.pipeline.models import Word as InternalWord
 
         internal = InternalWord(word="test", start=0.0, end=0.5, probability=0.9)
         word = Word.from_internal(internal)
@@ -230,8 +230,8 @@ class TestSegment:
 
     def test_segment_from_internal(self) -> None:
         """Segment can be created from internal Segment type."""
-        from transcription.models import Segment as InternalSegment
-        from transcription.models import Word as InternalWord
+        from slower_whisper.pipeline.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Word as InternalWord
 
         internal = InternalSegment(
             id=0,
@@ -279,8 +279,8 @@ class TestTranscriptionInfo:
 
     def test_transcription_info_from_transcript(self) -> None:
         """TranscriptionInfo can be created from a Transcript."""
-        from transcription.models import Segment as InternalSegment
-        from transcription.models import Transcript
+        from slower_whisper.pipeline.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Transcript
 
         transcript = Transcript(
             file_name="test.wav",
@@ -376,11 +376,11 @@ class TestImportCompatibility:
         assert TranscriptionInfo is not None
 
     def test_all_exports(self) -> None:
-        """__all__ exports match expected public API."""
+        """__all__ exports include the faster-whisper compat types."""
         import slower_whisper
 
-        expected = {"WhisperModel", "Segment", "Word", "TranscriptionInfo"}
-        assert set(slower_whisper.__all__) == expected
+        compat_types = {"WhisperModel", "Segment", "Word", "TranscriptionInfo"}
+        assert compat_types.issubset(set(slower_whisper.__all__))
 
 
 class TestLegacyCodePatterns:
@@ -448,9 +448,9 @@ class TestLegacyCodePatterns:
 # Helper to create mock transcript for testing
 def _create_mock_transcript() -> Any:
     """Create a mock Transcript for testing transcribe() behavior."""
-    from transcription.models import Segment as InternalSegment
-    from transcription.models import Transcript
-    from transcription.models import Word as InternalWord
+    from slower_whisper.pipeline.models import Segment as InternalSegment
+    from slower_whisper.pipeline.models import Transcript
+    from slower_whisper.pipeline.models import Word as InternalWord
 
     return Transcript(
         file_name="test.wav",
@@ -986,7 +986,7 @@ class TestSegmentValuesFromInternal:
 
     def test_segment_from_internal_preserves_tokens(self) -> None:
         """Segment.from_internal() preserves tokens from internal segment."""
-        from transcription.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Segment as InternalSegment
 
         internal = InternalSegment(
             id=0,
@@ -1003,7 +1003,7 @@ class TestSegmentValuesFromInternal:
 
     def test_segment_from_internal_preserves_logprob(self) -> None:
         """Segment.from_internal() preserves avg_logprob from internal segment."""
-        from transcription.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Segment as InternalSegment
 
         internal = InternalSegment(
             id=0,
@@ -1019,7 +1019,7 @@ class TestSegmentValuesFromInternal:
 
     def test_segment_from_internal_preserves_all_fields(self) -> None:
         """Segment.from_internal() preserves all faster-whisper fields."""
-        from transcription.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Segment as InternalSegment
 
         internal = InternalSegment(
             id=1,
@@ -1049,7 +1049,7 @@ class TestSegmentValuesFromInternal:
 
     def test_segment_from_internal_defaults(self) -> None:
         """Segment.from_internal() uses defaults for missing optional fields."""
-        from transcription.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Segment as InternalSegment
 
         # Create internal segment with only required fields
         internal = InternalSegment(
@@ -1086,11 +1086,11 @@ class TestDeviceCoercionWarning:
         mock_engine.model = MagicMock()
 
         monkeypatch.setattr(
-            "transcription.asr_engine.TranscriptionEngine",
+            "slower_whisper.pipeline.asr_engine.TranscriptionEngine",
             lambda cfg: mock_engine,
         )
         monkeypatch.setattr(
-            "transcription.device.resolve_device",
+            "slower_whisper.pipeline.device.resolve_device",
             lambda x: MagicMock(device="cpu"),
         )
 
@@ -1109,8 +1109,8 @@ class TestVadDurationTracking:
 
     def test_transcription_info_uses_vad_duration(self) -> None:
         """TranscriptionInfo.from_transcript() uses duration_after_vad when available."""
-        from transcription.models import Segment as InternalSegment
-        from transcription.models import Transcript
+        from slower_whisper.pipeline.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Transcript
 
         # Create transcript with duration_after_vad set
         transcript = Transcript(
@@ -1129,8 +1129,8 @@ class TestVadDurationTracking:
 
     def test_transcription_info_fallback_without_vad_duration(self) -> None:
         """TranscriptionInfo.from_transcript() falls back to duration when no VAD duration."""
-        from transcription.models import Segment as InternalSegment
-        from transcription.models import Transcript
+        from slower_whisper.pipeline.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Transcript
 
         # Create transcript without duration_after_vad
         transcript = Transcript(
@@ -1272,6 +1272,32 @@ class TestSampleRateHandling:
         assert lang == "ja"
 
 
+class TestImportWithoutOptionalDeps:
+    """Tests verifying import works without optional dependencies."""
+
+    def test_import_slower_whisper_without_soundfile(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """import slower_whisper must succeed when soundfile is missing."""
+        import sys
+
+        # Block soundfile at the sys.modules level
+        monkeypatch.setitem(sys.modules, "soundfile", None)
+
+        # Clear all cached slower_whisper modules so re-import is forced
+        stale = [k for k in sys.modules if k.startswith(("slower_whisper", "transcription"))]
+        for k in stale:
+            monkeypatch.delitem(sys.modules, k)
+
+        # Re-import — must not raise
+        import slower_whisper
+
+        assert hasattr(slower_whisper, "WhisperModel")
+        assert hasattr(slower_whisper, "__version__")
+
+        # Lazy attrs should also be accessible
+        assert slower_whisper.transcribe_file is not None
+        assert slower_whisper.TranscriptionConfig is not None
+
+
 class TestSegmentFallbackLogging:
     """Tests for fallback logging in Segment.from_internal()."""
 
@@ -1279,7 +1305,7 @@ class TestSegmentFallbackLogging:
         """Segment.from_internal() logs debug message when using defaults."""
         import logging
 
-        from transcription.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Segment as InternalSegment
 
         # Create segment without optional fields
         internal = InternalSegment(
@@ -1304,7 +1330,7 @@ class TestSegmentFallbackLogging:
         """Segment.from_internal() does not log when all fields present."""
         import logging
 
-        from transcription.models import Segment as InternalSegment
+        from slower_whisper.pipeline.models import Segment as InternalSegment
 
         # Create segment with all optional fields
         internal = InternalSegment(
