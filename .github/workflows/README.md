@@ -43,6 +43,37 @@ Runs on every push to `main` and on all pull requests.
    - Fails if any required job fails
    - Use this as a branch protection rule
 
+8. **Wheel Smoke** (`wheel-smoke`)
+   - Builds the wheel and installs it in a clean venv
+   - Verifies CLI entry points and basic imports work from the packaged artifact
+
+9. **Smoke Tests** (`test-smoke`)
+   - Runs real tiny-model ASR on committed audio fixtures
+   - Validates pipeline, writers, streaming envelope, and compat shim
+   - Gated by `SLOWER_WHISPER_TEST_REAL=1` env var
+
+10. **BDD Library** (`bdd-library`)
+    - Runs Behave BDD scenarios for the Python library contract
+    - Ensures behavioral specifications stay green
+
+11. **BDD API** (`bdd-api`)
+    - Runs Behave BDD scenarios for the REST/FastAPI service contract
+
+12. **Benchmark** (`benchmark`)
+    - Runs ASR and enrichment benchmark tracks on smoke datasets
+    - Emits JSON results with provenance receipts
+
+13. **Benchmark Gate** (`benchmark-gate`)
+    - Compares benchmark results against committed baselines
+    - Fails if metrics regress beyond tolerance thresholds
+
+14. **Diarization Nightly** (`diarization-nightly`)
+    - Weekly schedule job running real pyannote diarization tests
+    - Requires `HF_TOKEN` secret for model access
+
+15. **Docs** (`docs`)
+    - Validates documentation build and link integrity
+
 **Usage:**
 ```bash
 # Trigger workflow manually
@@ -108,7 +139,7 @@ Dependabot automatically creates PRs for dependency updates.
 **Dependency Groups:**
 - `dev-dependencies`: pytest, ruff, mypy, coverage
 - `audio-dependencies`: librosa, soundfile, numpy, parselmouth
-- `ml-dependencies`: torch, transformers
+- `ml-dependencies`: torch, torchaudio, transformers
 
 **Configuration:**
 ```yaml

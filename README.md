@@ -1,6 +1,6 @@
 # slower-whisper
 
-**Know who said what, when, and how they said it — from any audio file, on your machine.**
+**Know who said what, when, and how they said it — with streaming, topic structure, and stable contracts. Local-first, from any audio file, on your machine.**
 
 Transcription gives you words. slower-whisper gives you the whole conversation: speakers, timing, tone, emotion, and topic structure — as stable, versioned JSON you can build on. Local-first. No cloud, no API keys, no per-minute billing.
 

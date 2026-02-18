@@ -6,4 +6,5 @@
 docs/ @EffortlessMetrics
 transcription/ @EffortlessMetrics
 slower_whisper/ @EffortlessMetrics
+benchmarks/ @EffortlessMetrics
 pyproject.toml @EffortlessMetrics

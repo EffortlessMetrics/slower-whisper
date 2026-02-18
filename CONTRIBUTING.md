@@ -316,7 +316,7 @@ uv sync --extra dev
 # - Base transcription dependencies (faster-whisper)
 # - Audio enrichment dependencies (librosa, parselmouth, torch, transformers)
 # - Testing tools (pytest, pytest-cov, pytest-xdist, pytest-mock)
-# - Linting tools (ruff, black, isort, mypy)
+# - Linting tools (ruff, mypy)
 # - Pre-commit hooks
 # - Documentation tools (sphinx)
 # - Build tools
@@ -338,7 +338,7 @@ uv pip install pytest pytest-cov ruff mypy pre-commit
 # Run tests to ensure everything is working
 uv run pytest
 
-# Should show all tests passing (191 tests)
+# Should show all tests passing
 ```
 
 ### Alternative: Using pip or poetry
@@ -368,22 +368,38 @@ poetry shell
 
 ```text
 slower-whisper/
-├── transcription/          # Core package
-│   ├── models.py          # Data models (Segment, Transcript)
-│   ├── config.py          # Configuration classes
-│   ├── audio_io.py        # Audio normalization (ffmpeg)
-│   ├── asr_engine.py      # Whisper wrapper
-│   ├── writers.py         # JSON/TXT/SRT output
-│   ├── pipeline.py        # Orchestration
-│   ├── cli.py             # Unified CLI (transcribe + enrich)
-│   ├── prosody.py         # Prosody extraction
-│   ├── emotion.py         # Emotion recognition
-│   ├── audio_enrichment.py # Stage 2 orchestrator
-│   ├── audio_rendering.py  # Text rendering
-│   └── audio_utils.py      # Audio utilities
-├── tests/                  # Test suite
-├── examples/               # Example scripts
-└── docs/                   # Documentation
+├── transcription/              # Core package
+│   ├── models.py              # Data models (Segment, Transcript)
+│   ├── config.py              # Configuration classes
+│   ├── api.py                 # Public API surface
+│   ├── audio_io.py            # Audio normalization (ffmpeg)
+│   ├── asr_engine.py          # Whisper wrapper
+│   ├── device.py              # Device resolution (CPU/CUDA)
+│   ├── writers.py             # JSON/TXT/SRT output
+│   ├── pipeline.py            # Batch orchestration
+│   ├── cli.py                 # Unified CLI
+│   ├── prosody.py             # Prosody extraction
+│   ├── emotion.py             # Emotion recognition
+│   ├── audio_enrichment.py    # Enrichment orchestrator
+│   ├── audio_rendering.py     # Text rendering
+│   ├── audio_utils.py         # Audio utilities
+│   ├── streaming.py           # Core streaming engine
+│   ├── streaming_ws.py        # WebSocket streaming
+│   ├── streaming_client.py    # Streaming client
+│   ├── session_registry.py    # Session management
+│   ├── semantic_adapter.py    # Semantic annotation adapters
+│   ├── llm_guardrails.py      # LLM guardrails
+│   ├── benchmarks.py          # Benchmark dataset runners
+│   ├── benchmark_cli.py       # Benchmark CLI
+│   ├── post_process.py        # Post-processing pipeline
+│   ├── topic_segmentation.py  # Topic segmentation (TF-IDF)
+│   ├── turn_taking_policy.py  # Turn-taking policies
+│   └── service.py             # FastAPI service
+├── slower_whisper/             # faster-whisper compat shim
+├── benchmarks/                 # Benchmark datasets and baselines
+├── tests/                      # Test suite
+├── examples/                   # Example scripts
+└── docs/                       # Documentation
 ```
 
 ---
@@ -439,17 +455,21 @@ uv run pytest -m "not slow"
 
 ### Test Suite Overview
 
-The project has 191 tests across multiple categories:
+The project has a comprehensive test suite across multiple categories:
 
-| Category          | Count | Description                               |
-| ----------------- | ----- | ----------------------------------------- |
-| Audio Enrichment  | 19    | Prosody + emotion extraction              |
-| Audio Rendering   | 12    | Text formatting with audio features       |
-| Prosody           | 12    | Pitch, energy, rate extraction            |
-| Integration       | 8     | End-to-end pipeline tests                 |
-| Writers           | 6     | JSON, TXT, SRT output                     |
-| BDD Scenarios     | 15+   | Behavioral acceptance tests               |
-| Other             | 119+  | Unit tests across all modules             |
+| Category          | Description                               |
+| ----------------- | ----------------------------------------- |
+| Audio Enrichment  | Prosody + emotion extraction              |
+| Audio Rendering   | Text formatting with audio features       |
+| Prosody           | Pitch, energy, rate extraction            |
+| Streaming         | Event envelope, backpressure, resume      |
+| Benchmarks        | Runner protocol, baseline gating          |
+| Post-Processing   | Topic segmentation, turn-taking policies  |
+| Integration       | End-to-end pipeline tests                 |
+| Writers           | JSON, TXT, SRT output                     |
+| BDD Scenarios     | Behavioral acceptance tests               |
+| Smoke (E2E)       | Real tiny-model ASR on audio fixtures     |
+| Other             | Unit tests across all modules             |
 
 **Expected result:** All tests should pass unless you're actively developing
 new features.
@@ -1128,18 +1148,14 @@ mkdir -p raw_audio input_audio transcripts whisper_json
 
 # Add some test audio files to raw_audio/
 
-# Stage 1: Transcribe using base model
-uv run slower-whisper --model base --language en
+# Transcribe
+uv run slower-whisper transcribe --root . --model base --language en
 
-# Stage 2: Enrich with prosody only (fast, no GPU needed)
-uv run slower-whisper-enrich --no-enable-emotion
+# Enrich with prosody + emotion
+uv run slower-whisper enrich --root .
 
-# Stage 2: Full enrichment with emotion (requires GPU)
-uv run slower-whisper-enrich --enable-categorical-emotion
-
-# You can also use the Python scripts directly:
-uv run python transcribe_pipeline.py --help
-uv run python audio_enrich.py --help
+# Benchmark against baselines
+uv run slower-whisper benchmark run --track asr --dataset smoke
 ```
 
 ### Working with Different Dependency Sets
@@ -1331,7 +1347,7 @@ git commit --no-verify -m "message"
 uv run python -c "import torch; print(torch.cuda.is_available())"
 
 # Force CPU mode for testing
-uv run slower-whisper-enrich --device cpu
+uv run slower-whisper enrich --device cpu
 
 # Check CUDA version
 nvidia-smi
@@ -1383,7 +1399,7 @@ python audio_enrich.py --device cpu
 - **Examples:** See `examples/` directory for working code samples
 - **Tests:** See `tests/` directory for usage examples
 - **Issues:** Check
-  [GitHub Issues](https://github.com/steven/slower-whisper/issues) for known
+  [GitHub Issues](https://github.com/EffortlessMetrics/slower-whisper/issues) for known
   problems
 
 ### Asking Questions
@@ -1440,7 +1456,7 @@ A: No! Many contributions don't require ML knowledge:
 
 A:
 
-1. Check the [GitHub Issues](https://github.com/steven/slower-whisper/issues)
+1. Check the [GitHub Issues](https://github.com/EffortlessMetrics/slower-whisper/issues)
 2. Look for "good first issue" or "help wanted" labels
 3. Read the code and find areas that could be improved
 4. Fix something that bothered you while using the tool
@@ -1522,7 +1538,7 @@ uv sync
 
 A: Common reasons:
 
-- Different Python version (CI tests 3.11, 3.12)
+- Different Python version (CI tests 3.12, 3.13)
 - Missing test markers (slow/heavy tests)
 - File paths (use `Path` from pathlib)
 - Platform differences (use `os.path.join` or `pathlib`)
@@ -1745,7 +1761,7 @@ uv run twine upload dist/*
 
 #### Step 8: Create GitHub Release
 
-1. Go to <https://github.com/EffotlessMetrics/slower-whisper/releases/new>
+1. Go to <https://github.com/EffortlessMetrics/slower-whisper/releases/new>
 2. Select the tag you just pushed (vx.y.z)
 3. Title: "Release x.y.z" or "Version x.y.z - Feature Name"
 4. Description: Copy relevant sections from CHANGELOG.md
@@ -1903,7 +1919,7 @@ uv run slower-whisper-verify --quick  # Quick verification gate
 
 # Running the pipeline
 uv run slower-whisper            # Stage 1: Transcribe
-uv run slower-whisper-enrich     # Stage 2: Enrich
+uv run slower-whisper enrich     # Stage 2: Enrich
 
 # Debugging
 uv run pytest -vv                # Verbose test output

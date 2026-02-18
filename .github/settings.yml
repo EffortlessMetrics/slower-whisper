@@ -2,7 +2,7 @@
 # Apply with https://github.com/probot/settings or equivalent automation.
 repository:
   name: slower-whisper
-  description: "Audio to receipts. Local-first conversation ETL with schema-versioned transcripts, streaming, and benchmarked contracts."
+  description: "Know who said what, when, and how — local-first conversation ETL with streaming, topic segmentation, and schema-versioned JSON."
   homepage: "https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/INDEX.md"
   topics:
     - whisper
@@ -19,6 +19,8 @@ repository:
     - privacy
     - benchmarking
     - json-schema
+    - post-processing
+    - etl
   private: false
   has_issues: true
   has_projects: false

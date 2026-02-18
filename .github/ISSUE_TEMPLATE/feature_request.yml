@@ -57,6 +57,7 @@ body:
         - Audio Enrichment (Prosody/Emotion)
         - Semantic Annotation
         - Streaming
+        - Post-Processing
         - CLI
         - API
         - Export/Output Formats

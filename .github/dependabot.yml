@@ -53,6 +53,7 @@ updates:
       ml-dependencies:
         patterns:
           - "torch"
+          - "torchaudio"
           - "transformers"
         update-types:
           - "minor"
@@ -62,6 +63,8 @@ updates:
     ignore:
       # Ignore major version updates for ML packages (can be breaking)
       - dependency-name: "torch"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "torchaudio"
         update-types: ["version-update:semver-major"]
       - dependency-name: "transformers"
         update-types: ["version-update:semver-major"]

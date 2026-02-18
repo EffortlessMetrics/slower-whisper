@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-02-17
+
 ### Added
 
 - **Real ASR smoke tests**: Smoke tests for real ASR engine and compatibility layer (`test_smoke_real_engine.py`, `test_smoke_compat.py`) gated by `SLOWER_WHISPER_TEST_REAL=1`
@@ -17,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Test tier documentation**: Updated test tier table in CLAUDE.md to include smoke tests (real model) and nightly tier
 - **CI configuration**: Enhanced CI with separate smoke, heavy, and nightly test stages
+
+### Fixed
+
+- **`__all__` completeness**: Added `SCHEMA_VERSION`, `AUDIO_STATE_VERSION`, `WORD_ALIGNMENT_VERSION` to public API exports in `transcription/__init__.py`
 
 ### Documentation
 
@@ -922,7 +928,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
 - [Issue Tracker](https://github.com/EffortlessMetrics/slower-whisper/issues)
 - [Releases](https://github.com/EffortlessMetrics/slower-whisper/releases)
 
-[Unreleased]: https://github.com/EffortlessMetrics/slower-whisper/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/EffortlessMetrics/slower-whisper/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/EffortlessMetrics/slower-whisper/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/EffortlessMetrics/slower-whisper/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.9.2...v2.0.0
 [1.9.2]: https://github.com/EffortlessMetrics/slower-whisper/compare/v1.9.1...v1.9.2

@@ -148,6 +148,9 @@ from .llm_utils import (
     to_turn_view,
 )
 from .models import (
+    AUDIO_STATE_VERSION,
+    SCHEMA_VERSION,
+    WORD_ALIGNMENT_VERSION,
     BatchFileResult,
     BatchProcessingResult,
     Chunk,
@@ -366,6 +369,10 @@ __all__ = [
     # v1.7.0: Streaming enrichment and semantic configs
     "StreamingEnrichmentConfig",
     "LiveSemanticsConfig",
+    # Schema version constants
+    "SCHEMA_VERSION",
+    "AUDIO_STATE_VERSION",
+    "WORD_ALIGNMENT_VERSION",
     # Models
     "Chunk",
     "Segment",

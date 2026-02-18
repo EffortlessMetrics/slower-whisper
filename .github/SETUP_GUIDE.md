@@ -325,5 +325,5 @@ If you encounter issues:
 
 ---
 
-**Last Updated**: 2025-11-15
+**Last Updated**: 2026-02-17
 **Maintained By**: slower-whisper contributors
