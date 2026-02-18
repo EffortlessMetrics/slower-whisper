@@ -578,10 +578,41 @@ def normalize_all(paths: Paths) -> None:
     # Default workers = min(32, os.cpu_count() + 4), good for I/O-bound ffmpeg calls
     abort_error: FFmpegNotFoundError | None = None
 
+    tasks_to_run: list[tuple[Path, Path]] = []
+
+    # Filter out files that are already up to date to avoid thread overhead
+    for src, dst in files_to_process:
+        should_process = True
+        if dst.exists():
+            try:
+                src_mtime = src.stat().st_mtime
+                dst_mtime = dst.stat().st_mtime
+                if dst_mtime >= src_mtime:
+                    logger.info(
+                        "Skipping already normalized file (up to date)",
+                        extra={"file": src.name, "output": dst.name},
+                    )
+                    should_process = False
+            except OSError as stat_err:
+                # If we can't stat, assume we need to process
+                logger.warning(
+                    "Could not compare timestamps for %s: %s; scheduling for normalization",
+                    src.name,
+                    stat_err,
+                    extra={"file": src.name},
+                )
+
+        if should_process:
+            tasks_to_run.append((src, dst))
+
+    if not tasks_to_run:
+        logger.info("Audio normalization complete (all files up to date)")
+        return
+
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = {
             executor.submit(_normalize_one_file, src, dst, raw_dir_resolved, norm_dir_resolved): src
-            for src, dst in files_to_process
+            for src, dst in tasks_to_run
         }
 
         for future in concurrent.futures.as_completed(futures):
