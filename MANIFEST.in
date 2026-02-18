@@ -31,7 +31,7 @@ include requirements-enrich.txt
 include requirements-dev.txt
 
 # Typed package markers
-include transcription/py.typed
+include slower_whisper/pipeline/py.typed
 include slower_whisper/py.typed
 
 # Docs and examples

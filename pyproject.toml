@@ -183,13 +183,10 @@ profiling = [
 
 [project.scripts]
 # Unified CLI
-slower-whisper = "transcription.cli:main"
-
-# Verification and testing CLI (developers)
-slower-whisper-verify = "scripts.verify_all:main"
+slower-whisper = "slower_whisper.pipeline.cli:main"
 
 # Dogfooding workflow CLI (for testing before release)
-slower-whisper-dogfood = "transcription.dogfood:main"
+slower-whisper-dogfood = "slower_whisper.pipeline.dogfood:main"
 
 [project.urls]
 Homepage = "https://github.com/EffortlessMetrics/slower-whisper"
@@ -206,11 +203,11 @@ Support = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/.github
 Funding = "https://github.com/sponsors/EffortlessMetrics"
 
 [tool.setuptools]
-packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "transcription.integrations", "scripts", "integrations", "slower_whisper"]
+packages = ["slower_whisper", "slower_whisper.pipeline", "slower_whisper.pipeline.benchmark", "slower_whisper.pipeline.cli_commands", "slower_whisper.pipeline.historian", "slower_whisper.pipeline.historian.analyzers", "slower_whisper.pipeline.integrations", "slower_whisper.pipeline.schema", "slower_whisper.pipeline.semantic_providers", "slower_whisper.pipeline.store", "slower_whisper.adapters", "transcription"]
 
 [tool.setuptools.package-data]
-transcription = ["py.typed"]
-slower_whisper = ["py.typed"]
+"slower_whisper.pipeline" = ["py.typed", "schemas/*.json", "schemas/README.md"]
+"slower_whisper" = ["py.typed"]
 
 [tool.black]
 line-length = 100
@@ -303,7 +300,6 @@ python_functions = ["test_*"]
 addopts = [
     "-v",
     "--strict-markers",
-    "--cov=transcription",
     "--cov=slower_whisper",
     "--cov-report=term-missing",
     "--cov-report=html",
@@ -321,7 +317,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["transcription", "slower_whisper"]
+source = ["slower_whisper"]
 omit = [
     "*/tests/*",
     "*/venv/*",
