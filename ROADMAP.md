@@ -1,6 +1,6 @@
 # slower-whisper Roadmap
 
-**Current Version:** v2.0.1
+**Current Version:** v2.0.2
 **Last Updated:** 2026-02-17
 <!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
