@@ -902,10 +902,25 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
             output_file = output_dir / "synthetic_2speaker.wav"
             try:
                 generate_synthetic_2speaker(output_file)
-                print("\nReady to transcribe with:")
-                print(
-                    "  uv run slower-whisper transcribe --enable-diarization --min-speakers 2 --max-speakers 2"
-                )
+
+                # Determine correct root or warn if directory structure is invalid
+                if output_dir.name == "raw_audio":
+                    print("\nReady to transcribe with:")
+                    root_path = output_dir.parent
+                    root_arg = ""
+                    # Only add --root if it's not the current directory
+                    if root_path.resolve() != Path.cwd().resolve():
+                        root_arg = f" --root {root_path}"
+
+                    cmd = f"uv run slower-whisper transcribe{root_arg} --enable-diarization --min-speakers 2 --max-speakers 2"
+                    print(f"  {Colors.cyan(cmd)}")
+                else:
+                    print(
+                        f"\n{Colors.yellow('Note:')} Generated file is in '{output_dir}', "
+                        f"but 'transcribe' looks for files in a 'raw_audio' directory.\n"
+                        f"To transcribe, move the file or rename the directory to 'raw_audio'."
+                    )
+
                 return 0
             except ImportError as e:
                 print(f"Error: {e}", file=sys.stderr)
