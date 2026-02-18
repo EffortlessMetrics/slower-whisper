@@ -761,9 +761,9 @@ hf-xet==1.2.0 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or 
     --hash=sha256:4c1428c9ae73ec0939410ec73023c4f842927f39db09b063b9482dac5a3bb737 \
     --hash=sha256:a55558084c16b09b5ed32ab9ed38421e2d87cf3f1f89815764d1177081b99865 \
     --hash=sha256:e6584a52253f72c9f52f9e549d5895ca7a471608495c4ecaa6cc73dba2b24d69
-huggingface-hub==0.36.0 \
-    --hash=sha256:47b3f0e2539c39bf5cde015d63b72ec49baff67b6931c3d97f3f84532e2b8d25 \
-    --hash=sha256:7bcc9ad17d5b3f07b57c78e79d527102d08313caa278a641993acddcb894548d
+huggingface-hub==1.4.1 \
+    --hash=sha256:9931d075fb7a79af5abc487106414ec5fba2c0ae86104c0c62fd6cae38873d18 \
+    --hash=sha256:b41131ec35e631e7383ab26d6146b8d8972abc8b6309b963b306fbcca87f5ed5
 humanfriendly==10.0 \
     --hash=sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc \
     --hash=sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477
