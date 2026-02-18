@@ -294,7 +294,7 @@ This checklist ensures slower-whisper is deployment-ready across all environment
   kubectl apply --dry-run=client -f k8s/job.yaml
   kubectl apply --dry-run=client -f k8s/service.yaml
   kubectl apply --dry-run=client -f k8s/cronjob.yaml
-  kubectl apply --dry-run=client -f k8s/secret.yaml
+  kubectl apply --dry-run=client -f k8s/secret.template.yaml
   kubectl apply --dry-run=client -f k8s/gpu-resource-quota.yaml
 
   # Expected: All validate without errors

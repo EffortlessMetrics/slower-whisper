@@ -72,6 +72,8 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 | [CHANGELOG.md](../CHANGELOG.md) | Version history and release notes | All users |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | How to contribute to the project | Contributors |
 | [SECURITY.md](../SECURITY.md) | Security policy and vulnerability reporting | Security-conscious users |
+| [PRIVACY.md](PRIVACY.md) | Privacy notice — local-first defaults, data flow, consent | Privacy-conscious users |
+| [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | Third-party dependency licenses and attribution | Compliance, legal |
 | [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Community standards and expectations | Community members |
 | [CLAUDE.md](../CLAUDE.md) | Project guidance for AI coding assistants | Developers using AI tools |
 | [CITATION.cff](../CITATION.cff) | Citation metadata for software use in papers and reports | Researchers and downstream users |

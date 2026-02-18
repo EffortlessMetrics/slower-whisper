@@ -10,7 +10,7 @@ For a command-by-command guide, see [QUICK_START.md](QUICK_START.md).
 |------|---------|
 | `namespace.yaml` | Namespace definition (`slower-whisper`) |
 | `configmap.yaml` | Runtime env/config defaults |
-| `secret.yaml` | Secret placeholders (HF token/API credentials) |
+| `secret.template.yaml` | Secret placeholders (HF token/API credentials) |
 | `pvc.yaml` | Persistent volume claims for audio/transcript/model data |
 | `deployment.yaml` | Long-running workload pattern |
 | `service.yaml` | Cluster service exposure |
@@ -55,7 +55,7 @@ kubectl logs -n slower-whisper -l app=slower-whisper -f
 
 - GPU usage requires NVIDIA device plugin/operator on the cluster.
 - The manifests are designed for local-first processing: audio in PVC, transcript output in PVC.
-- Set HF/API secrets in `secret.yaml` (or your secret manager integration) before enabling features that require gated models/providers.
+- Set HF/API secrets in `secret.template.yaml` (or your secret manager integration) before enabling features that require gated models/providers.
 - Choose the right workload pattern:
   - `deployment.yaml` for continuously available processing/service mode.
   - `job.yaml` for one-time batch runs.

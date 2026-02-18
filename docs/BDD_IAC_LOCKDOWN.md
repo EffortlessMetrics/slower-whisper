@@ -390,7 +390,7 @@ echo ""
 MANIFESTS=(
     "k8s/namespace.yaml"
     "k8s/configmap.yaml"
-    "k8s/secret.yaml"
+    "k8s/secret.template.yaml"
     "k8s/pvc.yaml"
     "k8s/deployment.yaml"
     "k8s/service.yaml"

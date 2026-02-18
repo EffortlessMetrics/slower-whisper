@@ -172,6 +172,7 @@ secrets/
 *.key
 *.pem
 credentials.json
+.envrc
 /.scratch/
 
 # ===========================

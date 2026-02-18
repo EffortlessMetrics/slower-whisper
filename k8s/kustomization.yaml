@@ -22,7 +22,7 @@ resources:
   # Optional resources (uncomment as needed):
   # - job.yaml
   # - cronjob.yaml
-  # - secret.yaml
+  # - secret.template.yaml
 
 # ConfigMap generator (alternative to configmap.yaml)
 # configMapGenerator:
