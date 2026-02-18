@@ -844,6 +844,11 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
             print("\nTest files ready:")
             for f in test_files:
                 print(f"  {f}")
+
+            print(f"\n{Colors.bold('Next step:')}")
+            print(
+                f"  Copy to project: {Colors.cyan(f'slower-whisper samples copy {args.dataset}')}"
+            )
             return 0
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
