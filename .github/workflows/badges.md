@@ -34,7 +34,7 @@ Add these badges to your README.md to show current project status.
 
 ## License
 ```markdown
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/EffortlessMetrics/slower-whisper/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)](https://github.com/EffortlessMetrics/slower-whisper/blob/main/LICENSE-APACHE)
 ```
 
 ---
@@ -48,5 +48,5 @@ Add these badges to your README.md to show current project status.
 [![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
 [![PyPI](https://img.shields.io/pypi/v/slower-whisper)](https://pypi.org/project/slower-whisper/)
 [![Python](https://img.shields.io/badge/python-3.12--3.14-blue)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/EffortlessMetrics/slower-whisper/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)](https://github.com/EffortlessMetrics/slower-whisper/blob/main/LICENSE-APACHE)
 ```

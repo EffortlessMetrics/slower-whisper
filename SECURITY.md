@@ -537,5 +537,5 @@ If you suspect a security breach:
 
 This security policy is part of the slower-whisper project and follows the same Apache 2.0 license.
 
-**Last Updated:** 2025-11-17
+**Last Updated:** 2026-02-17
 **Policy Version:** 1.0
