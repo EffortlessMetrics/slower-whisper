@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from transcription.environment_classifier import (
+from slower_whisper.pipeline.environment_classifier import (
     AudioHealthMetrics,
     EnvironmentClassifier,
     EnvironmentClassifierConfig,

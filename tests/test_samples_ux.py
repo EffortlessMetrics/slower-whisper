@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from transcription.cli import main
-from transcription.exceptions import SampleExistsError
+from slower_whisper.pipeline.cli import main
+from slower_whisper.pipeline.exceptions import SampleExistsError
 
 
 class TestSamplesCopyUX:
@@ -17,7 +17,7 @@ class TestSamplesCopyUX:
     @pytest.fixture
     def mock_copy(self):
         """Mock copy_sample_to_project to control behavior."""
-        with patch("transcription.samples.copy_sample_to_project") as mock:
+        with patch("slower_whisper.pipeline.samples.copy_sample_to_project") as mock:
             yield mock
 
     def test_copy_success_no_conflict(self, mock_copy, tmp_path):

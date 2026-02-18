@@ -126,7 +126,7 @@ def validate_schema_samples() -> None:
         return
 
     try:
-        from transcription.validation import DEFAULT_SCHEMA_PATH, validate_many
+        from slower_whisper.pipeline.validation import DEFAULT_SCHEMA_PATH, validate_many
     except Exception as exc:  # noqa: BLE001
         print(f"⚠️  Skipping schema validation (dependency missing: {exc})")
         return
@@ -469,7 +469,7 @@ def feature_summary() -> None:
     print("Feature summary")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     try:
-        from transcription.config import EnrichmentConfig, TranscriptionConfig
+        from slower_whisper.pipeline.config import EnrichmentConfig, TranscriptionConfig
     except Exception as exc:  # noqa: BLE001
         print(f"⚠️  Skipping feature summary (config import failed: {exc})")
         return

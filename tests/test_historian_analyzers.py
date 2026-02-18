@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # Import directly from submodules to avoid circular import issues
-from transcription.historian.analyzers.base import (
+from slower_whisper.pipeline.historian.analyzers.base import (
     BaseAnalyzer,
     SubagentResult,
     SubagentSpec,
@@ -32,15 +32,15 @@ from transcription.historian.analyzers.base import (
     format_reviews,
     format_sessions,
 )
-from transcription.historian.analyzers.decision_extractor import DecisionExtractorAnalyzer
-from transcription.historian.analyzers.design_alignment import DesignAlignmentAnalyzer
-from transcription.historian.analyzers.diff_scout import DiffScoutAnalyzer
-from transcription.historian.analyzers.docs_schema import DocsSchemaAuditorAnalyzer
-from transcription.historian.analyzers.evidence_auditor import EvidenceAuditorAnalyzer
-from transcription.historian.analyzers.friction_miner import FrictionMinerAnalyzer
-from transcription.historian.analyzers.perf_integrity import PerfIntegrityAnalyzer
-from transcription.historian.analyzers.temporal import TemporalAnalyzer
-from transcription.historian.bundle import (
+from slower_whisper.pipeline.historian.analyzers.decision_extractor import DecisionExtractorAnalyzer
+from slower_whisper.pipeline.historian.analyzers.design_alignment import DesignAlignmentAnalyzer
+from slower_whisper.pipeline.historian.analyzers.diff_scout import DiffScoutAnalyzer
+from slower_whisper.pipeline.historian.analyzers.docs_schema import DocsSchemaAuditorAnalyzer
+from slower_whisper.pipeline.historian.analyzers.evidence_auditor import EvidenceAuditorAnalyzer
+from slower_whisper.pipeline.historian.analyzers.friction_miner import FrictionMinerAnalyzer
+from slower_whisper.pipeline.historian.analyzers.perf_integrity import PerfIntegrityAnalyzer
+from slower_whisper.pipeline.historian.analyzers.temporal import TemporalAnalyzer
+from slower_whisper.pipeline.historian.bundle import (
     CheckRunData,
     CommentData,
     CommitData,
@@ -50,7 +50,7 @@ from transcription.historian.bundle import (
     ScopeData,
     SessionData,
 )
-from transcription.historian.llm_client import LLMConfig, LLMResponse, MockProvider
+from slower_whisper.pipeline.historian.llm_client import LLMConfig, LLMResponse, MockProvider
 
 # Import ALL_ANALYZERS from __init__ only for type checking
 if TYPE_CHECKING:
@@ -1176,7 +1176,9 @@ class TestDecisionExtractorAnalyzer:
 
     def test_decision_time_bands(self) -> None:
         """Test that decision time bands are properly defined."""
-        from transcription.historian.analyzers.decision_extractor import DECISION_TIME_BANDS
+        from slower_whisper.pipeline.historian.analyzers.decision_extractor import (
+            DECISION_TIME_BANDS,
+        )
 
         assert "scope" in DECISION_TIME_BANDS
         assert "design" in DECISION_TIME_BANDS
@@ -1285,7 +1287,7 @@ class TestAllAnalyzers:
     def test_all_llm_analyzers_have_schemas(self) -> None:
         """Test that all LLM analyzers have output schemas with 'type'."""
         # Skip TemporalAnalyzer since it's deterministic
-        from transcription.historian.analyzers.temporal import TemporalAnalyzer
+        from slower_whisper.pipeline.historian.analyzers.temporal import TemporalAnalyzer
 
         for analyzer_cls in ALL_ANALYZERS:
             if analyzer_cls == TemporalAnalyzer:

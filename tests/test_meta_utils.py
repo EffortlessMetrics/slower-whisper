@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from transcription.meta_utils import build_generation_metadata
-from transcription.models import Transcript
+from slower_whisper.pipeline.meta_utils import build_generation_metadata
+from slower_whisper.pipeline.models import Transcript
 
 
 def test_build_generation_metadata_prefers_asr_runtime():

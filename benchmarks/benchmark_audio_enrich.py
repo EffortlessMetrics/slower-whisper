@@ -30,8 +30,8 @@ import psutil
 import torch
 
 from benchmarks.test_audio_generator import generate_test_audio_file
-from transcription.audio_enrichment import enrich_segment_audio
-from transcription.models import Segment
+from slower_whisper.pipeline.audio_enrichment import enrich_segment_audio
+from slower_whisper.pipeline.models import Segment
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

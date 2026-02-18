@@ -26,9 +26,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from transcription.config import AppConfig, AsrConfig, Paths, TranscriptionConfig
-from transcription.models import Segment, Transcript
-from transcription.pipeline import (
+from slower_whisper.pipeline.config import AppConfig, AsrConfig, Paths, TranscriptionConfig
+from slower_whisper.pipeline.models import Segment, Transcript
+from slower_whisper.pipeline.pipeline import (
     PipelineBatchResult,
     PipelineFileResult,
     _build_meta,
@@ -502,7 +502,7 @@ class TestRunPipeline:
         assert result.skipped == 0
         assert result.failed == 0
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_skip_existing_json_enabled(
         self,
         mock_engine_class: MagicMock,
@@ -541,7 +541,7 @@ class TestRunPipeline:
         # Engine should not have been used for transcription
         mock_engine_class.return_value.transcribe_file.assert_not_called()
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_skip_existing_json_disabled_processes_all(
         self,
         mock_engine_class: MagicMock,
@@ -572,7 +572,7 @@ class TestRunPipeline:
         assert result.processed == 1
         assert result.skipped == 0
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_transcription_error_continues_batch(
         self,
         mock_engine_class: MagicMock,
@@ -613,7 +613,7 @@ class TestRunPipeline:
         assert result.processed == 1
         assert mock_engine.transcribe_file.call_count == 2
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_successful_transcription_writes_all_outputs(
         self,
         mock_engine_class: MagicMock,
@@ -651,7 +651,7 @@ class TestRunPipeline:
 
         assert result.processed == 1
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_pipeline_records_timing_statistics(
         self,
         mock_engine_class: MagicMock,
@@ -675,7 +675,7 @@ class TestRunPipeline:
         assert result.total_time_seconds > 0  # Should have some processing time
         assert result.processed == 1
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_pipeline_handles_multiple_files(
         self,
         mock_engine_class: MagicMock,
@@ -711,7 +711,7 @@ class TestRunPipeline:
         # Files should be processed in sorted order
         assert processed_order == sorted(files)
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_pipeline_file_results_track_individual_outcomes(
         self,
         mock_engine_class: MagicMock,
@@ -763,7 +763,7 @@ class TestRunPipeline:
 class TestPipelineDiarization:
     """Tests for diarization integration in the pipeline."""
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_diarization_upgrade_existing_transcript(
         self,
         mock_engine_class: MagicMock,
@@ -805,7 +805,7 @@ class TestPipelineDiarization:
             return transcript
 
         with patch(
-            "transcription.diarization_orchestrator._maybe_run_diarization",
+            "slower_whisper.pipeline.diarization_orchestrator._maybe_run_diarization",
             side_effect=add_diarization,
         ):
             result = run_pipeline(sample_app_config, diarization_config=diar_config)
@@ -814,7 +814,7 @@ class TestPipelineDiarization:
         assert result.diarized_only == 1
         assert result.processed == 0  # Not a new transcription
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_skip_already_diarized_transcript(
         self,
         mock_engine_class: MagicMock,
@@ -850,7 +850,7 @@ class TestPipelineDiarization:
         assert result.skipped == 1
         assert result.diarized_only == 0
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_diarization_error_marks_file_failed(
         self,
         mock_engine_class: MagicMock,
@@ -883,7 +883,7 @@ class TestPipelineDiarization:
 
         # Mock diarization to fail
         with patch(
-            "transcription.diarization_orchestrator._maybe_run_diarization",
+            "slower_whisper.pipeline.diarization_orchestrator._maybe_run_diarization",
             side_effect=RuntimeError("Diarization model error"),
         ):
             result = run_pipeline(sample_app_config, diarization_config=diar_config)
@@ -897,7 +897,7 @@ class TestPipelineDiarization:
         assert result.file_results[0].status == "error"
         assert "Diarization failed" in result.file_results[0].error_message  # type: ignore[operator]
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_json_load_error_during_diarization_upgrade(
         self,
         mock_engine_class: MagicMock,
@@ -927,7 +927,7 @@ class TestPipelineDiarization:
         assert result.file_results[0].status == "error"
         assert "Load failed" in result.file_results[0].error_message  # type: ignore[operator]
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_chunking_enabled_updates_existing_transcript(
         self,
         mock_engine_class: MagicMock,
@@ -967,7 +967,8 @@ class TestPipelineDiarization:
             return transcript
 
         with patch(
-            "transcription.transcription_helpers._maybe_build_chunks", side_effect=mock_build_chunks
+            "slower_whisper.pipeline.transcription_helpers._maybe_build_chunks",
+            side_effect=mock_build_chunks,
         ):
             result = run_pipeline(sample_app_config, diarization_config=chunk_config)
 
@@ -975,7 +976,7 @@ class TestPipelineDiarization:
         assert result.total_files == 1
         assert result.skipped == 1
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_chunking_error_during_skip_existing(
         self,
         mock_engine_class: MagicMock,
@@ -1013,7 +1014,7 @@ class TestPipelineDiarization:
 
         # Mock chunk building to raise error
         with patch(
-            "transcription.transcription_helpers._maybe_build_chunks",
+            "slower_whisper.pipeline.transcription_helpers._maybe_build_chunks",
             side_effect=RuntimeError("Chunk error"),
         ):
             with caplog.at_level(logging.ERROR):
@@ -1024,7 +1025,7 @@ class TestPipelineDiarization:
         assert result.skipped == 1
         assert "Failed to update chunks" in caplog.text
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_diarization_with_new_transcription(
         self,
         mock_engine_class: MagicMock,
@@ -1054,7 +1055,7 @@ class TestPipelineDiarization:
             return transcript
 
         with patch(
-            "transcription.diarization_orchestrator._maybe_run_diarization",
+            "slower_whisper.pipeline.diarization_orchestrator._maybe_run_diarization",
             side_effect=add_diarization,
         ):
             result = run_pipeline(sample_app_config, diarization_config=diar_config)
@@ -1069,7 +1070,7 @@ class TestPipelineDiarization:
             data = json.load(f)
         assert data["meta"].get("diarization", {}).get("status") == "success"
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_chunking_with_new_transcription(
         self,
         mock_engine_class: MagicMock,
@@ -1102,11 +1103,12 @@ class TestPipelineDiarization:
             return transcript
 
         with patch(
-            "transcription.diarization_orchestrator._maybe_run_diarization",
+            "slower_whisper.pipeline.diarization_orchestrator._maybe_run_diarization",
             side_effect=add_diarization,
         ):
             with patch(
-                "transcription.transcription_helpers._maybe_build_chunks", side_effect=add_chunks
+                "slower_whisper.pipeline.transcription_helpers._maybe_build_chunks",
+                side_effect=add_chunks,
             ):
                 result = run_pipeline(sample_app_config, diarization_config=chunk_config)
 
@@ -1128,7 +1130,7 @@ class TestPipelineDiarization:
 class TestPipelineErrorHandling:
     """Tests for error handling in the pipeline."""
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_all_files_fail_returns_correct_counts(
         self,
         mock_engine_class: MagicMock,
@@ -1152,7 +1154,7 @@ class TestPipelineErrorHandling:
         assert result.failed == 2
         assert result.processed == 0
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_file_results_contain_error_messages(
         self,
         mock_engine_class: MagicMock,
@@ -1173,7 +1175,7 @@ class TestPipelineErrorHandling:
         assert result.file_results[0].status == "error"
         assert "Specific error message" in result.file_results[0].error_message  # type: ignore[operator]
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_transcription_exception_does_not_crash_pipeline(
         self,
         mock_engine_class: MagicMock,
@@ -1221,7 +1223,7 @@ class TestPipelineErrorHandling:
 class TestPipelineEdgeCases:
     """Edge case tests for the pipeline."""
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_wav_file_with_zero_duration(
         self,
         mock_engine_class: MagicMock,
@@ -1252,7 +1254,7 @@ class TestPipelineEdgeCases:
         # Duration should be 0 but not cause errors
         assert result.total_audio_seconds == 0.0
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_special_characters_in_filename(
         self,
         mock_engine_class: MagicMock,
@@ -1280,7 +1282,7 @@ class TestPipelineEdgeCases:
         json_path = sample_app_config.paths.json_dir / "test file (1).json"
         assert json_path.exists()
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_non_wav_files_in_input_dir_are_ignored(
         self,
         mock_engine_class: MagicMock,
@@ -1310,7 +1312,7 @@ class TestPipelineEdgeCases:
         assert result.total_files == 1
         assert result.processed == 1
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_empty_transcript_segments(
         self,
         mock_engine_class: MagicMock,
@@ -1364,7 +1366,7 @@ class TestPipelineEdgeCases:
 class TestPipelineIntegration:
     """Integration tests for the pipeline with real dependencies (mocked ASR)."""
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_full_pipeline_with_mock_asr(
         self,
         mock_engine_class: MagicMock,
@@ -1429,7 +1431,7 @@ class TestPipelineIntegration:
         assert "-->" in srt_content  # SRT timestamp separator
         assert "Hello, this is a test." in srt_content
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_pipeline_metadata_consistency(
         self,
         mock_engine_class: MagicMock,
@@ -1483,7 +1485,7 @@ class TestPipelineIntegration:
 class TestPipelineModelConfiguration:
     """Tests for different model configurations in the pipeline."""
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_different_model_configurations(
         self,
         mock_engine_class: MagicMock,
@@ -1539,7 +1541,7 @@ class TestPipelineModelConfiguration:
             assert actual_cfg.device == cfg_dict["device"]
             assert actual_cfg.compute_type == cfg_dict["compute_type"]
 
-    @patch("transcription.pipeline.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.pipeline.TranscriptionEngine")
     def test_language_configuration_passed_to_engine(
         self,
         mock_engine_class: MagicMock,

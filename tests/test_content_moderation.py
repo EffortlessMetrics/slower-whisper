@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from transcription.content_moderation import (
+from slower_whisper.pipeline.content_moderation import (
     ContentMatch,
     ContentPattern,
     LexiconModerator,

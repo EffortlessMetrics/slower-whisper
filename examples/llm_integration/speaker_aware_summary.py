@@ -10,8 +10,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from transcription import load_transcript
-from transcription.llm_utils import to_speaker_summary, to_turn_view
+from slower_whisper.pipeline import load_transcript
+from slower_whisper.pipeline.llm_utils import to_speaker_summary, to_turn_view
 
 
 def _parse_args() -> argparse.Namespace:

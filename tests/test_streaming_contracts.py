@@ -23,7 +23,7 @@ from typing import Any
 
 import pytest
 
-from transcription.streaming_ws import (
+from slower_whisper.pipeline.streaming_ws import (
     EVENT_ENVELOPE_SCHEMA_VERSION,
     ClientMessageType,
     EventEnvelope,
@@ -44,7 +44,13 @@ from transcription.streaming_ws import (
 def schema_path() -> Path:
     """Return path to the event envelope JSON schema."""
     # Use canonical schema location (docs/schemas/event_envelope_v2.json is now a $ref)
-    return Path(__file__).parent.parent / "transcription" / "schemas" / "stream_event.schema.json"
+    return (
+        Path(__file__).parent.parent
+        / "slower_whisper"
+        / "pipeline"
+        / "schemas"
+        / "stream_event.schema.json"
+    )
 
 
 @pytest.fixture
@@ -715,7 +721,7 @@ class TestReplayBufferContract:
 
     def test_replay_buffer_stores_events(self) -> None:
         """Test replay buffer stores events correctly."""
-        from transcription.streaming_ws import ReplayBuffer
+        from slower_whisper.pipeline.streaming_ws import ReplayBuffer
 
         buffer = ReplayBuffer(max_size=10)
 
@@ -733,7 +739,7 @@ class TestReplayBufferContract:
 
     def test_replay_buffer_respects_max_size(self) -> None:
         """Test replay buffer drops oldest events when full."""
-        from transcription.streaming_ws import ReplayBuffer
+        from slower_whisper.pipeline.streaming_ws import ReplayBuffer
 
         buffer = ReplayBuffer(max_size=3)
 
@@ -754,7 +760,7 @@ class TestReplayBufferContract:
 
     def test_get_events_since_returns_newer_events(self) -> None:
         """Test getting events since a given event ID."""
-        from transcription.streaming_ws import ReplayBuffer
+        from slower_whisper.pipeline.streaming_ws import ReplayBuffer
 
         buffer = ReplayBuffer(max_size=10)
 
@@ -777,7 +783,7 @@ class TestReplayBufferContract:
 
     def test_get_events_since_detects_gap(self) -> None:
         """Test gap detection when events are lost."""
-        from transcription.streaming_ws import ReplayBuffer
+        from slower_whisper.pipeline.streaming_ws import ReplayBuffer
 
         buffer = ReplayBuffer(max_size=3)
 
@@ -1869,7 +1875,7 @@ class TestSessionRegistryDisconnection:
     @pytest.fixture
     def registry(self):
         """Create a fresh session registry for testing."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         # Reset singleton
         SessionRegistry.reset()
@@ -1885,7 +1891,7 @@ class TestSessionRegistryDisconnection:
     @pytest.mark.asyncio
     async def test_disconnected_session_can_resume_within_ttl(self, registry) -> None:
         """Test that a disconnected session can resume within TTL window."""
-        from transcription.session_registry import SessionStatus
+        from slower_whisper.pipeline.session_registry import SessionStatus
 
         session = WebSocketStreamingSession()
         await session.start()

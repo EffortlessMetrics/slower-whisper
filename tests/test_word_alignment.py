@@ -7,7 +7,7 @@ with Segment and Transcript models.
 
 import json
 
-from transcription.models import WORD_ALIGNMENT_VERSION, Segment, Transcript, Word
+from slower_whisper.pipeline.models import WORD_ALIGNMENT_VERSION, Segment, Transcript, Word
 
 
 class TestWordDataclass:
@@ -141,7 +141,7 @@ class TestWritersSerialization:
 
     def test_segment_with_words_serializes(self, tmp_path):
         """Segment with words serializes to JSON correctly."""
-        from transcription.writers import write_json
+        from slower_whisper.pipeline.writers import write_json
 
         words = [
             Word(word="Hello", start=0.0, end=0.5, probability=0.9),
@@ -165,7 +165,7 @@ class TestWritersSerialization:
 
     def test_segment_without_words_no_words_key(self, tmp_path):
         """Segment without words omits words key from JSON."""
-        from transcription.writers import write_json
+        from slower_whisper.pipeline.writers import write_json
 
         segment = Segment(id=0, start=0.0, end=1.0, text="Hello world")
         transcript = Transcript(file_name="test.wav", language="en", segments=[segment])
@@ -181,7 +181,7 @@ class TestWritersSerialization:
 
     def test_words_roundtrip(self, tmp_path):
         """Words survive JSON save/load roundtrip."""
-        from transcription.writers import load_transcript_from_json, write_json
+        from slower_whisper.pipeline.writers import load_transcript_from_json, write_json
 
         words = [
             Word(word="Test", start=0.0, end=0.3, probability=0.95, speaker="spk_1"),
@@ -203,7 +203,7 @@ class TestWritersSerialization:
 
     def test_load_old_json_without_words(self, tmp_path):
         """Loading old JSON without words field works (backward compat)."""
-        from transcription.writers import load_transcript_from_json
+        from slower_whisper.pipeline.writers import load_transcript_from_json
 
         # Simulate old JSON format without words
         old_json = {
@@ -235,7 +235,7 @@ class TestConfigWordTimestamps:
 
     def test_transcription_config_word_timestamps_default(self):
         """word_timestamps defaults to False."""
-        from transcription.config import TranscriptionConfig
+        from slower_whisper.pipeline.config import TranscriptionConfig
 
         config = TranscriptionConfig(model="base")
 
@@ -243,7 +243,7 @@ class TestConfigWordTimestamps:
 
     def test_transcription_config_word_timestamps_enabled(self):
         """word_timestamps can be enabled."""
-        from transcription.config import TranscriptionConfig
+        from slower_whisper.pipeline.config import TranscriptionConfig
 
         config = TranscriptionConfig(model="base", word_timestamps=True)
 
@@ -251,7 +251,7 @@ class TestConfigWordTimestamps:
 
     def test_asr_config_word_timestamps_default(self):
         """AsrConfig word_timestamps defaults to False."""
-        from transcription.config import AsrConfig
+        from slower_whisper.pipeline.config import AsrConfig
 
         config = AsrConfig()
 
@@ -259,7 +259,7 @@ class TestConfigWordTimestamps:
 
     def test_asr_config_word_timestamps_enabled(self):
         """AsrConfig word_timestamps can be enabled."""
-        from transcription.config import AsrConfig
+        from slower_whisper.pipeline.config import AsrConfig
 
         config = AsrConfig(word_timestamps=True)
 
@@ -271,7 +271,7 @@ class TestWordLevelSpeakerAlignment:
 
     def test_assign_speakers_to_words_basic(self):
         """Words get speaker labels based on diarization overlap."""
-        from transcription.diarization import SpeakerTurn, assign_speakers_to_words
+        from slower_whisper.pipeline.diarization import SpeakerTurn, assign_speakers_to_words
 
         words = [
             Word(word="Hello", start=0.0, end=0.5, probability=0.9),
@@ -291,7 +291,7 @@ class TestWordLevelSpeakerAlignment:
 
     def test_assign_speakers_to_words_split_segment(self):
         """Words in same segment can have different speakers."""
-        from transcription.diarization import SpeakerTurn, assign_speakers_to_words
+        from slower_whisper.pipeline.diarization import SpeakerTurn, assign_speakers_to_words
 
         words = [
             Word(word="Hello", start=0.0, end=0.5, probability=0.9),
@@ -321,7 +321,7 @@ class TestWordLevelSpeakerAlignment:
 
     def test_assign_speakers_to_words_no_words_fallback(self):
         """Segments without words fall back to segment-level alignment."""
-        from transcription.diarization import SpeakerTurn, assign_speakers_to_words
+        from slower_whisper.pipeline.diarization import SpeakerTurn, assign_speakers_to_words
 
         segment = Segment(id=0, start=0.0, end=1.0, text="Hello world")  # No words
         transcript = Transcript(file_name="test.wav", language="en", segments=[segment])
@@ -336,7 +336,7 @@ class TestWordLevelSpeakerAlignment:
 
     def test_assign_speakers_to_words_below_threshold(self):
         """Words with low overlap get None speaker."""
-        from transcription.diarization import SpeakerTurn, assign_speakers_to_words
+        from slower_whisper.pipeline.diarization import SpeakerTurn, assign_speakers_to_words
 
         words = [
             Word(word="Hello", start=0.0, end=0.5, probability=0.9),
@@ -356,7 +356,7 @@ class TestWordLevelSpeakerAlignment:
 
     def test_assign_speakers_to_words_dominant_speaker(self):
         """Segment speaker derived from dominant word-level speaker."""
-        from transcription.diarization import SpeakerTurn, assign_speakers_to_words
+        from slower_whisper.pipeline.diarization import SpeakerTurn, assign_speakers_to_words
 
         words = [
             Word(word="One", start=0.0, end=0.3, probability=0.9),
@@ -380,7 +380,7 @@ class TestWordLevelSpeakerAlignment:
 
     def test_assign_speakers_to_words_speakers_list(self):
         """speakers[] list built from unique speakers."""
-        from transcription.diarization import SpeakerTurn, assign_speakers_to_words
+        from slower_whisper.pipeline.diarization import SpeakerTurn, assign_speakers_to_words
 
         words = [
             Word(word="Hello", start=0.0, end=0.5, probability=0.9),

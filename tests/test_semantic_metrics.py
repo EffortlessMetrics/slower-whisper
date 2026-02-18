@@ -23,14 +23,14 @@ class TestNormalizeText:
 
     def test_uppercase_to_lowercase(self) -> None:
         """Uppercase letters are converted to lowercase."""
-        from transcription.benchmark.semantic_metrics import normalize_text
+        from slower_whisper.pipeline.benchmark.semantic_metrics import normalize_text
 
         assert normalize_text("HELLO WORLD") == "hello world"
         assert normalize_text("HeLLo WoRLd") == "hello world"
 
     def test_extra_whitespace_collapsed(self) -> None:
         """Multiple spaces are collapsed to single space."""
-        from transcription.benchmark.semantic_metrics import normalize_text
+        from slower_whisper.pipeline.benchmark.semantic_metrics import normalize_text
 
         assert normalize_text("hello   world") == "hello world"
         assert normalize_text("  hello  world  ") == "hello world"
@@ -39,7 +39,7 @@ class TestNormalizeText:
 
     def test_punctuation_stripped(self) -> None:
         """Punctuation is removed from text."""
-        from transcription.benchmark.semantic_metrics import normalize_text
+        from slower_whisper.pipeline.benchmark.semantic_metrics import normalize_text
 
         assert normalize_text("hello, world!") == "hello world"
         assert normalize_text("hello... world???") == "hello world"
@@ -49,7 +49,7 @@ class TestNormalizeText:
 
     def test_mixed_cases(self) -> None:
         """Combination of uppercase, whitespace, and punctuation."""
-        from transcription.benchmark.semantic_metrics import normalize_text
+        from slower_whisper.pipeline.benchmark.semantic_metrics import normalize_text
 
         assert normalize_text("  HELLO,   World!!! ") == "hello world"
         assert normalize_text("What's UP?!") == "whats up"
@@ -57,7 +57,7 @@ class TestNormalizeText:
 
     def test_empty_string(self) -> None:
         """Empty string returns empty string."""
-        from transcription.benchmark.semantic_metrics import normalize_text
+        from slower_whisper.pipeline.benchmark.semantic_metrics import normalize_text
 
         assert normalize_text("") == ""
         assert normalize_text("   ") == ""
@@ -65,7 +65,7 @@ class TestNormalizeText:
 
     def test_already_normalized(self) -> None:
         """Already normalized text is unchanged."""
-        from transcription.benchmark.semantic_metrics import normalize_text
+        from slower_whisper.pipeline.benchmark.semantic_metrics import normalize_text
 
         assert normalize_text("hello world") == "hello world"
         assert normalize_text("test") == "test"
@@ -81,7 +81,7 @@ class TestComputeTopicF1:
 
     def test_perfect_match(self) -> None:
         """Predicted topics exactly match gold topics."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         predicted = ["billing", "refund", "account"]
         gold = ["billing", "refund", "account"]
@@ -94,7 +94,7 @@ class TestComputeTopicF1:
 
     def test_partial_overlap(self) -> None:
         """Some topics match, some don't."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         # 2 out of 3 predicted are correct
         # 2 out of 3 gold are found
@@ -113,7 +113,7 @@ class TestComputeTopicF1:
 
     def test_no_overlap(self) -> None:
         """No topics in common."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         predicted = ["shipping", "returns"]
         gold = ["billing", "account"]
@@ -126,7 +126,7 @@ class TestComputeTopicF1:
 
     def test_empty_predicted(self) -> None:
         """No topics predicted."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         predicted: list[str] = []
         gold = ["billing", "account"]
@@ -140,7 +140,7 @@ class TestComputeTopicF1:
 
     def test_empty_gold(self) -> None:
         """No gold topics (nothing to find)."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         predicted = ["billing", "account"]
         gold: list[str] = []
@@ -154,7 +154,7 @@ class TestComputeTopicF1:
 
     def test_both_empty(self) -> None:
         """Both predicted and gold are empty."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         predicted: list[str] = []
         gold: list[str] = []
@@ -168,7 +168,7 @@ class TestComputeTopicF1:
 
     def test_single_item_match(self) -> None:
         """Single topic in both lists, matching."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         predicted = ["billing"]
         gold = ["billing"]
@@ -181,7 +181,7 @@ class TestComputeTopicF1:
 
     def test_single_item_no_match(self) -> None:
         """Single topic in both lists, not matching."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         predicted = ["billing"]
         gold = ["refund"]
@@ -194,7 +194,7 @@ class TestComputeTopicF1:
 
     def test_superset_predicted(self) -> None:
         """Predicted is superset of gold."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         predicted = ["billing", "refund", "account", "shipping"]
         gold = ["billing", "refund"]
@@ -210,7 +210,7 @@ class TestComputeTopicF1:
 
     def test_subset_predicted(self) -> None:
         """Predicted is subset of gold."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         predicted = ["billing"]
         gold = ["billing", "refund", "account"]
@@ -226,7 +226,7 @@ class TestComputeTopicF1:
 
     def test_case_sensitivity(self) -> None:
         """Topics should be compared case-insensitively (if normalized)."""
-        from transcription.benchmark.semantic_metrics import compute_topic_f1
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_topic_f1
 
         # Assuming topics are normalized or compared exactly
         # Test exact match first
@@ -253,7 +253,7 @@ class TestComputeRiskMetrics:
 
     def test_exact_matches(self) -> None:
         """Predicted risks exactly match gold risks (type + segment_id)."""
-        from transcription.benchmark.semantic_metrics import compute_risk_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_risk_metrics
 
         predicted = [
             {"type": "escalation", "segment_id": 0, "severity": "high"},
@@ -272,7 +272,7 @@ class TestComputeRiskMetrics:
 
     def test_type_matches_different_segment(self) -> None:
         """Type matches but segment_id is different."""
-        from transcription.benchmark.semantic_metrics import compute_risk_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_risk_metrics
 
         predicted = [
             {"type": "escalation", "segment_id": 0, "severity": "high"},
@@ -290,7 +290,7 @@ class TestComputeRiskMetrics:
 
     def test_per_severity_breakdown(self) -> None:
         """Metrics broken down by severity level."""
-        from transcription.benchmark.semantic_metrics import compute_risk_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_risk_metrics
 
         predicted = [
             {"type": "escalation", "segment_id": 0, "severity": "high"},
@@ -325,7 +325,7 @@ class TestComputeRiskMetrics:
 
     def test_empty_predicted_risks(self) -> None:
         """No risks predicted."""
-        from transcription.benchmark.semantic_metrics import compute_risk_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_risk_metrics
 
         predicted: list[dict] = []
         gold = [
@@ -340,7 +340,7 @@ class TestComputeRiskMetrics:
 
     def test_empty_gold_risks(self) -> None:
         """No gold risks (nothing to find)."""
-        from transcription.benchmark.semantic_metrics import compute_risk_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_risk_metrics
 
         predicted = [
             {"type": "escalation", "segment_id": 0, "severity": "high"},
@@ -356,7 +356,7 @@ class TestComputeRiskMetrics:
 
     def test_both_empty_risks(self) -> None:
         """Both predicted and gold are empty."""
-        from transcription.benchmark.semantic_metrics import compute_risk_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_risk_metrics
 
         predicted: list[dict] = []
         gold: list[dict] = []
@@ -370,7 +370,7 @@ class TestComputeRiskMetrics:
 
     def test_mixed_severities(self) -> None:
         """Risks with different severities."""
-        from transcription.benchmark.semantic_metrics import compute_risk_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_risk_metrics
 
         predicted = [
             {"type": "escalation", "segment_id": 0, "severity": "high"},
@@ -391,7 +391,7 @@ class TestComputeRiskMetrics:
 
     def test_partial_matches_same_segment(self) -> None:
         """Same segment_id but different type."""
-        from transcription.benchmark.semantic_metrics import compute_risk_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_risk_metrics
 
         predicted = [
             {"type": "escalation", "segment_id": 0, "severity": "high"},
@@ -417,7 +417,7 @@ class TestComputeActionMetrics:
 
     def test_exact_text_match(self) -> None:
         """Action text matches exactly."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         predicted = [{"text": "Send invoice to customer"}]
         gold = [{"text": "Send invoice to customer"}]
@@ -430,7 +430,7 @@ class TestComputeActionMetrics:
 
     def test_similar_text_above_threshold(self) -> None:
         """Action text is similar, above threshold."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         predicted = [{"text": "Send the invoice to the customer"}]
         gold = [{"text": "Send invoice to customer"}]
@@ -443,7 +443,7 @@ class TestComputeActionMetrics:
 
     def test_dissimilar_text_below_threshold(self) -> None:
         """Action text is too different, below threshold."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         predicted = [{"text": "Call the customer about billing issue"}]
         gold = [{"text": "Send invoice to customer"}]
@@ -456,7 +456,7 @@ class TestComputeActionMetrics:
 
     def test_empty_predicted_actions(self) -> None:
         """No actions predicted."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         predicted: list[dict] = []
         gold = [{"text": "Send invoice to customer"}]
@@ -468,7 +468,7 @@ class TestComputeActionMetrics:
 
     def test_empty_gold_actions(self) -> None:
         """No gold actions (nothing to find)."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         predicted = [{"text": "Send invoice to customer"}]
         gold: list[dict] = []
@@ -481,7 +481,7 @@ class TestComputeActionMetrics:
 
     def test_both_empty_actions(self) -> None:
         """Both predicted and gold are empty."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         predicted: list[dict] = []
         gold: list[dict] = []
@@ -494,7 +494,7 @@ class TestComputeActionMetrics:
 
     def test_threshold_boundary_exact(self) -> None:
         """Similarity exactly at threshold."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         # Two identical texts should have similarity 1.0
         predicted = [{"text": "test action"}]
@@ -507,7 +507,7 @@ class TestComputeActionMetrics:
 
     def test_threshold_zero(self) -> None:
         """Threshold of 0.0 matches everything."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         predicted = [{"text": "completely different text"}]
         gold = [{"text": "unrelated action item"}]
@@ -520,7 +520,7 @@ class TestComputeActionMetrics:
 
     def test_multiple_actions_partial_match(self) -> None:
         """Multiple actions with some matching."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         predicted = [
             {"text": "Send invoice to customer"},
@@ -541,7 +541,7 @@ class TestComputeActionMetrics:
 
     def test_result_contains_expected_keys(self) -> None:
         """Result dictionary contains all expected metrics."""
-        from transcription.benchmark.semantic_metrics import compute_action_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import compute_action_metrics
 
         predicted = [{"text": "test"}]
         gold = [{"text": "test"}]
@@ -563,7 +563,7 @@ class TestAggregateSemanticMetrics:
 
     def test_multiple_samples_all_metrics(self) -> None:
         """Aggregate metrics from multiple samples with all metrics present."""
-        from transcription.benchmark.semantic_metrics import aggregate_semantic_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import aggregate_semantic_metrics
 
         # Use keys expected by implementation: "topic", "risk", "action"
         sample_metrics = [
@@ -611,7 +611,7 @@ class TestAggregateSemanticMetrics:
 
     def test_samples_with_none_values(self) -> None:
         """Some samples have None for unmeasured metrics."""
-        from transcription.benchmark.semantic_metrics import aggregate_semantic_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import aggregate_semantic_metrics
 
         sample_metrics = [
             {
@@ -646,7 +646,7 @@ class TestAggregateSemanticMetrics:
 
     def test_coverage_reporting(self) -> None:
         """Aggregation includes coverage information."""
-        from transcription.benchmark.semantic_metrics import aggregate_semantic_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import aggregate_semantic_metrics
 
         sample_metrics = [
             {
@@ -675,7 +675,7 @@ class TestAggregateSemanticMetrics:
 
     def test_empty_list(self) -> None:
         """Empty list of samples."""
-        from transcription.benchmark.semantic_metrics import aggregate_semantic_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import aggregate_semantic_metrics
 
         sample_metrics: list[dict] = []
 
@@ -686,7 +686,7 @@ class TestAggregateSemanticMetrics:
 
     def test_single_sample(self) -> None:
         """Single sample - aggregation is just that sample's values."""
-        from transcription.benchmark.semantic_metrics import aggregate_semantic_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import aggregate_semantic_metrics
 
         sample_metrics = [
             {
@@ -714,7 +714,7 @@ class TestAggregateSemanticMetrics:
 
     def test_all_none_metrics(self) -> None:
         """All samples have None for a particular metric."""
-        from transcription.benchmark.semantic_metrics import aggregate_semantic_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import aggregate_semantic_metrics
 
         sample_metrics = [
             {
@@ -738,7 +738,7 @@ class TestAggregateSemanticMetrics:
 
     def test_aggregation_is_mean(self) -> None:
         """Verify aggregation computes mean of values."""
-        from transcription.benchmark.semantic_metrics import aggregate_semantic_metrics
+        from slower_whisper.pipeline.benchmark.semantic_metrics import aggregate_semantic_metrics
 
         sample_metrics = [
             {
@@ -805,7 +805,7 @@ class TestSemanticMetricsIntegration:
 
     def test_full_evaluation_workflow(self) -> None:
         """Test a complete evaluation workflow with all metrics."""
-        from transcription.benchmark.semantic_metrics import (
+        from slower_whisper.pipeline.benchmark.semantic_metrics import (
             aggregate_semantic_metrics,
             compute_action_metrics,
             compute_risk_metrics,
@@ -879,7 +879,7 @@ class TestSemanticMetricsIntegration:
 
     def test_normalize_text_used_in_comparison(self) -> None:
         """Verify normalize_text is used for action comparison."""
-        from transcription.benchmark.semantic_metrics import (
+        from slower_whisper.pipeline.benchmark.semantic_metrics import (
             compute_action_metrics,
             normalize_text,
         )

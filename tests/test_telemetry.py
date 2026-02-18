@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 
-from transcription.telemetry import (
+from slower_whisper.pipeline.telemetry import (
     CheckStatus,
     DoctorCheck,
     DoctorReport,

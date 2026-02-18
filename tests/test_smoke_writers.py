@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from transcription.models import SCHEMA_VERSION, Segment, Transcript, Word
-from transcription.writers import load_transcript_from_json, write_json
+from slower_whisper.pipeline.models import SCHEMA_VERSION, Segment, Transcript, Word
+from slower_whisper.pipeline.writers import load_transcript_from_json, write_json
 
 
 @pytest.mark.smoke

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from transcription.turn_taking_policy import (
+from slower_whisper.pipeline.turn_taking_policy import (
     AGGRESSIVE_POLICY,
     BALANCED_POLICY,
     CONSERVATIVE_POLICY,
@@ -306,8 +306,12 @@ class TestEndOfTurnHintEmission:
 
     def test_hint_emitted_when_end_of_turn_detected(self):
         """Callback is triggered when turn end is detected."""
-        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
-        from transcription.streaming_callbacks import EndOfTurnHintPayload
+        from slower_whisper.pipeline.post_process import (
+            PostProcessConfig,
+            PostProcessor,
+            SegmentContext,
+        )
+        from slower_whisper.pipeline.streaming_callbacks import EndOfTurnHintPayload
 
         hints_received = []
 
@@ -352,7 +356,11 @@ class TestEndOfTurnHintEmission:
 
     def test_aggressive_fires_sooner_than_conservative(self):
         """Aggressive policy fires hints sooner than conservative."""
-        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+        from slower_whisper.pipeline.post_process import (
+            PostProcessConfig,
+            PostProcessor,
+            SegmentContext,
+        )
 
         aggressive_hints = []
         conservative_hints = []
@@ -414,7 +422,11 @@ class TestEndOfTurnHintEmission:
 
     def test_hint_includes_all_reason_codes(self):
         """Hint payload includes all applicable reason codes."""
-        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+        from slower_whisper.pipeline.post_process import (
+            PostProcessConfig,
+            PostProcessor,
+            SegmentContext,
+        )
 
         hints_received = []
 
@@ -453,7 +465,11 @@ class TestEndOfTurnHintEmission:
 
     def test_no_hint_when_turn_too_short(self):
         """No hint emitted when turn is too short for policy."""
-        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+        from slower_whisper.pipeline.post_process import (
+            PostProcessConfig,
+            PostProcessor,
+            SegmentContext,
+        )
 
         hints_received = []
 
@@ -484,7 +500,11 @@ class TestEndOfTurnHintEmission:
 
     def test_long_pause_forces_hint(self):
         """Long pause forces hint regardless of other factors."""
-        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
+        from slower_whisper.pipeline.post_process import (
+            PostProcessConfig,
+            PostProcessor,
+            SegmentContext,
+        )
 
         hints_received = []
 
@@ -516,8 +536,12 @@ class TestEndOfTurnHintEmission:
 
     def test_hint_payload_has_correct_fields(self):
         """Verify all EndOfTurnHintPayload fields are populated correctly."""
-        from transcription.post_process import PostProcessConfig, PostProcessor, SegmentContext
-        from transcription.streaming_callbacks import EndOfTurnHintPayload
+        from slower_whisper.pipeline.post_process import (
+            PostProcessConfig,
+            PostProcessor,
+            SegmentContext,
+        )
+        from slower_whisper.pipeline.streaming_callbacks import EndOfTurnHintPayload
 
         hints_received = []
 

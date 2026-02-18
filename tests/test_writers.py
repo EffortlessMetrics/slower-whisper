@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from transcription import (
+from slower_whisper.pipeline import (
     __version__,
     writers,
 )
-from transcription.config import AppConfig
-from transcription.models import SCHEMA_VERSION, Segment, Transcript, Turn
-from transcription.pipeline import _build_meta
-from transcription.writers import _to_dict
+from slower_whisper.pipeline.config import AppConfig
+from slower_whisper.pipeline.models import SCHEMA_VERSION, Segment, Transcript, Turn
+from slower_whisper.pipeline.pipeline import _build_meta
+from slower_whisper.pipeline.writers import _to_dict
 
 
 def test_write_json_shape(tmp_path: Path) -> None:
@@ -426,7 +426,7 @@ def test_write_json_logs_warning_for_unexpected_meta(
 
     json_path = tmp_path / "test_meta_warning.json"
 
-    with caplog.at_level(logging.WARNING, logger="transcription.writers"):
+    with caplog.at_level(logging.WARNING, logger="slower_whisper.pipeline.writers"):
         writers.write_json(transcript, json_path)
 
     # Verify warning was logged
@@ -508,7 +508,7 @@ def test_meta_with_to_dict_object_roundtrip(tmp_path: Path) -> None:
     This verifies the _to_dict helper works for nested meta objects like
     DiarizationMeta, not just top-level fields.
     """
-    from transcription.models import DiarizationMeta
+    from slower_whisper.pipeline.models import DiarizationMeta
 
     diar_meta = DiarizationMeta(
         requested=True,

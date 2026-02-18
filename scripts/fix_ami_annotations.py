@@ -129,7 +129,7 @@ def main():
     else:
         # Auto-detect from benchmarks cache
         try:
-            from transcription.benchmarks import get_benchmarks_root
+            from slower_whisper.pipeline.benchmarks import get_benchmarks_root
 
             benchmarks_root = get_benchmarks_root()
             annotations_dir = benchmarks_root / "ami" / "annotations"

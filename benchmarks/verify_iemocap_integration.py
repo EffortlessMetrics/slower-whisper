@@ -23,7 +23,7 @@ def check_iterator():
     """Check that iter_iemocap_clips() is available."""
     print("Checking iter_iemocap_clips()...", end=" ")
     try:
-        from transcription.benchmarks import iter_iemocap_clips
+        from slower_whisper.pipeline.benchmarks import iter_iemocap_clips
 
         # Verify it's callable
         assert callable(iter_iemocap_clips)
@@ -38,7 +38,7 @@ def check_emotion_models():
     """Check that emotion extraction functions are available."""
     print("Checking emotion models...", end=" ")
     try:
-        from transcription.emotion import (
+        from slower_whisper.pipeline.emotion import (
             EMOTION_AVAILABLE,
             extract_emotion_categorical,
             extract_emotion_dimensional,
@@ -127,7 +127,7 @@ def check_benchmarks_integration():
     """Check that IEMOCAP is registered in benchmarks."""
     print("Checking benchmarks integration...", end=" ")
     try:
-        from transcription.benchmarks import list_available_benchmarks
+        from slower_whisper.pipeline.benchmarks import list_available_benchmarks
 
         benchmarks = list_available_benchmarks()
         assert "iemocap" in benchmarks, "IEMOCAP not in benchmarks list"
@@ -149,7 +149,7 @@ def check_cache_paths():
     """Check that CachePaths includes benchmarks_root."""
     print("Checking cache paths...", end=" ")
     try:
-        from transcription.cache import CachePaths
+        from slower_whisper.pipeline.cache import CachePaths
 
         paths = CachePaths.from_env()
         assert hasattr(paths, "benchmarks_root")

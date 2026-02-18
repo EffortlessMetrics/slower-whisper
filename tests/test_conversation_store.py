@@ -20,8 +20,8 @@ from typing import Any
 
 import pytest
 
-from transcription.models import Segment, Transcript
-from transcription.store import (
+from slower_whisper.pipeline.models import Segment, Transcript
+from slower_whisper.pipeline.store import (
     ConversationStore,
     DuplicateError,
     ExportFormat,
@@ -241,7 +241,7 @@ class TestStoreInitialization:
 
     def test_default_store_path(self) -> None:
         """Test that default store path is in user home directory."""
-        from transcription.store import get_default_store_path
+        from slower_whisper.pipeline.store import get_default_store_path
 
         default_path = get_default_store_path()
         assert default_path.name == "store.db"
@@ -344,7 +344,7 @@ class TestIngestion:
 
     def test_ingest_invalid_json(self, store: ConversationStore, tmp_path: Path) -> None:
         """Test that ingesting invalid JSON raises error."""
-        from transcription.store.types import IngestError
+        from slower_whisper.pipeline.store.types import IngestError
 
         invalid_json = tmp_path / "invalid.json"
         invalid_json.write_text("{ invalid json }", encoding="utf-8")
@@ -860,7 +860,7 @@ class TestActionItems:
         self, store: ConversationStore, sample_transcript_json: Path
     ) -> None:
         """Test the legacy action item APIs."""
-        from transcription.store import ActionStatus
+        from slower_whisper.pipeline.store import ActionStatus
 
         store.ingest(sample_transcript_json)
 

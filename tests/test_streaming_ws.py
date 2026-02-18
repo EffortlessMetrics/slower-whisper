@@ -17,7 +17,7 @@ import base64
 import pytest
 from fastapi.testclient import TestClient
 
-from transcription.streaming_ws import (
+from slower_whisper.pipeline.streaming_ws import (
     ClientMessageType,
     EventEnvelope,
     ServerMessageType,
@@ -73,7 +73,7 @@ class TestEventEnvelope:
 
     def test_envelope_to_dict_minimal(self) -> None:
         """Test envelope serialization without optional fields."""
-        from transcription.streaming_ws import EVENT_ENVELOPE_SCHEMA_VERSION
+        from slower_whisper.pipeline.streaming_ws import EVENT_ENVELOPE_SCHEMA_VERSION
 
         envelope = EventEnvelope(
             event_id=1,
@@ -98,7 +98,7 @@ class TestEventEnvelope:
 
     def test_envelope_to_dict_complete(self) -> None:
         """Test envelope serialization with all fields."""
-        from transcription.streaming_ws import EVENT_ENVELOPE_SCHEMA_VERSION
+        from slower_whisper.pipeline.streaming_ws import EVENT_ENVELOPE_SCHEMA_VERSION
 
         envelope = EventEnvelope(
             event_id=10,
@@ -510,7 +510,7 @@ class TestSpeakerAssignment:
 
     def test_speaker_assignment_creation(self) -> None:
         """Test basic SpeakerAssignment creation."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         assignment = SpeakerAssignment(
             start=0.0,
@@ -525,7 +525,7 @@ class TestSpeakerAssignment:
 
     def test_speaker_assignment_to_dict(self) -> None:
         """Test SpeakerAssignment serialization."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         assignment = SpeakerAssignment(
             start=1.0,
@@ -543,7 +543,7 @@ class TestSpeakerAssignment:
 
     def test_speaker_assignment_to_dict_no_confidence(self) -> None:
         """Test SpeakerAssignment serialization without confidence."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         assignment = SpeakerAssignment(
             start=0.0,
@@ -581,7 +581,7 @@ class TestIncrementalDiarization:
 
     def test_session_with_diarization_hook(self) -> None:
         """Test session creation with diarization hook."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         async def mock_hook(audio_buffer: bytes, sample_rate: int) -> list[SpeakerAssignment]:
             return [SpeakerAssignment(start=0.0, end=1.0, speaker_id="spk_0")]
@@ -599,7 +599,7 @@ class TestIncrementalDiarization:
     @pytest.mark.asyncio
     async def test_diarization_not_triggered_when_disabled(self) -> None:
         """Test diarization is not triggered when disabled in config."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         hook_called = False
 
@@ -639,7 +639,7 @@ class TestIncrementalDiarization:
     @pytest.mark.asyncio
     async def test_diarization_triggered_at_interval(self) -> None:
         """Test diarization is triggered after interval threshold."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         hook_calls = []
 
@@ -675,7 +675,7 @@ class TestIncrementalDiarization:
     @pytest.mark.asyncio
     async def test_diarization_not_triggered_before_interval(self) -> None:
         """Test diarization is not triggered before interval threshold."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         hook_calls = []
 
@@ -699,7 +699,7 @@ class TestIncrementalDiarization:
     @pytest.mark.asyncio
     async def test_final_diarization_on_end(self) -> None:
         """Test final diarization is triggered on session end."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         hook_calls = []
 
@@ -753,7 +753,7 @@ class TestIncrementalDiarization:
     @pytest.mark.asyncio
     async def test_get_speaker_assignments(self) -> None:
         """Test getting current speaker assignments."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         expected_assignments = [
             SpeakerAssignment(start=0.0, end=2.0, speaker_id="spk_0"),
@@ -786,7 +786,7 @@ class TestIncrementalDiarization:
     @pytest.mark.asyncio
     async def test_diarization_update_only_on_change(self) -> None:
         """Test DIARIZATION_UPDATE only emitted when assignments change."""
-        from transcription.streaming_ws import SpeakerAssignment
+        from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
         call_count = 0
 
@@ -829,7 +829,7 @@ class TestWebSocketEndpoint:
     @pytest.fixture
     def client(self) -> TestClient:
         """Create FastAPI test client."""
-        from transcription.service import app
+        from slower_whisper.pipeline.service import app
 
         return TestClient(app)
 
@@ -948,7 +948,7 @@ class TestStreamConfigEndpoint:
     @pytest.fixture
     def client(self) -> TestClient:
         """Create FastAPI test client."""
-        from transcription.service import app
+        from slower_whisper.pipeline.service import app
 
         return TestClient(app)
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from transcription.prosody_extended import (
+from slower_whisper.pipeline.prosody_extended import (
     BoundaryToneState,
     MonotonyState,
     PitchSlopeState,

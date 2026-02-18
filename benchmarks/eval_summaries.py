@@ -42,10 +42,10 @@ from typing import Any
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from transcription import load_transcript, transcribe_file
-from transcription.benchmarks import iter_ami_meetings
-from transcription.config import TranscriptionConfig
-from transcription.llm_utils import render_conversation_for_llm
+from slower_whisper.pipeline import load_transcript, transcribe_file
+from slower_whisper.pipeline.benchmarks import iter_ami_meetings
+from slower_whisper.pipeline.config import TranscriptionConfig
+from slower_whisper.pipeline.llm_utils import render_conversation_for_llm
 
 
 def check_anthropic_key() -> str:

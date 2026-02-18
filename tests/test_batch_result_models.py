@@ -16,7 +16,7 @@ Test coverage:
 6. Edge cases (empty results, all failures)
 """
 
-from transcription.models import (
+from slower_whisper.pipeline.models import (
     BatchFileResult,
     BatchProcessingResult,
     EnrichmentBatchResult,

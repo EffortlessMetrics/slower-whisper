@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from transcription.asr_engine import TranscriptionEngine
-from transcription.legacy_config import AsrConfig
+from slower_whisper.pipeline.asr_engine import TranscriptionEngine
+from slower_whisper.pipeline.legacy_config import AsrConfig
 
 AUDIO_DIR = Path(__file__).resolve().parents[1] / "benchmarks" / "data" / "asr" / "audio"
 CALL_CENTER_WAV = AUDIO_DIR / "call_center_narrowband.wav"

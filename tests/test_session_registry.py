@@ -31,7 +31,7 @@ class TestSessionRegistry:
     @pytest.fixture(autouse=True)
     def reset_registry(self):
         """Reset registry before each test."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         SessionRegistry.reset()
         yield
@@ -39,7 +39,7 @@ class TestSessionRegistry:
 
     def test_singleton_pattern(self) -> None:
         """Test registry is a singleton."""
-        from transcription.session_registry import SessionRegistry, get_registry
+        from slower_whisper.pipeline.session_registry import SessionRegistry, get_registry
 
         reg1 = get_registry()
         reg2 = get_registry()
@@ -50,8 +50,8 @@ class TestSessionRegistry:
 
     def test_register_session(self) -> None:
         """Test registering a session."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -64,8 +64,8 @@ class TestSessionRegistry:
 
     def test_unregister_session(self) -> None:
         """Test unregistering a session."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -79,8 +79,8 @@ class TestSessionRegistry:
 
     def test_get_info(self) -> None:
         """Test getting session info."""
-        from transcription.session_registry import SessionStatus, get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import SessionStatus, get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -96,7 +96,7 @@ class TestSessionRegistry:
 
     def test_get_info_not_found(self) -> None:
         """Test getting info for non-existent session."""
-        from transcription.session_registry import get_registry
+        from slower_whisper.pipeline.session_registry import get_registry
 
         registry = get_registry()
         info = registry.get_info("str-nonexistent")
@@ -105,8 +105,8 @@ class TestSessionRegistry:
 
     def test_list_sessions(self) -> None:
         """Test listing all sessions."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
 
@@ -129,8 +129,8 @@ class TestSessionRegistry:
     @pytest.mark.asyncio
     async def test_close_session(self) -> None:
         """Test force closing a session."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import SessionState, WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import SessionState, WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -148,7 +148,7 @@ class TestSessionRegistry:
     @pytest.mark.asyncio
     async def test_close_session_not_found(self) -> None:
         """Test closing non-existent session."""
-        from transcription.session_registry import get_registry
+        from slower_whisper.pipeline.session_registry import get_registry
 
         registry = get_registry()
         success = await registry.close_session("str-nonexistent")
@@ -159,8 +159,8 @@ class TestSessionRegistry:
         """Test touching a session updates last activity."""
         import time
 
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -176,8 +176,8 @@ class TestSessionRegistry:
 
     def test_get_stats(self) -> None:
         """Test getting registry stats."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
 
@@ -193,7 +193,7 @@ class TestSessionRegistry:
 
     def test_get_stats_includes_new_fields(self) -> None:
         """Test that get_stats includes all configuration fields."""
-        from transcription.session_registry import get_registry
+        from slower_whisper.pipeline.session_registry import get_registry
 
         registry = get_registry()
         stats = registry.get_stats()
@@ -206,7 +206,7 @@ class TestSessionRegistry:
 
     def test_configure(self) -> None:
         """Test configuring registry settings."""
-        from transcription.session_registry import get_registry
+        from slower_whisper.pipeline.session_registry import get_registry
 
         registry = get_registry()
 
@@ -233,7 +233,7 @@ class TestSessionStateTransitions:
     @pytest.fixture(autouse=True)
     def reset_registry(self):
         """Reset registry before each test."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         SessionRegistry.reset()
         yield
@@ -241,7 +241,7 @@ class TestSessionStateTransitions:
 
     def test_valid_transitions(self) -> None:
         """Test all valid state transitions."""
-        from transcription.session_registry import VALID_TRANSITIONS
+        from slower_whisper.pipeline.session_registry import VALID_TRANSITIONS
 
         # Verify expected valid transitions
         assert VALID_TRANSITIONS[("created", "active")] is True
@@ -254,7 +254,7 @@ class TestSessionStateTransitions:
 
     def test_is_valid_transition(self) -> None:
         """Test SessionStatus.is_valid_transition method."""
-        from transcription.session_registry import SessionStatus
+        from slower_whisper.pipeline.session_registry import SessionStatus
 
         assert SessionStatus.is_valid_transition(SessionStatus.CREATED, SessionStatus.ACTIVE)
         assert SessionStatus.is_valid_transition(SessionStatus.ACTIVE, SessionStatus.DISCONNECTED)
@@ -263,7 +263,7 @@ class TestSessionStateTransitions:
 
     def test_is_terminal(self) -> None:
         """Test SessionStatus.is_terminal method."""
-        from transcription.session_registry import SessionStatus
+        from slower_whisper.pipeline.session_registry import SessionStatus
 
         assert SessionStatus.is_terminal(SessionStatus.ENDED)
         assert SessionStatus.is_terminal(SessionStatus.ERROR)
@@ -272,12 +272,12 @@ class TestSessionStateTransitions:
 
     def test_registered_session_transition(self) -> None:
         """Test RegisteredSession.transition_to method."""
-        from transcription.session_registry import (
+        from slower_whisper.pipeline.session_registry import (
             InvalidStateTransitionError,
             RegisteredSession,
             SessionStatus,
         )
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         session = WebSocketStreamingSession()
         registered = RegisteredSession(
@@ -302,8 +302,8 @@ class TestSessionStateTransitions:
 
     def test_transition_updates_activity(self) -> None:
         """Test that transitions update last_activity timestamp."""
-        from transcription.session_registry import RegisteredSession, SessionStatus
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import RegisteredSession, SessionStatus
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         session = WebSocketStreamingSession()
         registered = RegisteredSession(
@@ -321,8 +321,8 @@ class TestSessionStateTransitions:
 
     def test_disconnected_tracks_timestamp(self) -> None:
         """Test that disconnection tracks disconnected_at timestamp."""
-        from transcription.session_registry import RegisteredSession, SessionStatus
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import RegisteredSession, SessionStatus
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         session = WebSocketStreamingSession()
         registered = RegisteredSession(
@@ -340,8 +340,8 @@ class TestSessionStateTransitions:
 
     def test_reconnect_clears_disconnected_timestamp(self) -> None:
         """Test that reconnection clears disconnected_at timestamp."""
-        from transcription.session_registry import RegisteredSession, SessionStatus
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import RegisteredSession, SessionStatus
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         session = WebSocketStreamingSession()
         registered = RegisteredSession(
@@ -368,7 +368,7 @@ class TestDisconnectionHandling:
     @pytest.fixture(autouse=True)
     def reset_registry(self):
         """Reset registry before each test."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         SessionRegistry.reset()
         yield
@@ -377,8 +377,8 @@ class TestDisconnectionHandling:
     @pytest.mark.asyncio
     async def test_disconnection_transitions_to_disconnected(self) -> None:
         """Test that WebSocket disconnection transitions session to DISCONNECTED."""
-        from transcription.session_registry import SessionStatus, get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import SessionStatus, get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -401,8 +401,8 @@ class TestDisconnectionHandling:
     @pytest.mark.asyncio
     async def test_reconnection_transitions_to_active(self) -> None:
         """Test that WebSocket reconnection transitions session back to ACTIVE."""
-        from transcription.session_registry import SessionStatus, get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import SessionStatus, get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -427,8 +427,8 @@ class TestDisconnectionHandling:
     @pytest.mark.asyncio
     async def test_mark_disconnected(self) -> None:
         """Test mark_disconnected helper method."""
-        from transcription.session_registry import SessionStatus, get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import SessionStatus, get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -447,7 +447,7 @@ class TestDisconnectionHandling:
 
     def test_mark_disconnected_not_found(self) -> None:
         """Test mark_disconnected returns False for non-existent session."""
-        from transcription.session_registry import get_registry
+        from slower_whisper.pipeline.session_registry import get_registry
 
         registry = get_registry()
         result = registry.mark_disconnected("str-nonexistent")
@@ -456,8 +456,8 @@ class TestDisconnectionHandling:
     @pytest.mark.asyncio
     async def test_resume_increments_counter(self) -> None:
         """Test that reconnection increments resume_attempts counter."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -487,7 +487,7 @@ class TestTTLAndExpiry:
     @pytest.fixture(autouse=True)
     def reset_registry(self):
         """Reset registry before each test."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         SessionRegistry.reset()
         yield
@@ -496,8 +496,8 @@ class TestTTLAndExpiry:
     @pytest.mark.asyncio
     async def test_cleanup_terminal_sessions(self) -> None:
         """Test that sessions in terminal states are cleaned up immediately."""
-        from transcription.session_registry import SessionStatus, get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import SessionStatus, get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -522,8 +522,8 @@ class TestTTLAndExpiry:
     @pytest.mark.asyncio
     async def test_cleanup_disconnected_sessions_after_ttl(self) -> None:
         """Test that disconnected sessions are cleaned up after TTL."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         # Set very short TTL for testing
@@ -550,8 +550,8 @@ class TestTTLAndExpiry:
     @pytest.mark.asyncio
     async def test_disconnected_session_not_cleaned_before_ttl(self) -> None:
         """Test that disconnected sessions are NOT cleaned up before TTL."""
-        from transcription.session_registry import SessionStatus, get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import SessionStatus, get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         # Set long TTL
@@ -576,8 +576,8 @@ class TestTTLAndExpiry:
     @pytest.mark.asyncio
     async def test_cleanup_idle_sessions(self) -> None:
         """Test that idle sessions without WebSocket are cleaned up."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         # Set very short idle timeout
@@ -598,8 +598,8 @@ class TestTTLAndExpiry:
     @pytest.mark.asyncio
     async def test_connected_session_not_cleaned_when_idle(self) -> None:
         """Test that connected sessions are NOT cleaned even if idle."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         # Set very short idle timeout
@@ -633,7 +633,7 @@ class TestBackgroundCleanupTask:
     @pytest.fixture(autouse=True)
     def reset_registry(self):
         """Reset registry before each test."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         SessionRegistry.reset()
         yield
@@ -642,7 +642,7 @@ class TestBackgroundCleanupTask:
     @pytest.mark.asyncio
     async def test_start_cleanup_task(self) -> None:
         """Test starting the background cleanup task."""
-        from transcription.session_registry import get_registry
+        from slower_whisper.pipeline.session_registry import get_registry
 
         registry = get_registry()
         registry.configure(cleanup_interval_sec=0.1)
@@ -660,8 +660,8 @@ class TestBackgroundCleanupTask:
     @pytest.mark.asyncio
     async def test_cleanup_task_runs_periodically(self) -> None:
         """Test that cleanup task runs periodically."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         registry.configure(
@@ -688,7 +688,7 @@ class TestBackgroundCleanupTask:
     @pytest.mark.asyncio
     async def test_stop_cleanup_task(self) -> None:
         """Test stopping the cleanup task gracefully."""
-        from transcription.session_registry import get_registry
+        from slower_whisper.pipeline.session_registry import get_registry
 
         registry = get_registry()
         await registry.start_cleanup_task()
@@ -702,7 +702,7 @@ class TestBackgroundCleanupTask:
     @pytest.mark.asyncio
     async def test_start_cleanup_task_idempotent(self) -> None:
         """Test that starting cleanup task multiple times is safe."""
-        from transcription.session_registry import get_registry
+        from slower_whisper.pipeline.session_registry import get_registry
 
         registry = get_registry()
 
@@ -726,7 +726,7 @@ class TestForceClose:
     @pytest.fixture(autouse=True)
     def reset_registry(self):
         """Reset registry before each test."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         SessionRegistry.reset()
         yield
@@ -735,8 +735,8 @@ class TestForceClose:
     @pytest.mark.asyncio
     async def test_force_close_cancels_pending_tasks(self) -> None:
         """Test that force close cancels pending async tasks."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -763,8 +763,8 @@ class TestForceClose:
     @pytest.mark.asyncio
     async def test_force_close_sends_session_ended(self) -> None:
         """Test that force close sends SESSION_ENDED event."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -783,8 +783,8 @@ class TestForceClose:
     @pytest.mark.asyncio
     async def test_force_close_closes_websocket(self) -> None:
         """Test that force close closes the WebSocket connection."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -803,8 +803,8 @@ class TestForceClose:
     @pytest.mark.asyncio
     async def test_force_close_clears_replay_buffer(self) -> None:
         """Test that force close clears the replay buffer."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -831,8 +831,8 @@ class TestForceClose:
     @pytest.mark.asyncio
     async def test_force_close_without_emit(self) -> None:
         """Test force close with emit_session_ended=False."""
-        from transcription.session_registry import get_registry
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import get_registry
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         registry = get_registry()
         session = WebSocketStreamingSession()
@@ -860,8 +860,8 @@ class TestPendingTaskManagement:
     @pytest.mark.asyncio
     async def test_add_task(self) -> None:
         """Test adding a task to track."""
-        from transcription.session_registry import RegisteredSession, SessionStatus
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import RegisteredSession, SessionStatus
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         session = WebSocketStreamingSession()
         registered = RegisteredSession(
@@ -882,8 +882,8 @@ class TestPendingTaskManagement:
     @pytest.mark.asyncio
     async def test_cancel_pending_tasks(self) -> None:
         """Test cancelling all pending tasks."""
-        from transcription.session_registry import RegisteredSession, SessionStatus
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.session_registry import RegisteredSession, SessionStatus
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         session = WebSocketStreamingSession()
         registered = RegisteredSession(
@@ -920,7 +920,7 @@ class TestSessionInfo:
         """Test SessionInfo serialization."""
         from datetime import datetime
 
-        from transcription.session_registry import SessionInfo, SessionStatus
+        from slower_whisper.pipeline.session_registry import SessionInfo, SessionStatus
 
         info = SessionInfo(
             session_id="str-test",
@@ -954,7 +954,7 @@ class TestStreamSessionsEndpoints:
     @pytest.fixture(autouse=True)
     def reset_registry(self):
         """Reset registry before each test."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         SessionRegistry.reset()
         yield
@@ -963,7 +963,7 @@ class TestStreamSessionsEndpoints:
     @pytest.fixture
     def client(self) -> TestClient:
         """Create FastAPI test client."""
-        from transcription.service import app
+        from slower_whisper.pipeline.service import app
 
         return TestClient(app)
 

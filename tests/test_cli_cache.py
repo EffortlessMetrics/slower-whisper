@@ -4,15 +4,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.cli import main
+from slower_whisper.pipeline.cli import main
 
 
 @pytest.fixture
 def mock_cache_paths():
     """Mock CachePaths and related dependencies for cache command tests."""
     with (
-        patch("transcription.cache.CachePaths") as mock_cls,
-        patch("transcription.samples.get_samples_cache_dir") as mock_samples_dir,
+        patch("slower_whisper.pipeline.cache.CachePaths") as mock_cls,
+        patch("slower_whisper.pipeline.samples.get_samples_cache_dir") as mock_samples_dir,
     ):
         mock_paths = MagicMock()
         mock_paths.whisper_root.exists.return_value = True

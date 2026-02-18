@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from transcription.speaker_identity import (
+from slower_whisper.pipeline.speaker_identity import (
     MappedSegment,
     MappedTranscript,
     Speaker,
@@ -80,7 +80,7 @@ def sample_embeddings() -> list[np.ndarray]:
 @pytest.fixture
 def mock_transcript():
     """Create a mock transcript with diarization results."""
-    from transcription.models import Segment, Transcript
+    from slower_whisper.pipeline.models import Segment, Transcript
 
     segments = [
         Segment(
@@ -404,7 +404,9 @@ class TestSpeakerEmbedder:
 
     def test_embedder_raises_without_backend(self):
         """Should raise ImportError if no backend available."""
-        with patch("transcription.speaker_identity.get_available_backend", return_value=None):
+        with patch(
+            "slower_whisper.pipeline.speaker_identity.get_available_backend", return_value=None
+        ):
             with pytest.raises(ImportError, match="No speaker embedding backend"):
                 SpeakerEmbedder()
 
@@ -477,7 +479,8 @@ class TestSpeakerEmbedderMocked:
         mock_raw_embedding = np.array([1.0, 2.0, 3.0], dtype=np.float32)
 
         with patch(
-            "transcription.speaker_identity.get_available_backend", return_value="speechbrain"
+            "slower_whisper.pipeline.speaker_identity.get_available_backend",
+            return_value="speechbrain",
         ):
             embedder = SpeakerEmbedder(backend="speechbrain")
 

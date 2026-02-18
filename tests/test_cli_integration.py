@@ -22,13 +22,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.cli import (
+from slower_whisper.pipeline.cli import (
     _config_from_enrich_args,
     _config_from_transcribe_args,
     build_parser,
     main,
 )
-from transcription.config import EnrichmentConfig, TranscriptionConfig
+from slower_whisper.pipeline.config import EnrichmentConfig, TranscriptionConfig
 
 pytestmark = pytest.mark.integration
 
@@ -40,7 +40,7 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 def mock_transcribe_directory() -> Generator[MagicMock, None, None]:
     """Mock the transcribe_directory API function and run_pipeline."""
-    from transcription.pipeline import PipelineBatchResult
+    from slower_whisper.pipeline.pipeline import PipelineBatchResult
 
     # Create a mock PipelineBatchResult for run_pipeline
     mock_batch_result = PipelineBatchResult(
@@ -55,8 +55,8 @@ def mock_transcribe_directory() -> Generator[MagicMock, None, None]:
 
     # Patch both run_pipeline (at source) and transcribe_directory for compatibility
     with (
-        patch("transcription.pipeline.run_pipeline") as mock_pipeline,
-        patch("transcription.cli.transcribe_directory") as mock_transcribe,
+        patch("slower_whisper.pipeline.pipeline.run_pipeline") as mock_pipeline,
+        patch("slower_whisper.pipeline.cli.transcribe_directory") as mock_transcribe,
     ):
         mock_pipeline.return_value = mock_batch_result
         mock_transcribe.return_value = [MagicMock(), MagicMock(), MagicMock()]
@@ -66,7 +66,7 @@ def mock_transcribe_directory() -> Generator[MagicMock, None, None]:
 @pytest.fixture
 def mock_enrich_directory() -> Generator[MagicMock, None, None]:
     """Mock the enrich_directory API function."""
-    with patch("transcription.cli.enrich_directory") as mock:
+    with patch("slower_whisper.pipeline.cli.enrich_directory") as mock:
         # Return a list of mock enriched transcripts
         mock.return_value = [MagicMock(), MagicMock()]
         yield mock

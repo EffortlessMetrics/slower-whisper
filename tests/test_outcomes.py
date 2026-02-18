@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from transcription.models import Segment, Transcript
-from transcription.outcomes import (
+from slower_whisper.pipeline.models import Segment, Transcript
+from slower_whisper.pipeline.outcomes import (
     ACTION_ITEM_PATTERNS,
     ALL_PATTERNS,
     COMMITMENT_PATTERNS,

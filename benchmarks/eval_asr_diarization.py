@@ -55,8 +55,8 @@ from typing import Any
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from transcription import TranscriptionConfig, transcribe_file
-from transcription.benchmarks import EvalSample, iter_ami_meetings, iter_librispeech
+from slower_whisper.pipeline import TranscriptionConfig, transcribe_file
+from slower_whisper.pipeline.benchmarks import EvalSample, iter_ami_meetings, iter_librispeech
 
 try:
     from pyannote.core import Annotation

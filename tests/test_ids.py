@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from transcription.ids import (
+from slower_whisper.pipeline.ids import (
     RUN_ID_PREFIX,
     RUN_ID_RANDOM_LENGTH,
     STREAM_ID_PREFIX,

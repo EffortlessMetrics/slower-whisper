@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from transcription import TranscriptionConfig, transcribe_file
-from transcription.config import TranscriptionConfig as TConfig
-from transcription.models import Segment, Transcript
+from slower_whisper.pipeline import TranscriptionConfig, transcribe_file
+from slower_whisper.pipeline.config import TranscriptionConfig as TConfig
+from slower_whisper.pipeline.models import Segment, Transcript
 
 
 def ffmpeg_available() -> bool:
@@ -39,7 +39,7 @@ def test_maybe_run_diarization_disabled():
     """
     from pathlib import Path
 
-    from transcription.api import _maybe_run_diarization
+    from slower_whisper.pipeline.api import _maybe_run_diarization
 
     transcript = Transcript(
         file_name="test.wav",
@@ -70,7 +70,7 @@ def test_maybe_run_diarization_graceful_failure():
     """
     from pathlib import Path
 
-    from transcription.api import _maybe_run_diarization
+    from slower_whisper.pipeline.api import _maybe_run_diarization
 
     transcript = Transcript(
         file_name="test.wav",
@@ -102,7 +102,7 @@ def test_maybe_run_diarization_missing_dependency(monkeypatch, tmp_path):
     """
     Import-time failures (ModuleNotFoundError) should be classified as missing_dependency.
     """
-    from transcription.api import _maybe_run_diarization
+    from slower_whisper.pipeline.api import _maybe_run_diarization
 
     transcript = Transcript(
         file_name="test.wav",
@@ -113,7 +113,9 @@ def test_maybe_run_diarization_missing_dependency(monkeypatch, tmp_path):
     def _missing_dep_run(self, _wav_path):
         raise ModuleNotFoundError("No module named 'torch'")
 
-    monkeypatch.setattr("transcription.diarization.Diarizer.run", _missing_dep_run, raising=False)
+    monkeypatch.setattr(
+        "slower_whisper.pipeline.diarization.Diarizer.run", _missing_dep_run, raising=False
+    )
 
     wav_path = tmp_path / "dummy.wav"
     wav_path.write_bytes(b"\x00\x00")
@@ -135,7 +137,7 @@ def test_maybe_run_diarization_wrapped_missing_dependency(monkeypatch, tmp_path)
     Wrapped runtime errors (e.g., missing torch inside pyannote loader) should still
     classify as missing_dependency by inspecting the exception cause/message.
     """
-    from transcription.api import _maybe_run_diarization
+    from slower_whisper.pipeline.api import _maybe_run_diarization
 
     transcript = Transcript(
         file_name="test.wav",
@@ -149,7 +151,7 @@ def test_maybe_run_diarization_wrapped_missing_dependency(monkeypatch, tmp_path)
         ) from ImportError("No module named 'torch'")
 
     monkeypatch.setattr(
-        "transcription.diarization.Diarizer.run", _wrapped_missing_dep, raising=False
+        "slower_whisper.pipeline.diarization.Diarizer.run", _wrapped_missing_dep, raising=False
     )
 
     wav_path = tmp_path / "dummy.wav"
@@ -171,8 +173,8 @@ def test_maybe_run_diarization_rolls_back_on_failure(monkeypatch):
     """Partial diarization work should not leak into the transcript on failure."""
     from pathlib import Path
 
-    from transcription.api import _maybe_run_diarization
-    from transcription.diarization import SpeakerTurn
+    from slower_whisper.pipeline.api import _maybe_run_diarization
+    from slower_whisper.pipeline.diarization import SpeakerTurn
 
     transcript = Transcript(
         file_name="test.wav",
@@ -194,8 +196,10 @@ def test_maybe_run_diarization_rolls_back_on_failure(monkeypatch):
         ]
         raise RuntimeError("assign_speakers failure")
 
-    monkeypatch.setattr("transcription.api.Diarizer", FakeDiarizer, raising=False)
-    monkeypatch.setattr("transcription.api.assign_speakers", failing_assign_speakers, raising=False)
+    monkeypatch.setattr("slower_whisper.pipeline.api.Diarizer", FakeDiarizer, raising=False)
+    monkeypatch.setattr(
+        "slower_whisper.pipeline.api.assign_speakers", failing_assign_speakers, raising=False
+    )
 
     config = TConfig(enable_diarization=True, diarization_device="cpu")
     result = _maybe_run_diarization(transcript, Path("dummy.wav"), config)
@@ -210,8 +214,8 @@ def test_maybe_run_diarization_rolls_back_on_failure(monkeypatch):
 
 def test_maybe_run_diarization_replaces_old_error_metadata(monkeypatch, tmp_path):
     """Successful diarization should clear any previous failure metadata."""
-    from transcription.api import _maybe_run_diarization
-    from transcription.diarization import SpeakerTurn
+    from slower_whisper.pipeline.api import _maybe_run_diarization
+    from slower_whisper.pipeline.diarization import SpeakerTurn
 
     transcript = Transcript(
         file_name="test.wav",
@@ -254,11 +258,13 @@ def test_maybe_run_diarization_replaces_old_error_metadata(monkeypatch, tmp_path
         ]
         return transcript
 
-    monkeypatch.setattr("transcription.diarization.Diarizer", FakeDiarizer, raising=False)
+    monkeypatch.setattr("slower_whisper.pipeline.diarization.Diarizer", FakeDiarizer, raising=False)
     monkeypatch.setattr(
-        "transcription.diarization.assign_speakers", fake_assign_speakers, raising=False
+        "slower_whisper.pipeline.diarization.assign_speakers", fake_assign_speakers, raising=False
     )
-    monkeypatch.setattr("transcription.turns.build_turns", fake_build_turns, raising=False)
+    monkeypatch.setattr(
+        "slower_whisper.pipeline.turns.build_turns", fake_build_turns, raising=False
+    )
 
     wav_path = tmp_path / "dummy.wav"
     wav_path.write_bytes(b"\x00\x00")
@@ -277,7 +283,7 @@ def test_maybe_run_diarization_replaces_old_error_metadata(monkeypatch, tmp_path
 
 def test_maybe_run_diarization_failure_overrides_prior_success(monkeypatch, tmp_path):
     """Failure metadata should replace any prior success fields to avoid stale backend info."""
-    from transcription.api import _maybe_run_diarization
+    from slower_whisper.pipeline.api import _maybe_run_diarization
 
     transcript = Transcript(
         file_name="test.wav",
@@ -302,7 +308,9 @@ def test_maybe_run_diarization_failure_overrides_prior_success(monkeypatch, tmp_
         def run(self, _wav_path):
             raise RuntimeError("pyannote.audio missing")
 
-    monkeypatch.setattr("transcription.diarization.Diarizer", FailingDiarizer, raising=False)
+    monkeypatch.setattr(
+        "slower_whisper.pipeline.diarization.Diarizer", FailingDiarizer, raising=False
+    )
 
     wav_path = tmp_path / "dummy.wav"
     wav_path.write_bytes(b"\x00\x00")
@@ -355,9 +363,9 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
     """
     import wave
 
-    from transcription import writers
-    from transcription.config import AppConfig, AsrConfig, Paths
-    from transcription.pipeline import run_pipeline
+    from slower_whisper.pipeline import writers
+    from slower_whisper.pipeline.config import AppConfig, AsrConfig, Paths
+    from slower_whisper.pipeline.pipeline import run_pipeline
 
     # Prepare project layout with existing transcript and normalized audio
     paths = Paths(root=tmp_path)
@@ -381,9 +389,11 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
     writers.write_json(base_transcript, paths.json_dir / "existing.json")
 
     # Avoid ffmpeg and ASR work; we only want diarization to run
-    monkeypatch.setattr("transcription.pipeline.audio_io.normalize_all", lambda _paths: None)
     monkeypatch.setattr(
-        "transcription.pipeline.TranscriptionEngine.transcribe_file",
+        "slower_whisper.pipeline.pipeline.audio_io.normalize_all", lambda _paths: None
+    )
+    monkeypatch.setattr(
+        "slower_whisper.pipeline.pipeline.TranscriptionEngine.transcribe_file",
         lambda self, wav: (_ for _ in ()).throw(
             AssertionError("transcription should be skipped when JSON already exists")
         ),
@@ -410,7 +420,8 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
         return transcript
 
     monkeypatch.setattr(
-        "transcription.diarization_orchestrator._maybe_run_diarization", _fake_maybe_run_diarization
+        "slower_whisper.pipeline.diarization_orchestrator._maybe_run_diarization",
+        _fake_maybe_run_diarization,
     )
 
     app_cfg = AppConfig(
@@ -457,7 +468,7 @@ def test_diarizer_backwards_token_param(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "pyannote", types.ModuleType("pyannote"))
     monkeypatch.setitem(sys.modules, "pyannote.audio", fake_audio_module)
 
-    from transcription.diarization import Diarizer
+    from slower_whisper.pipeline.diarization import Diarizer
 
     diarizer = Diarizer(device="auto")
     pipeline = diarizer._ensure_pipeline()
@@ -476,7 +487,7 @@ def test_stub_mode_does_not_require_hf_token(monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.setenv("SLOWER_WHISPER_PYANNOTE_MODE", "stub")
 
-    from transcription.diarization import Diarizer
+    from slower_whisper.pipeline.diarization import Diarizer
 
     diarizer = Diarizer()
     pipeline = diarizer._ensure_pipeline()
@@ -507,7 +518,7 @@ def test_synthetic_2speaker_diarization(tmp_path, monkeypatch):
     """
     from pathlib import Path
 
-    from transcription import transcribe_directory
+    from slower_whisper.pipeline import transcribe_directory
 
     # Copy synthetic fixture into test project
     fixture_path = Path(__file__).parent / "fixtures" / "synthetic_2speaker.wav"

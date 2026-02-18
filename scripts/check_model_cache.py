@@ -12,7 +12,10 @@ from pathlib import Path
 # Add parent directory to path to import transcription module
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from transcription.dogfood_utils import get_model_cache_status, print_cache_status  # noqa: E402
+from slower_whisper.pipeline.dogfood_utils import (  # noqa: E402
+    get_model_cache_status,
+    print_cache_status,
+)
 
 
 def main():

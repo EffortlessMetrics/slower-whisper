@@ -34,7 +34,7 @@ Available presets:
 import sys
 from pathlib import Path
 
-from transcription import TranscriptionConfig, transcribe_directory
+from slower_whisper.pipeline import TranscriptionConfig, transcribe_directory
 
 # Predefined configuration presets
 PRESETS = {

@@ -15,14 +15,14 @@ from typing import Any
 
 import pytest
 
-from transcription.historian.analyzers.temporal import (
+from slower_whisper.pipeline.historian.analyzers.temporal import (
     Hotspot,
     InflectionPoint,
     Oscillation,
     Phase,
     TemporalAnalyzer,
 )
-from transcription.historian.bundle import (
+from slower_whisper.pipeline.historian.bundle import (
     CheckRunData,
     CommitData,
     FactBundle,
@@ -30,12 +30,12 @@ from transcription.historian.bundle import (
     ScopeData,
     SessionData,
 )
-from transcription.historian.estimation import (
+from slower_whisper.pipeline.historian.estimation import (
     DecisionEvent,
     compute_control_plane_devlt,
     generate_fallback_decision_candidates,
 )
-from transcription.historian.synthesis import (
+from slower_whisper.pipeline.historian.synthesis import (
     PipelineReport,
     _merge_temporal,
     finalize_costs,
@@ -574,7 +574,7 @@ class TestPipelineReport:
 
     def test_pipeline_report_to_dict(self) -> None:
         """Test PipelineReport serialization."""
-        from transcription.historian.synthesis import AnalyzerStatus
+        from slower_whisper.pipeline.historian.synthesis import AnalyzerStatus
 
         report = PipelineReport(
             analyzers=[
@@ -773,7 +773,7 @@ class TestValidation:
 
     def test_validate_dossier_valid(self) -> None:
         """Test validation passes for valid dossier."""
-        from transcription.historian.validation import validate_dossier
+        from slower_whisper.pipeline.historian.validation import validate_dossier
 
         dossier = self.make_valid_dossier()
         valid, errors = validate_dossier(dossier, strict=True)
@@ -783,7 +783,7 @@ class TestValidation:
 
     def test_validate_dossier_missing_required_field(self) -> None:
         """Test validation fails for missing required field."""
-        from transcription.historian.validation import validate_dossier
+        from slower_whisper.pipeline.historian.validation import validate_dossier
 
         dossier = self.make_valid_dossier()
         del dossier["pr_number"]
@@ -795,7 +795,7 @@ class TestValidation:
 
     def test_validate_dossier_wrong_schema_version(self) -> None:
         """Test validation fails for wrong schema version."""
-        from transcription.historian.validation import validate_dossier
+        from slower_whisper.pipeline.historian.validation import validate_dossier
 
         dossier = self.make_valid_dossier()
         dossier["schema_version"] = 1  # Should be 2
@@ -807,7 +807,7 @@ class TestValidation:
 
     def test_validate_dossier_invalid_decision_type(self) -> None:
         """Test validation fails for invalid decision event type."""
-        from transcription.historian.validation import validate_dossier
+        from slower_whisper.pipeline.historian.validation import validate_dossier
 
         dossier = self.make_valid_dossier()
         dossier["decision_events"][0]["type"] = "invalid_type"
@@ -819,7 +819,7 @@ class TestValidation:
 
     def test_validate_semantic_benchmarks_without_baseline(self) -> None:
         """Test semantic validation catches benchmarks without baseline."""
-        from transcription.historian.validation import validate_dossier_semantic
+        from slower_whisper.pipeline.historian.validation import validate_dossier_semantic
 
         dossier = self.make_valid_dossier()
         dossier["evidence"]["benchmarks"] = {
@@ -834,7 +834,7 @@ class TestValidation:
 
     def test_validate_semantic_findings_without_anchor(self) -> None:
         """Test semantic validation catches findings without anchor."""
-        from transcription.historian.validation import validate_dossier_semantic
+        from slower_whisper.pipeline.historian.validation import validate_dossier_semantic
 
         dossier = self.make_valid_dossier()
         dossier["findings"] = [
@@ -852,7 +852,7 @@ class TestValidation:
 
     def test_validate_semantic_invalid_outcome(self) -> None:
         """Test semantic validation catches invalid outcome."""
-        from transcription.historian.validation import validate_dossier_semantic
+        from slower_whisper.pipeline.historian.validation import validate_dossier_semantic
 
         dossier = self.make_valid_dossier()
         dossier["outcome"] = "not_a_valid_outcome"
@@ -864,7 +864,7 @@ class TestValidation:
 
     def test_validate_semantic_invalid_intent_type(self) -> None:
         """Test semantic validation catches invalid intent type."""
-        from transcription.historian.validation import validate_dossier_semantic
+        from slower_whisper.pipeline.historian.validation import validate_dossier_semantic
 
         dossier = self.make_valid_dossier()
         dossier["intent"]["type"] = "not_a_valid_type"
@@ -876,7 +876,10 @@ class TestValidation:
 
     def test_validate_dossier_strict_raises(self) -> None:
         """Test validate_dossier_strict raises on invalid dossier."""
-        from transcription.historian.validation import ValidationError, validate_dossier_strict
+        from slower_whisper.pipeline.historian.validation import (
+            ValidationError,
+            validate_dossier_strict,
+        )
 
         dossier = self.make_valid_dossier()
         del dossier["pr_number"]
@@ -888,13 +891,13 @@ class TestValidation:
 
     def test_schema_exists(self) -> None:
         """Test schema_exists returns True when schema file exists."""
-        from transcription.historian.validation import schema_exists
+        from slower_whisper.pipeline.historian.validation import schema_exists
 
         assert schema_exists() is True
 
     def test_require_schema_returns_path(self) -> None:
         """Test require_schema returns path when schema exists."""
-        from transcription.historian.validation import require_schema
+        from slower_whisper.pipeline.historian.validation import require_schema
 
         path = require_schema(strict=True)
 
@@ -1019,7 +1022,7 @@ class TestPublisher:
 
     def test_render_ledger_markdown_basic(self) -> None:
         """Test ledger markdown rendering includes key sections."""
-        from transcription.historian.publisher import _render_ledger_markdown
+        from slower_whisper.pipeline.historian.publisher import _render_ledger_markdown
 
         dossier = self.make_valid_dossier()
         md = _render_ledger_markdown(dossier)
@@ -1046,7 +1049,7 @@ class TestPublisher:
 
     def test_render_ledger_markdown_empty_sections(self) -> None:
         """Test ledger markdown handles empty sections gracefully."""
-        from transcription.historian.publisher import _render_ledger_markdown
+        from slower_whisper.pipeline.historian.publisher import _render_ledger_markdown
 
         dossier = self.make_valid_dossier()
         dossier["process"]["friction_events"] = []
@@ -1061,7 +1064,7 @@ class TestPublisher:
 
     def test_compute_exhibit_score_high(self) -> None:
         """Test exhibit score computation for high-quality dossier."""
-        from transcription.historian.publisher import _compute_exhibit_score
+        from slower_whisper.pipeline.historian.publisher import _compute_exhibit_score
 
         dossier = self.make_valid_dossier()
         score = _compute_exhibit_score(dossier)
@@ -1071,7 +1074,7 @@ class TestPublisher:
 
     def test_compute_exhibit_score_minimal(self) -> None:
         """Test exhibit score computation for minimal dossier."""
-        from transcription.historian.publisher import _compute_exhibit_score
+        from slower_whisper.pipeline.historian.publisher import _compute_exhibit_score
 
         dossier = {
             "process": {"friction_events": []},
@@ -1092,7 +1095,7 @@ class TestPublisher:
         """Test publish_dossier in dry run mode."""
         from pathlib import Path
 
-        from transcription.historian.publisher import publish_dossier
+        from slower_whisper.pipeline.historian.publisher import publish_dossier
 
         dossier = self.make_valid_dossier()
         result = publish_dossier(
@@ -1112,7 +1115,7 @@ class TestPublisher:
         """Test publish_dossier fails on invalid dossier in strict mode."""
         from pathlib import Path
 
-        from transcription.historian.publisher import publish_dossier
+        from slower_whisper.pipeline.historian.publisher import publish_dossier
 
         dossier = self.make_valid_dossier()
         del dossier["pr_number"]  # Make invalid
@@ -1139,8 +1142,8 @@ class TestSynthesizeDossier:
 
     def test_synthesize_dossier_with_all_analyzers_skipped(self) -> None:
         """Test synthesize_dossier handles all analyzers skipped."""
-        from transcription.historian.analyzers.base import SubagentResult
-        from transcription.historian.synthesis import synthesize_dossier
+        from slower_whisper.pipeline.historian.analyzers.base import SubagentResult
+        from slower_whisper.pipeline.historian.synthesis import synthesize_dossier
 
         bundle = make_bundle()
 
@@ -1181,8 +1184,8 @@ class TestSynthesizeDossier:
 
     def test_synthesize_dossier_with_temporal_only(self) -> None:
         """Test synthesize_dossier with only Temporal analyzer succeeding."""
-        from transcription.historian.analyzers.base import SubagentResult
-        from transcription.historian.synthesis import synthesize_dossier
+        from slower_whisper.pipeline.historian.analyzers.base import SubagentResult
+        from slower_whisper.pipeline.historian.synthesis import synthesize_dossier
 
         commits = [
             make_commit("c1", "feat: Start feature", offset_hours=0),
@@ -1243,8 +1246,8 @@ class TestSynthesizeDossier:
 
     def test_synthesize_dossier_fallback_devlt(self) -> None:
         """Test synthesize_dossier uses fallback DevLT when DecisionExtractor fails."""
-        from transcription.historian.analyzers.base import SubagentResult
-        from transcription.historian.synthesis import synthesize_dossier
+        from slower_whisper.pipeline.historian.analyzers.base import SubagentResult
+        from slower_whisper.pipeline.historian.synthesis import synthesize_dossier
 
         bundle = make_bundle(blast_radius="high")
 
@@ -1298,8 +1301,8 @@ class TestSynthesizeDossier:
 
     def test_synthesize_dossier_pipeline_report_stored(self) -> None:
         """Test synthesize_dossier stores pipeline report in dossier._analysis."""
-        from transcription.historian.analyzers.base import SubagentResult
-        from transcription.historian.synthesis import synthesize_dossier
+        from slower_whisper.pipeline.historian.analyzers.base import SubagentResult
+        from slower_whisper.pipeline.historian.synthesis import synthesize_dossier
 
         bundle = make_bundle()
         analyzer_results: list[SubagentResult] = []

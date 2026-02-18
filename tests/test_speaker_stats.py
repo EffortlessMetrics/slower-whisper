@@ -20,12 +20,12 @@ from __future__ import annotations
 
 import pytest
 
-from transcription.models import (
+from slower_whisper.pipeline.models import (
     Segment,
     Transcript,
     Turn,
 )
-from transcription.speaker_stats import (
+from slower_whisper.pipeline.speaker_stats import (
     _collect_prosody_by_speaker,
     _collect_segment_durations_by_speaker,
     _collect_sentiment_by_speaker,

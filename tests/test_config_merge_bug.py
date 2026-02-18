@@ -24,8 +24,8 @@ from pathlib import Path
 
 import pytest
 
-from transcription.cli import _config_from_transcribe_args
-from transcription.config import (
+from slower_whisper.pipeline.cli import _config_from_transcribe_args
+from slower_whisper.pipeline.config import (
     AsrConfig,
     EnrichmentConfig,
     TranscriptionConfig,
@@ -319,7 +319,7 @@ class TestConfigMergeBugFix:
             # Simulate CLI args (using TranscriptionConfig directly for simplicity)
             from argparse import Namespace
 
-            from transcription.cli import _config_from_transcribe_args
+            from slower_whisper.pipeline.cli import _config_from_transcribe_args
 
             args = Namespace(
                 config=config_file,

@@ -12,7 +12,7 @@ Test Coverage:
 6. Context window: eviction by size and time
 
 Design:
-- Tests the REAL LiveSemanticSession from transcription.streaming_semantic
+- Tests the REAL LiveSemanticSession from slower_whisper.pipeline.streaming_semantic
 - Uses helper functions for chunk creation and assertion
 - Clear test names describing scenario and expected behavior
 - Validates SEMANTIC_UPDATE event structure and payload
@@ -22,8 +22,8 @@ from __future__ import annotations
 
 import pytest
 
-from transcription.streaming import StreamChunk, StreamEventType
-from transcription.streaming_semantic import LiveSemanticsConfig, LiveSemanticSession
+from slower_whisper.pipeline.streaming import StreamChunk, StreamEventType
+from slower_whisper.pipeline.streaming_semantic import LiveSemanticsConfig, LiveSemanticSession
 
 # =============================================================================
 # Helper Functions
@@ -706,7 +706,7 @@ def test_action_detection_enabled_by_default() -> None:
 
 def test_on_semantic_update_called_when_turn_finalized() -> None:
     """on_semantic_update callback is invoked when a turn is finalized."""
-    from transcription.streaming_semantic import SemanticUpdatePayload
+    from slower_whisper.pipeline.streaming_semantic import SemanticUpdatePayload
 
     semantic_updates = []
 
@@ -740,7 +740,7 @@ def test_on_semantic_update_called_when_turn_finalized() -> None:
 
 def test_on_semantic_update_called_on_end_of_stream() -> None:
     """on_semantic_update callback is invoked on end_of_stream."""
-    from transcription.streaming_semantic import SemanticUpdatePayload
+    from slower_whisper.pipeline.streaming_semantic import SemanticUpdatePayload
 
     semantic_updates = []
 
@@ -912,7 +912,7 @@ def test_multiple_callbacks_for_multiple_turns() -> None:
 
 def test_custom_annotator_injection() -> None:
     """LiveSemanticSession accepts custom annotator."""
-    from transcription.semantic import NoOpSemanticAnnotator
+    from slower_whisper.pipeline.semantic import NoOpSemanticAnnotator
 
     # Use NoOp annotator that returns transcript unchanged
     session = LiveSemanticSession(annotator=NoOpSemanticAnnotator())

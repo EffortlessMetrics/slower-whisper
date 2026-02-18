@@ -15,7 +15,7 @@ import numpy as np
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from transcription.prosody import compute_speaker_baseline, extract_prosody
+from slower_whisper.pipeline.prosody import compute_speaker_baseline, extract_prosody
 
 
 def generate_sample_audio(sr=16000, duration=2.0, frequency=200, amplitude=0.3):

@@ -14,9 +14,9 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-from transcription.ids import is_valid_run_id
-from transcription.models import SCHEMA_VERSION
-from transcription.receipt import (
+from slower_whisper.pipeline.ids import is_valid_run_id
+from slower_whisper.pipeline.models import SCHEMA_VERSION
+from slower_whisper.pipeline.receipt import (
     RECEIPT_REQUIRED_FIELDS,
     Receipt,
     build_receipt,
@@ -26,7 +26,7 @@ from transcription.receipt import (
     get_tool_version,
     validate_receipt,
 )
-from transcription.writers import add_receipt_to_meta
+from slower_whisper.pipeline.writers import add_receipt_to_meta
 
 
 class TestReceiptRequiredFields:

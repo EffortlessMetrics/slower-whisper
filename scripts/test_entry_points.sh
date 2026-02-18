@@ -78,7 +78,7 @@ echo ""
 # Test 4: Verify module imports
 echo "🐍 Python Module Imports"
 echo "----------------------------------------"
-test_command "Import transcription.cli" "python3 -c 'from transcription.cli import main'"
+test_command "Import slower_whisper.pipeline.cli" "python3 -c 'from slower_whisper.pipeline.cli import main'"
 echo ""
 
 # Test 5: Check dependencies

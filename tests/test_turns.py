@@ -6,8 +6,8 @@ Tests the turn building logic that groups contiguous segments by speaker.
 
 import pytest
 
-from transcription.models import Segment, Transcript
-from transcription.turns import build_turns
+from slower_whisper.pipeline.models import Segment, Transcript
+from slower_whisper.pipeline.turns import build_turns
 
 
 def make_segment(

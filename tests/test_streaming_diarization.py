@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from transcription.streaming_diarization import (
+from slower_whisper.pipeline.streaming_diarization import (
     EnergyVADConfig,
     EnergyVADDiarizer,
     IncrementalDiarizationConfig,
@@ -27,7 +27,7 @@ from transcription.streaming_diarization import (
     create_mock_hook,
     create_pyannote_hook,
 )
-from transcription.streaming_ws import SpeakerAssignment
+from slower_whisper.pipeline.streaming_ws import SpeakerAssignment
 
 # =============================================================================
 # Test Fixtures
@@ -297,7 +297,7 @@ class TestPyAnnoteIncrementalDiarizer:
     @pytest.mark.asyncio
     async def test_diarization_with_mock_backend(self) -> None:
         """Test diarization with mocked pyannote backend."""
-        from transcription.diarization import SpeakerTurn
+        from slower_whisper.pipeline.diarization import SpeakerTurn
 
         # Create mock diarizer
         mock_diarizer = MagicMock()
@@ -324,7 +324,7 @@ class TestPyAnnoteIncrementalDiarizer:
     @pytest.mark.asyncio
     async def test_speaker_id_normalization(self) -> None:
         """Test speaker IDs are normalized consistently."""
-        from transcription.diarization import SpeakerTurn
+        from slower_whisper.pipeline.diarization import SpeakerTurn
 
         mock_diarizer = MagicMock()
         mock_diarizer.run.return_value = [
@@ -358,7 +358,7 @@ class TestPyAnnoteIncrementalDiarizer:
     @pytest.mark.asyncio
     async def test_sliding_window(self) -> None:
         """Test sliding window extracts recent audio."""
-        from transcription.diarization import SpeakerTurn
+        from slower_whisper.pipeline.diarization import SpeakerTurn
 
         mock_diarizer = MagicMock()
         mock_diarizer.run.return_value = [
@@ -486,7 +486,7 @@ class TestWebSocketSessionIntegration:
     @pytest.mark.asyncio
     async def test_session_with_mock_hook(self) -> None:
         """Test WebSocketStreamingSession with mock diarization hook."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             ServerMessageType,
             WebSocketSessionConfig,
             WebSocketStreamingSession,
@@ -520,7 +520,7 @@ class TestWebSocketSessionIntegration:
     @pytest.mark.asyncio
     async def test_session_final_diarization_on_end(self) -> None:
         """Test final diarization is triggered on session end."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             ServerMessageType,
             WebSocketSessionConfig,
             WebSocketStreamingSession,
@@ -550,7 +550,7 @@ class TestWebSocketSessionIntegration:
     @pytest.mark.asyncio
     async def test_session_speaker_assignments_accessible(self) -> None:
         """Test speaker assignments can be retrieved from session."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             WebSocketSessionConfig,
             WebSocketStreamingSession,
         )
@@ -580,7 +580,7 @@ class TestWebSocketSessionIntegration:
     @pytest.mark.asyncio
     async def test_session_diarization_disabled(self) -> None:
         """Test diarization hook not called when disabled."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             WebSocketSessionConfig,
             WebSocketStreamingSession,
         )
@@ -657,7 +657,7 @@ class TestSpeakerTurnEventEmission:
     @pytest.mark.asyncio
     async def test_speaker_turn_events_emitted_on_speaker_change(self) -> None:
         """Test SPEAKER_TURN events are emitted when speakers change."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             ServerMessageType,
             WebSocketSessionConfig,
             WebSocketStreamingSession,
@@ -696,7 +696,7 @@ class TestSpeakerTurnEventEmission:
     @pytest.mark.asyncio
     async def test_speaker_turn_event_ordering(self) -> None:
         """Test SPEAKER_TURN events come after DIARIZATION_UPDATE."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             ServerMessageType,
             WebSocketSessionConfig,
             WebSocketStreamingSession,
@@ -728,7 +728,7 @@ class TestSpeakerTurnEventEmission:
     @pytest.mark.asyncio
     async def test_final_speaker_turn_on_session_end(self) -> None:
         """Test final SPEAKER_TURN is emitted when session ends."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             ServerMessageType,
             WebSocketSessionConfig,
             WebSocketStreamingSession,
@@ -764,7 +764,7 @@ class TestSpeakerTurnEventEmission:
     @pytest.mark.asyncio
     async def test_turn_id_increments(self) -> None:
         """Test turn_id increments for each SPEAKER_TURN event."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             ServerMessageType,
             WebSocketSessionConfig,
             WebSocketStreamingSession,
@@ -801,7 +801,7 @@ class TestSpeakerTurnEventEmission:
     @pytest.mark.asyncio
     async def test_speaker_turn_with_two_speaker_conversation(self) -> None:
         """Test SPEAKER_TURN events with synthetic two-speaker fixture."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             ServerMessageType,
             WebSocketSessionConfig,
             WebSocketStreamingSession,
@@ -836,7 +836,7 @@ class TestSpeakerTurnEventEmission:
     @pytest.mark.asyncio
     async def test_no_speaker_turn_without_diarization(self) -> None:
         """Test no SPEAKER_TURN events when diarization is disabled."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             ServerMessageType,
             WebSocketSessionConfig,
             WebSocketStreamingSession,

@@ -5,14 +5,14 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from transcription.api import load_transcript
-from transcription.models import Segment, Transcript
-from transcription.semantic import (
+from slower_whisper.pipeline.api import load_transcript
+from slower_whisper.pipeline.models import Segment, Transcript
+from slower_whisper.pipeline.semantic import (
     KeywordSemanticAnnotator,
     NoOpSemanticAnnotator,
     SemanticAnnotator,
 )
-from transcription.writers import write_json
+from slower_whisper.pipeline.writers import write_json
 
 
 class TestNoOpSemanticAnnotator:

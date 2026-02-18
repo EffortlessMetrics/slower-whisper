@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from transcription.semantic_adapter import (
+from slower_whisper.pipeline.semantic_adapter import (
     SEMANTIC_SCHEMA_VERSION,
     ActionItem,
     ChunkContext,
@@ -433,7 +433,7 @@ class TestGuardrailContracts:
     def test_pii_detection_available(self) -> None:
         """Test that PII detection is available in guardrails module."""
         try:
-            from transcription.llm_guardrails import LLMGuardrails
+            from slower_whisper.pipeline.llm_guardrails import LLMGuardrails
 
             guardrails = LLMGuardrails(pii_warning=True, block_on_pii=False)
             assert hasattr(guardrails, "detect_pii")
@@ -444,7 +444,7 @@ class TestGuardrailContracts:
     def test_pii_detection_finds_email(self) -> None:
         """Test PII detection identifies email addresses."""
         try:
-            from transcription.llm_guardrails import LLMGuardrails
+            from slower_whisper.pipeline.llm_guardrails import LLMGuardrails
 
             guardrails = LLMGuardrails(pii_warning=True, block_on_pii=False)
             text = "Contact me at john.doe@example.com for more info."
@@ -459,7 +459,7 @@ class TestGuardrailContracts:
     def test_pii_detection_finds_phone(self) -> None:
         """Test PII detection identifies phone numbers."""
         try:
-            from transcription.llm_guardrails import LLMGuardrails
+            from slower_whisper.pipeline.llm_guardrails import LLMGuardrails
 
             guardrails = LLMGuardrails(pii_warning=True, block_on_pii=False)
             text = "Call me at 555-123-4567."
@@ -474,7 +474,7 @@ class TestGuardrailContracts:
     def test_pii_block_raises_on_detection(self) -> None:
         """Test that PII blocking raises exception when PII detected."""
         try:
-            from transcription.llm_guardrails import LLMGuardrails
+            from slower_whisper.pipeline.llm_guardrails import LLMGuardrails
 
             guardrails = LLMGuardrails(pii_warning=True, block_on_pii=True)
             text = "My SSN is 123-45-6789"
@@ -487,7 +487,7 @@ class TestGuardrailContracts:
     def test_cost_budget_enforcement(self) -> None:
         """Test that cost budget is enforced."""
         try:
-            from transcription.llm_guardrails import (
+            from slower_whisper.pipeline.llm_guardrails import (
                 CostBudgetExceeded,
                 LLMGuardrails,
             )
@@ -505,7 +505,7 @@ class TestGuardrailContracts:
     def test_cost_tracking_accumulates(self) -> None:
         """Test that cost tracking accumulates across calls."""
         try:
-            from transcription.llm_guardrails import LLMGuardrails
+            from slower_whisper.pipeline.llm_guardrails import LLMGuardrails
 
             guardrails = LLMGuardrails()
 
@@ -745,7 +745,7 @@ class TestOpenAIAdapterMocked:
         """Test successful annotation with mocked OpenAI response."""
         from unittest.mock import MagicMock
 
-        from transcription.semantic_adapter import (
+        from slower_whisper.pipeline.semantic_adapter import (
             ChunkContext,
             OpenAISemanticAdapter,
             SemanticAnnotation,
@@ -791,7 +791,7 @@ class TestOpenAIAdapterMocked:
     def test_openai_adapter_timeout_handling(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that timeout errors are handled gracefully."""
 
-        from transcription.semantic_adapter import (
+        from slower_whisper.pipeline.semantic_adapter import (
             ChunkContext,
             OpenAISemanticAdapter,
             SemanticAnnotation,
@@ -825,7 +825,7 @@ class TestOpenAIAdapterMocked:
     def test_openai_adapter_rate_limit_handling(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that rate limit errors are handled gracefully."""
 
-        from transcription.semantic_adapter import (
+        from slower_whisper.pipeline.semantic_adapter import (
             ChunkContext,
             OpenAISemanticAdapter,
             SemanticAnnotation,
@@ -860,7 +860,7 @@ class TestOpenAIAdapterMocked:
         """Test that malformed JSON responses are handled gracefully."""
         from unittest.mock import MagicMock
 
-        from transcription.semantic_adapter import (
+        from slower_whisper.pipeline.semantic_adapter import (
             ChunkContext,
             OpenAISemanticAdapter,
             SemanticAnnotation,
@@ -900,7 +900,7 @@ class TestOpenAIAdapterMocked:
         import os
         from unittest.mock import patch
 
-        from transcription.semantic_adapter import OpenAISemanticAdapter, ProviderHealth
+        from slower_whisper.pipeline.semantic_adapter import OpenAISemanticAdapter, ProviderHealth
 
         # Ensure no env var is set
         with patch.dict(os.environ, {}, clear=True):
@@ -919,7 +919,7 @@ class TestOpenAIAdapterMocked:
         """Test that transient errors are retried with backoff."""
         from unittest.mock import MagicMock
 
-        from transcription.semantic_adapter import (
+        from slower_whisper.pipeline.semantic_adapter import (
             ChunkContext,
             OpenAISemanticAdapter,
             SemanticAnnotation,
@@ -969,7 +969,7 @@ class TestOpenAIAdapterMocked:
 
     def test_openai_adapter_error_classification(self) -> None:
         """Test that errors are classified correctly."""
-        from transcription.semantic_adapter import OpenAISemanticAdapter
+        from slower_whisper.pipeline.semantic_adapter import OpenAISemanticAdapter
 
         adapter = OpenAISemanticAdapter(api_key="test-key-123")
 
@@ -1000,7 +1000,7 @@ class TestOpenAIAdapterMocked:
 
     def test_openai_adapter_backoff_calculation(self) -> None:
         """Test that backoff delay is calculated correctly."""
-        from transcription.semantic_adapter import OpenAISemanticAdapter
+        from slower_whisper.pipeline.semantic_adapter import OpenAISemanticAdapter
 
         adapter = OpenAISemanticAdapter(
             api_key="test-key-123",
@@ -1028,7 +1028,7 @@ class TestOpenAIAdapterMocked:
 
     def test_openai_adapter_should_retry_logic(self) -> None:
         """Test that retry decisions are correct."""
-        from transcription.semantic_adapter import OpenAISemanticAdapter
+        from slower_whisper.pipeline.semantic_adapter import OpenAISemanticAdapter
 
         adapter = OpenAISemanticAdapter(
             api_key="test-key-123",

@@ -20,7 +20,7 @@ Why this test matters:
 
 import pytest
 
-from transcription.types_audio import (
+from slower_whisper.pipeline.types_audio import (
     ArousalState,
     AudioState,
     EmotionState,
@@ -694,8 +694,8 @@ def test_render_segment_accepts_audio_state_shape():
     """
     from typing import Any
 
-    from transcription.llm_utils import render_segment
-    from transcription.models import Segment
+    from slower_whisper.pipeline.llm_utils import render_segment
+    from slower_whisper.pipeline.models import Segment
 
     audio_state: dict[str, Any] = {
         "prosody": {
@@ -732,8 +732,8 @@ def test_render_segment_with_speaker_and_audio_cues():
     """render_segment should combine speaker label and audio rendering."""
     from typing import Any
 
-    from transcription.llm_utils import render_segment
-    from transcription.models import Segment
+    from slower_whisper.pipeline.llm_utils import render_segment
+    from slower_whisper.pipeline.models import Segment
 
     audio_state: dict[str, Any] = {
         "prosody": {
@@ -767,8 +767,8 @@ def test_render_segment_with_speaker_and_audio_cues():
 
 def test_render_segment_without_audio_state():
     """render_segment should handle segments without audio_state gracefully."""
-    from transcription.llm_utils import render_segment
-    from transcription.models import Segment
+    from slower_whisper.pipeline.llm_utils import render_segment
+    from slower_whisper.pipeline.models import Segment
 
     seg = Segment(
         id=2,
@@ -789,8 +789,8 @@ def test_render_segment_with_empty_rendering():
     """render_segment should handle audio_state with empty rendering field."""
     from typing import Any
 
-    from transcription.llm_utils import render_segment
-    from transcription.models import Segment
+    from slower_whisper.pipeline.llm_utils import render_segment
+    from slower_whisper.pipeline.models import Segment
 
     audio_state: dict[str, Any] = {
         "prosody": {

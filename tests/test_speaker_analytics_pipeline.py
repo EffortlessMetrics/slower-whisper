@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from transcription import EnrichmentConfig, enrich_transcript
-from transcription.models import Segment, Transcript
+from slower_whisper.pipeline import EnrichmentConfig, enrich_transcript
+from slower_whisper.pipeline.models import Segment, Transcript
 
 pytestmark = pytest.mark.integration
 
@@ -44,7 +44,8 @@ def test_enrich_transcript_populates_analytics(monkeypatch, tmp_path):
         return transcript
 
     monkeypatch.setattr(
-        "transcription.audio_enrichment.enrich_transcript_audio", _fake_enrich_transcript_audio
+        "slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio",
+        _fake_enrich_transcript_audio,
     )
 
     cfg = EnrichmentConfig(
@@ -79,7 +80,7 @@ def test_enrich_transcript_can_disable_speaker_stats(monkeypatch, tmp_path):
     )
 
     monkeypatch.setattr(
-        "transcription.audio_enrichment.enrich_transcript_audio",
+        "slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio",
         lambda **_kwargs: transcript,
     )
 

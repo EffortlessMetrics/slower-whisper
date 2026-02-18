@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from transcription.integrations.events import (
+from slower_whisper.pipeline.integrations.events import (
     EventType,
     IntegrationEvent,
     create_error_event,
@@ -25,15 +25,19 @@ from transcription.integrations.events import (
     create_session_started_event,
     create_transcript_event,
 )
-from transcription.integrations.rag_export import (
+from slower_whisper.pipeline.integrations.rag_export import (
     ChunkingStrategy,
     RAGBundle,
     RAGChunk,
     RAGExporter,
     RAGExporterConfig,
 )
-from transcription.integrations.registry import SinkConfig, SinkRegistry, _substitute_env_vars
-from transcription.integrations.webhooks import (
+from slower_whisper.pipeline.integrations.registry import (
+    SinkConfig,
+    SinkRegistry,
+    _substitute_env_vars,
+)
+from slower_whisper.pipeline.integrations.webhooks import (
     AuthConfig,
     HttpResponse,
     RetryPolicy,
@@ -41,7 +45,7 @@ from transcription.integrations.webhooks import (
     WebhookSink,
     verify_webhook_signature,
 )
-from transcription.models import Segment, Transcript
+from slower_whisper.pipeline.models import Segment, Transcript
 
 # =============================================================================
 # Fixtures

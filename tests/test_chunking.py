@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from transcription.chunking import (
+from slower_whisper.pipeline.chunking import (
     ChunkingConfig,
     _compute_split_score,
     _count_turn_boundaries,
@@ -11,7 +11,7 @@ from transcription.chunking import (
     _is_turn_boundary,
     build_chunks,
 )
-from transcription.models import Chunk, Segment, Transcript, Turn
+from slower_whisper.pipeline.models import Chunk, Segment, Transcript, Turn
 
 
 def test_chunks_respect_turn_boundaries_when_hitting_max_duration():

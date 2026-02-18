@@ -16,12 +16,12 @@ from unittest.mock import patch
 
 import pytest
 
-from transcription.local_llm_provider import (
+from slower_whisper.pipeline.local_llm_provider import (
     MockLocalLLMProvider,
     get_availability_status,
     is_available,
 )
-from transcription.semantic_adapter import (
+from slower_whisper.pipeline.semantic_adapter import (
     SEMANTIC_SCHEMA_VERSION,
     ActionItem,
     ChunkContext,
@@ -31,7 +31,7 @@ from transcription.semantic_adapter import (
     SemanticAnnotation,
     create_adapter,
 )
-from transcription.semantic_providers.local import (
+from slower_whisper.pipeline.semantic_providers.local import (
     LocalSemanticConfig,
     LocalSemanticProvider,
     create_local_provider,
@@ -313,7 +313,7 @@ class TestLocalLLMSemanticAdapter:
     def test_adapter_unavailable_returns_empty_annotation(self) -> None:
         """Test that unavailable adapter returns low-confidence annotation."""
         # Force unavailable state to avoid loading/inferencing real local models in fast tests.
-        with patch("transcription.local_llm_provider.is_available", return_value=False):
+        with patch("slower_whisper.pipeline.local_llm_provider.is_available", return_value=False):
             adapter = LocalLLMSemanticAdapter()
             context = ChunkContext(speaker_id="test", start=0.0, end=10.0)
 
@@ -558,9 +558,9 @@ class TestProtocolCompliance:
 
     def test_local_llm_adapter_satisfies_protocol(self) -> None:
         """Verify LocalLLMSemanticAdapter satisfies SemanticAdapter protocol."""
-        from transcription.semantic_adapter import SemanticAdapter
+        from slower_whisper.pipeline.semantic_adapter import SemanticAdapter
 
-        with patch("transcription.local_llm_provider.is_available", return_value=False):
+        with patch("slower_whisper.pipeline.local_llm_provider.is_available", return_value=False):
             adapter: SemanticAdapter = LocalLLMSemanticAdapter()
             context = ChunkContext()
             # Should have annotate_chunk method
@@ -573,7 +573,7 @@ class TestProtocolCompliance:
 
     def test_local_provider_matches_adapter_interface(self) -> None:
         """Verify LocalSemanticProvider has same interface as adapter."""
-        with patch("transcription.local_llm_provider.is_available", return_value=False):
+        with patch("slower_whisper.pipeline.local_llm_provider.is_available", return_value=False):
             provider = LocalSemanticProvider()
             context = ChunkContext()
             # Should have annotate_chunk method
@@ -589,8 +589,8 @@ class TestModuleImports:
     """Tests for module import structure."""
 
     def test_import_from_semantic_providers_package(self) -> None:
-        """Test imports from transcription.semantic_providers package."""
-        from transcription.semantic_providers import (
+        """Test imports from slower_whisper.pipeline.semantic_providers package."""
+        from slower_whisper.pipeline.semantic_providers import (
             ChunkContext,
             LocalLLMSemanticAdapter,
             create_adapter,
@@ -601,17 +601,17 @@ class TestModuleImports:
         assert create_adapter is not None
 
     def test_import_from_semantic_adapter(self) -> None:
-        """Test imports from transcription.semantic_adapter module."""
-        from transcription.local_llm_provider import LocalLLMProvider, is_available
-        from transcription.semantic_adapter import LocalLLMSemanticAdapter
+        """Test imports from slower_whisper.pipeline.semantic_adapter module."""
+        from slower_whisper.pipeline.local_llm_provider import LocalLLMProvider, is_available
+        from slower_whisper.pipeline.semantic_adapter import LocalLLMSemanticAdapter
 
         assert LocalLLMSemanticAdapter is not None
         assert LocalLLMProvider is not None
         assert is_available is not None
 
     def test_import_from_local_module(self) -> None:
-        """Test imports from transcription.semantic_providers.local module."""
-        from transcription.semantic_providers.local import (
+        """Test imports from slower_whisper.pipeline.semantic_providers.local module."""
+        from slower_whisper.pipeline.semantic_providers.local import (
             LocalSemanticConfig,
             LocalSemanticProvider,
             create_local_provider,

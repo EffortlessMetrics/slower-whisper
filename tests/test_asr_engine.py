@@ -10,10 +10,10 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-import transcription.asr_engine as asr_engine
-from transcription.asr_engine import TranscriptionEngine
-from transcription.config import AsrConfig
-from transcription.models import Transcript
+import slower_whisper.pipeline.asr_engine as asr_engine
+from slower_whisper.pipeline.asr_engine import TranscriptionEngine
+from slower_whisper.pipeline.config import AsrConfig
+from slower_whisper.pipeline.models import Transcript
 
 
 def test_model_init_retries_on_cpu_when_cuda_load_fails(monkeypatch, caplog):
@@ -531,8 +531,8 @@ def test_transcribe_rejects_directory_path(tmp_path, monkeypatch):
 
 def test_pipeline_meta_keeps_backend_details():
     """Internal metadata builder should preserve ASR backend annotations."""
-    from transcription.config import AppConfig
-    from transcription.pipeline import _build_meta
+    from slower_whisper.pipeline.config import AppConfig
+    from slower_whisper.pipeline.pipeline import _build_meta
 
     transcript = Transcript(
         file_name="example.wav",
@@ -549,8 +549,8 @@ def test_pipeline_meta_keeps_backend_details():
 
 def test_pipeline_meta_prefers_actual_asr_runtime():
     """Metadata should record the actual device/compute_type used by ASR."""
-    from transcription.config import AppConfig
-    from transcription.pipeline import _build_meta
+    from slower_whisper.pipeline.config import AppConfig
+    from slower_whisper.pipeline.pipeline import _build_meta
 
     transcript = Transcript(
         file_name="example.wav",

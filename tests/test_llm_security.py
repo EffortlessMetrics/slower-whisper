@@ -1,4 +1,4 @@
-from transcription.historian.llm_client import LLMConfig
+from slower_whisper.pipeline.historian.llm_client import LLMConfig
 
 
 def test_llm_config_repr_security():

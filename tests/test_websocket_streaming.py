@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client() -> TestClient:
     """Create FastAPI test client for WebSocket testing."""
-    from transcription.service import app
+    from slower_whisper.pipeline.service import app
 
     return TestClient(app)
 

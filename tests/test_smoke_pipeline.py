@@ -30,8 +30,8 @@ class TestRealPipeline:
 
         assert CALL_CENTER_WAV.exists(), f"Missing fixture: {CALL_CENTER_WAV}"
 
-        from transcription.config import AppConfig, AsrConfig, Paths
-        from transcription.pipeline import run_pipeline
+        from slower_whisper.pipeline.config import AppConfig, AsrConfig, Paths
+        from slower_whisper.pipeline.pipeline import run_pipeline
 
         # Set up project directory structure
         project_dir = tmp_path / "project"

@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from transcription.semantic_adapter import (
+from slower_whisper.pipeline.semantic_adapter import (
     SEMANTIC_SCHEMA_VERSION,
     ActionItem,
     ChunkContext,
@@ -129,13 +129,13 @@ class TestImportBehavior:
     def test_module_imports_without_torch(self) -> None:
         """Test that semantic_adapter imports without torch installed."""
         # This test passes if we reach here - import already succeeded at module level
-        from transcription import semantic_adapter
+        from slower_whisper.pipeline import semantic_adapter
 
         assert hasattr(semantic_adapter, "LocalLLMSemanticAdapter")
 
     def test_module_imports_without_transformers(self) -> None:
         """Test that semantic_adapter imports without transformers installed."""
-        from transcription.semantic_adapter import LocalLLMSemanticAdapter
+        from slower_whisper.pipeline.semantic_adapter import LocalLLMSemanticAdapter
 
         # Should be importable even if transformers not installed
         assert LocalLLMSemanticAdapter is not None
@@ -149,7 +149,7 @@ class TestImportBehavior:
 
     def test_local_llm_provider_module_imports(self) -> None:
         """Test that local_llm_provider module imports cleanly."""
-        from transcription import local_llm_provider
+        from slower_whisper.pipeline import local_llm_provider
 
         # Should have the key exports
         assert hasattr(local_llm_provider, "LocalLLMProvider")
@@ -821,7 +821,7 @@ class TestMockLocalLLMProvider:
 
     def test_mock_provider_returns_default_response(self) -> None:
         """Test that mock provider returns default response."""
-        from transcription.local_llm_provider import MockLocalLLMProvider
+        from slower_whisper.pipeline.local_llm_provider import MockLocalLLMProvider
 
         provider = MockLocalLLMProvider()
         response = provider.generate("Test prompt")
@@ -832,7 +832,7 @@ class TestMockLocalLLMProvider:
 
     def test_mock_provider_matches_keywords(self) -> None:
         """Test that mock provider matches keywords in prompt."""
-        from transcription.local_llm_provider import MockLocalLLMProvider
+        from slower_whisper.pipeline.local_llm_provider import MockLocalLLMProvider
 
         provider = MockLocalLLMProvider(
             responses={
@@ -846,7 +846,7 @@ class TestMockLocalLLMProvider:
 
     def test_mock_provider_tracks_calls(self) -> None:
         """Test that mock provider tracks call count and history."""
-        from transcription.local_llm_provider import MockLocalLLMProvider
+        from slower_whisper.pipeline.local_llm_provider import MockLocalLLMProvider
 
         provider = MockLocalLLMProvider()
 
@@ -859,7 +859,7 @@ class TestMockLocalLLMProvider:
 
     def test_mock_provider_is_always_loaded(self) -> None:
         """Test that mock provider reports as loaded."""
-        from transcription.local_llm_provider import MockLocalLLMProvider
+        from slower_whisper.pipeline.local_llm_provider import MockLocalLLMProvider
 
         provider = MockLocalLLMProvider()
 
@@ -877,7 +877,7 @@ class TestLocalLLMProviderAvailability:
 
     def test_get_availability_status_returns_dict(self) -> None:
         """Test that get_availability_status returns correct structure."""
-        from transcription.local_llm_provider import get_availability_status
+        from slower_whisper.pipeline.local_llm_provider import get_availability_status
 
         status = get_availability_status()
 
@@ -891,14 +891,14 @@ class TestLocalLLMProviderAvailability:
 
     def test_is_available_returns_bool(self) -> None:
         """Test that is_available returns a boolean."""
-        from transcription.local_llm_provider import is_available
+        from slower_whisper.pipeline.local_llm_provider import is_available
 
         result = is_available()
         assert isinstance(result, bool)
 
     def test_availability_is_consistent(self) -> None:
         """Test that availability checks are consistent."""
-        from transcription.local_llm_provider import get_availability_status, is_available
+        from slower_whisper.pipeline.local_llm_provider import get_availability_status, is_available
 
         status = get_availability_status()
         available = is_available()

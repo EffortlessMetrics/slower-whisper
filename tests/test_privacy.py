@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from transcription.models import Segment, Transcript
-from transcription.privacy import (
+from slower_whisper.pipeline.models import Segment, Transcript
+from slower_whisper.pipeline.privacy import (
     EncryptedStore,
     EncryptionError,
     ExportMode,
@@ -21,7 +21,7 @@ from transcription.privacy import (
     Redactor,
     SafeExporter,
 )
-from transcription.writers import load_transcript_from_json, write_json
+from slower_whisper.pipeline.writers import load_transcript_from_json, write_json
 
 
 class TestPIIDetector:

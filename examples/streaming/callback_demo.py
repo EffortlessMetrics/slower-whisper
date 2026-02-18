@@ -51,7 +51,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from transcription import (
+from slower_whisper.pipeline import (
     SemanticUpdatePayload,
     StreamChunk,
     StreamConfig,
@@ -61,7 +61,7 @@ from transcription import (
     Transcript,
     load_transcript,
 )
-from transcription.streaming import StreamEventType, StreamSegment
+from slower_whisper.pipeline.streaming import StreamEventType, StreamSegment
 
 # ===========================
 # Example Callback Implementation
@@ -407,7 +407,7 @@ Examples:
         print("[INFO] Callbacks will be invoked with unenriched segments.\n")
 
         # Import StreamingSession for basic operation
-        from transcription import StreamingSession
+        from slower_whisper.pipeline import StreamingSession
 
         session = StreamingSession(StreamConfig(max_gap_sec=0.75))
 

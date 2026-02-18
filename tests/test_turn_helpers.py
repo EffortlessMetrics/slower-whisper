@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from transcription.models import Turn
-from transcription.turn_helpers import turn_to_dict
+from slower_whisper.pipeline.models import Turn
+from slower_whisper.pipeline.turn_helpers import turn_to_dict
 
 # ============================================================================
 # Dict handling tests
@@ -254,8 +254,8 @@ def test_enrich_turns_metadata_normalizes_turns_and_adds_metadata() -> None:
     - enrich_turns_metadata() returns a list of plain dicts
     - each turn dict includes a 'metadata' block with expected keys
     """
-    from transcription.models import Segment, Transcript, Turn
-    from transcription.turns_enrich import enrich_turns_metadata
+    from slower_whisper.pipeline.models import Segment, Transcript, Turn
+    from slower_whisper.pipeline.turns_enrich import enrich_turns_metadata
 
     segments = [
         Segment(
@@ -324,8 +324,8 @@ def test_enrich_turns_metadata_handles_question_detection() -> None:
     """
     Integration: verify question_count is correctly computed.
     """
-    from transcription.models import Segment, Transcript, Turn
-    from transcription.turns_enrich import enrich_turns_metadata
+    from slower_whisper.pipeline.models import Segment, Transcript, Turn
+    from slower_whisper.pipeline.turns_enrich import enrich_turns_metadata
 
     segments = [
         Segment(

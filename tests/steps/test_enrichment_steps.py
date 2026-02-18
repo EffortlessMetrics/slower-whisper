@@ -2,7 +2,7 @@
 Step definitions for enrichment BDD tests.
 
 This module implements Gherkin steps for testing the audio enrichment pipeline
-using pytest-bdd. Steps use the public API from transcription.api.
+using pytest-bdd. Steps use the public API from slower_whisper.pipeline.api.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ pytest.importorskip("pytest_bdd")
 
 from pytest_bdd import given, parsers, scenarios, then, when  # noqa: E402
 
-from transcription import (
+from slower_whisper.pipeline import (
     EnrichmentConfig,
     EnrichmentError,
     enrich_directory,
@@ -173,7 +173,7 @@ def transcribed_file_exists(enrich_state, filename):
     create_dummy_transcript_json(json_path, filename, num_segments=2)
 
     # Load the transcript
-    from transcription import load_transcript
+    from slower_whisper.pipeline import load_transcript
 
     transcript = load_transcript(json_path)
     enrich_state["audio_files"].append(filename)
@@ -209,7 +209,7 @@ def multiple_transcribed_files_exist(enrich_state, datatable):
         enrich_state["audio_files"].append(filename)
 
     # Load the transcripts we just created
-    from transcription import load_transcript
+    from slower_whisper.pipeline import load_transcript
 
     transcripts = []
     for filename in enrich_state["audio_files"]:
@@ -249,7 +249,7 @@ def transcript_object_exists(enrich_state, tmp_path, filename):
     create_dummy_transcript_json(json_path, filename, num_segments=2)
 
     # Load the transcript
-    from transcription import load_transcript
+    from slower_whisper.pipeline import load_transcript
 
     transcript = load_transcript(json_path)
 
@@ -619,7 +619,7 @@ def baseline_computed_from_samples(enrich_state):
 @then("the transcript JSON validates against schema v2")
 def transcript_validates_against_schema(enrich_state):
     """Validate transcript JSON against formal JSON schema."""
-    from transcription.validation import validate_transcript_json
+    from slower_whisper.pipeline.validation import validate_transcript_json
 
     project_root = enrich_state["project_root"]
     json_dir = project_root / "whisper_json"

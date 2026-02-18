@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from transcription.benchmarks import iter_libricss
+from slower_whisper.pipeline.benchmarks import iter_libricss
 
 
 @pytest.fixture

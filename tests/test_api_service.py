@@ -19,8 +19,8 @@ pytest.importorskip("uvicorn")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from transcription.models import Segment, Transcript  # noqa: E402
-from transcription.service import app  # noqa: E402
+from slower_whisper.pipeline.models import Segment, Transcript  # noqa: E402
+from slower_whisper.pipeline.service import app  # noqa: E402
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def client() -> TestClient:
                 if not dst.exists():
                     shutil.copy(src, dst)
 
-    with patch("transcription.audio_io.normalize_all", side_effect=mock_normalize_all):
+    with patch("slower_whisper.pipeline.audio_io.normalize_all", side_effect=mock_normalize_all):
         yield TestClient(app)
 
 
@@ -251,7 +251,7 @@ class TestEnrichEndpoint:
         """Test that missing audio file returns 422."""
         # Create transcript JSON
         transcript_path = tmp_path / "transcript.json"
-        from transcription.writers import write_json
+        from slower_whisper.pipeline.writers import write_json
 
         write_json(sample_transcript, transcript_path)
 
@@ -267,7 +267,7 @@ class TestEnrichEndpoint:
         """Test that invalid device parameter returns 400."""
         # Create transcript JSON
         transcript_path = tmp_path / "transcript.json"
-        from transcription.writers import write_json
+        from slower_whisper.pipeline.writers import write_json
 
         write_json(sample_transcript, transcript_path)
 
@@ -305,7 +305,7 @@ class TestEnrichEndpoint:
 
 def test_transcript_to_dict_includes_optional_fields(sample_transcript):
     """Helper serializer should emit diarization fields when present."""
-    from transcription.service_serialization import _transcript_to_dict
+    from slower_whisper.pipeline.service_serialization import _transcript_to_dict
 
     sample_transcript.speakers = [
         {"id": "spk_0", "label": None, "total_speech_time": 1.5, "num_segments": 1}

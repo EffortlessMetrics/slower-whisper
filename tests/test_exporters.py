@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from transcription.exporters import export_csv, export_html, export_textgrid, export_vtt
-from transcription.models import Segment, Transcript, Turn
-from transcription.validation import validate_transcript_json
+from slower_whisper.pipeline.exporters import export_csv, export_html, export_textgrid, export_vtt
+from slower_whisper.pipeline.models import Segment, Transcript, Turn
+from slower_whisper.pipeline.validation import validate_transcript_json
 
 
 def _sample_transcript() -> Transcript:

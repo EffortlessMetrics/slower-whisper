@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from transcription.emotion import extract_emotion_categorical, extract_emotion_dimensional
+from slower_whisper.pipeline.emotion import extract_emotion_categorical, extract_emotion_dimensional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -17,8 +17,8 @@ Usage:
 from typing import Any
 
 # Import from the public API
-from transcription import ChunkingConfig, build_chunks
-from transcription.models import Chunk, Segment, Transcript, Turn
+from slower_whisper.pipeline import ChunkingConfig, build_chunks
+from slower_whisper.pipeline.models import Chunk, Segment, Transcript, Turn
 
 
 def create_demo_transcript() -> Transcript:

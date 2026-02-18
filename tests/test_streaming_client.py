@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.streaming_client import (
+from slower_whisper.pipeline.streaming_client import (
     ClientState,
     ClientStats,
     ConnectionError,
@@ -694,7 +694,7 @@ class TestProtocolCompatibility:
 
     def test_client_message_type_alignment(self) -> None:
         """Test that client uses correct message type strings."""
-        from transcription.streaming_ws import ClientMessageType
+        from slower_whisper.pipeline.streaming_ws import ClientMessageType
 
         # Client should send these exact strings
         assert ClientMessageType.START_SESSION.value == "START_SESSION"
@@ -704,7 +704,7 @@ class TestProtocolCompatibility:
 
     def test_server_message_type_alignment(self) -> None:
         """Test that client expects correct server message types."""
-        from transcription.streaming_ws import ServerMessageType
+        from slower_whisper.pipeline.streaming_ws import ServerMessageType
 
         # Client EventType should match server ServerMessageType
         assert EventType.SESSION_STARTED.value == ServerMessageType.SESSION_STARTED.value
@@ -718,7 +718,7 @@ class TestProtocolCompatibility:
 
     def test_event_envelope_compatibility(self) -> None:
         """Test that client can parse server EventEnvelope format."""
-        from transcription.streaming_ws import EventEnvelope, ServerMessageType
+        from slower_whisper.pipeline.streaming_ws import EventEnvelope, ServerMessageType
 
         # Create a server-side envelope
         server_envelope = EventEnvelope(
@@ -743,7 +743,7 @@ class TestProtocolCompatibility:
 
     def test_session_config_compatibility(self) -> None:
         """Test that client config matches server WebSocketSessionConfig."""
-        from transcription.streaming_ws import WebSocketSessionConfig
+        from slower_whisper.pipeline.streaming_ws import WebSocketSessionConfig
 
         # Client config
         client_config = StreamingConfig(
@@ -777,7 +777,7 @@ class TestProtocolCompatibility:
 
     def test_audio_chunk_decoding_compatibility(self) -> None:
         """Test that client audio encoding matches server decoding."""
-        from transcription.streaming_ws import decode_audio_chunk
+        from slower_whisper.pipeline.streaming_ws import decode_audio_chunk
 
         # Client encodes audio
         audio_bytes = b"test audio data with some bytes"

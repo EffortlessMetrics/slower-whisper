@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from transcription.models import Segment, Transcript
-from transcription.semantic_adapter import (
+from slower_whisper.pipeline.models import Segment, Transcript
+from slower_whisper.pipeline.semantic_adapter import (
     SEMANTIC_SCHEMA_VERSION,
     ActionItem,
     ChunkContext,

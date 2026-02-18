@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from transcription import dogfood
+from slower_whisper.pipeline import dogfood
 
 
 class TestSubprocessArgumentInjection:
@@ -16,9 +16,9 @@ class TestSubprocessArgumentInjection:
     """
 
     @patch("subprocess.run")
-    @patch("transcription.dogfood.print_diarization_stats")
-    @patch("transcription.dogfood.compute_diarization_stats")
-    @patch("transcription.dogfood.Path.exists", return_value=True)
+    @patch("slower_whisper.pipeline.dogfood.print_diarization_stats")
+    @patch("slower_whisper.pipeline.dogfood.compute_diarization_stats")
+    @patch("slower_whisper.pipeline.dogfood.Path.exists", return_value=True)
     @patch("os.getenv", return_value="fake_api_key")
     def test_llm_subprocess_uses_separator(
         self,

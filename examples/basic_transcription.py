@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # Import the public API
-from transcription import TranscriptionConfig, transcribe_directory
+from slower_whisper.pipeline import TranscriptionConfig, transcribe_directory
 
 
 def main():

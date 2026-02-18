@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from transcription.llm_guardrails import (
+from slower_whisper.pipeline.llm_guardrails import (
     CostBudgetExceeded,
     GuardedLLMProvider,
     LLMGuardrails,
@@ -298,7 +298,7 @@ class TestGuardedLLMProvider:
 
     def _create_mock_provider(self, tokens_used: int = 100):
         """Create a mock LLM provider."""
-        from transcription.historian.llm_client import LLMConfig, LLMResponse
+        from slower_whisper.pipeline.historian.llm_client import LLMConfig, LLMResponse
 
         mock_provider = MagicMock()
         mock_provider.config = LLMConfig(provider="mock", model="gpt-4o")
@@ -347,7 +347,7 @@ class TestGuardedLLMProvider:
     @pytest.mark.asyncio
     async def test_guarded_timeout(self) -> None:
         """Test that guarded provider handles timeouts."""
-        from transcription.historian.llm_client import LLMConfig
+        from slower_whisper.pipeline.historian.llm_client import LLMConfig
 
         mock_provider = MagicMock()
         mock_provider.config = LLMConfig(provider="mock", model="gpt-4o")
@@ -405,7 +405,7 @@ class TestCreateGuardedProvider:
 
     def test_create_guarded_provider_default_options(self) -> None:
         """Test creating guarded provider with defaults."""
-        from transcription.historian.llm_client import LLMConfig
+        from slower_whisper.pipeline.historian.llm_client import LLMConfig
 
         mock_provider = MagicMock()
         mock_provider.config = LLMConfig(provider="mock")
@@ -420,7 +420,7 @@ class TestCreateGuardedProvider:
 
     def test_create_guarded_provider_custom_options(self) -> None:
         """Test creating guarded provider with custom options."""
-        from transcription.historian.llm_client import LLMConfig
+        from slower_whisper.pipeline.historian.llm_client import LLMConfig
 
         mock_provider = MagicMock()
         mock_provider.config = LLMConfig(provider="mock")

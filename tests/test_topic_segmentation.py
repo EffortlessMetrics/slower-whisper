@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from transcription.topic_segmentation import (
+from slower_whisper.pipeline.topic_segmentation import (
     StreamingTopicSegmenter,
     TopicBoundaryPayload,
     TopicChunk,

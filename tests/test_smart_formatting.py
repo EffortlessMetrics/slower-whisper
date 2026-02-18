@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from transcription.smart_formatting import (
+from slower_whisper.pipeline.smart_formatting import (
     FormatMatch,
     FormattedText,
     SmartFormatter,

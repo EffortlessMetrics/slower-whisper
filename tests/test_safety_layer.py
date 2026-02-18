@@ -5,20 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from transcription.safety_config import (
+from slower_whisper.pipeline.safety_config import (
     SafetyConfig,
     safety_config_for_call_center,
     safety_config_for_healthcare,
     safety_config_minimal,
 )
-from transcription.safety_layer import (
+from slower_whisper.pipeline.safety_layer import (
     PIIMatch,
     SafetyAlertPayload,
     SafetyProcessingResult,
     SafetyProcessor,
     create_safety_processor,
 )
-from transcription.streaming_safety import (
+from slower_whisper.pipeline.streaming_safety import (
     StreamingSafetyProcessor,
     StreamingSafetyState,
 )

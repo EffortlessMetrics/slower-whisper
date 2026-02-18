@@ -64,7 +64,7 @@ except ImportError:
     print("Install it with: pip install websockets")
     sys.exit(1)
 
-from transcription.streaming_client import (
+from slower_whisper.pipeline.streaming_client import (
     EventType,
     StreamEvent,
     StreamingClient,

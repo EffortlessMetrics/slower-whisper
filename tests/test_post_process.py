@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from transcription.post_process import (
+from slower_whisper.pipeline.post_process import (
     PostProcessConfig,
     PostProcessor,
     PostProcessResult,
@@ -128,7 +128,7 @@ class TestPostProcessor:
 
     def test_safety_processing(self):
         """Safety processing detects and processes content."""
-        from transcription.safety_config import SafetyConfig
+        from slower_whisper.pipeline.safety_config import SafetyConfig
 
         safety_config = SafetyConfig(
             enabled=True,
@@ -157,7 +157,7 @@ class TestPostProcessor:
 
     def test_process_turn_topics(self):
         """Topic segmentation processes turns."""
-        from transcription.topic_segmentation import TopicSegmentationConfig
+        from slower_whisper.pipeline.topic_segmentation import TopicSegmentationConfig
 
         config = PostProcessConfig(
             enabled=True,
@@ -210,7 +210,7 @@ class TestPostProcessor:
 
     def test_role_inference(self):
         """Role inference assigns roles to speakers."""
-        from transcription.role_inference import RoleInferenceConfig
+        from slower_whisper.pipeline.role_inference import RoleInferenceConfig
 
         config = PostProcessConfig(
             enabled=True,
@@ -276,7 +276,7 @@ class TestPostProcessResult:
 
     def test_result_with_safety_to_dict(self):
         """Result with safety data converts correctly."""
-        from transcription.safety_layer import SafetyProcessingResult
+        from slower_whisper.pipeline.safety_layer import SafetyProcessingResult
 
         safety_result = SafetyProcessingResult(
             original_text="test",
@@ -293,7 +293,7 @@ class TestCallbacks:
 
     def test_safety_alert_callback(self):
         """Safety alerts trigger callback."""
-        from transcription.safety_config import SafetyConfig
+        from slower_whisper.pipeline.safety_config import SafetyConfig
 
         alerts = []
 
@@ -335,8 +335,8 @@ class TestCallbacks:
 
     def test_role_assigned_callback(self):
         """Role assignments trigger callback with typed payload."""
-        from transcription.role_inference import RoleInferenceConfig
-        from transcription.streaming_callbacks import RoleAssignedPayload
+        from slower_whisper.pipeline.role_inference import RoleInferenceConfig
+        from slower_whisper.pipeline.streaming_callbacks import RoleAssignedPayload
 
         payloads_received = []
 
@@ -395,7 +395,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_returns_none_when_no_features_enabled(self):
         """Returns None when no post-processing features are enabled."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig()
         result = config.to_post_process_config()
@@ -403,7 +403,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_returns_none_with_default_turn_taking_policy(self):
         """Returns None when only turn_taking_policy is default 'balanced'."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig(turn_taking_policy="balanced")
         result = config.to_post_process_config()
@@ -411,7 +411,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_enable_safety_layer(self):
         """enable_safety_layer maps to enable_safety."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig(enable_safety_layer=True)
         result = config.to_post_process_config()
@@ -424,7 +424,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_enable_role_inference(self):
         """enable_role_inference maps to enable_roles."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig(enable_role_inference=True)
         result = config.to_post_process_config()
@@ -435,7 +435,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_enable_topic_segmentation(self):
         """enable_topic_segmentation maps to enable_topics."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig(enable_topic_segmentation=True)
         result = config.to_post_process_config()
@@ -445,7 +445,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_non_default_turn_taking_policy(self):
         """Non-default turn_taking_policy enables turn_taking."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig(turn_taking_policy="aggressive")
         result = config.to_post_process_config()
@@ -456,7 +456,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_conservative_turn_taking_policy(self):
         """Conservative turn_taking_policy enables turn_taking."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig(turn_taking_policy="conservative")
         result = config.to_post_process_config()
@@ -467,7 +467,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_enable_environment_classifier(self):
         """enable_environment_classifier maps to enable_environment."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig(enable_environment_classifier=True)
         result = config.to_post_process_config()
@@ -477,7 +477,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_enable_prosody_v2(self):
         """enable_prosody_v2 maps to enable_prosody_extended."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig(enable_prosody_v2=True)
         result = config.to_post_process_config()
@@ -487,7 +487,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_all_features_enabled(self):
         """All features map correctly when enabled together."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         config = EnrichmentConfig(
             enable_safety_layer=True,
@@ -511,7 +511,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_from_enrichment_config_delegates(self):
         """PostProcessConfig.from_enrichment_config() delegates to to_post_process_config()."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         enrichment_config = EnrichmentConfig(enable_safety_layer=True)
         result = PostProcessConfig.from_enrichment_config(enrichment_config)
@@ -521,7 +521,7 @@ class TestEnrichmentConfigToPostProcessConfig:
 
     def test_from_enrichment_config_returns_none(self):
         """PostProcessConfig.from_enrichment_config() returns None when no features enabled."""
-        from transcription.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
 
         enrichment_config = EnrichmentConfig()
         result = PostProcessConfig.from_enrichment_config(enrichment_config)
@@ -534,7 +534,7 @@ class TestPostProcessorFinalize:
 
     def test_finalize_closes_open_topic(self):
         """Finalize closes open topic chunk with correct end time."""
-        from transcription.topic_segmentation import TopicSegmentationConfig
+        from slower_whisper.pipeline.topic_segmentation import TopicSegmentationConfig
 
         config = PostProcessConfig(
             enabled=True,
@@ -578,8 +578,8 @@ class TestPostProcessorFinalize:
 
     def test_finalize_triggers_role_callback_if_not_decided(self):
         """Finalize triggers role callback with 'finalize' trigger if roles not yet decided."""
-        from transcription.role_inference import RoleInferenceConfig
-        from transcription.streaming_callbacks import RoleAssignedPayload
+        from slower_whisper.pipeline.role_inference import RoleInferenceConfig
+        from slower_whisper.pipeline.streaming_callbacks import RoleAssignedPayload
 
         payloads_received = []
 
@@ -637,7 +637,7 @@ class TestPostProcessorFinalize:
 
     def test_finalize_idempotent(self):
         """Calling finalize multiple times is safe (idempotent)."""
-        from transcription.topic_segmentation import TopicSegmentationConfig
+        from slower_whisper.pipeline.topic_segmentation import TopicSegmentationConfig
 
         boundary_callbacks = []
 
@@ -702,7 +702,10 @@ class TestPostProcessorFinalize:
 
     def test_finalize_emits_topic_boundary_callback(self):
         """Finalize emits topic boundary callback for closed topic."""
-        from transcription.topic_segmentation import TopicBoundaryPayload, TopicSegmentationConfig
+        from slower_whisper.pipeline.topic_segmentation import (
+            TopicBoundaryPayload,
+            TopicSegmentationConfig,
+        )
 
         boundary_callbacks = []
 
@@ -755,7 +758,7 @@ class TestPostProcessorFinalize:
 
     def test_finalize_tracks_last_end_time_from_segments(self):
         """Finalize uses last_end_time tracked from segments."""
-        from transcription.topic_segmentation import TopicSegmentationConfig
+        from slower_whisper.pipeline.topic_segmentation import TopicSegmentationConfig
 
         config = PostProcessConfig(
             enabled=True,
@@ -828,9 +831,9 @@ class TestBatchPipelineIntegration:
 
     def test_run_post_processors_uses_config_translation(self):
         """_run_post_processors uses EnrichmentConfig.to_post_process_config()."""
-        from transcription.enrichment_config import EnrichmentConfig
-        from transcription.enrichment_orchestrator import _run_post_processors
-        from transcription.models import Segment, Transcript, Turn
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_orchestrator import _run_post_processors
+        from slower_whisper.pipeline.models import Segment, Transcript, Turn
 
         # Create a simple transcript
         segments = [
@@ -861,9 +864,9 @@ class TestBatchPipelineIntegration:
 
     def test_run_post_processors_no_features_enabled(self):
         """_run_post_processors returns transcript unchanged when no features enabled."""
-        from transcription.enrichment_config import EnrichmentConfig
-        from transcription.enrichment_orchestrator import _run_post_processors
-        from transcription.models import Segment, Transcript
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_orchestrator import _run_post_processors
+        from slower_whisper.pipeline.models import Segment, Transcript
 
         # Create a simple transcript
         segments = [
@@ -882,9 +885,9 @@ class TestBatchPipelineIntegration:
 
     def test_run_post_processors_calls_finalize(self):
         """_run_post_processors calls finalize() to close open topic chunks."""
-        from transcription.enrichment_config import EnrichmentConfig
-        from transcription.enrichment_orchestrator import _run_post_processors
-        from transcription.models import Segment, Transcript, Turn
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_orchestrator import _run_post_processors
+        from slower_whisper.pipeline.models import Segment, Transcript, Turn
 
         # Create transcript with multiple turns
         segments = [
@@ -936,9 +939,9 @@ class TestBatchPipelineIntegration:
 
     def test_run_post_processors_processes_segments_and_turns(self):
         """_run_post_processors processes both segments and turns through PostProcessor."""
-        from transcription.enrichment_config import EnrichmentConfig
-        from transcription.enrichment_orchestrator import _run_post_processors
-        from transcription.models import Segment, Transcript, Turn
+        from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
+        from slower_whisper.pipeline.enrichment_orchestrator import _run_post_processors
+        from slower_whisper.pipeline.models import Segment, Transcript, Turn
 
         # Create transcript with safety-relevant content
         segments = [

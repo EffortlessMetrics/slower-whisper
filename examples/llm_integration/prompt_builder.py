@@ -30,8 +30,8 @@ from typing import Any, Literal
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from transcription.models import Segment
-from transcription.writers import load_transcript_from_json
+from slower_whisper.pipeline.models import Segment
+from slower_whisper.pipeline.writers import load_transcript_from_json
 
 
 @dataclass

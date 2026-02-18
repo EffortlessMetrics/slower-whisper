@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from transcription import cache
-from transcription.cache import CachePaths, configure_global_cache_env
+from slower_whisper.pipeline import cache
+from slower_whisper.pipeline.cache import CachePaths, configure_global_cache_env
 
 
 def test_cachepaths_from_env_and_ensure_dirs(tmp_path):

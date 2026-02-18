@@ -1,5 +1,5 @@
-from transcription.models import Segment, Transcript
-from transcription.turns_enrich import _estimate_disfluency_ratio, enrich_turns_metadata
+from slower_whisper.pipeline.models import Segment, Transcript
+from slower_whisper.pipeline.turns_enrich import _estimate_disfluency_ratio, enrich_turns_metadata
 
 
 def test_disfluency_ratio_handles_punctuation_and_empty():

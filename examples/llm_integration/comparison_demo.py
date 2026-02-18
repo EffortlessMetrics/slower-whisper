@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from prompt_builder import TranscriptPromptBuilder
 
-from transcription.writers import load_transcript_from_json
+from slower_whisper.pipeline.writers import load_transcript_from_json
 
 
 class ComparisonDemo:

@@ -24,7 +24,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.api import (
+from slower_whisper.pipeline.api import (
     _get_wav_duration_seconds,
     _maybe_build_chunks,
     _maybe_run_diarization,
@@ -40,9 +40,9 @@ from transcription.api import (
     transcribe_directory,
     transcribe_file,
 )
-from transcription.config import EnrichmentConfig, TranscriptionConfig
-from transcription.exceptions import EnrichmentError, TranscriptionError
-from transcription.models import Segment, Transcript, Turn
+from slower_whisper.pipeline.config import EnrichmentConfig, TranscriptionConfig
+from slower_whisper.pipeline.exceptions import EnrichmentError, TranscriptionError
+from slower_whisper.pipeline.models import Segment, Transcript, Turn
 
 # ============================================================================
 # Fixtures
@@ -388,8 +388,8 @@ class TestRunSpeakerAnalytics:
         # Should return transcript unchanged
         assert result is simple_transcript
 
-    @patch("transcription.turns.build_turns")
-    @patch("transcription.turns_enrich.enrich_turns_metadata")
+    @patch("slower_whisper.pipeline.turns.build_turns")
+    @patch("slower_whisper.pipeline.turns_enrich.enrich_turns_metadata")
     def test_turn_metadata_builds_turns_when_missing(
         self,
         mock_enrich: MagicMock,
@@ -408,9 +408,9 @@ class TestRunSpeakerAnalytics:
         mock_build.assert_called_once()
         mock_enrich.assert_called_once_with(simple_transcript)
 
-    @patch("transcription.speaker_stats.compute_speaker_stats")
-    @patch("transcription.turns_enrich.enrich_turns_metadata")
-    @patch("transcription.turns.build_turns")
+    @patch("slower_whisper.pipeline.speaker_stats.compute_speaker_stats")
+    @patch("slower_whisper.pipeline.turns_enrich.enrich_turns_metadata")
+    @patch("slower_whisper.pipeline.turns.build_turns")
     def test_speaker_stats_computation(
         self,
         mock_build: MagicMock,
@@ -444,7 +444,7 @@ class TestRunSemanticAnnotator:
         result = _run_semantic_annotator(simple_transcript, config)
         assert result is simple_transcript
 
-    @patch("transcription.semantic.KeywordSemanticAnnotator")
+    @patch("slower_whisper.pipeline.semantic.KeywordSemanticAnnotator")
     def test_semantic_annotator_default(
         self,
         mock_annotator_cls: MagicMock,
@@ -528,7 +528,7 @@ class TestMaybeBuildChunks:
         result = _maybe_build_chunks(simple_transcript, config)
         assert result is simple_transcript
 
-    @patch("transcription.chunking.build_chunks")
+    @patch("slower_whisper.pipeline.chunking.build_chunks")
     def test_chunking_enabled(
         self, mock_build_chunks: MagicMock, simple_transcript: Transcript
     ) -> None:
@@ -582,9 +582,9 @@ class TestMaybeRunDiarization:
         assert result.meta["existing_key"] == "existing_value"
         assert result.meta["diarization"]["status"] == "disabled"
 
-    @patch("transcription.diarization.assign_speakers")
-    @patch("transcription.turns.build_turns")
-    @patch("transcription.diarization.Diarizer")
+    @patch("slower_whisper.pipeline.diarization.assign_speakers")
+    @patch("slower_whisper.pipeline.turns.build_turns")
+    @patch("slower_whisper.pipeline.diarization.Diarizer")
     def test_diarization_success(
         self,
         mock_diarizer_cls: MagicMock,
@@ -622,7 +622,7 @@ class TestMaybeRunDiarization:
         assert result.meta["diarization"]["backend"] == "pyannote.audio"
         mock_diarizer_cls.assert_called_once_with(device="cpu", min_speakers=1, max_speakers=2)
 
-    @patch("transcription.diarization.Diarizer")
+    @patch("slower_whisper.pipeline.diarization.Diarizer")
     def test_diarization_import_error(
         self,
         mock_diarizer_cls: MagicMock,
@@ -640,7 +640,7 @@ class TestMaybeRunDiarization:
         assert result.meta["diarization"]["status"] == "skipped"
         assert result.meta["diarization"]["error_type"] == "missing_dependency"
 
-    @patch("transcription.diarization.Diarizer")
+    @patch("slower_whisper.pipeline.diarization.Diarizer")
     def test_diarization_auth_error(
         self,
         mock_diarizer_cls: MagicMock,
@@ -658,7 +658,7 @@ class TestMaybeRunDiarization:
         assert result.meta["diarization"]["status"] == "skipped"
         assert result.meta["diarization"]["error_type"] == "auth"
 
-    @patch("transcription.diarization.Diarizer")
+    @patch("slower_whisper.pipeline.diarization.Diarizer")
     def test_diarization_file_not_found(
         self,
         mock_diarizer_cls: MagicMock,
@@ -676,7 +676,7 @@ class TestMaybeRunDiarization:
         assert result.meta["diarization"]["status"] == "error"
         assert result.meta["diarization"]["error_type"] == "file_not_found"
 
-    @patch("transcription.diarization.Diarizer")
+    @patch("slower_whisper.pipeline.diarization.Diarizer")
     def test_diarization_restores_original_state_on_failure(
         self,
         mock_diarizer_cls: MagicMock,
@@ -746,7 +746,7 @@ class TestLoadTranscript:
         loaded = load_transcript(json_path, strict=True)
         assert loaded.file_name == simple_transcript.file_name
 
-    @patch("transcription.validation.validate_transcript_json")
+    @patch("slower_whisper.pipeline.validation.validate_transcript_json")
     def test_load_strict_validation_failure(self, mock_validate: MagicMock, tmp_path: Path) -> None:
         """Test loading with strict validation when validation fails."""
         mock_validate.return_value = (
@@ -840,8 +840,8 @@ class TestTranscribeFile:
         with pytest.raises(TranscriptionError, match="not a file"):
             transcribe_file(directory, temp_project_structure, config)
 
-    @patch("transcription.asr_engine.TranscriptionEngine")
-    @patch("transcription.audio_io.normalize_all")
+    @patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.audio_io.normalize_all")
     def test_normalization_failure(
         self,
         mock_normalize: MagicMock,
@@ -867,7 +867,7 @@ class TestTranscribeFile:
 class TestTranscribeDirectory:
     """Tests for the transcribe_directory public API function."""
 
-    @patch("transcription.pipeline.run_pipeline")
+    @patch("slower_whisper.pipeline.pipeline.run_pipeline")
     def test_no_transcripts_found(
         self, mock_pipeline: MagicMock, temp_project_structure: Path
     ) -> None:
@@ -881,7 +881,7 @@ class TestTranscribeDirectory:
 
     def test_invalid_diarization_settings(self, temp_project_structure: Path) -> None:
         """Test transcribe_directory validates diarization settings."""
-        from transcription.exceptions import ConfigurationError
+        from slower_whisper.pipeline.exceptions import ConfigurationError
 
         config = TranscriptionConfig(
             min_speakers=5,
@@ -908,8 +908,8 @@ class TestEnrichTranscript:
         with pytest.raises(EnrichmentError, match="Audio file not found"):
             enrich_transcript(simple_transcript, missing, config)
 
-    @patch("transcription.api._run_semantic_annotator")
-    @patch("transcription.api._run_speaker_analytics")
+    @patch("slower_whisper.pipeline.api._run_semantic_annotator")
+    @patch("slower_whisper.pipeline.api._run_speaker_analytics")
     def test_skip_existing_fully_enriched(
         self,
         mock_analytics: MagicMock,
@@ -943,7 +943,7 @@ class TestEnrichTranscript:
         # Should return same transcript without processing
         assert result is transcript
 
-    @patch("transcription.audio_enrichment.enrich_transcript_audio")
+    @patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio")
     def test_enrichment_failure_graceful_degradation(
         self,
         mock_enrich: MagicMock,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from transcription.role_inference import (
+from slower_whisper.pipeline.role_inference import (
     RoleAssignment,
     RoleInferenceConfig,
     RoleInferrer,
