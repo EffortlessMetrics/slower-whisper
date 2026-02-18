@@ -20,12 +20,12 @@ from time import perf_counter
 from typing import Any
 
 try:
-    from transcription.diarization import Diarizer, SpeakerTurn
+    from slower_whisper.pipeline.diarization import Diarizer, SpeakerTurn
 except ModuleNotFoundError:
     repo_root = Path(__file__).resolve().parent.parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
-    from transcription.diarization import Diarizer, SpeakerTurn
+    from slower_whisper.pipeline.diarization import Diarizer, SpeakerTurn
 
 ROOT = Path(__file__).resolve().parent.parent
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from transcription.streaming import (
+from slower_whisper.pipeline.streaming import (
     StreamChunk,
     StreamConfig,
     StreamEventType,

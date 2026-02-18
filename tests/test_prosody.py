@@ -6,7 +6,7 @@ import unittest
 
 import numpy as np
 
-from transcription.prosody import (
+from slower_whisper.pipeline.prosody import (
     ENERGY_THRESHOLDS,
     PITCH_THRESHOLDS,
     categorize_value,

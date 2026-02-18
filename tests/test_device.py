@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.device import (
+from slower_whisper.pipeline.device import (
     ResolvedDevice,
     format_preflight_banner,
     get_device_summary,
@@ -26,7 +26,7 @@ class TestResolveDevice:
         assert result.fallback_reason is None
         assert not result.is_fallback
 
-    @patch("transcription.device._detect_ctranslate2_cuda")
+    @patch("slower_whisper.pipeline.device._detect_ctranslate2_cuda")
     def test_auto_with_cuda_available_returns_cuda(self, mock_detect: MagicMock) -> None:
         """When auto requested and CUDA available, return CUDA."""
         mock_detect.return_value = (True, 1, None)
@@ -40,7 +40,7 @@ class TestResolveDevice:
         assert result.cuda_device_count == 1
         assert not result.is_fallback
 
-    @patch("transcription.device._detect_ctranslate2_cuda")
+    @patch("slower_whisper.pipeline.device._detect_ctranslate2_cuda")
     def test_auto_without_cuda_falls_back_to_cpu(self, mock_detect: MagicMock) -> None:
         """When auto requested and CUDA unavailable, fall back to CPU."""
         mock_detect.return_value = (False, 0, "No CUDA devices found by CTranslate2")
@@ -53,7 +53,7 @@ class TestResolveDevice:
         assert result.cuda_available is False
         assert result.is_fallback
 
-    @patch("transcription.device._detect_ctranslate2_cuda")
+    @patch("slower_whisper.pipeline.device._detect_ctranslate2_cuda")
     def test_cuda_requested_with_cuda_available_returns_cuda(self, mock_detect: MagicMock) -> None:
         """When CUDA explicitly requested and available, return CUDA."""
         mock_detect.return_value = (True, 2, None)
@@ -66,7 +66,7 @@ class TestResolveDevice:
         assert result.cuda_device_count == 2
         assert not result.is_fallback
 
-    @patch("transcription.device._detect_ctranslate2_cuda")
+    @patch("slower_whisper.pipeline.device._detect_ctranslate2_cuda")
     def test_cuda_requested_without_cuda_falls_back_to_cpu(self, mock_detect: MagicMock) -> None:
         """When CUDA requested but unavailable, fall back to CPU with reason."""
         mock_detect.return_value = (False, 0, "CTranslate2 not compiled with CUDA")
@@ -78,7 +78,7 @@ class TestResolveDevice:
         assert result.fallback_reason == "CTranslate2 not compiled with CUDA"
         assert result.is_fallback
 
-    @patch("transcription.device._detect_ctranslate2_cuda")
+    @patch("slower_whisper.pipeline.device._detect_ctranslate2_cuda")
     def test_cuda_requested_without_cuda_raises_when_no_fallback(
         self, mock_detect: MagicMock
     ) -> None:
@@ -88,7 +88,7 @@ class TestResolveDevice:
         with pytest.raises(RuntimeError, match="CUDA requested but unavailable"):
             resolve_device("cuda", allow_fallback=False)
 
-    @patch("transcription.device._detect_torch_cuda")
+    @patch("slower_whisper.pipeline.device._detect_torch_cuda")
     def test_torch_backend_uses_torch_detection(self, mock_detect: MagicMock) -> None:
         """When torch backend specified, use torch CUDA detection."""
         mock_detect.return_value = (True, 1, None)
@@ -215,7 +215,7 @@ class TestDetectionFunctions:
 
     def test_ctranslate2_detection_handles_import_error(self) -> None:
         """CTranslate2 detection handles import errors gracefully."""
-        from transcription.device import _detect_ctranslate2_cuda
+        from slower_whisper.pipeline.device import _detect_ctranslate2_cuda
 
         # This should not raise even if ctranslate2 is missing/broken
         available, count, error = _detect_ctranslate2_cuda()
@@ -225,7 +225,7 @@ class TestDetectionFunctions:
 
     def test_torch_detection_handles_import_error(self) -> None:
         """Torch detection handles import errors gracefully."""
-        from transcription.device import _detect_torch_cuda
+        from slower_whisper.pipeline.device import _detect_torch_cuda
 
         # This should not raise even if torch is missing
         available, count, error = _detect_torch_cuda()

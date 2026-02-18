@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from transcription.speaker_id import (
+from slower_whisper.pipeline.speaker_id import (
     get_speaker_id,
     get_speaker_label_or_id,
 )

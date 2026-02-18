@@ -19,15 +19,15 @@ ROOT = Path(__file__).parent.parent
 
 
 def test_verify_help():
-    """Test that --help flag works."""
+    """Test that --help flag works via the script directly."""
     result = subprocess.run(
-        ["uv", "run", "slower-whisper-verify", "--help"],
+        ["uv", "run", "python", "scripts/verify_all.py", "--help"],
         cwd=ROOT,
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0
-    assert "verification" in result.stdout.lower()
+    assert "usage:" in result.stdout.lower()
     assert "--quick" in result.stdout
 
 

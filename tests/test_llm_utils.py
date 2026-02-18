@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from transcription.llm_utils import (
+from slower_whisper.pipeline.llm_utils import (
     _as_dict,
     render_conversation_compact,
     render_conversation_for_llm,
@@ -20,7 +20,7 @@ from transcription.llm_utils import (
     to_speaker_summary,
     to_turn_view,
 )
-from transcription.models import Segment, SpeakerStats, Transcript, Turn
+from slower_whisper.pipeline.models import Segment, SpeakerStats, Transcript, Turn
 
 
 def test_render_segment_basic() -> None:

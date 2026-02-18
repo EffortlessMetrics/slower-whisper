@@ -27,8 +27,8 @@ from typing import Any
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from transcription.models import Transcript
-from transcription.writers import load_transcript_from_json, write_txt
+from slower_whisper.pipeline.models import Transcript
+from slower_whisper.pipeline.writers import load_transcript_from_json, write_txt
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

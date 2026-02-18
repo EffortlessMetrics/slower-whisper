@@ -28,16 +28,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.streaming import (
+from slower_whisper.pipeline.streaming import (
     StreamChunk,
     StreamConfig,
     StreamEventType,
     StreamSegment,
 )
-from transcription.streaming_callbacks import (
+from slower_whisper.pipeline.streaming_callbacks import (
     StreamingError,
 )
-from transcription.streaming_enrich import (
+from slower_whisper.pipeline.streaming_enrich import (
     StreamingEnrichmentConfig,
     StreamingEnrichmentSession,
 )
@@ -242,7 +242,7 @@ class TestStreamingEnrichmentSessionInit:
     ) -> None:
         """Session initializes correctly with valid WAV path."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -259,7 +259,7 @@ class TestStreamingEnrichmentSessionInit:
     def test_init_file_not_found(self) -> None:
         """Session raises FileNotFoundError for missing WAV."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             side_effect=FileNotFoundError("Audio file not found"),
         ):
             with pytest.raises(FileNotFoundError, match="Audio file not found"):
@@ -270,7 +270,7 @@ class TestStreamingEnrichmentSessionInit:
     def test_init_invalid_audio(self) -> None:
         """Session raises RuntimeError for invalid audio file."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             side_effect=RuntimeError("Failed to open audio file"),
         ):
             with pytest.raises(RuntimeError, match="Failed to open audio"):
@@ -288,7 +288,7 @@ class TestStreamingEnrichmentSessionInit:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -307,7 +307,7 @@ class TestStreamingEnrichmentSessionInit:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -321,7 +321,7 @@ class TestStreamingEnrichmentSessionInit:
     def test_init_default_config(self, mock_extractor: MagicMock) -> None:
         """Session creates default config when none provided."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(wav_path=Path("/tmp/fake.wav"))
@@ -333,7 +333,7 @@ class TestStreamingEnrichmentSessionInit:
     def test_init_string_path_converted(self, mock_extractor: MagicMock) -> None:
         """Session converts string path to Path object."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(wav_path="/tmp/string_path.wav")
@@ -357,7 +357,7 @@ class TestIngestChunk:
     ) -> None:
         """ingest_chunk returns PARTIAL_SEGMENT for new chunk."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -380,7 +380,7 @@ class TestIngestChunk:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -406,7 +406,7 @@ class TestIngestChunk:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -430,11 +430,11 @@ class TestIngestChunk:
         mock_audio_state = _create_mock_audio_state()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 return_value=mock_audio_state,
             ):
                 session = StreamingEnrichmentSession(
@@ -460,7 +460,7 @@ class TestIngestChunk:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -486,7 +486,7 @@ class TestIngestChunk:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -510,7 +510,7 @@ class TestIngestChunk:
     ) -> None:
         """Chunk count is incremented on each ingest_chunk call."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -535,7 +535,7 @@ class TestIngestChunk:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -558,7 +558,7 @@ class TestIngestChunk:
     ) -> None:
         """Speaker change triggers segment finalization."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -591,7 +591,7 @@ class TestEndOfStream:
     ) -> None:
         """end_of_stream flushes any partial segment as final."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -615,11 +615,11 @@ class TestEndOfStream:
         mock_audio_state = _create_mock_audio_state()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 return_value=mock_audio_state,
             ):
                 session = StreamingEnrichmentSession(
@@ -642,7 +642,7 @@ class TestEndOfStream:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -666,7 +666,7 @@ class TestEndOfStream:
     ) -> None:
         """end_of_stream logs session statistics."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -688,7 +688,7 @@ class TestEndOfStream:
     ) -> None:
         """end_of_stream returns empty list for empty session."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -709,7 +709,7 @@ class TestEndOfStream:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -742,7 +742,7 @@ class TestReset:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -772,7 +772,7 @@ class TestReset:
     ) -> None:
         """reset preserves the AudioSegmentExtractor."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -794,7 +794,7 @@ class TestReset:
     ) -> None:
         """reset allows session to be reused."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -823,7 +823,7 @@ class TestReset:
         base_config.base_config.max_gap_sec = 0.5  # Force gap-based finalization
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -860,7 +860,7 @@ class TestEnrichStreamSegment:
     ) -> None:
         """Enrichment is skipped when all features disabled."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -884,11 +884,11 @@ class TestEnrichStreamSegment:
         mock_audio_state = _create_mock_audio_state()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 return_value=mock_audio_state,
             ):
                 session = StreamingEnrichmentSession(
@@ -911,11 +911,11 @@ class TestEnrichStreamSegment:
         mock_audio_state = _create_mock_audio_state()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 return_value=mock_audio_state,
             ):
                 session = StreamingEnrichmentSession(
@@ -937,11 +937,11 @@ class TestEnrichStreamSegment:
         config = StreamingEnrichmentConfig(enable_prosody=True)
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 side_effect=RuntimeError("Enrichment failed"),
             ):
                 session = StreamingEnrichmentSession(
@@ -971,11 +971,11 @@ class TestEnrichStreamSegment:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 return_value=mock_audio_state,
             ):
                 session = StreamingEnrichmentSession(
@@ -1000,11 +1000,11 @@ class TestEnrichStreamSegment:
         config = StreamingEnrichmentConfig(enable_prosody=True)
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 side_effect=RuntimeError("Enrichment failed"),
             ):
                 session = StreamingEnrichmentSession(
@@ -1028,11 +1028,11 @@ class TestEnrichStreamSegment:
         mock_audio_state = _create_mock_audio_state()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 return_value=mock_audio_state,
             ):
                 session = StreamingEnrichmentSession(
@@ -1072,7 +1072,7 @@ class TestSpeakerTurnTracking:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1120,7 +1120,7 @@ class TestSpeakerTurnTracking:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1150,7 +1150,7 @@ class TestSpeakerTurnTracking:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1177,7 +1177,7 @@ class TestSpeakerTurnTracking:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1203,7 +1203,7 @@ class TestSpeakerTurnTracking:
     ) -> None:
         """_build_turn_dict creates correct structure."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1242,7 +1242,7 @@ class TestSpeakerTurnTracking:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1273,7 +1273,7 @@ class TestSpeakerTurnTracking:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1295,7 +1295,7 @@ class TestSpeakerTurnTracking:
     ) -> None:
         """_build_turn_dict raises ValueError for empty segments."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1322,7 +1322,7 @@ class TestGetStats:
     ) -> None:
         """get_stats returns expected keys."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1347,7 +1347,7 @@ class TestGetStats:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1376,7 +1376,7 @@ class TestGetStats:
         mock_extractor.sample_rate = 16000
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1396,7 +1396,7 @@ class TestGetStats:
     ) -> None:
         """get_stats returns zeros for fresh session."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1426,7 +1426,7 @@ class TestEdgeCases:
     ) -> None:
         """Session works correctly when callbacks is None."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1454,7 +1454,7 @@ class TestEdgeCases:
                 pass
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1479,7 +1479,7 @@ class TestEdgeCases:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1504,7 +1504,7 @@ class TestEdgeCases:
     ) -> None:
         """Session handles single segment stream correctly."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1528,11 +1528,11 @@ class TestEdgeCases:
         config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 side_effect=RuntimeError("Enrichment failed"),
             ):
                 session = StreamingEnrichmentSession(
@@ -1560,11 +1560,11 @@ class TestEdgeCases:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 return_value=mock_audio_state,
             ):
                 session = StreamingEnrichmentSession(
@@ -1587,7 +1587,7 @@ class TestEdgeCases:
     ) -> None:
         """Session handles segments without speaker_id."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1611,7 +1611,7 @@ class TestEdgeCases:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1657,8 +1657,8 @@ class TestPostProcessingFinalOnlyGating:
         This is the core invariant: partial chunks should pass through
         without triggering safety alerts, role assignments, or topic boundaries.
         """
-        from transcription.post_process import PostProcessConfig
-        from transcription.safety_config import SafetyConfig
+        from slower_whisper.pipeline.post_process import PostProcessConfig
+        from slower_whisper.pipeline.safety_config import SafetyConfig
 
         # Recording callbacks for all post-processing events
         safety_alerts: list[Any] = []
@@ -1700,7 +1700,7 @@ class TestPostProcessingFinalOnlyGating:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1732,8 +1732,8 @@ class TestPostProcessingFinalOnlyGating:
         When a segment is finalized (by gap, speaker change, or end_of_stream),
         the callbacks should fire.
         """
-        from transcription.post_process import PostProcessConfig
-        from transcription.safety_config import SafetyConfig
+        from slower_whisper.pipeline.post_process import PostProcessConfig
+        from slower_whisper.pipeline.safety_config import SafetyConfig
 
         # Recording callbacks
         safety_alerts: list[Any] = []
@@ -1772,7 +1772,7 @@ class TestPostProcessingFinalOnlyGating:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1801,7 +1801,7 @@ class TestPostProcessingFinalOnlyGating:
         Any partial segment at stream end becomes final and should trigger
         the full post-processing pipeline.
         """
-        from transcription.post_process import PostProcessConfig
+        from slower_whisper.pipeline.post_process import PostProcessConfig
 
         finalized_segments: list[Any] = []
         speaker_turns: list[Any] = []
@@ -1829,7 +1829,7 @@ class TestPostProcessingFinalOnlyGating:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1870,12 +1870,12 @@ class TestPostProcessingFinalOnlyGating:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             # Mock the enrichment function - should NOT be called for partial
             with patch(
-                "transcription.streaming_enrich._enrich_segment_with_extractor",
+                "slower_whisper.pipeline.streaming_enrich._enrich_segment_with_extractor",
                 return_value={"prosody": {"pitch_mean": 150.0}},
             ) as mock_enrich:
                 session = StreamingEnrichmentSession(
@@ -1904,8 +1904,8 @@ class TestPostProcessingFinalOnlyGating:
         Topic segmentation operates on complete turns, which are only
         finalized on speaker change or end_of_stream.
         """
-        from transcription.post_process import PostProcessConfig
-        from transcription.topic_segmentation import TopicSegmentationConfig
+        from slower_whisper.pipeline.post_process import PostProcessConfig
+        from slower_whisper.pipeline.topic_segmentation import TopicSegmentationConfig
 
         topic_boundaries: list[Any] = []
         speaker_turns: list[Any] = []
@@ -1935,7 +1935,7 @@ class TestPostProcessingFinalOnlyGating:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -1967,8 +1967,8 @@ class TestEndOfTurnHintIntegration:
         mock_extractor: MagicMock,
     ) -> None:
         """End-of-turn hint is emitted when aggressive policy detects turn end."""
-        from transcription.post_process import PostProcessConfig
-        from transcription.streaming_callbacks import EndOfTurnHintPayload
+        from slower_whisper.pipeline.post_process import PostProcessConfig
+        from slower_whisper.pipeline.streaming_callbacks import EndOfTurnHintPayload
 
         hints_received = []
 
@@ -1988,7 +1988,7 @@ class TestEndOfTurnHintIntegration:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -2018,7 +2018,7 @@ class TestEndOfTurnHintIntegration:
         mock_extractor: MagicMock,
     ) -> None:
         """No hint emitted when turn_taking is disabled."""
-        from transcription.post_process import PostProcessConfig
+        from slower_whisper.pipeline.post_process import PostProcessConfig
 
         hints_received = []
 
@@ -2038,7 +2038,7 @@ class TestEndOfTurnHintIntegration:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -2060,7 +2060,7 @@ class TestEndOfTurnHintIntegration:
         mock_extractor: MagicMock,
     ) -> None:
         """Different policies produce different hint timing."""
-        from transcription.post_process import PostProcessConfig
+        from slower_whisper.pipeline.post_process import PostProcessConfig
 
         aggressive_hints = []
         conservative_hints = []
@@ -2092,7 +2092,7 @@ class TestEndOfTurnHintIntegration:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             # Process same input with different policies
@@ -2129,7 +2129,7 @@ class TestEndOfTurnHintIntegration:
         mock_extractor: MagicMock,
     ) -> None:
         """Verify hint payload has proper reason_codes."""
-        from transcription.post_process import PostProcessConfig
+        from slower_whisper.pipeline.post_process import PostProcessConfig
 
         hints_received = []
 
@@ -2149,7 +2149,7 @@ class TestEndOfTurnHintIntegration:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(

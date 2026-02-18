@@ -15,9 +15,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from transcription.audio_utils import AudioSegmentExtractor
-from transcription.models import SCHEMA_VERSION, Segment, Transcript
-from transcription.writers import load_transcript_from_json, write_json
+from slower_whisper.pipeline.audio_utils import AudioSegmentExtractor
+from slower_whisper.pipeline.models import SCHEMA_VERSION, Segment, Transcript
+from slower_whisper.pipeline.writers import load_transcript_from_json, write_json
 
 pytestmark = pytest.mark.integration
 
@@ -32,7 +32,7 @@ try:
     if hasattr(AutoModelForAudioClassification, "from_pretrained") and callable(
         getattr(AutoModelForAudioClassification, "from_pretrained", None)
     ):
-        from transcription.emotion import (
+        from slower_whisper.pipeline.emotion import (
             extract_emotion_categorical,
             extract_emotion_dimensional,
         )
@@ -46,7 +46,7 @@ if not EMOTION_AVAILABLE:
     extract_emotion_categorical = None
 
 try:
-    from transcription.prosody import extract_prosody
+    from slower_whisper.pipeline.prosody import extract_prosody
 except (ImportError, ValueError):
     PROSODY_AVAILABLE = False
     extract_prosody = None

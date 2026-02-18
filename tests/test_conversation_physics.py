@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from transcription.conversation_physics import (
+from slower_whisper.pipeline.conversation_physics import (
     ConversationPhysicsTracker,
 )
 

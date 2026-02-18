@@ -10,7 +10,7 @@ This test suite validates the callback system for streaming enrichment sessions:
 Design:
 - Uses pytest fixtures for reusable test setup
 - Mocks AudioSegmentExtractor to avoid real audio file dependencies
-- Tests the REAL callback infrastructure from transcription.streaming_callbacks
+- Tests the REAL callback infrastructure from slower_whisper.pipeline.streaming_callbacks
 - Validates error isolation and logging behavior
 """
 
@@ -23,14 +23,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.streaming import StreamChunk, StreamSegment
-from transcription.streaming_callbacks import (
+from slower_whisper.pipeline.streaming import StreamChunk, StreamSegment
+from slower_whisper.pipeline.streaming_callbacks import (
     NoOpCallbacks,
     StreamCallbacks,
     StreamingError,
     invoke_callback_safely,
 )
-from transcription.streaming_enrich import (
+from slower_whisper.pipeline.streaming_enrich import (
     StreamingEnrichmentConfig,
     StreamingEnrichmentSession,
 )
@@ -349,7 +349,7 @@ class TestRoleAssignedPayload:
 
     def test_creation(self) -> None:
         """RoleAssignedPayload can be created with all fields."""
-        from transcription.streaming_callbacks import RoleAssignedPayload
+        from slower_whisper.pipeline.streaming_callbacks import RoleAssignedPayload
 
         payload = RoleAssignedPayload(
             assignments={"spk_0": {"role": "agent", "confidence": 0.9}},
@@ -363,7 +363,7 @@ class TestRoleAssignedPayload:
 
     def test_to_dict(self) -> None:
         """RoleAssignedPayload.to_dict() returns expected structure."""
-        from transcription.streaming_callbacks import RoleAssignedPayload
+        from slower_whisper.pipeline.streaming_callbacks import RoleAssignedPayload
 
         payload = RoleAssignedPayload(
             assignments={"spk_0": {"role": "customer"}},
@@ -378,7 +378,7 @@ class TestRoleAssignedPayload:
 
     def test_from_dict_roundtrip(self) -> None:
         """RoleAssignedPayload can round-trip through dict."""
-        from transcription.streaming_callbacks import RoleAssignedPayload
+        from slower_whisper.pipeline.streaming_callbacks import RoleAssignedPayload
 
         original = RoleAssignedPayload(
             assignments={"spk_0": {"role": "agent"}, "spk_1": {"role": "customer"}},
@@ -395,7 +395,7 @@ class TestRoleAssignedPayload:
 
     def test_from_dict_with_missing_fields(self) -> None:
         """RoleAssignedPayload.from_dict handles missing fields gracefully."""
-        from transcription.streaming_callbacks import RoleAssignedPayload
+        from slower_whisper.pipeline.streaming_callbacks import RoleAssignedPayload
 
         restored = RoleAssignedPayload.from_dict({})
 
@@ -422,7 +422,7 @@ class TestSessionCallbackIntegration:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -454,7 +454,7 @@ class TestSessionCallbackIntegration:
         callbacks = recording_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -481,7 +481,7 @@ class TestSessionCallbackIntegration:
     ) -> None:
         """Session works correctly when callbacks is None (no crash)."""
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -507,7 +507,7 @@ class TestSessionCallbackIntegration:
         callbacks = failing_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -537,7 +537,7 @@ class TestSessionCallbackIntegration:
         callbacks = failing_callbacks["callbacks"]
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -568,7 +568,7 @@ class TestSessionCallbackIntegration:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -615,7 +615,7 @@ class TestPartialCallbacks:
                 pass
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -642,7 +642,7 @@ class TestPartialCallbacks:
                 raise ValueError("Failure without on_error")
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -683,7 +683,7 @@ class TestCallbackWithAudioState:
         )
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(

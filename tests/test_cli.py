@@ -24,8 +24,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription import __version__
-from transcription.cli import (
+from slower_whisper.pipeline import __version__
+from slower_whisper.pipeline.cli import (
     _config_from_enrich_args,
     _config_from_transcribe_args,
     _format_size,
@@ -137,8 +137,11 @@ class TestCacheSubcommand:
 
         # Patch at the locations where the functions are imported/used
         with (
-            patch("transcription.cache.CachePaths.from_env", return_value=mock_paths),
-            patch("transcription.samples.get_samples_cache_dir", return_value=tmp_path / "samples"),
+            patch("slower_whisper.pipeline.cache.CachePaths.from_env", return_value=mock_paths),
+            patch(
+                "slower_whisper.pipeline.samples.get_samples_cache_dir",
+                return_value=tmp_path / "samples",
+            ),
         ):
             exit_code = main(["cache", "--show"])
 
@@ -244,7 +247,9 @@ class TestSamplesSubcommand:
         }
 
         # Patch at the module where the function is defined
-        with patch("transcription.samples.list_sample_datasets", return_value=mock_datasets):
+        with patch(
+            "slower_whisper.pipeline.samples.list_sample_datasets", return_value=mock_datasets
+        ):
             exit_code = main(["samples", "list"])
 
         assert exit_code == 0
@@ -348,7 +353,7 @@ class TestBenchmarkSubcommand:
         with pytest.raises(SystemExit):
             parser.parse_args(["benchmark", "run", "--track", "invalid"])
 
-    @patch("transcription.cli.handle_benchmark_command")
+    @patch("slower_whisper.pipeline.cli.handle_benchmark_command")
     def test_benchmark_list_invokes_handler(self, mock_handler: MagicMock) -> None:
         """Benchmark list invokes the benchmark handler."""
         mock_handler.return_value = 0
@@ -506,7 +511,7 @@ class TestEnvironmentVariableHandling:
         """Diarization enabled via env var triggers experimental warning."""
         monkeypatch.setenv("SLOWER_WHISPER_ENABLE_DIARIZATION", "true")
 
-        from transcription.pipeline import PipelineBatchResult
+        from slower_whisper.pipeline.pipeline import PipelineBatchResult
 
         mock_result = PipelineBatchResult(
             total_files=0,
@@ -520,7 +525,7 @@ class TestEnvironmentVariableHandling:
 
         # Patch where run_pipeline is actually used (inside _handle_transcribe_command)
         with patch.object(
-            __import__("transcription.pipeline", fromlist=["run_pipeline"]),
+            __import__("slower_whisper.pipeline.pipeline", fromlist=["run_pipeline"]),
             "run_pipeline",
             return_value=mock_result,
         ):
@@ -540,7 +545,7 @@ class TestExitCodes:
 
     def test_success_exit_code_zero(self) -> None:
         """Successful commands return exit code 0."""
-        from transcription.pipeline import PipelineBatchResult
+        from slower_whisper.pipeline.pipeline import PipelineBatchResult
 
         mock_result = PipelineBatchResult(
             total_files=1,
@@ -554,7 +559,7 @@ class TestExitCodes:
 
         # Patch at the module level where it's imported dynamically
         with patch.object(
-            __import__("transcription.pipeline", fromlist=["run_pipeline"]),
+            __import__("slower_whisper.pipeline.pipeline", fromlist=["run_pipeline"]),
             "run_pipeline",
             return_value=mock_result,
         ):
@@ -564,7 +569,7 @@ class TestExitCodes:
 
     def test_partial_failure_exit_code_one(self) -> None:
         """Partial failures return exit code 1."""
-        from transcription.pipeline import PipelineBatchResult
+        from slower_whisper.pipeline.pipeline import PipelineBatchResult
 
         mock_result = PipelineBatchResult(
             total_files=2,
@@ -578,7 +583,7 @@ class TestExitCodes:
 
         # Patch at the module level where it's imported dynamically
         with patch.object(
-            __import__("transcription.pipeline", fromlist=["run_pipeline"]),
+            __import__("slower_whisper.pipeline.pipeline", fromlist=["run_pipeline"]),
             "run_pipeline",
             return_value=mock_result,
         ):
@@ -590,7 +595,7 @@ class TestExitCodes:
         """Unexpected errors return exit code 2."""
         # Patch at the module level where it's imported dynamically
         with patch.object(
-            __import__("transcription.pipeline", fromlist=["run_pipeline"]),
+            __import__("slower_whisper.pipeline.pipeline", fromlist=["run_pipeline"]),
             "run_pipeline",
             side_effect=RuntimeError("Unexpected error"),
         ):

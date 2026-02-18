@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from transcription.audio_health import (
+from slower_whisper.pipeline.audio_health import (
     AudioHealthAggregator,
     AudioHealthSnapshot,
     analyze_chunk_health,

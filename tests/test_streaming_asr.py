@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from transcription.streaming_asr import (
+from slower_whisper.pipeline.streaming_asr import (
     StreamingASRAdapter,
     StreamingASRConfig,
 )
@@ -339,7 +339,7 @@ class TestStreamingASRAdapterIntegration:
     @pytest.mark.asyncio
     async def test_websocket_session_with_asr(self):
         """Test WebSocketStreamingSession with ASR adapter."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             WebSocketSessionConfig,
             WebSocketStreamingSession,
         )
@@ -360,7 +360,7 @@ class TestStreamingASRAdapterIntegration:
     @pytest.mark.asyncio
     async def test_websocket_session_without_asr(self):
         """Test WebSocketStreamingSession without ASR (mock mode)."""
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_ws import (
             WebSocketSessionConfig,
             WebSocketStreamingSession,
         )
@@ -376,8 +376,8 @@ class TestStreamingASRAdapterIntegration:
     @pytest.mark.asyncio
     async def test_websocket_session_end_flushes_asr(self):
         """Test that ending session flushes ASR adapter."""
-        from transcription.streaming_asr import StreamingASRConfig
-        from transcription.streaming_ws import (
+        from slower_whisper.pipeline.streaming_asr import StreamingASRConfig
+        from slower_whisper.pipeline.streaming_ws import (
             WebSocketSessionConfig,
             WebSocketStreamingSession,
         )

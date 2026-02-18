@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from transcription import (
+from slower_whisper.pipeline import (
     EnrichmentConfig,
     EnrichmentError,
     TranscriptionConfig,
@@ -34,7 +34,7 @@ from transcription import (
     transcribe_directory,
     transcribe_file,
 )
-from transcription.models import Segment, Transcript
+from slower_whisper.pipeline.models import Segment, Transcript
 
 pytestmark = pytest.mark.integration
 
@@ -335,8 +335,8 @@ def test_save_transcript_creates_parent_dirs(test_transcript, tmp_path):
 # ============================================================================
 
 
-@patch("transcription.asr_engine.TranscriptionEngine")
-@patch("transcription.audio_io.normalize_all")
+@patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+@patch("slower_whisper.pipeline.audio_io.normalize_all")
 def test_transcribe_file_basic(
     mock_normalize,
     mock_engine_class,
@@ -393,8 +393,8 @@ def test_transcribe_file_basic(
     assert "generated_at" in result.meta
 
 
-@patch("transcription.asr_engine.TranscriptionEngine")
-@patch("transcription.audio_io.normalize_all")
+@patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+@patch("slower_whisper.pipeline.audio_io.normalize_all")
 def test_transcribe_file_meta_records_actual_runtime(
     mock_normalize,
     mock_engine_class,
@@ -434,8 +434,8 @@ def test_transcribe_file_meta_records_actual_runtime(
     assert result.meta["asr_backend"] == "dummy"
 
 
-@patch("transcription.asr_engine.TranscriptionEngine")
-@patch("transcription.audio_io.normalize_all")
+@patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+@patch("slower_whisper.pipeline.audio_io.normalize_all")
 def test_transcribe_file_meta_includes_duration(
     mock_normalize,
     mock_engine_class,
@@ -473,8 +473,8 @@ def test_transcribe_file_meta_includes_duration(
     assert result.meta["audio_duration_sec"] == pytest.approx(1.0, rel=0.01)
 
 
-@patch("transcription.asr_engine.TranscriptionEngine")
-@patch("transcription.audio_io.normalize_all")
+@patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+@patch("slower_whisper.pipeline.audio_io.normalize_all")
 def test_transcribe_file_meta_ignores_blank_asr_runtime(
     mock_normalize,
     mock_engine_class,
@@ -515,8 +515,8 @@ def test_transcribe_file_meta_ignores_blank_asr_runtime(
     assert result.meta["asr_backend"] == "dummy"
 
 
-@patch("transcription.asr_engine.TranscriptionEngine")
-@patch("transcription.audio_io.normalize_all")
+@patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+@patch("slower_whisper.pipeline.audio_io.normalize_all")
 def test_transcribe_file_missing_audio(mock_normalize, mock_engine_class, temp_project_root):
     """Test transcribe_file raises error for missing audio file."""
     config = TranscriptionConfig()
@@ -527,8 +527,8 @@ def test_transcribe_file_missing_audio(mock_normalize, mock_engine_class, temp_p
         transcribe_file(missing_file, temp_project_root, config)
 
 
-@patch("transcription.asr_engine.TranscriptionEngine")
-@patch("transcription.audio_io.normalize_all")
+@patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+@patch("slower_whisper.pipeline.audio_io.normalize_all")
 def test_transcribe_file_normalization_failure(
     mock_normalize, mock_engine_class, test_audio_file, temp_project_root
 ):
@@ -542,7 +542,7 @@ def test_transcribe_file_normalization_failure(
         transcribe_file(test_audio_file, temp_project_root, config)
 
 
-@patch("transcription.asr_engine.TranscriptionEngine")
+@patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
 def test_transcribe_file_refreshes_raw_copy(mock_engine_class, temp_project_root, monkeypatch):
     """Repeated transcribe_file calls with the same filename should use the latest audio."""
     # Stub normalization to copy raw files into input_audio, overwriting existing outputs.
@@ -556,9 +556,9 @@ def test_transcribe_file_refreshes_raw_copy(mock_engine_class, temp_project_root
                 dst = paths.norm_dir / f"{src.stem}.wav"
                 dst.write_text(src.read_text(), encoding="utf-8")
 
-    monkeypatch.setattr("transcription.audio_io.normalize_all", fake_normalize)
+    monkeypatch.setattr("slower_whisper.pipeline.audio_io.normalize_all", fake_normalize)
     # Avoid wave parsing errors on the text fixtures.
-    monkeypatch.setattr("transcription.api._get_wav_duration_seconds", lambda _path: 0.0)
+    monkeypatch.setattr("slower_whisper.pipeline.api._get_wav_duration_seconds", lambda _path: 0.0)
 
     # Fake ASR engine that echoes the normalized file contents.
     mock_engine = MagicMock()
@@ -608,7 +608,7 @@ def test_transcribe_file_refreshes_raw_copy(mock_engine_class, temp_project_root
 # ============================================================================
 
 
-@patch("transcription.pipeline.run_pipeline")
+@patch("slower_whisper.pipeline.pipeline.run_pipeline")
 def test_transcribe_directory_basic(
     mock_run_pipeline, temp_project_root, multiple_audio_files, test_transcript, caplog
 ):
@@ -651,7 +651,7 @@ def test_transcribe_directory_basic(
     assert "3 processed, 0 skipped, 0 failed" in caplog.text
 
 
-@patch("transcription.pipeline.run_pipeline")
+@patch("slower_whisper.pipeline.pipeline.run_pipeline")
 def test_transcribe_directory_empty(mock_run_pipeline, temp_project_root):
     """Test transcribe_directory with no audio files raises error."""
     config = TranscriptionConfig()
@@ -661,7 +661,7 @@ def test_transcribe_directory_empty(mock_run_pipeline, temp_project_root):
         transcribe_directory(temp_project_root, config)
 
 
-@patch("transcription.pipeline.run_pipeline")
+@patch("slower_whisper.pipeline.pipeline.run_pipeline")
 def test_transcribe_directory_skip_existing(
     mock_run_pipeline, temp_project_root, multiple_audio_files
 ):
@@ -683,7 +683,7 @@ def test_transcribe_directory_skip_existing(
     assert app_config.skip_existing_json is True
 
 
-@patch("transcription.pipeline.run_pipeline")
+@patch("slower_whisper.pipeline.pipeline.run_pipeline")
 def test_transcribe_directory_custom_config(mock_run_pipeline, temp_project_root):
     """Test transcribe_directory with custom configuration."""
     # Create a mock transcript so the function doesn't raise "No transcripts found"
@@ -723,9 +723,9 @@ def test_transcribe_directory_custom_config(mock_run_pipeline, temp_project_root
 # ============================================================================
 
 
-@patch("transcription.api._run_semantic_annotator")
-@patch("transcription.api._run_speaker_analytics")
-@patch("transcription.audio_enrichment.enrich_transcript_audio")
+@patch("slower_whisper.pipeline.api._run_semantic_annotator")
+@patch("slower_whisper.pipeline.api._run_speaker_analytics")
+@patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio")
 def test_enrich_transcript_basic(
     mock_enrich_internal,
     mock_speaker_analytics,
@@ -742,7 +742,7 @@ def test_enrich_transcript_basic(
         # Simulate the logging that happens in enrich_transcript_audio
         import logging
 
-        logger = logging.getLogger("transcription.audio_enrichment")
+        logger = logging.getLogger("slower_whisper.pipeline.audio_enrichment")
         logger.info(
             "Starting audio enrichment for %d segments (prosody=%s, emotion=%s, categorical=%s)",
             len(transcript.segments),
@@ -797,7 +797,7 @@ def test_enrich_transcript_missing_audio(test_transcript, tmp_path):
         enrich_transcript(test_transcript, missing_audio, config)
 
 
-@patch("transcription.audio_enrichment.enrich_transcript_audio")
+@patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio")
 def test_enrich_transcript_prosody_only(
     mock_enrich_internal, test_transcript, enriched_transcript, test_audio_file
 ):
@@ -813,7 +813,7 @@ def test_enrich_transcript_prosody_only(
     assert call_kwargs["enable_emotion"] is False
 
 
-@patch("transcription.audio_enrichment.enrich_transcript_audio")
+@patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio")
 def test_enrich_transcript_categorical_emotion(
     mock_enrich_internal, test_transcript, enriched_transcript, test_audio_file
 ):
@@ -832,9 +832,9 @@ def test_enrich_transcript_categorical_emotion(
     assert call_kwargs["enable_categorical_emotion"] is True
 
 
-@patch("transcription.api._maybe_run_diarization")
-@patch("transcription.asr_engine.TranscriptionEngine")
-@patch("transcription.audio_io.normalize_all")
+@patch("slower_whisper.pipeline.api._maybe_run_diarization")
+@patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+@patch("slower_whisper.pipeline.audio_io.normalize_all")
 def test_transcribe_file_logs_diarization_warnings(
     mock_normalize,
     mock_engine_class,
@@ -871,7 +871,7 @@ def test_transcribe_file_logs_diarization_warnings(
         # Simulate the warning logged by _maybe_run_diarization
         import logging
 
-        logger = logging.getLogger("transcription.api")
+        logger = logging.getLogger("slower_whisper.pipeline.api")
         logger.warning("Diarization produced no speaker turns for %s", wav_path.name)
         return transcript
 
@@ -895,7 +895,7 @@ def test_transcribe_file_logs_diarization_warnings(
         # Simulate the warning logged by _maybe_run_diarization
         import logging
 
-        logger = logging.getLogger("transcription.api")
+        logger = logging.getLogger("slower_whisper.pipeline.api")
         logger.warning(
             "Diarization found %d speakers for %s; this may indicate "
             "noisy audio or misconfiguration.",
@@ -941,13 +941,13 @@ def test_enrich_directory_basic(temp_project_root, test_audio_file, caplog):
         sf.write(audio_path, audio, 16000)
 
     # Mock the enrichment function
-    with patch("transcription.audio_enrichment.enrich_transcript_audio") as mock_enrich:
+    with patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio") as mock_enrich:
 
         def enrich_side_effect(transcript, **kwargs):
             # Add audio_state to segments and simulate logging
             import logging
 
-            logger = logging.getLogger("transcription.audio_enrichment")
+            logger = logging.getLogger("slower_whisper.pipeline.audio_enrichment")
             logger.info(
                 "Audio enrichment complete: %d success, %d partial, %d failed",
                 len(transcript.segments),
@@ -981,9 +981,9 @@ def test_enrich_directory_basic(temp_project_root, test_audio_file, caplog):
     assert "success" in caplog.text.lower()
 
 
-@patch("transcription.api._run_semantic_annotator")
-@patch("transcription.api._run_speaker_analytics")
-@patch("transcription.audio_enrichment.enrich_transcript_audio")
+@patch("slower_whisper.pipeline.api._run_semantic_annotator")
+@patch("slower_whisper.pipeline.api._run_speaker_analytics")
+@patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio")
 def test_enrich_transcript_logs_baseline_computation(
     mock_enrich_internal,
     mock_speaker_analytics,
@@ -1000,7 +1000,7 @@ def test_enrich_transcript_logs_baseline_computation(
         # Simulate the internal logging that happens during enrichment
         import logging
 
-        logger = logging.getLogger("transcription.audio_enrichment")
+        logger = logging.getLogger("slower_whisper.pipeline.audio_enrichment")
         if kwargs.get("compute_baseline"):
             logger.info("Computing speaker baseline statistics...")
             logger.info("Speaker baseline computed from %d segments", 3)
@@ -1094,7 +1094,7 @@ def test_enrich_directory_skip_existing(temp_project_root):
     audio_path = temp_project_root / "input_audio" / "test_0.wav"
     sf.write(audio_path, audio, 16000)
 
-    with patch("transcription.audio_enrichment.enrich_transcript_audio") as mock_enrich:
+    with patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio") as mock_enrich:
         config = EnrichmentConfig(skip_existing=True)
         results = enrich_directory(temp_project_root, config)
 
@@ -1133,7 +1133,7 @@ def test_enrich_directory_partial_audio_state_not_skipped(temp_project_root):
     audio_path = temp_project_root / "input_audio" / "test_partial.wav"
     sf.write(audio_path, audio, 16000)
 
-    with patch("transcription.audio_enrichment.enrich_transcript_audio") as mock_enrich:
+    with patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio") as mock_enrich:
         mock_enrich.return_value = transcript
         config = EnrichmentConfig(skip_existing=True)
         results = enrich_directory(temp_project_root, config)
@@ -1159,7 +1159,7 @@ def test_enrich_directory_missing_audio_for_transcript(temp_project_root):
     # Audio file does NOT exist
     config = EnrichmentConfig()
 
-    with patch("transcription.audio_enrichment.enrich_transcript_audio") as mock_enrich:
+    with patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio") as mock_enrich:
         # Should raise error when all transcripts fail to enrich
         with pytest.raises(EnrichmentError, match="Failed to enrich any transcripts"):
             enrich_directory(temp_project_root, config)
@@ -1187,7 +1187,7 @@ def test_enrich_directory_handles_enrichment_errors(temp_project_root, caplog):
         audio_path = temp_project_root / "input_audio" / f"test_{i}.wav"
         sf.write(audio_path, audio, 16000)
 
-    with patch("transcription.audio_enrichment.enrich_transcript_audio") as mock_enrich:
+    with patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio") as mock_enrich:
         # First call fails, second succeeds
         def enrich_side_effect(transcript, **kwargs):
             if "test_0" in transcript.file_name:
@@ -1215,9 +1215,9 @@ def test_enrich_directory_handles_enrichment_errors(temp_project_root, caplog):
     assert "Enrichment failed for test_0" in caplog.text
 
 
-@patch("transcription.api._run_semantic_annotator")
-@patch("transcription.api._run_speaker_analytics")
-@patch("transcription.audio_enrichment.enrich_transcript_audio")
+@patch("slower_whisper.pipeline.api._run_semantic_annotator")
+@patch("slower_whisper.pipeline.api._run_speaker_analytics")
+@patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio")
 def test_enrich_transcript_logs_semantic_annotator_failure(
     mock_enrich_internal,
     mock_speaker_analytics,
@@ -1237,7 +1237,7 @@ def test_enrich_transcript_logs_semantic_annotator_failure(
 
     # Mock semantic annotator to raise an exception and log the warning
     def mock_semantic_failure(transcript, config):
-        logger = logging.getLogger("transcription.api")
+        logger = logging.getLogger("slower_whisper.pipeline.api")
         exc = RuntimeError("Semantic annotator crashed")
         logger.warning("Semantic annotator failed: %s", exc, exc_info=True)
         return transcript
@@ -1265,7 +1265,7 @@ def test_enrich_transcript_logs_semantic_annotator_failure(
 # ============================================================================
 
 
-@patch("transcription.pipeline.run_pipeline")
+@patch("slower_whisper.pipeline.pipeline.run_pipeline")
 def test_transcribe_directory_partial_failures_continue_processing(
     mock_run_pipeline, temp_project_root, caplog
 ):
@@ -1321,7 +1321,7 @@ def test_transcribe_directory_partial_failures_continue_processing(
     assert "1 failed" in caplog.text
 
 
-@patch("transcription.audio_enrichment.enrich_transcript_audio")
+@patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio")
 def test_enrich_directory_missing_audio_for_some_files(mock_enrich, temp_project_root, caplog):
     """Test enrich_directory gracefully skips transcripts with missing audio files."""
     import logging
@@ -1368,7 +1368,7 @@ def test_enrich_directory_missing_audio_for_some_files(mock_enrich, temp_project
     # Note: The actual implementation may not log this as a warning, but includes in errors list
 
 
-@patch("transcription.audio_enrichment.enrich_transcript_audio")
+@patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio")
 def test_enrich_directory_mixed_success_partial_error(mock_enrich, temp_project_root, caplog):
     """Test enrich_directory handles mixed outcomes: full success, partial success, and errors."""
     import logging
@@ -1443,7 +1443,7 @@ def test_enrich_directory_mixed_success_partial_error(mock_enrich, temp_project_
     assert "Enrichment failed for test_2.json" in caplog.text
 
 
-@patch("transcription.pipeline.run_pipeline")
+@patch("slower_whisper.pipeline.pipeline.run_pipeline")
 def test_transcribe_directory_reports_batch_statistics(
     mock_run_pipeline, temp_project_root, caplog
 ):
@@ -1551,11 +1551,11 @@ def test_transcription_config_invalid_task():
 # ============================================================================
 
 
-@patch("transcription.api._run_semantic_annotator")
-@patch("transcription.api._run_speaker_analytics")
-@patch("transcription.asr_engine.TranscriptionEngine")
-@patch("transcription.audio_io.normalize_all")
-@patch("transcription.audio_enrichment.enrich_transcript_audio")
+@patch("slower_whisper.pipeline.api._run_semantic_annotator")
+@patch("slower_whisper.pipeline.api._run_speaker_analytics")
+@patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+@patch("slower_whisper.pipeline.audio_io.normalize_all")
+@patch("slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio")
 def test_full_workflow_transcribe_and_enrich(
     mock_enrich_internal,
     mock_normalize,

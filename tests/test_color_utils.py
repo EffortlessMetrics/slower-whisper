@@ -1,4 +1,4 @@
-from transcription.color_utils import Colors
+from slower_whisper.pipeline.color_utils import Colors
 
 
 def test_colors_enabled_forced(monkeypatch):

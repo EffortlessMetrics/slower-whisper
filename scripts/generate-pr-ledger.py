@@ -144,8 +144,8 @@ Examples:
 
 def _handle_dump_bundle(args: argparse.Namespace) -> None:
     """Handle --dump-bundle mode."""
-    from transcription.historian import gather_pr_data
-    from transcription.historian.estimation import compute_bounded_estimate
+    from slower_whisper.pipeline.historian import gather_pr_data
+    from slower_whisper.pipeline.historian.estimation import compute_bounded_estimate
 
     # Gather data
     bundle = gather_pr_data(args.pr, include_diff=args.include_diff)
@@ -173,10 +173,10 @@ def _handle_dump_bundle(args: argparse.Namespace) -> None:
 
 def _handle_analyze(args: argparse.Namespace) -> None:
     """Handle --analyze mode."""
-    from transcription.historian import gather_pr_data
-    from transcription.historian.estimation import compute_bounded_estimate
-    from transcription.historian.llm_client import LLMConfig, create_llm_provider
-    from transcription.historian.synthesis import run_all_analyzers, synthesize_dossier
+    from slower_whisper.pipeline.historian import gather_pr_data
+    from slower_whisper.pipeline.historian.estimation import compute_bounded_estimate
+    from slower_whisper.pipeline.historian.llm_client import LLMConfig, create_llm_provider
+    from slower_whisper.pipeline.historian.synthesis import run_all_analyzers, synthesize_dossier
 
     # Gather and estimate
     print(f"Gathering data for PR #{args.pr}...", file=sys.stderr)
@@ -222,11 +222,11 @@ def _handle_analyze(args: argparse.Namespace) -> None:
 
 def _handle_publish(args: argparse.Namespace) -> None:
     """Handle --publish mode."""
-    from transcription.historian import gather_pr_data
-    from transcription.historian.estimation import compute_bounded_estimate
-    from transcription.historian.llm_client import LLMConfig, create_llm_provider
-    from transcription.historian.publisher import publish_dossier
-    from transcription.historian.synthesis import run_all_analyzers, synthesize_dossier
+    from slower_whisper.pipeline.historian import gather_pr_data
+    from slower_whisper.pipeline.historian.estimation import compute_bounded_estimate
+    from slower_whisper.pipeline.historian.llm_client import LLMConfig, create_llm_provider
+    from slower_whisper.pipeline.historian.publisher import publish_dossier
+    from slower_whisper.pipeline.historian.synthesis import run_all_analyzers, synthesize_dossier
 
     # Gather and estimate
     print(f"Gathering data for PR #{args.pr}...", file=sys.stderr)

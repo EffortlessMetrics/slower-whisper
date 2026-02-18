@@ -28,14 +28,14 @@ import pytest
 # Import directly from semantic_adapter module to avoid circular import issues
 # with the transcription.semantic package
 if TYPE_CHECKING:
-    from transcription.semantic_adapter import (
+    from slower_whisper.pipeline.semantic_adapter import (
         AnthropicSemanticAdapter,
         CloudLLMSemanticAdapter,
         OpenAISemanticAdapter,
     )
 
 # Runtime imports
-from transcription.semantic_adapter import (
+from slower_whisper.pipeline.semantic_adapter import (
     SEMANTIC_SCHEMA_VERSION,
     ActionItem,
     AnthropicSemanticAdapter,

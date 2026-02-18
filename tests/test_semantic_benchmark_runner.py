@@ -19,7 +19,7 @@ class TestSemanticBenchmarkRunnerGoldLoading:
 
     def test_gold_labels_load_from_correct_path(self, tmp_path: Path) -> None:
         """Gold labels load from benchmarks/gold/semantic/<meeting_id>.json."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
 
         # Create a mock gold directory with a sample gold file
         gold_dir = tmp_path / "gold" / "semantic"
@@ -59,7 +59,7 @@ class TestSemanticBenchmarkRunnerGoldLoading:
 
     def test_gold_labels_return_none_for_missing_file(self, tmp_path: Path) -> None:
         """Return None when gold file doesn't exist."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
 
         gold_dir = tmp_path / "gold" / "semantic"
         gold_dir.mkdir(parents=True)
@@ -82,8 +82,8 @@ class TestSemanticBenchmarkRunnerEvaluateTags:
 
     def test_evaluate_tags_with_gold_produces_metrics(self, tmp_path: Path) -> None:
         """_evaluate_tags produces non-empty metrics when gold labels exist."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         # Create sample with transcript containing triggering keywords
         sample = EvalSample(
@@ -132,8 +132,8 @@ class TestSemanticBenchmarkRunnerEvaluateTags:
 
     def test_evaluate_tags_without_gold_returns_none_metrics(self) -> None:
         """_evaluate_tags returns None metrics with reason when no gold."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -167,8 +167,8 @@ class TestSemanticBenchmarkRunnerEvaluateTags:
 
     def test_evaluate_tags_without_transcript_returns_none_metrics(self) -> None:
         """_evaluate_tags returns None metrics when sample has no transcript."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -208,8 +208,8 @@ class TestSemanticBenchmarkRunnerMetricsIntegration:
 
     def test_evaluate_tags_uses_compute_topic_f1(self) -> None:
         """_evaluate_tags delegates topic scoring to compute_topic_f1."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -242,8 +242,8 @@ class TestSemanticBenchmarkRunnerMetricsIntegration:
 
     def test_evaluate_tags_uses_compute_risk_metrics(self) -> None:
         """_evaluate_tags delegates risk scoring to compute_risk_metrics."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -279,8 +279,8 @@ class TestSemanticBenchmarkRunnerMetricsIntegration:
 
     def test_evaluate_tags_uses_compute_action_metrics(self) -> None:
         """_evaluate_tags delegates action scoring to compute_action_metrics."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -321,8 +321,8 @@ class TestSemanticBenchmarkRunnerTagsMode:
 
     def test_tags_mode_does_not_include_summary_metrics(self) -> None:
         """In tags mode, summary metrics (faithfulness/coverage/clarity) are not included."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -354,7 +354,7 @@ class TestSemanticBenchmarkRunnerTagsMode:
 
     def test_aggregate_metrics_tags_mode_excludes_summary(self) -> None:
         """In tags mode, aggregate_metrics only includes tag metrics."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
 
         runner = SemanticBenchmarkRunner(
             track="semantic",
@@ -404,8 +404,8 @@ class TestGoldSchemaAlignment:
 
     def test_gold_schema_fields_read_correctly(self) -> None:
         """_evaluate_tags reads topics/risks/actions from gold (not keywords/risk_tags)."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -448,8 +448,8 @@ class TestGoldSchemaAlignment:
 
     def test_old_gold_format_not_used(self) -> None:
         """_evaluate_tags does NOT read old keywords/risk_tags fields."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -488,8 +488,8 @@ class TestSampleIdGoldFilenameAlignment:
 
     def test_sample_id_mismatch_returns_no_gold_labels(self, tmp_path: Path) -> None:
         """When sample.id doesn't match any gold filename, tags_reason='no_gold_labels'."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         # Create gold dir with a gold file for a DIFFERENT meeting_id
         gold_dir = tmp_path / "gold" / "semantic"
@@ -531,8 +531,8 @@ class TestSampleIdGoldFilenameAlignment:
 
     def test_sample_id_matches_gold_filename_produces_metrics(self, tmp_path: Path) -> None:
         """When sample.id matches gold filename, metrics are computed."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         gold_dir = tmp_path / "gold" / "semantic"
         gold_dir.mkdir(parents=True)
@@ -574,8 +574,8 @@ class TestSyntheticSegmentsNote:
 
     def test_synthetic_segments_note_added(self) -> None:
         """When using synthetic single-segment transcript, tags_note is set."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -606,8 +606,8 @@ class TestSyntheticSegmentsNote:
 
     def test_synthetic_segments_note_present_even_with_other_notes(self) -> None:
         """Synthetic segments note and other notes can coexist."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         sample = EvalSample(
             dataset="ami",
@@ -646,7 +646,7 @@ class TestBenchmarkReceipt:
         """BenchmarkResult includes receipt after run."""
         from unittest.mock import MagicMock
 
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
 
         runner = SemanticBenchmarkRunner(
             track="semantic",
@@ -666,7 +666,7 @@ class TestBenchmarkReceipt:
 
     def test_receipt_config_hash_includes_mode(self) -> None:
         """Config hash differs between modes."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
 
         runner_tags = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
         runner_summary = SemanticBenchmarkRunner("semantic", "ami", "test", "summary")
@@ -681,7 +681,7 @@ class TestBenchmarkReceipt:
 
     def test_receipt_includes_git_commit(self) -> None:
         """Receipt includes git commit if in a git repo."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
 
         runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
         receipt = runner._generate_receipt()
@@ -696,7 +696,7 @@ class TestBenchmarkReceipt:
         """BenchmarkResult.to_dict() includes receipt."""
         from unittest.mock import MagicMock
 
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
 
         runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
         runner.get_samples = MagicMock(return_value=[])
@@ -715,7 +715,7 @@ class TestTranscriptLoading:
 
     def test_loads_transcript_from_samples_dir(self) -> None:
         """_load_transcript_json loads from speaker_analytics_samples directory."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
 
         runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
 
@@ -732,7 +732,7 @@ class TestTranscriptLoading:
 
     def test_returns_none_for_missing_transcript(self) -> None:
         """_load_transcript_json returns None for missing files."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
 
         runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
 
@@ -742,8 +742,8 @@ class TestTranscriptLoading:
 
     def test_evaluate_tags_uses_real_transcript_when_available(self) -> None:
         """_evaluate_tags uses loaded transcript with proper segments."""
-        from transcription.benchmark_cli import SemanticBenchmarkRunner
-        from transcription.benchmarks import EvalSample
+        from slower_whisper.pipeline.benchmark_cli import SemanticBenchmarkRunner
+        from slower_whisper.pipeline.benchmarks import EvalSample
 
         runner = SemanticBenchmarkRunner("semantic", "ami", "test", "tags")
 

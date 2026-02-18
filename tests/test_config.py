@@ -13,13 +13,13 @@ from pathlib import Path
 
 import pytest
 
-from transcription.config import (
+from slower_whisper.pipeline.config import (
     ALLOWED_WHISPER_MODELS,
     AsrConfig,
     TranscriptionConfig,
     validate_model_name,
 )
-from transcription.exceptions import ConfigurationError
+from slower_whisper.pipeline.exceptions import ConfigurationError
 
 
 class TestModelNameValidation:

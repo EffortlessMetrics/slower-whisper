@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from transcription.streaming_ws import (
+from slower_whisper.pipeline.streaming_ws import (
     EventEnvelope,
     ServerMessageType,
     WebSocketStreamingSession,
@@ -34,7 +34,13 @@ from transcription.streaming_ws import (
 @pytest.fixture
 def schema_path() -> Path:
     """Return path to the stream event JSON schema."""
-    return Path(__file__).parent.parent / "transcription" / "schemas" / "stream_event.schema.json"
+    return (
+        Path(__file__).parent.parent
+        / "slower_whisper"
+        / "pipeline"
+        / "schemas"
+        / "stream_event.schema.json"
+    )
 
 
 @pytest.fixture
@@ -679,7 +685,7 @@ class TestResumeContract:
     @pytest.mark.asyncio
     async def test_resume_gap_when_events_evicted(self) -> None:
         """Test that gap is detected when events are evicted from buffer."""
-        from transcription.streaming_ws import WebSocketSessionConfig
+        from slower_whisper.pipeline.streaming_ws import WebSocketSessionConfig
 
         # Small buffer to force eviction
         config = WebSocketSessionConfig(replay_buffer_size=3)

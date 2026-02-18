@@ -5,7 +5,10 @@ Demonstrates the render_audio_state function with various audio states
 and feature combinations.
 """
 
-from transcription.audio_rendering import render_audio_features_detailed, render_audio_state
+from slower_whisper.pipeline.audio_rendering import (
+    render_audio_features_detailed,
+    render_audio_state,
+)
 
 
 def test_render_neutral_state():

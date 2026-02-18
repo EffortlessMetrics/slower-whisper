@@ -14,8 +14,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from transcription.audio_utils import AudioSegmentExtractor
-from transcription.models import Segment, Transcript
+from slower_whisper.pipeline.audio_utils import AudioSegmentExtractor
+from slower_whisper.pipeline.models import Segment, Transcript
 
 # Check for optional dependencies (must be real packages, not mocks from conftest)
 EMOTION_AVAILABLE = False
@@ -28,7 +28,7 @@ try:
     if hasattr(AutoModelForAudioClassification, "from_pretrained") and callable(
         getattr(AutoModelForAudioClassification, "from_pretrained", None)
     ):
-        from transcription.emotion import (
+        from slower_whisper.pipeline.emotion import (
             extract_emotion_categorical,
             extract_emotion_dimensional,
         )
@@ -42,7 +42,7 @@ if not EMOTION_AVAILABLE:
     extract_emotion_categorical = None
 
 try:
-    from transcription.prosody import extract_prosody
+    from slower_whisper.pipeline.prosody import extract_prosody
 except (ImportError, ValueError):
     PROSODY_AVAILABLE = False
     extract_prosody = None
@@ -485,8 +485,8 @@ def test_audio_state_schema_version(synthetic_audio_file, sample_transcript):
     # Create a longer audio file with multiple segments
     import soundfile as sf
 
-    from transcription.audio_enrichment import enrich_transcript_audio
-    from transcription.models import AUDIO_STATE_VERSION
+    from slower_whisper.pipeline.audio_enrichment import enrich_transcript_audio
+    from slower_whisper.pipeline.models import AUDIO_STATE_VERSION
 
     sr = 16000
     duration = 3.0

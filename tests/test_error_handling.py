@@ -12,7 +12,7 @@ clear error messages in error scenarios:
 6. CLI error exit codes (proper exit codes for different error types)
 7. API exception raising (custom exceptions with descriptive messages)
 
-All tests use the custom exception hierarchy from transcription.exceptions.
+All tests use the custom exception hierarchy from slower_whisper.pipeline.exceptions.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from unittest.mock import patch
 
 import pytest
 
-from transcription import (
+from slower_whisper.pipeline import (
     AsrConfig,
     EnrichmentConfig,
     TranscriptionConfig,
@@ -38,16 +38,16 @@ from transcription import (
     transcribe_directory,
     transcribe_file,
 )
-from transcription.cli import _config_from_transcribe_args
-from transcription.cli import main as cli_main
-from transcription.config import validate_diarization_settings
-from transcription.exceptions import (
+from slower_whisper.pipeline.cli import _config_from_transcribe_args
+from slower_whisper.pipeline.cli import main as cli_main
+from slower_whisper.pipeline.config import validate_diarization_settings
+from slower_whisper.pipeline.exceptions import (
     ConfigurationError,
     EnrichmentError,
     SlowerWhisperError,
     TranscriptionError,
 )
-from transcription.models import Segment, Transcript
+from slower_whisper.pipeline.models import Segment, Transcript
 
 # ============================================================================
 # Test Fixtures
@@ -213,7 +213,7 @@ class TestMissingInputFiles:
         config = TranscriptionConfig(model="base", device="cpu")
 
         # Mock the pipeline to not generate any files
-        with patch("transcription.pipeline.run_pipeline"):
+        with patch("slower_whisper.pipeline.pipeline.run_pipeline"):
             with pytest.raises(TranscriptionError) as exc_info:
                 transcribe_directory(temp_project_root, config)
 
@@ -590,8 +590,8 @@ class TestMissingDependencies:
         # Simulate missing audio_enrichment dependency (cannot import enrich_transcript_audio)
         monkeypatch.setitem(
             sys.modules,
-            "transcription.audio_enrichment",
-            types.ModuleType("transcription.audio_enrichment"),
+            "slower_whisper.pipeline.audio_enrichment",
+            types.ModuleType("slower_whisper.pipeline.audio_enrichment"),
         )
 
         with pytest.raises(EnrichmentError) as exc_info:
@@ -612,8 +612,8 @@ class TestMissingDependencies:
 
         monkeypatch.setitem(
             sys.modules,
-            "transcription.audio_enrichment",
-            types.ModuleType("transcription.audio_enrichment"),
+            "slower_whisper.pipeline.audio_enrichment",
+            types.ModuleType("slower_whisper.pipeline.audio_enrichment"),
         )
 
         with pytest.raises(EnrichmentError) as exc_info:
@@ -646,7 +646,7 @@ class TestCorruptedAudioFiles:
                 RuntimeError("decode failure")
             )
         )
-        with patch.dict("sys.modules", {"transcription.audio_enrichment": module}):
+        with patch.dict("sys.modules", {"slower_whisper.pipeline.audio_enrichment": module}):
             enriched = enrich_transcript(valid_transcript, fake_wav, config)
 
         # Should not raise; segments should receive a neutral audio_state fallback
@@ -664,7 +664,7 @@ class TestCorruptedAudioFiles:
         config = TranscriptionConfig(model="base", device="cpu")
 
         # Mock normalization to simulate failure (it doesn't create the normalized file)
-        with patch("transcription.audio_io.normalize_all"):
+        with patch("slower_whisper.pipeline.audio_io.normalize_all"):
             with pytest.raises(TranscriptionError) as exc_info:
                 transcribe_file(fake_audio, temp_project_root, config)
 
@@ -732,7 +732,7 @@ class TestInvalidJSONTranscripts:
         config = TranscriptionConfig(model="base", device="cpu")
 
         # Mock pipeline to not do anything (just test loading phase)
-        with patch("transcription.pipeline.run_pipeline"):
+        with patch("slower_whisper.pipeline.pipeline.run_pipeline"):
             with pytest.raises(TranscriptionError) as exc_info:
                 transcribe_directory(temp_project_root, config)
 
@@ -754,7 +754,7 @@ class TestCLIErrorExitCodes:
         argv = ["transcribe", "--root", str(temp_project_root), "--device", "cpu"]
 
         # Mock normalization to prevent ffmpeg error in CI
-        with patch("transcription.audio_io.normalize_all"):
+        with patch("slower_whisper.pipeline.audio_io.normalize_all"):
             # With no audio files, CLI should return 0 (not an error, just no work to do)
             exit_code = cli_main(argv)
 
@@ -778,7 +778,9 @@ class TestCLIErrorExitCodes:
         argv = ["transcribe", "--root", str(temp_project_root)]
 
         # Mock to raise an unexpected exception
-        with patch("transcription.pipeline.run_pipeline", side_effect=RuntimeError("Unexpected")):
+        with patch(
+            "slower_whisper.pipeline.pipeline.run_pipeline", side_effect=RuntimeError("Unexpected")
+        ):
             exit_code = cli_main(argv)
 
         assert exit_code == 2  # Unexpected error exit code
@@ -795,7 +797,7 @@ class TestCLIErrorExitCodes:
             meta={},
         )
 
-        from transcription.pipeline import PipelineBatchResult
+        from slower_whisper.pipeline.pipeline import PipelineBatchResult
 
         mock_result = PipelineBatchResult(
             total_files=1,
@@ -810,9 +812,12 @@ class TestCLIErrorExitCodes:
         # Mock both the pipeline and directory function
         # Also mock normalize_all to prevent ffmpeg check error in CI
         with (
-            patch("transcription.pipeline.run_pipeline", return_value=mock_result),
-            patch("transcription.writers.load_transcript_from_json", return_value=mock_transcript),
-            patch("transcription.audio_io.normalize_all"),
+            patch("slower_whisper.pipeline.pipeline.run_pipeline", return_value=mock_result),
+            patch(
+                "slower_whisper.pipeline.writers.load_transcript_from_json",
+                return_value=mock_transcript,
+            ),
+            patch("slower_whisper.pipeline.audio_io.normalize_all"),
         ):
             # Create a fake JSON file for the mock to find
             json_path = temp_project_root / "whisper_json" / "test.json"
@@ -929,7 +934,8 @@ class TestAPIExceptionRaising:
 
         # Mock the enrichment to succeed for available files
         with patch(
-            "transcription.audio_enrichment.enrich_transcript_audio", return_value=valid_transcript
+            "slower_whisper.pipeline.audio_enrichment.enrich_transcript_audio",
+            return_value=valid_transcript,
         ):
             # Should succeed for test1 but skip test2 (missing audio)
             # This should NOT raise, just skip the missing file
@@ -1054,8 +1060,10 @@ class TestErrorMessageQuality:
 
     def test_enrichment_error_suggests_installation(self, valid_transcript, test_audio_file):
         """Test EnrichmentError suggests installing dependencies."""
-        missing_module = types.ModuleType("transcription.audio_enrichment")
-        with patch.dict("sys.modules", {"transcription.audio_enrichment": missing_module}):
+        missing_module = types.ModuleType("slower_whisper.pipeline.audio_enrichment")
+        with patch.dict(
+            "sys.modules", {"slower_whisper.pipeline.audio_enrichment": missing_module}
+        ):
             with pytest.raises(EnrichmentError) as exc_info:
                 enrich_transcript(valid_transcript, test_audio_file, EnrichmentConfig())
 

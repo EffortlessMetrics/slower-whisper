@@ -14,7 +14,7 @@ import re
 from copy import deepcopy
 from pathlib import Path
 
-from transcription import load_transcript, save_transcript
+from slower_whisper.pipeline import load_transcript, save_transcript
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 PHONE_RE = re.compile(r"\b(?:\+?\d{1,2}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?){2}\d{4}\b")

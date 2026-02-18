@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from transcription.renderer import (
+from slower_whisper.pipeline.renderer import (
     RendererConfig,
     TranscriptRenderer,
     render_for_llm,

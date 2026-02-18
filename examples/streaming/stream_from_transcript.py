@@ -11,7 +11,7 @@ import argparse
 from collections.abc import Iterable
 from pathlib import Path
 
-from transcription import (
+from slower_whisper.pipeline import (
     StreamChunk,
     StreamConfig,
     StreamEvent,

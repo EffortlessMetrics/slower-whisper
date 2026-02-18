@@ -27,8 +27,8 @@ from typing import Any
 
 import pytest
 
-from transcription.config import EnrichmentConfig, TranscriptionConfig
-from transcription.exceptions import ConfigurationError
+from slower_whisper.pipeline.config import EnrichmentConfig, TranscriptionConfig
+from slower_whisper.pipeline.exceptions import ConfigurationError
 
 
 class TestTranscriptionConfigFromSources:

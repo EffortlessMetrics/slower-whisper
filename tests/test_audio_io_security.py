@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from transcription.audio_io import (
+from slower_whisper.pipeline.audio_io import (
     ensure_within_dir,
     sanitize_filename,
     unique_path,

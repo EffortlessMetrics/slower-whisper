@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from integrations.langchain_loader import SlowerWhisperLoader
-from integrations.llamaindex_reader import SlowerWhisperReader
-from transcription.chunking import ChunkingConfig
-from transcription.models import Segment, Transcript, Turn
-from transcription.writers import write_json
+from slower_whisper.adapters.langchain_loader import SlowerWhisperLoader
+from slower_whisper.adapters.llamaindex_reader import SlowerWhisperReader
+from slower_whisper.pipeline.chunking import ChunkingConfig
+from slower_whisper.pipeline.models import Segment, Transcript, Turn
+from slower_whisper.pipeline.writers import write_json
 
 pytestmark = pytest.mark.integration
 

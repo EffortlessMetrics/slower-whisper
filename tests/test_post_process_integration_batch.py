@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import pytest
 
-from transcription.enrichment_config import EnrichmentConfig
-from transcription.enrichment_orchestrator import _run_post_processors
-from transcription.models import (
+from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
+from slower_whisper.pipeline.enrichment_orchestrator import _run_post_processors
+from slower_whisper.pipeline.models import (
     AUDIO_STATE_VERSION,
     SCHEMA_VERSION,
     Segment,

@@ -13,14 +13,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.benchmark_cli import StreamingBenchmarkRunner
-from transcription.benchmarks import EvalSample
+from slower_whisper.pipeline.benchmark_cli import StreamingBenchmarkRunner
+from slower_whisper.pipeline.benchmarks import EvalSample
 
 
 @pytest.fixture
 def mock_asr_engine() -> MagicMock:
     """Mock TranscriptionEngine returning two segments."""
-    with patch("transcription.asr_engine.TranscriptionEngine") as mock:
+    with patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine") as mock:
         engine_instance = mock.return_value
         segment1 = MagicMock(start=0.0, end=1.0, text="hello")
         segment2 = MagicMock(start=1.0, end=2.0, text="world")
@@ -32,7 +32,7 @@ def mock_asr_engine() -> MagicMock:
 @pytest.fixture
 def mock_streaming_session() -> MagicMock:
     """Mock StreamingEnrichmentSession with 2s audio duration."""
-    with patch("transcription.streaming_enrich.StreamingEnrichmentSession") as mock:
+    with patch("slower_whisper.pipeline.streaming_enrich.StreamingEnrichmentSession") as mock:
         session_instance = mock.return_value
         session_instance._extractor.duration_seconds = 2.0
         yield session_instance
@@ -86,7 +86,7 @@ class TestDryRunValidation:
 
     def test_dry_run_commonvoice_en_smoke_returns_zero_for_valid_manifest(self) -> None:
         """Dry-run returns exit code 0 for valid manifest (even if audio not staged)."""
-        from transcription.benchmark_cli import handle_benchmark_run
+        from slower_whisper.pipeline.benchmark_cli import handle_benchmark_run
 
         exit_code = handle_benchmark_run(
             track="asr",
@@ -103,7 +103,7 @@ class TestDryRunValidation:
 
     def test_dry_run_invalid_track_returns_one(self) -> None:
         """Dry-run returns exit code 1 for invalid track."""
-        from transcription.benchmark_cli import handle_benchmark_run
+        from slower_whisper.pipeline.benchmark_cli import handle_benchmark_run
 
         exit_code = handle_benchmark_run(
             track="invalid_track",
@@ -120,7 +120,7 @@ class TestDryRunValidation:
 
     def test_dry_run_invalid_dataset_for_track_returns_one(self) -> None:
         """Dry-run returns exit code 1 for dataset not supported by track."""
-        from transcription.benchmark_cli import handle_benchmark_run
+        from slower_whisper.pipeline.benchmark_cli import handle_benchmark_run
 
         exit_code = handle_benchmark_run(
             track="asr",
@@ -137,7 +137,7 @@ class TestDryRunValidation:
 
     def test_dry_run_output_contains_expected_fields(self, capsys: pytest.CaptureFixture) -> None:
         """Dry-run output contains manifest path, schema version, samples, and staging info."""
-        from transcription.benchmark_cli import handle_benchmark_run
+        from slower_whisper.pipeline.benchmark_cli import handle_benchmark_run
 
         handle_benchmark_run(
             track="asr",
@@ -163,7 +163,7 @@ class TestDryRunValidation:
 
     def test_dry_run_uses_unicode_symbols(self, capsys: pytest.CaptureFixture) -> None:
         """Dry-run output uses Unicode check mark and warning symbols."""
-        from transcription.benchmark_cli import handle_benchmark_run
+        from slower_whisper.pipeline.benchmark_cli import handle_benchmark_run
 
         handle_benchmark_run(
             track="asr",
@@ -187,11 +187,11 @@ class TestDryRunValidation:
 
     def test_dry_run_does_not_run_benchmarks(self) -> None:
         """Dry-run mode exits early without running actual benchmarks."""
-        from transcription.benchmark_cli import handle_benchmark_run
+        from slower_whisper.pipeline.benchmark_cli import handle_benchmark_run
 
         # If benchmarks were run, this would try to load ASR model and fail
         # or take a long time. Dry-run should complete nearly instantly.
-        with patch("transcription.benchmark_cli.get_benchmark_runner") as mock_runner:
+        with patch("slower_whisper.pipeline.benchmark_cli.get_benchmark_runner") as mock_runner:
             handle_benchmark_run(
                 track="asr",
                 dataset="commonvoice_en_smoke",
@@ -210,7 +210,7 @@ class TestDryRunValidation:
         self, capsys: pytest.CaptureFixture
     ) -> None:
         """Dry-run reads sample count from selection.csv for commonvoice_en_smoke."""
-        from transcription.benchmark_cli import handle_benchmark_run
+        from slower_whisper.pipeline.benchmark_cli import handle_benchmark_run
 
         handle_benchmark_run(
             track="asr",
@@ -232,7 +232,7 @@ class TestDryRunValidation:
 
     def test_dry_run_diarization_smoke_returns_zero(self) -> None:
         """Dry-run supports diarization speech smoke manifest validation."""
-        from transcription.benchmark_cli import handle_benchmark_run
+        from slower_whisper.pipeline.benchmark_cli import handle_benchmark_run
 
         exit_code = handle_benchmark_run(
             track="diarization",
@@ -249,7 +249,7 @@ class TestDryRunValidation:
 
     def test_dry_run_diarization_smoke_tones_returns_zero(self) -> None:
         """Dry-run supports legacy diarization tone smoke manifest validation."""
-        from transcription.benchmark_cli import handle_benchmark_run
+        from slower_whisper.pipeline.benchmark_cli import handle_benchmark_run
 
         exit_code = handle_benchmark_run(
             track="diarization",
@@ -267,7 +267,7 @@ class TestDryRunValidation:
 
 def test_diarization_smoke_runner_defaults_to_stub_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     """Smoke diarization runner defaults to stub mode when env is not explicitly set."""
-    from transcription.benchmark_cli import DiarizationBenchmarkRunner
+    from slower_whisper.pipeline.benchmark_cli import DiarizationBenchmarkRunner
 
     monkeypatch.delenv("SLOWER_WHISPER_PYANNOTE_MODE", raising=False)
     runner = DiarizationBenchmarkRunner(track="diarization", dataset="smoke")
@@ -279,7 +279,7 @@ def test_diarization_smoke_runner_defaults_to_stub_mode(monkeypatch: pytest.Monk
 
 def test_diarization_smoke_runner_respects_explicit_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     """Explicit SLOWER_WHISPER_PYANNOTE_MODE disables smoke-mode override."""
-    from transcription.benchmark_cli import DiarizationBenchmarkRunner
+    from slower_whisper.pipeline.benchmark_cli import DiarizationBenchmarkRunner
 
     monkeypatch.setenv("SLOWER_WHISPER_PYANNOTE_MODE", "auto")
     runner = DiarizationBenchmarkRunner(track="diarization", dataset="smoke")
@@ -288,7 +288,11 @@ def test_diarization_smoke_runner_respects_explicit_mode(monkeypatch: pytest.Mon
 
 def test_benchmark_run_passes_llm_delay_to_runner() -> None:
     """LLM delay is forwarded to the benchmark runner factory."""
-    from transcription.benchmark_cli import BenchmarkMetric, BenchmarkResult, handle_benchmark_run
+    from slower_whisper.pipeline.benchmark_cli import (
+        BenchmarkMetric,
+        BenchmarkResult,
+        handle_benchmark_run,
+    )
 
     dummy_result = BenchmarkResult(
         track="semantic",
@@ -303,7 +307,7 @@ def test_benchmark_run_passes_llm_delay_to_runner() -> None:
     mock_runner.run.return_value = dummy_result
 
     with patch(
-        "transcription.benchmark_cli.get_benchmark_runner", return_value=mock_runner
+        "slower_whisper.pipeline.benchmark_cli.get_benchmark_runner", return_value=mock_runner
     ) as mock_get:
         exit_code = handle_benchmark_run(
             track="semantic",

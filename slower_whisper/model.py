@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, BinaryIO
 from .compat import Segment, TranscriptionInfo
 
 if TYPE_CHECKING:
-    from transcription.models import Transcript
+    from slower_whisper.pipeline.models import Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -107,9 +107,9 @@ class WhisperModel:
             return self._engine
 
         # Import here to avoid circular imports and allow graceful degradation
-        from transcription.asr_engine import TranscriptionEngine
-        from transcription.device import resolve_device
-        from transcription.legacy_config import AsrConfig
+        from slower_whisper.pipeline.asr_engine import TranscriptionEngine
+        from slower_whisper.pipeline.device import resolve_device
+        from slower_whisper.pipeline.legacy_config import AsrConfig
 
         # Resolve device using slower-whisper's device detection
         # Map string device to the expected Literal type
@@ -375,7 +375,7 @@ class WhisperModel:
     def _apply_diarization(self, transcript: Transcript, audio_path: Path) -> Transcript:
         """Apply speaker diarization to the transcript."""
         try:
-            from transcription.diarization import Diarizer, assign_speakers
+            from slower_whisper.pipeline.diarization import Diarizer, assign_speakers
         except ImportError as e:
             logger.warning(
                 "Diarization requested but pyannote.audio not available: %s. "
@@ -398,8 +398,8 @@ class WhisperModel:
     def _apply_enrichment(self, transcript: Transcript, audio_path: Path) -> Transcript:
         """Apply audio enrichment to the transcript."""
         try:
-            from transcription.api import enrich_transcript
-            from transcription.enrichment_config import EnrichmentConfig
+            from slower_whisper.pipeline.api import enrich_transcript
+            from slower_whisper.pipeline.enrichment_config import EnrichmentConfig
         except ImportError as e:
             logger.warning(
                 "Enrichment requested but dependencies not available: %s. "

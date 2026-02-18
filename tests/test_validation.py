@@ -16,8 +16,8 @@ import pytest
 
 # Import directly from submodules to avoid circular import issues
 # in the main transcription package
-from transcription.exceptions import ConfigurationError
-from transcription.validation import (
+from slower_whisper.pipeline.exceptions import ConfigurationError
+from slower_whisper.pipeline.validation import (
     DEFAULT_SCHEMA_PATH,
     _require_jsonschema,
     load_json,

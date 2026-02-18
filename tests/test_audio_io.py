@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from transcription import audio_io
-from transcription.config import Paths
+from slower_whisper.pipeline import audio_io
+from slower_whisper.pipeline.config import Paths
 
 
 def test_normalize_all_refreshes_when_source_is_newer(tmp_path, monkeypatch):

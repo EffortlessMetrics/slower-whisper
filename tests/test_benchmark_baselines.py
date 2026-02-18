@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
-from transcription.benchmark_cli import (
+from slower_whisper.pipeline.benchmark_cli import (
     BASELINE_SCHEMA_VERSION,
     DEFAULT_REGRESSION_THRESHOLD,
     BaselineFile,
@@ -443,7 +443,9 @@ class TestBaselineIO:
 
     def test_save_and_load_baseline(self, sample_baseline: BaselineFile, tmp_path: Path) -> None:
         """save_baseline and load_baseline roundtrip works."""
-        with patch("transcription.benchmark_cli.get_baselines_dir", return_value=tmp_path):
+        with patch(
+            "slower_whisper.pipeline.benchmark_cli.get_baselines_dir", return_value=tmp_path
+        ):
             # Save
             saved_path = save_baseline(sample_baseline)
             assert saved_path.exists()
@@ -457,13 +459,17 @@ class TestBaselineIO:
 
     def test_load_nonexistent_baseline(self, tmp_path: Path) -> None:
         """load_baseline returns None for nonexistent baseline."""
-        with patch("transcription.benchmark_cli.get_baselines_dir", return_value=tmp_path):
+        with patch(
+            "slower_whisper.pipeline.benchmark_cli.get_baselines_dir", return_value=tmp_path
+        ):
             result = load_baseline("asr", "nonexistent")
             assert result is None
 
     def test_load_invalid_json(self, tmp_path: Path) -> None:
         """load_baseline returns None for invalid JSON."""
-        with patch("transcription.benchmark_cli.get_baselines_dir", return_value=tmp_path):
+        with patch(
+            "slower_whisper.pipeline.benchmark_cli.get_baselines_dir", return_value=tmp_path
+        ):
             # Create invalid JSON file
             baseline_dir = tmp_path / "asr"
             baseline_dir.mkdir()
@@ -617,7 +623,7 @@ class TestPrintGateReport:
         self, sample_baseline: BaselineFile, capsys: pytest.CaptureFixture
     ) -> None:
         """Gate report shows all metrics in comparison."""
-        from transcription.benchmark_cli import _print_gate_report
+        from slower_whisper.pipeline.benchmark_cli import _print_gate_report
 
         result = BenchmarkResult(
             track="asr",
@@ -643,7 +649,7 @@ class TestPrintGateReport:
         self, sample_baseline: BaselineFile, capsys: pytest.CaptureFixture
     ) -> None:
         """Gate report shows GATE PASSED when all metrics pass."""
-        from transcription.benchmark_cli import _print_gate_report
+        from slower_whisper.pipeline.benchmark_cli import _print_gate_report
 
         result = BenchmarkResult(
             track="asr",
@@ -666,7 +672,7 @@ class TestPrintGateReport:
         self, sample_baseline: BaselineFile, capsys: pytest.CaptureFixture
     ) -> None:
         """Gate report shows detailed failure information."""
-        from transcription.benchmark_cli import _print_gate_report
+        from slower_whisper.pipeline.benchmark_cli import _print_gate_report
 
         result = BenchmarkResult(
             track="asr",

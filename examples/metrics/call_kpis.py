@@ -10,9 +10,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from transcription import load_transcript
-from transcription.speaker_stats import compute_speaker_stats
-from transcription.turns import build_turns
+from slower_whisper.pipeline import load_transcript
+from slower_whisper.pipeline.speaker_stats import compute_speaker_stats
+from slower_whisper.pipeline.turns import build_turns
 
 
 def _ensure_stats(transcript):

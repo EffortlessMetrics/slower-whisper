@@ -42,9 +42,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.streaming import StreamChunk, StreamSegment
-from transcription.streaming_callbacks import StreamingError
-from transcription.streaming_enrich import (
+from slower_whisper.pipeline.streaming import StreamChunk, StreamSegment
+from slower_whisper.pipeline.streaming_callbacks import StreamingError
+from slower_whisper.pipeline.streaming_enrich import (
     StreamingEnrichmentConfig,
     StreamingEnrichmentSession,
 )
@@ -145,7 +145,7 @@ class TestExactlyOnceDelivery:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -169,7 +169,7 @@ class TestExactlyOnceDelivery:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -197,7 +197,7 @@ class TestExactlyOnceDelivery:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -238,7 +238,7 @@ class TestMonotonicOrdering:
         base_config.base_config.max_gap_sec = 0.3
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -265,7 +265,7 @@ class TestMonotonicOrdering:
         base_config.base_config.max_gap_sec = 0.5
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -304,7 +304,7 @@ class TestEndOfStreamFlush:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -332,7 +332,7 @@ class TestEndOfStreamFlush:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -362,7 +362,7 @@ class TestSpeakerTurnBoundaries:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -387,7 +387,7 @@ class TestSpeakerTurnBoundaries:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -414,7 +414,7 @@ class TestSpeakerTurnBoundaries:
         base_config.base_config.max_gap_sec = 0.3
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -441,7 +441,7 @@ class TestSpeakerTurnBoundaries:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -488,7 +488,7 @@ class TestCallbackOrderingWithinSegment:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -518,7 +518,7 @@ class TestCallbackOrderingWithinSegment:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -559,7 +559,7 @@ class TestErrorIsolation:
         base_config.base_config.max_gap_sec = 0.3
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -585,7 +585,7 @@ class TestErrorIsolation:
         callbacks.should_raise_on_segment = True
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -615,7 +615,7 @@ class TestErrorIsolation:
         base_config.base_config.max_gap_sec = 0.3
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -652,7 +652,7 @@ class TestPayloadIntegrity:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -681,7 +681,7 @@ class TestPayloadIntegrity:
         base_config.base_config.max_gap_sec = 0.3
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -704,7 +704,7 @@ class TestPayloadIntegrity:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -730,7 +730,7 @@ class TestPayloadIntegrity:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -766,7 +766,7 @@ class TestEdgeCases:
         base_config.base_config.max_gap_sec = 0.3
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -789,7 +789,7 @@ class TestEdgeCases:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -815,7 +815,7 @@ class TestEdgeCases:
         callbacks = ContractCallbacks()
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(
@@ -845,7 +845,7 @@ class TestEdgeCases:
         long_text = "word " * 1000  # 5000 character text
 
         with patch(
-            "transcription.streaming_enrich.AudioSegmentExtractor",
+            "slower_whisper.pipeline.streaming_enrich.AudioSegmentExtractor",
             return_value=mock_extractor,
         ):
             session = StreamingEnrichmentSession(

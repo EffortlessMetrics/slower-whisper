@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from transcription.semantic_adapter import (
+from slower_whisper.pipeline.semantic_adapter import (
     SEMANTIC_SCHEMA_VERSION,
     ActionItem,
     ChunkContext,

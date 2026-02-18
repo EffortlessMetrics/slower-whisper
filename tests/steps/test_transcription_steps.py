@@ -2,7 +2,7 @@
 Step definitions for transcription BDD tests.
 
 This module implements Gherkin steps for testing the transcription pipeline
-using pytest-bdd. Steps use the public API from transcription.api.
+using pytest-bdd. Steps use the public API from slower_whisper.pipeline.api.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ pytest.importorskip("pytest_bdd")
 
 from pytest_bdd import given, parsers, scenarios, then, when  # noqa: E402
 
-from transcription import TranscriptionConfig, transcribe_directory, transcribe_file
+from slower_whisper.pipeline import TranscriptionConfig, transcribe_directory, transcribe_file
 
 # Check if ffmpeg is available
 FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
@@ -767,7 +767,7 @@ def transcription_completes_or_fails_gracefully(test_state):
 
     if error:
         # If there's an error, it should be a known error type
-        from transcription.exceptions import TranscriptionError
+        from slower_whisper.pipeline.exceptions import TranscriptionError
 
         assert isinstance(error, (TranscriptionError, Exception)), (
             f"Error should be a proper exception type, got: {type(error)}"

@@ -34,7 +34,7 @@ Usage:
 import sys
 from pathlib import Path
 
-from transcription import (
+from slower_whisper.pipeline import (
     EnrichmentConfig,
     TranscriptionConfig,
     enrich_directory,

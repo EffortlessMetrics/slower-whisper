@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from transcription.models import (
+from slower_whisper.pipeline.models import (
     AUDIO_STATE_VERSION,
     SCHEMA_VERSION,
     WORD_ALIGNMENT_VERSION,

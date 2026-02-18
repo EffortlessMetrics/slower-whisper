@@ -377,7 +377,7 @@ def start_dev_server(port: int = 8000) -> subprocess.Popen:
                 sys.executable,
                 "-m",
                 "uvicorn",
-                "transcription.service:app",
+                "slower_whisper.pipeline.service:app",
                 "--port",
                 str(port),
                 "--log-level",

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from transcription.service import app
+from slower_whisper.pipeline.service import app
 
 
 @pytest.fixture
@@ -44,8 +44,8 @@ class TestTranscribeEndpointLeaks:
         sensitive_path = "/home/user/secrets/api_key.txt"
 
         with (
-            patch("transcription.service_transcribe.transcribe_file") as mock_transcribe,
-            patch("transcription.service_transcribe.validate_audio_format"),
+            patch("slower_whisper.pipeline.service_transcribe.transcribe_file") as mock_transcribe,
+            patch("slower_whisper.pipeline.service_transcribe.validate_audio_format"),
         ):
             mock_transcribe.side_effect = RuntimeError(f"File not found at {sensitive_path}")
 
@@ -63,13 +63,13 @@ class TestTranscribeEndpointLeaks:
 
     def test_transcription_error_no_leak(self, client: TestClient, sample_wav_bytes: bytes) -> None:
         """TranscriptionError must not leak internal details."""
-        from transcription.exceptions import TranscriptionError
+        from slower_whisper.pipeline.exceptions import TranscriptionError
 
         sensitive_detail = "Model path: /opt/models/whisper-secret-v3"
 
         with (
-            patch("transcription.service_transcribe.transcribe_file") as mock_transcribe,
-            patch("transcription.service_transcribe.validate_audio_format"),
+            patch("slower_whisper.pipeline.service_transcribe.transcribe_file") as mock_transcribe,
+            patch("slower_whisper.pipeline.service_transcribe.validate_audio_format"),
         ):
             mock_transcribe.side_effect = TranscriptionError(sensitive_detail)
 
@@ -87,13 +87,13 @@ class TestTranscribeEndpointLeaks:
 
     def test_configuration_error_no_leak(self, client: TestClient, sample_wav_bytes: bytes) -> None:
         """ConfigurationError must not leak system configuration details."""
-        from transcription.exceptions import ConfigurationError
+        from slower_whisper.pipeline.exceptions import ConfigurationError
 
         sensitive_config = "CUDA_HOME=/usr/local/cuda-secret"
 
         with (
-            patch("transcription.service_transcribe.transcribe_file") as mock_transcribe,
-            patch("transcription.service_transcribe.validate_audio_format"),
+            patch("slower_whisper.pipeline.service_transcribe.transcribe_file") as mock_transcribe,
+            patch("slower_whisper.pipeline.service_transcribe.validate_audio_format"),
         ):
             mock_transcribe.side_effect = ConfigurationError(sensitive_config)
 
@@ -123,9 +123,9 @@ class TestEnrichEndpointLeaks:
         sensitive_cred = "DB_PASSWORD=secret123"
 
         with (
-            patch("transcription.service_enrich.enrich_transcript") as mock_enrich,
-            patch("transcription.api.load_transcript") as mock_load,
-            patch("transcription.service_enrich.validate_audio_format"),
+            patch("slower_whisper.pipeline.service_enrich.enrich_transcript") as mock_enrich,
+            patch("slower_whisper.pipeline.api.load_transcript") as mock_load,
+            patch("slower_whisper.pipeline.service_enrich.validate_audio_format"),
         ):
             mock_load.return_value = MagicMock(segments=[MagicMock()])
             mock_enrich.side_effect = RuntimeError(f"Connection failed: {sensitive_cred}")
@@ -151,14 +151,14 @@ class TestEnrichEndpointLeaks:
         valid_transcript_json: bytes,
     ) -> None:
         """EnrichmentError must not leak internal processing details."""
-        from transcription.exceptions import EnrichmentError
+        from slower_whisper.pipeline.exceptions import EnrichmentError
 
         sensitive_detail = "Torch cache: /home/user/.cache/torch/hub/secret"
 
         with (
-            patch("transcription.service_enrich.enrich_transcript") as mock_enrich,
-            patch("transcription.api.load_transcript") as mock_load,
-            patch("transcription.service_enrich.validate_audio_format"),
+            patch("slower_whisper.pipeline.service_enrich.enrich_transcript") as mock_enrich,
+            patch("slower_whisper.pipeline.api.load_transcript") as mock_load,
+            patch("slower_whisper.pipeline.service_enrich.validate_audio_format"),
         ):
             mock_load.return_value = MagicMock(segments=[MagicMock()])
             mock_enrich.side_effect = EnrichmentError(sensitive_detail)

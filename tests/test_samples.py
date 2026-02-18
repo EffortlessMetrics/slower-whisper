@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from transcription import samples
+from slower_whisper.pipeline import samples
 
 
 def test_get_samples_cache_dir_override(monkeypatch, tmp_path):
@@ -96,7 +96,7 @@ def test_copy_sample_no_overwrite_raises_error(monkeypatch, tmp_path):
     existing_file.write_bytes(b"existing-content")
 
     # Should raise error with overwrite=False
-    from transcription.exceptions import SampleExistsError
+    from slower_whisper.pipeline.exceptions import SampleExistsError
 
     with pytest.raises(SampleExistsError) as exc:
         samples.copy_sample_to_project("mini_diarization", project_raw, overwrite=False)

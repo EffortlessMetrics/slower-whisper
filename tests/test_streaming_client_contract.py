@@ -26,7 +26,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from transcription.streaming_client import (
+from slower_whisper.pipeline.streaming_client import (
     ClientState,
     ClientStats,
     EventType,
@@ -37,7 +37,7 @@ from transcription.streaming_client import (
     StreamingConfig,
     create_client,
 )
-from transcription.streaming_ws import (
+from slower_whisper.pipeline.streaming_ws import (
     ClientMessageType,
     EventEnvelope,
     ServerMessageType,
@@ -1062,12 +1062,12 @@ class TestResumeServerCompatibility:
 
     def test_server_replay_buffer_interface(self) -> None:
         """Test server replay buffer interface matches client expectations."""
-        from transcription.streaming_ws import ReplayBuffer
+        from slower_whisper.pipeline.streaming_ws import ReplayBuffer
 
         buffer = ReplayBuffer(max_size=100)
 
         # Add some events
-        from transcription.streaming_ws import EventEnvelope, ServerMessageType
+        from slower_whisper.pipeline.streaming_ws import EventEnvelope, ServerMessageType
 
         for i in range(1, 11):
             envelope = EventEnvelope(
@@ -1089,12 +1089,12 @@ class TestResumeServerCompatibility:
 
     def test_server_resume_gap_detection(self) -> None:
         """Test server detects resume gap correctly."""
-        from transcription.streaming_ws import ReplayBuffer
+        from slower_whisper.pipeline.streaming_ws import ReplayBuffer
 
         buffer = ReplayBuffer(max_size=5)  # Small buffer
 
         # Add 10 events (only last 5 will be kept)
-        from transcription.streaming_ws import EventEnvelope, ServerMessageType
+        from slower_whisper.pipeline.streaming_ws import EventEnvelope, ServerMessageType
 
         for i in range(1, 11):
             envelope = EventEnvelope(
@@ -1116,7 +1116,7 @@ class TestResumeServerCompatibility:
 
     def test_server_create_resume_gap_error_format(self) -> None:
         """Test server RESUME_GAP error format matches client expectations."""
-        from transcription.streaming_ws import WebSocketStreamingSession
+        from slower_whisper.pipeline.streaming_ws import WebSocketStreamingSession
 
         session = WebSocketStreamingSession()
 

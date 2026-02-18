@@ -24,7 +24,7 @@ Example:
 import sys
 from pathlib import Path
 
-from transcription import TranscriptionConfig, transcribe_file
+from slower_whisper.pipeline import TranscriptionConfig, transcribe_file
 
 
 def format_timestamp(seconds: float) -> str:

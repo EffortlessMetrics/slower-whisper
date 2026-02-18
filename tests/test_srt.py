@@ -1,4 +1,4 @@
-from transcription.writers import _fmt_srt_ts
+from slower_whisper.pipeline.writers import _fmt_srt_ts
 
 
 def test_fmt_srt_ts_basic() -> None:

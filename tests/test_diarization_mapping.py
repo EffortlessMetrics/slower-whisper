@@ -7,8 +7,8 @@ Uses synthetic SpeakerTurn and Segment data to exercise all edge cases.
 
 import pytest
 
-from transcription.diarization import SpeakerTurn, assign_speakers
-from transcription.models import Segment, Transcript
+from slower_whisper.pipeline.diarization import SpeakerTurn, assign_speakers
+from slower_whisper.pipeline.models import Segment, Transcript
 
 
 # Test fixtures: synthetic speaker turns

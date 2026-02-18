@@ -13,7 +13,7 @@ import dataclasses
 
 import pytest
 
-from transcription.streaming_callbacks import (
+from slower_whisper.pipeline.streaming_callbacks import (
     BargeInPayload,
     EndOfTurnHintPayload,
     VADActivityPayload,

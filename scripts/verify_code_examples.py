@@ -105,7 +105,7 @@ class CodeValidator:
         """Get the actual exports from the transcription package."""
         try:
             # Import the package dynamically
-            import transcription
+            import slower_whisper.pipeline as transcription
 
             exports = {
                 # Functions
@@ -125,12 +125,12 @@ class CodeValidator:
 
             # Also check __all__
             if hasattr(transcription, "__all__"):
-                print(f"[info] transcription.__all__ = {transcription.__all__}")
+                print(f"[info] slower_whisper.pipeline.__all__ = {transcription.__all__}")
 
             return exports
 
         except Exception as e:
-            print(f"[warn] Could not import transcription package: {e}")
+            print(f"[warn] Could not import slower_whisper.pipeline package: {e}")
             return {}
 
     def validate_python_code(self, example: CodeExample) -> list[ValidationIssue]:

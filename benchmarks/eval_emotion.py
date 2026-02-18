@@ -46,8 +46,8 @@ import numpy as np
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from transcription.benchmarks import iter_iemocap_clips
-from transcription.emotion import (
+from slower_whisper.pipeline.benchmarks import iter_iemocap_clips
+from slower_whisper.pipeline.emotion import (
     EMOTION_AVAILABLE,
     extract_emotion_categorical,
     extract_emotion_dimensional,
@@ -320,7 +320,7 @@ def evaluate_dimensional(
         session_name = sample.metadata.get("session", "Session1")
         dialog_id = sample.metadata["dialog_id"]
 
-        from transcription.benchmarks import get_benchmarks_root
+        from slower_whisper.pipeline.benchmarks import get_benchmarks_root
 
         eval_file = (
             get_benchmarks_root()

@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from transcription.diarization import (
+from slower_whisper.pipeline.diarization import (
     Diarizer,
     SpeakerTurn,
     _compute_overlap,
@@ -31,7 +31,7 @@ from transcription.diarization import (
     _update_speaker_stats,
     assign_speakers_to_words,
 )
-from transcription.models import Segment, Transcript, Word
+from slower_whisper.pipeline.models import Segment, Transcript, Word
 
 # =============================================================================
 # Test fixtures
@@ -241,7 +241,7 @@ class TestThreadSafety:
         original_make_stub = None
 
         # Import the module to get the original function
-        import transcription.diarization as diar_module
+        import slower_whisper.pipeline.diarization as diar_module
 
         original_make_stub = diar_module._make_stub_pyannote_pipeline
 
@@ -758,7 +758,7 @@ class TestDeprecatedApi:
 
     def test_assign_speakers_to_segments_raises(self):
         """assign_speakers_to_segments raises NotImplementedError."""
-        from transcription.diarization import assign_speakers_to_segments
+        from slower_whisper.pipeline.diarization import assign_speakers_to_segments
 
         with pytest.raises(NotImplementedError) as exc_info:
             assign_speakers_to_segments([], [])

@@ -31,7 +31,7 @@ except ImportError:
     print("Install with: uv pip install anthropic", file=sys.stderr)
     sys.exit(1)
 
-from transcription import load_transcript, render_conversation_for_llm
+from slower_whisper.pipeline import load_transcript, render_conversation_for_llm
 
 
 def analyze_conversation(json_path: str, use_audio_cues: bool = True) -> str:

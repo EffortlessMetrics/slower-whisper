@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 # Import directly from the emotion module to avoid circular import issues
-from transcription import emotion
+from slower_whisper.pipeline import emotion
 
 # ============================================================================
 # Fixtures
@@ -472,7 +472,7 @@ class TestResamplingLogic:
     def test_resample_fallback_without_librosa(self, recognizer_instance, sample_audio):
         """Should fall back to linear interpolation if librosa unavailable."""
         with patch.dict("sys.modules", {"librosa": None}):
-            with patch("transcription.emotion.logger"):
+            with patch("slower_whisper.pipeline.emotion.logger"):
                 # Force reimport to clear cache
                 import sys
 

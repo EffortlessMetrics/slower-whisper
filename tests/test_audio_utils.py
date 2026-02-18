@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from transcription.audio_utils import (
+from slower_whisper.pipeline.audio_utils import (
     AudioSegmentExtractor,
     load_full_audio,
     validate_wav_file,
@@ -686,3 +686,44 @@ class TestDataTypeConsistency:
 
         assert np.all(audio >= -1.0)
         assert np.all(audio <= 1.0)
+
+
+# ============================================================================
+# Soundfile Guard Tests
+# ============================================================================
+
+
+class TestSoundfileGuard:
+    """Tests verifying graceful behavior when soundfile is unavailable."""
+
+    def test_extractor_raises_import_error_without_soundfile(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AudioSegmentExtractor should raise ImportError with install hint."""
+        import slower_whisper.pipeline.audio_utils as mod
+
+        monkeypatch.setattr(mod, "SOUNDFILE_AVAILABLE", False)
+
+        with pytest.raises(ImportError, match="enrich-basic"):
+            AudioSegmentExtractor("fake.wav")
+
+    def test_load_full_audio_raises_import_error_without_soundfile(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """load_full_audio should raise ImportError with install hint."""
+        import slower_whisper.pipeline.audio_utils as mod
+
+        monkeypatch.setattr(mod, "SOUNDFILE_AVAILABLE", False)
+
+        with pytest.raises(ImportError, match="enrich-basic"):
+            load_full_audio("fake.wav")
+
+    def test_validate_wav_returns_false_without_soundfile(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """validate_wav_file should return False when soundfile is missing."""
+        import slower_whisper.pipeline.audio_utils as mod
+
+        monkeypatch.setattr(mod, "SOUNDFILE_AVAILABLE", False)
+
+        assert validate_wav_file("fake.wav") is False

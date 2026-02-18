@@ -8,13 +8,13 @@ import tempfile
 import time
 from pathlib import Path
 
-from transcription import (
+from slower_whisper.pipeline import (
     EnrichmentConfig,
     TranscriptionConfig,
     enrich_transcript,
     transcribe_file,
 )
-from transcription.audio_utils import AudioSegmentExtractor
+from slower_whisper.pipeline.audio_utils import AudioSegmentExtractor
 
 
 def _pick_audio(explicit: str | Path | None) -> Path:

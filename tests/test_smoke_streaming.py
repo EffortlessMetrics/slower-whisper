@@ -16,7 +16,7 @@ import asyncio
 
 import pytest
 
-from transcription.streaming_ws import (
+from slower_whisper.pipeline.streaming_ws import (
     EventEnvelope,
     ServerMessageType,
     SessionState,

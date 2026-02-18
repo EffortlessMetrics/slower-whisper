@@ -18,11 +18,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from transcription import load_transcript
-from transcription.llm_utils import render_conversation_for_llm, to_speaker_summary, to_turn_view
-from transcription.speaker_stats import compute_speaker_stats
-from transcription.turns import build_turns
-from transcription.turns_enrich import enrich_turns_metadata
+from slower_whisper.pipeline import load_transcript
+from slower_whisper.pipeline.llm_utils import (
+    render_conversation_for_llm,
+    to_speaker_summary,
+    to_turn_view,
+)
+from slower_whisper.pipeline.speaker_stats import compute_speaker_stats
+from slower_whisper.pipeline.turns import build_turns
+from slower_whisper.pipeline.turns_enrich import enrich_turns_metadata
 
 DEFAULT_SAMPLES = Path(__file__).resolve().parent / "data" / "speaker_analytics_samples.jsonl"
 SUMMARY_INSTRUCTIONS = (

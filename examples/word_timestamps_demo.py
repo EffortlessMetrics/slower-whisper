@@ -73,7 +73,7 @@ def main() -> int:
         return 1
 
     # Import after argument parsing to fail fast on bad args
-    from transcription import TranscriptionConfig, transcribe_file
+    from slower_whisper.pipeline import TranscriptionConfig, transcribe_file
 
     # Create output directory
     if args.output_dir:
@@ -182,7 +182,7 @@ def main() -> int:
         """
 To use word timestamps in your own code:
 
-    from transcription import TranscriptionConfig, transcribe_file
+    from slower_whisper.pipeline import TranscriptionConfig, transcribe_file
 
     # Enable word_timestamps in config
     config = TranscriptionConfig(

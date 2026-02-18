@@ -9,8 +9,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from transcription import load_transcript, render_conversation_for_llm
-from transcription.semantic import KeywordSemanticAnnotator
+from slower_whisper.pipeline import load_transcript, render_conversation_for_llm
+from slower_whisper.pipeline.semantic import KeywordSemanticAnnotator
 
 
 def main() -> None:

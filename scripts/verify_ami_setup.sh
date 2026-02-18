@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-BENCH_ROOT=$(uv run python -c "from transcription.benchmarks import get_benchmarks_root; print(get_benchmarks_root())")
+BENCH_ROOT=$(uv run python -c "from slower_whisper.pipeline.benchmarks import get_benchmarks_root; print(get_benchmarks_root())")
 AMI_ROOT="$BENCH_ROOT/ami"
 
 echo "Checking AMI setup at: $AMI_ROOT"
@@ -35,7 +35,7 @@ fi
 echo
 echo "✓ Testing dataset iteration..."
 uv run python -c "
-from transcription.benchmarks import iter_ami_meetings
+from slower_whisper.pipeline.benchmarks import iter_ami_meetings
 samples = list(iter_ami_meetings(limit=5))
 if not samples:
     print('✗ No samples found!')

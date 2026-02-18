@@ -23,9 +23,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from transcription.models import Segment as InternalSegment
-    from transcription.models import Transcript
-    from transcription.models import Word as InternalWord
+    from slower_whisper.pipeline.models import Segment as InternalSegment
+    from slower_whisper.pipeline.models import Transcript
+    from slower_whisper.pipeline.models import Word as InternalWord
 
 logger = logging.getLogger(__name__)
 

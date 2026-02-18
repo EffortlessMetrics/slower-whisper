@@ -11,7 +11,7 @@ Transcription gives you words. slower-whisper gives you the whole conversation: 
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)](#license)
 
 ```python
-from transcription import TranscriptionConfig, transcribe_file
+from slower_whisper import TranscriptionConfig, transcribe_file
 
 cfg = TranscriptionConfig(model="base", device="auto", language="en")
 transcript = transcribe_file("meeting.wav", root=".", config=cfg)
@@ -48,11 +48,13 @@ uv sync --extra full --extra dev     # contributor toolchain
 
 ## Package Map
 
-| Package | What it is |
-|---------|-----------|
-| `transcription` | Core Python API — batch, file, streaming, enrichment, post-processing |
-| `slower_whisper` | `faster-whisper` drop-in replacement (`WhisperModel`, `Segment`, `Word`) |
-| `slower-whisper` | CLI — `transcribe`, `enrich`, `benchmark`, `export`, `validate` |
+| Layer | Name | How you use it | What it's for |
+|-------|------|----------------|---------------|
+| Install (PyPI) | `slower-whisper` | `pip install slower-whisper` | Published distribution |
+| CLI | `slower-whisper` | `slower-whisper transcribe …` | End-user command line |
+| Python API (compat) | `slower_whisper` | `from slower_whisper import WhisperModel` | Drop-in faster-whisper surface |
+| Python API (pipeline) | `slower_whisper.pipeline` | `from slower_whisper.pipeline import …` | Full pipeline (batch/stream/enrich) |
+| Internal tooling | `scripts` | (don't import) | Repo tools, not a stable API |
 
 ## `faster-whisper` Migration
 

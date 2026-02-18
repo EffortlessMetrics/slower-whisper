@@ -15,7 +15,7 @@ This test suite validates the TTS style computation:
 
 from __future__ import annotations
 
-from transcription.tts_style import (
+from slower_whisper.pipeline.tts_style import (
     TTSStyleMetadata,
     compute_tts_style,
 )

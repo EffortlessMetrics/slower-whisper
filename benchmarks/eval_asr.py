@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from transcription import TranscriptionConfig, transcribe_file
+from slower_whisper.pipeline import TranscriptionConfig, transcribe_file
 
 try:
     import jiwer

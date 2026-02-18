@@ -23,7 +23,7 @@ class TestStreamConfigEndpoint:
     @pytest.fixture
     def client(self) -> TestClient:
         """Create FastAPI test client."""
-        from transcription.service import app
+        from slower_whisper.pipeline.service import app
 
         return TestClient(app)
 
@@ -69,14 +69,14 @@ class TestStreamSessionsEndpoints:
     @pytest.fixture
     def client(self) -> TestClient:
         """Create FastAPI test client."""
-        from transcription.service import app
+        from slower_whisper.pipeline.service import app
 
         return TestClient(app)
 
     @pytest.fixture(autouse=True)
     def reset_registry(self) -> None:
         """Reset session registry before each test."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         SessionRegistry.reset()
         yield
@@ -323,7 +323,7 @@ class TestStreamSessionsOpenAPISchemas:
     @pytest.fixture
     def client(self) -> TestClient:
         """Create FastAPI test client."""
-        from transcription.service import app
+        from slower_whisper.pipeline.service import app
 
         return TestClient(app)
 
@@ -397,14 +397,14 @@ class TestConcurrentSessions:
     @pytest.fixture
     def client(self) -> TestClient:
         """Create FastAPI test client."""
-        from transcription.service import app
+        from slower_whisper.pipeline.service import app
 
         return TestClient(app)
 
     @pytest.fixture(autouse=True)
     def reset_registry(self) -> None:
         """Reset session registry before each test."""
-        from transcription.session_registry import SessionRegistry
+        from slower_whisper.pipeline.session_registry import SessionRegistry
 
         SessionRegistry.reset()
         yield

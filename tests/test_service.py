@@ -37,15 +37,15 @@ pytest.importorskip("uvicorn")
 from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from transcription.models import Segment, Transcript, Word  # noqa: E402
-from transcription.service import app  # noqa: E402
-from transcription.service_errors import create_error_response  # noqa: E402
-from transcription.service_serialization import (  # noqa: E402
+from slower_whisper.pipeline.models import Segment, Transcript, Word  # noqa: E402
+from slower_whisper.pipeline.service import app  # noqa: E402
+from slower_whisper.pipeline.service_errors import create_error_response  # noqa: E402
+from slower_whisper.pipeline.service_serialization import (  # noqa: E402
     _segment_to_dict,
     _transcript_to_dict,
     _word_to_dict,
 )
-from transcription.service_validation import (  # noqa: E402
+from slower_whisper.pipeline.service_validation import (  # noqa: E402
     validate_file_size,
     validate_transcript_json,
 )
@@ -396,8 +396,8 @@ class TestTranscriptValidation:
 class TestTranscribeEndpointMocked:
     """Tests for /transcribe endpoint with mocked transcription."""
 
-    @patch("transcription.service_transcribe.transcribe_file")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_transcribe.transcribe_file")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_transcribe_success(
         self,
         mock_validate_audio: MagicMock,
@@ -425,8 +425,8 @@ class TestTranscribeEndpointMocked:
         assert len(data["segments"]) == 2
         assert data["segments"][0]["text"] == "Hello world"
 
-    @patch("transcription.service_transcribe.transcribe_file")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_transcribe.transcribe_file")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_transcribe_response_schema(
         self,
         mock_validate_audio: MagicMock,
@@ -461,8 +461,8 @@ class TestTranscribeEndpointMocked:
             assert "end" in segment
             assert "text" in segment
 
-    @patch("transcription.service_transcribe.transcribe_file")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_transcribe.transcribe_file")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_transcribe_with_speakers_and_turns(
         self,
         mock_validate_audio: MagicMock,
@@ -493,8 +493,8 @@ class TestTranscribeEndpointMocked:
         assert data["speakers"][0]["id"] == "spk_0"
         assert data["turns"][0]["speaker_id"] == "spk_0"
 
-    @patch("transcription.service_transcribe.transcribe_file")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_transcribe.transcribe_file")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_transcribe_transcription_error(
         self,
         mock_validate_audio: MagicMock,
@@ -503,7 +503,7 @@ class TestTranscribeEndpointMocked:
         sample_wav_bytes: bytes,
     ) -> None:
         """Test that TranscriptionError returns 500."""
-        from transcription.exceptions import TranscriptionError
+        from slower_whisper.pipeline.exceptions import TranscriptionError
 
         mock_transcribe.side_effect = TranscriptionError("Model failed to load")
         mock_validate_audio.return_value = None
@@ -517,8 +517,8 @@ class TestTranscribeEndpointMocked:
         assert response.status_code == 500
         assert "Transcription failed" in response.json()["detail"]
 
-    @patch("transcription.service_transcribe.transcribe_file")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_transcribe.transcribe_file")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_transcribe_configuration_error(
         self,
         mock_validate_audio: MagicMock,
@@ -527,7 +527,7 @@ class TestTranscribeEndpointMocked:
         sample_wav_bytes: bytes,
     ) -> None:
         """Test that ConfigurationError returns 400."""
-        from transcription.exceptions import ConfigurationError
+        from slower_whisper.pipeline.exceptions import ConfigurationError
 
         mock_transcribe.side_effect = ConfigurationError("Invalid model")
         mock_validate_audio.return_value = None
@@ -544,8 +544,8 @@ class TestTranscribeEndpointMocked:
     def test_transcribe_all_parameters(self, client: TestClient, sample_wav_bytes: bytes) -> None:
         """Test that all query parameters are accepted."""
         with (
-            patch("transcription.service_transcribe.transcribe_file") as mock_transcribe,
-            patch("transcription.service_transcribe.validate_audio_format"),
+            patch("slower_whisper.pipeline.service_transcribe.transcribe_file") as mock_transcribe,
+            patch("slower_whisper.pipeline.service_transcribe.validate_audio_format"),
         ):
             mock_transcribe.return_value = Transcript(
                 file_name="test.wav", language="en", segments=[]
@@ -579,9 +579,9 @@ class TestTranscribeEndpointMocked:
 class TestEnrichEndpointMocked:
     """Tests for /enrich endpoint with mocked enrichment."""
 
-    @patch("transcription.service_enrich.enrich_transcript")
-    @patch("transcription.api.load_transcript")
-    @patch("transcription.service_enrich.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_enrich.enrich_transcript")
+    @patch("slower_whisper.pipeline.api.load_transcript")
+    @patch("slower_whisper.pipeline.service_enrich.validate_audio_format")
     def test_enrich_success(
         self,
         mock_validate_audio: MagicMock,
@@ -629,9 +629,9 @@ class TestEnrichEndpointMocked:
         assert data["segments"][0]["audio_state"] is not None
         assert data["segments"][0]["audio_state"]["prosody"]["pitch"]["level"] == "high"
 
-    @patch("transcription.service_enrich.enrich_transcript")
-    @patch("transcription.api.load_transcript")
-    @patch("transcription.service_enrich.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_enrich.enrich_transcript")
+    @patch("slower_whisper.pipeline.api.load_transcript")
+    @patch("slower_whisper.pipeline.service_enrich.validate_audio_format")
     def test_enrich_with_all_options(
         self,
         mock_validate_audio: MagicMock,
@@ -663,9 +663,9 @@ class TestEnrichEndpointMocked:
 
         assert response.status_code == 200
 
-    @patch("transcription.service_enrich.enrich_transcript")
-    @patch("transcription.api.load_transcript")
-    @patch("transcription.service_enrich.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_enrich.enrich_transcript")
+    @patch("slower_whisper.pipeline.api.load_transcript")
+    @patch("slower_whisper.pipeline.service_enrich.validate_audio_format")
     def test_enrich_enrichment_error(
         self,
         mock_validate_audio: MagicMock,
@@ -677,7 +677,7 @@ class TestEnrichEndpointMocked:
         sample_transcript_json: bytes,
     ) -> None:
         """Test that EnrichmentError returns 500."""
-        from transcription.exceptions import EnrichmentError
+        from slower_whisper.pipeline.exceptions import EnrichmentError
 
         mock_load.return_value = sample_transcript
         mock_enrich.side_effect = EnrichmentError("Feature extraction failed")
@@ -694,9 +694,9 @@ class TestEnrichEndpointMocked:
         assert response.status_code == 500
         assert "Enrichment failed" in response.json()["detail"]
 
-    @patch("transcription.service_enrich.enrich_transcript")
-    @patch("transcription.api.load_transcript")
-    @patch("transcription.service_enrich.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_enrich.enrich_transcript")
+    @patch("slower_whisper.pipeline.api.load_transcript")
+    @patch("slower_whisper.pipeline.service_enrich.validate_audio_format")
     def test_enrich_configuration_error(
         self,
         mock_validate_audio: MagicMock,
@@ -708,7 +708,7 @@ class TestEnrichEndpointMocked:
         sample_transcript_json: bytes,
     ) -> None:
         """Test that ConfigurationError returns 400."""
-        from transcription.exceptions import ConfigurationError
+        from slower_whisper.pipeline.exceptions import ConfigurationError
 
         mock_load.return_value = sample_transcript
         mock_enrich.side_effect = ConfigurationError("Invalid config")
@@ -734,8 +734,8 @@ class TestEnrichEndpointMocked:
 class TestExceptionHandlers:
     """Tests for custom exception handlers."""
 
-    @patch("transcription.service_transcribe.transcribe_file")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.service_transcribe.transcribe_file")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_unhandled_exception_returns_500(
         self,
         mock_validate_audio: MagicMock,
@@ -1086,8 +1086,8 @@ class TestQueryParameterValidation:
     def test_valid_translate_task(self, client: TestClient, sample_wav_bytes: bytes) -> None:
         """Test that 'translate' task is accepted."""
         with (
-            patch("transcription.service_transcribe.transcribe_file") as mock_transcribe,
-            patch("transcription.service_transcribe.validate_audio_format"),
+            patch("slower_whisper.pipeline.service_transcribe.transcribe_file") as mock_transcribe,
+            patch("slower_whisper.pipeline.service_transcribe.validate_audio_format"),
         ):
             mock_transcribe.return_value = Transcript(
                 file_name="test.wav", language="en", segments=[]
@@ -1115,8 +1115,8 @@ class TestContentTypeHandling:
     ) -> None:
         """Test audio upload without explicit content type."""
         with (
-            patch("transcription.service_transcribe.transcribe_file") as mock_transcribe,
-            patch("transcription.service_transcribe.validate_audio_format"),
+            patch("slower_whisper.pipeline.service_transcribe.transcribe_file") as mock_transcribe,
+            patch("slower_whisper.pipeline.service_transcribe.validate_audio_format"),
         ):
             mock_transcribe.return_value = Transcript(
                 file_name="test.wav", language="en", segments=[]
@@ -1139,9 +1139,9 @@ class TestContentTypeHandling:
     ) -> None:
         """Test transcript with JSON content type."""
         with (
-            patch("transcription.service_enrich.enrich_transcript") as mock_enrich,
-            patch("transcription.api.load_transcript") as mock_load,
-            patch("transcription.service_enrich.validate_audio_format"),
+            patch("slower_whisper.pipeline.service_enrich.enrich_transcript") as mock_enrich,
+            patch("slower_whisper.pipeline.api.load_transcript") as mock_load,
+            patch("slower_whisper.pipeline.service_enrich.validate_audio_format"),
         ):
             mock_load.return_value = Transcript(
                 file_name="test.wav",
@@ -1173,9 +1173,9 @@ class TestContentTypeHandling:
 class TestTranscribeStreamingEndpoint:
     """Tests for /transcribe/stream SSE endpoint."""
 
-    @patch("transcription.asr_engine.TranscriptionEngine")
-    @patch("transcription.audio_io.normalize_single")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.audio_io.normalize_single")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_stream_returns_sse_content_type(
         self,
         mock_validate_audio: MagicMock,
@@ -1206,9 +1206,9 @@ class TestTranscribeStreamingEndpoint:
         assert response.status_code == 200
         assert "text/event-stream" in response.headers.get("content-type", "")
 
-    @patch("transcription.asr_engine.TranscriptionEngine")
-    @patch("transcription.audio_io.normalize_single")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.audio_io.normalize_single")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_stream_emits_segment_events(
         self,
         mock_validate_audio: MagicMock,
@@ -1244,9 +1244,9 @@ class TestTranscribeStreamingEndpoint:
         # Should contain SESSION_ENDED event
         assert '"type": "SESSION_ENDED"' in content
 
-    @patch("transcription.asr_engine.TranscriptionEngine")
-    @patch("transcription.audio_io.normalize_single")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.audio_io.normalize_single")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_stream_done_event_contains_metadata(
         self,
         mock_validate_audio: MagicMock,
@@ -1320,9 +1320,9 @@ class TestTranscribeStreamingEndpoint:
 
         assert response.status_code == 422
 
-    @patch("transcription.asr_engine.TranscriptionEngine")
-    @patch("transcription.audio_io.normalize_single")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.audio_io.normalize_single")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_stream_segment_data_structure(
         self,
         mock_validate_audio: MagicMock,
@@ -1371,9 +1371,9 @@ class TestTranscribeStreamingEndpoint:
         assert envelope["stream_id"].startswith("sse-")
         assert "ts_server" in envelope
 
-    @patch("transcription.asr_engine.TranscriptionEngine")
-    @patch("transcription.audio_io.normalize_single")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.audio_io.normalize_single")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_stream_progress_events(
         self,
         mock_validate_audio: MagicMock,
@@ -1415,8 +1415,8 @@ class TestTranscribeStreamingEndpoint:
         # Stats should track segment counts
         assert "segments_finalized" in stats or "segments_partial" in stats
 
-    @patch("transcription.audio_io.normalize_single")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.audio_io.normalize_single")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_stream_handles_empty_audio(
         self,
         mock_validate_audio: MagicMock,
@@ -1437,9 +1437,9 @@ class TestTranscribeStreamingEndpoint:
 
         assert response.status_code == 400
 
-    @patch("transcription.asr_engine.TranscriptionEngine")
-    @patch("transcription.audio_io.normalize_single")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.audio_io.normalize_single")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_stream_with_word_timestamps(
         self,
         mock_validate_audio: MagicMock,
@@ -1491,9 +1491,9 @@ class TestTranscribeStreamingEndpoint:
         assert "words" in segment_data
         assert len(segment_data["words"]) == 2
 
-    @patch("transcription.asr_engine.TranscriptionEngine")
-    @patch("transcription.audio_io.normalize_single")
-    @patch("transcription.service_transcribe.validate_audio_format")
+    @patch("slower_whisper.pipeline.asr_engine.TranscriptionEngine")
+    @patch("slower_whisper.pipeline.audio_io.normalize_single")
+    @patch("slower_whisper.pipeline.service_transcribe.validate_audio_format")
     def test_stream_cache_control_headers(
         self,
         mock_validate_audio: MagicMock,

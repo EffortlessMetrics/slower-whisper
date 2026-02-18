@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from transcription.cli import build_parser
+from slower_whisper.pipeline.cli import build_parser
 
 
 class TestDeviceCliFlag:
@@ -46,13 +46,13 @@ class TestDeviceCliFlag:
 class TestPreflightBanner:
     """Tests for preflight banner output."""
 
-    @patch("transcription.cli.resolve_device")
-    @patch("transcription.pipeline.run_pipeline")
+    @patch("slower_whisper.pipeline.cli.resolve_device")
+    @patch("slower_whisper.pipeline.pipeline.run_pipeline")
     def test_banner_printed_on_transcribe(
         self, mock_run_pipeline: MagicMock, mock_resolve: MagicMock, capsys: pytest.CaptureFixture
     ) -> None:
         """Preflight banner is printed when running transcribe command."""
-        from transcription.device import ResolvedDevice
+        from slower_whisper.pipeline.device import ResolvedDevice
 
         # Mock device resolution
         mock_resolve.return_value = ResolvedDevice(
@@ -65,7 +65,7 @@ class TestPreflightBanner:
         )
 
         # Mock the pipeline to avoid actual transcription
-        from transcription.models import BatchProcessingResult
+        from slower_whisper.pipeline.models import BatchProcessingResult
 
         mock_result = MagicMock(spec=BatchProcessingResult)
         mock_result.total_files = 0
@@ -78,7 +78,7 @@ class TestPreflightBanner:
         mock_result.file_results = []
         mock_run_pipeline.return_value = mock_result
 
-        from transcription.cli import main
+        from slower_whisper.pipeline.cli import main
 
         main(["transcribe", "--device", "auto"])
 
@@ -87,13 +87,13 @@ class TestPreflightBanner:
         assert "[Device] CPU (fallback from auto)" in captured.err
         assert "No CUDA devices found by CTranslate2" in captured.err
 
-    @patch("transcription.cli.resolve_device")
-    @patch("transcription.pipeline.run_pipeline")
+    @patch("slower_whisper.pipeline.cli.resolve_device")
+    @patch("slower_whisper.pipeline.pipeline.run_pipeline")
     def test_banner_shows_cuda_when_available(
         self, mock_run_pipeline: MagicMock, mock_resolve: MagicMock, capsys: pytest.CaptureFixture
     ) -> None:
         """Preflight banner shows CUDA when available."""
-        from transcription.device import ResolvedDevice
+        from slower_whisper.pipeline.device import ResolvedDevice
 
         # Mock device resolution with CUDA available
         mock_resolve.return_value = ResolvedDevice(
@@ -106,7 +106,7 @@ class TestPreflightBanner:
         )
 
         # Mock the pipeline
-        from transcription.models import BatchProcessingResult
+        from slower_whisper.pipeline.models import BatchProcessingResult
 
         mock_result = MagicMock(spec=BatchProcessingResult)
         mock_result.total_files = 0
@@ -119,7 +119,7 @@ class TestPreflightBanner:
         mock_result.file_results = []
         mock_run_pipeline.return_value = mock_result
 
-        from transcription.cli import main
+        from slower_whisper.pipeline.cli import main
 
         main(["transcribe", "--device", "auto"])
 
@@ -133,8 +133,8 @@ class TestPreflightBanner:
 class TestComputeTypeFallback:
     """Tests for compute_type coherence on device fallback."""
 
-    @patch("transcription.cli.resolve_device")
-    @patch("transcription.pipeline.run_pipeline")
+    @patch("slower_whisper.pipeline.cli.resolve_device")
+    @patch("slower_whisper.pipeline.pipeline.run_pipeline")
     def test_cpu_fallback_sets_int8_compute_type(
         self,
         mock_run_pipeline: MagicMock,
@@ -146,7 +146,7 @@ class TestComputeTypeFallback:
         This is a critical regression test: GPU compute types (float16) are
         incompatible with CPU inference and cause runtime failures.
         """
-        from transcription.device import ResolvedDevice
+        from slower_whisper.pipeline.device import ResolvedDevice
 
         # Mock device resolution: requested auto but falling back to CPU
         mock_resolve.return_value = ResolvedDevice(
@@ -159,7 +159,7 @@ class TestComputeTypeFallback:
         )
 
         # Mock the pipeline
-        from transcription.models import BatchProcessingResult
+        from slower_whisper.pipeline.models import BatchProcessingResult
 
         mock_result = MagicMock(spec=BatchProcessingResult)
         mock_result.total_files = 0
@@ -172,7 +172,7 @@ class TestComputeTypeFallback:
         mock_result.file_results = []
         mock_run_pipeline.return_value = mock_result
 
-        from transcription.cli import main
+        from slower_whisper.pipeline.cli import main
 
         main(["transcribe", "--device", "auto"])
 
@@ -189,8 +189,8 @@ class TestComputeTypeFallback:
         captured = capsys.readouterr()
         assert "compute_type=int8" in captured.err
 
-    @patch("transcription.cli.resolve_device")
-    @patch("transcription.pipeline.run_pipeline")
+    @patch("slower_whisper.pipeline.cli.resolve_device")
+    @patch("slower_whisper.pipeline.pipeline.run_pipeline")
     def test_explicit_compute_type_preserved_on_fallback(
         self,
         mock_run_pipeline: MagicMock,
@@ -202,7 +202,7 @@ class TestComputeTypeFallback:
         If user explicitly passes --compute-type float32, we respect that
         even when falling back to CPU (float32 works on CPU).
         """
-        from transcription.device import ResolvedDevice
+        from slower_whisper.pipeline.device import ResolvedDevice
 
         # Mock device resolution: requested cuda but falling back to CPU
         mock_resolve.return_value = ResolvedDevice(
@@ -215,7 +215,7 @@ class TestComputeTypeFallback:
         )
 
         # Mock the pipeline
-        from transcription.models import BatchProcessingResult
+        from slower_whisper.pipeline.models import BatchProcessingResult
 
         mock_result = MagicMock(spec=BatchProcessingResult)
         mock_result.total_files = 0
@@ -228,7 +228,7 @@ class TestComputeTypeFallback:
         mock_result.file_results = []
         mock_run_pipeline.return_value = mock_result
 
-        from transcription.cli import main
+        from slower_whisper.pipeline.cli import main
 
         # User explicitly requests float32 compute type
         main(["transcribe", "--device", "cuda", "--compute-type", "float32"])

@@ -51,7 +51,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from transcription import (
+from slower_whisper.pipeline import (
     KeywordSemanticAnnotator,
     Segment,
     StreamChunk,
@@ -61,7 +61,7 @@ from transcription import (
     Transcript,
     load_transcript,
 )
-from transcription.streaming import StreamEventType
+from slower_whisper.pipeline.streaming import StreamEventType
 
 # ===========================
 # Mock LLM Client

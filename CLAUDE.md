@@ -98,26 +98,28 @@ Tests are organized into tiers that run at different stages. The `ci-success` ga
 | Surface | Location |
 |---------|----------|
 | **faster-whisper compat** | `slower_whisper/` |
-| Batch pipeline | `transcription/pipeline.py` |
-| ASR engine | `transcription/asr_engine.py` |
-| Streaming | `transcription/streaming*.py` |
-| Device resolution | `transcription/device.py` |
-| JSON I/O | `transcription/writers.py` |
-| Benchmark CLI | `transcription/benchmark_cli.py` |
-| Benchmarks (datasets) | `transcription/benchmarks.py` |
+| Batch pipeline | `slower_whisper/pipeline/pipeline.py` |
+| ASR engine | `slower_whisper/pipeline/asr_engine.py` |
+| Streaming | `slower_whisper/pipeline/streaming*.py` |
+| Device resolution | `slower_whisper/pipeline/device.py` |
+| JSON I/O | `slower_whisper/pipeline/writers.py` |
+| Benchmark CLI | `slower_whisper/pipeline/benchmark_cli.py` |
+| Benchmarks (datasets) | `slower_whisper/pipeline/benchmarks.py` |
 | Dataset manifests | `benchmarks/datasets/*/manifest.json` |
 | Benchmark baselines | `benchmarks/baselines/` |
 | Manifest schema | `benchmarks/manifest_schema.json` |
-| Semantic adapters | `transcription/semantic_adapter.py` |
-| LLM guardrails | `transcription/llm_guardrails.py` |
-| WebSocket streaming | `transcription/streaming_ws.py` |
-| Streaming client | `transcription/streaming_client.py` |
-| Session registry | `transcription/session_registry.py` |
-| Post-processing | `transcription/post_process.py` |
-| Topic segmentation | `transcription/topic_segmentation.py` |
-| Turn-taking policies | `transcription/turn_taking_policy.py` |
-| API service | `transcription/service.py` |
-| Public API | `transcription/api.py` |
+| Semantic adapters | `slower_whisper/pipeline/semantic_adapter.py` |
+| LLM guardrails | `slower_whisper/pipeline/llm_guardrails.py` |
+| WebSocket streaming | `slower_whisper/pipeline/streaming_ws.py` |
+| Streaming client | `slower_whisper/pipeline/streaming_client.py` |
+| Session registry | `slower_whisper/pipeline/session_registry.py` |
+| Post-processing | `slower_whisper/pipeline/post_process.py` |
+| Topic segmentation | `slower_whisper/pipeline/topic_segmentation.py` |
+| Turn-taking policies | `slower_whisper/pipeline/turn_taking_policy.py` |
+| API service | `slower_whisper/pipeline/service.py` |
+| Public API | `slower_whisper/pipeline/api.py` |
+| LangChain/LlamaIndex | `slower_whisper/adapters/` |
+| Deprecation shim | `transcription/` (redirects to `slower_whisper.pipeline`) |
 | E2E tests (real ASR) | `tests/test_smoke_*.py` |
 
 ---

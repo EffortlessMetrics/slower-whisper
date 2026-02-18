@@ -25,7 +25,7 @@ Run with --help to see all options.
 import sys
 from pathlib import Path
 
-from transcription import TranscriptionConfig, Word, transcribe_file
+from slower_whisper.pipeline import TranscriptionConfig, Word, transcribe_file
 
 
 def format_timestamp(seconds: float) -> str:
@@ -400,7 +400,7 @@ Examples:
     print("""
 To use word timestamps in your own code:
 
-    from transcription import TranscriptionConfig, transcribe_file
+    from slower_whisper.pipeline import TranscriptionConfig, transcribe_file
 
     # Enable word_timestamps in config
     config = TranscriptionConfig(

@@ -169,7 +169,7 @@ def main():
     # Test 4: Module imports
     print_section("🐍 Python Module Imports")
 
-    success = test_import("transcription.cli")
+    success = test_import("slower_whisper.pipeline.cli")
     if success:
         passed += 1
     else:
