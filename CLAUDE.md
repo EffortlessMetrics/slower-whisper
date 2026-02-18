@@ -151,3 +151,5 @@ Tests are organized into tiers that run at different stages. The `ci-success` ga
 | CALLHOME dataset setup | [docs/CALLHOME_SETUP.md](docs/CALLHOME_SETUP.md) |
 | IEMOCAP dataset setup | [docs/IEMOCAP_SETUP.md](docs/IEMOCAP_SETUP.md) |
 | Documentation index | [docs/INDEX.md](docs/INDEX.md) |
+| Privacy notice | [docs/PRIVACY.md](docs/PRIVACY.md) |
+| Third-party licenses | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |

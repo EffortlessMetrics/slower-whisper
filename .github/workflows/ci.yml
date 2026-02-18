@@ -108,6 +108,59 @@ jobs:
             tests/test_turn_helpers.py \
             tests/test_audio_state_schema.py
 
+  security-scan:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # full history for gitleaks
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install security dependencies
+        run: uv sync --extra security
+
+      - name: Run pip-audit
+        run: uv run pip-audit --strict --desc on
+        continue-on-error: true  # informational initially
+
+      - name: Run bandit
+        run: uv run bandit -r transcription/ slower_whisper/ -ll
+        continue-on-error: true  # informational initially
+
+      - name: PII pattern scan
+        run: |
+          # Scan docs/examples/benchmarks for PII-like patterns
+          FAIL=0
+          for dir in docs examples benchmarks; do
+            [ -d "$dir" ] || continue
+            HITS=$(grep -rPn '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$dir" \
+              --include='*.md' --include='*.py' --include='*.json' --include='*.txt' \
+              | grep -v 'example\.com' | grep -v '@example\.' | grep -v 'test\.org' \
+              | grep -v 'noreply@' | grep -v 'REDACTED' || true)
+            if [ -n "$HITS" ]; then
+              echo "::warning::Potential email PII in $dir:"
+              echo "$HITS"
+              FAIL=1
+            fi
+          done
+          [ "$FAIL" -eq 0 ] || echo "::warning::Review PII hits above. Add to allowlist if intentional."
+
   wheel-smoke:
     name: Wheel smoke test
     runs-on: ubuntu-latest
@@ -813,6 +866,7 @@ jobs:
       - bdd-library
       - bdd-api
       - benchmark
+      - security-scan
       - docs
     runs-on: ubuntu-latest
     steps:
@@ -840,6 +894,15 @@ jobs:
             echo "✅ Benchmark smoke test passed"
           else
             echo "ℹ️ Benchmark smoke test: ${{ needs.benchmark.result }}"
+          fi
+
+          # Report security scan status (informational)
+          if [[ "${{ needs.security-scan.result }}" == "failure" ]]; then
+            echo "⚠️ Security scan had issues (informational)"
+          elif [[ "${{ needs.security-scan.result }}" == "success" ]]; then
+            echo "✅ Security scan passed"
+          else
+            echo "ℹ️ Security scan: ${{ needs.security-scan.result }}"
           fi
 
           echo ""

@@ -1,0 +1,35 @@
+# Gitleaks configuration for slower-whisper
+# https://github.com/gitleaks/gitleaks
+
+title = "slower-whisper gitleaks config"
+
+[extend]
+# Extend the default gitleaks rules
+useDefault = true
+
+[allowlist]
+description = "Global allowlist"
+
+paths = [
+  # Template file with empty placeholders
+  '''k8s/secret\.template\.yaml''',
+  # Test files with intentional mock keys/tokens
+  '''tests/test_security_leak\.py''',
+  '''tests/test_semantic_cloud_providers\.py''',
+  '''tests/test_llm_security\.py''',
+  '''tests/test_llm_providers\.py''',
+]
+
+regexes = [
+  # Known placeholder patterns used in tests and examples
+  '''test-key''',
+  '''sk-test''',
+  '''sk-fake''',
+  '''sk-mock''',
+  '''DB_PASSWORD=secret123''',  # pragma: allowlist secret
+  '''YOUR_TOKEN''',
+  '''your-registry''',
+  '''example\.com''',
+  # Nix store hashes (not secrets)
+  '''/nix/store/[a-z0-9]{32}-''',
+]

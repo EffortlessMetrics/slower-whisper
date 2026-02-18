@@ -11,6 +11,7 @@ include SECURITY.md
 include ROADMAP.md
 include CLAUDE.md
 include AGENTS.md
+include THIRD_PARTY_NOTICES.md
 
 # Packaging/build metadata
 include pyproject.toml
