@@ -352,8 +352,10 @@ class TestFormatDoctorReport:
 
         output = format_doctor_report(report, use_color=False)
 
-        assert "[PASS]" in output
-        assert "[WARN]" in output
+        # Check for symbol presence (ASCII fallback in tests usually)
+        # Note: Symbols.check() depends on env vars, so we check broadly
+        assert "[v]" in output or "✔" in output
+        assert "[!]" in output or "⚠" in output
         assert "Test A" in output
         assert "Test B" in output
 
