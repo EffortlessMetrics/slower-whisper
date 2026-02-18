@@ -259,6 +259,9 @@ class TestSecurityHeaders:
 
         assert response.headers.get("X-Content-Type-Options") == "nosniff"
         assert response.headers.get("X-Frame-Options") == "DENY"
+        assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+        assert "microphone=()" in response.headers.get("Permissions-Policy", "")
+        assert "camera=()" in response.headers.get("Permissions-Policy", "")
 
         csp = response.headers.get("Content-Security-Policy", "")
         assert "default-src 'self'" in csp
