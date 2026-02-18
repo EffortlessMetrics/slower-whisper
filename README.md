@@ -1,6 +1,8 @@
 # slower-whisper
 
-Audio in, receipts out.
+**Know who said what, when, and how they said it — from any audio file, on your machine.**
+
+Transcription gives you words. slower-whisper gives you the whole conversation: speakers, timing, tone, emotion, and topic structure — as stable, versioned JSON you can build on. Local-first. No cloud, no API keys, no per-minute billing.
 
 [![CI](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml)
 [![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
@@ -18,8 +20,6 @@ print(transcript.full_text)
 print(transcript.segments[0].speaker)       # "spk_0"
 print(transcript.segments[0].audio_state)   # prosody, emotion, timing
 ```
-
-Standard transcription gives you words. slower-whisper gives you words + speakers + tone + emotion + timing — locally, as stable JSON. It's a truth layer for LLM pipelines: acoustic ground truth that models can't hallucinate, pre-computed so they don't have to.
 
 ## Install
 
