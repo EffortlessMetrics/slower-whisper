@@ -1,0 +1,3 @@
+## 2024-05-23 - Cache ffmpeg checks
+**Learning:** `subprocess.run` calls, even for simple version checks like `ffmpeg -version`, can add significant overhead (20-50ms per call) if executed repeatedly. In this codebase, `normalize_single` calls `check_ffmpeg_installation`, which runs `ffmpeg -version`. For batch processing or high-throughput APIs, this overhead accumulates linearly.
+**Action:** Use `functools.lru_cache(maxsize=1)` for static system checks like `ffmpeg_available` and `get_ffmpeg_version`. This reduces the cost to near-zero after the first call. **Crucially**, when adding caching to functions that are mocked in tests, you MUST ensure tests clear the cache (e.g., via an `autouse=True` fixture) to prevent state leakage between tests.
