@@ -139,6 +139,37 @@ Runs everything in fast mode, plus:
 
 ---
 
+## Test Tiers
+
+Tests are organized into tiers that run at different stages. The `ci-success` gate only blocks on Fast + Smoke + Integration + BDD + Docs.
+
+| Tier | When | What | Blocks merge? |
+|------|------|------|---------------|
+| **Fast** | Every PR | Unit tests, lint, type-check, format | Yes |
+| **Smoke** | Every PR | Real tiny model ASR + compat + pipeline + writers + streaming envelope | Yes |
+| **Heavy** | Every PR (soft) / main (hard) | Emotion models (`continue-on-error` on PRs, hard fail on main) | No (informational on PR) |
+| **Nightly** | Weekly schedule / manual | Diarization (real pyannote), benchmark gate | No (alerts) |
+| **Release** | Tag push | All of the above | PyPI publish |
+
+### Heavy tests
+
+Heavy tests (emotion models) run on every PR with `continue-on-error: true` so they don't block merges. On the `main` branch, heavy test failures are treated as hard failures.
+
+### Diarization nightly
+
+The `diarization-nightly` job runs real pyannote diarization (not the stub backend) on committed smoke fixtures. It only triggers on schedule or manual dispatch because it requires the `HF_TOKEN` secret for pyannote model access. The job:
+
+1. Installs `--extra diarization` dependencies
+2. Runs `benchmarks/eval_diarization.py` with the real pyannote backend
+3. Validates aggregate DER < 1.0 and speaker count accuracy > 0.5
+4. Caches HuggingFace model downloads between runs
+
+### Streaming envelope smoke tests
+
+`tests/test_smoke_streaming.py` exercises the WebSocket streaming protocol's event envelope contract using the mock ASR path (no real model needed). These tests verify monotonic event IDs, required envelope fields, FINALIZED events, and session lifecycle. Marked `@pytest.mark.smoke` and `@pytest.mark.e2e`.
+
+---
+
 ## Benchmark CI Integration
 
 The benchmark CI workflow (`.github/workflows/benchmark.yml`) runs quality evaluations to detect performance regressions. It operates in **report-only mode by default** and does not block merges.

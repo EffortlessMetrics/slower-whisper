@@ -227,6 +227,7 @@ run_check "Pre-commit hooks" \
 run_check "Type-check (mypy)" \
     uv run mypy \
         transcription/ \
+        slower_whisper/ \
         tests/test_llm_utils.py \
         tests/test_writers.py \
         tests/test_turn_helpers.py \
@@ -235,6 +236,12 @@ run_check "Type-check (mypy)" \
 # Check 4: Fast tests
 run_check "Fast tests (pytest -m 'not slow and not heavy')" \
     uv run pytest -q -m "not slow and not heavy"
+
+# Check 4b: Smoke tests (real tiny model) - only in full mode
+if [ "$MODE" != "fast" ]; then
+    run_check "Smoke tests (real tiny model)" \
+        env SLOWER_WHISPER_TEST_REAL=1 uv run pytest -m smoke -v --tb=short -x --timeout=120
+fi
 
 # Check 5: Quick verification
 run_check "Verification suite" \

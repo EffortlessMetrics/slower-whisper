@@ -1,8 +1,8 @@
 # slower-whisper
 
-Audio in, receipts out.
+**Know who said what, when, and how they said it — from any audio file, on your machine.**
 
-`slower-whisper` is a local-first Python toolkit for conversation ETL. It turns raw audio into schema-versioned transcript data with optional speaker/audio enrichment and reproducible run metadata.
+Transcription gives you words. slower-whisper gives you the whole conversation: speakers, timing, tone, emotion, and topic structure — as stable, versioned JSON you can build on. Local-first. No cloud, no API keys, no per-minute billing.
 
 [![CI](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/ci.yml)
 [![Verify](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml/badge.svg)](https://github.com/EffortlessMetrics/slower-whisper/actions/workflows/verify.yml)
@@ -10,92 +10,53 @@ Audio in, receipts out.
 [![Python](https://img.shields.io/badge/python-3.12--3.14-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)](#license)
 
-## What You Get
+```python
+from transcription import TranscriptionConfig, transcribe_file
 
-- Local-first transcription and enrichment (no hosted runtime required)
-- Stable schema-versioned transcript JSON (`schema_version = 2`)
-- Optional speaker diarization, prosody, and emotion extraction
-- Streaming contracts for WebSocket/SSE pipelines
-- Benchmark CLI with baseline/gating support
-- A `faster-whisper` compatibility shim for migration
+cfg = TranscriptionConfig(model="base", device="auto", language="en")
+transcript = transcribe_file("meeting.wav", root=".", config=cfg)
 
-## Python Package Map (Crate Equivalents)
-
-| Surface | Purpose | Typical Entry Points |
-|---------|---------|----------------------|
-| `transcription` | Core public API (batch, file, bytes, enrichment, models, streaming primitives) | `transcribe_directory`, `transcribe_file`, `transcribe_bytes`, `enrich_directory` |
-| `slower_whisper` | `faster-whisper` compatible import surface | `WhisperModel`, `Segment`, `Word`, `TranscriptionInfo` |
-| `transcription.service*` | FastAPI service and transport layers | `transcription/service.py` |
-| `transcription.streaming*` | Real-time session/event contracts, client/server helpers | `streaming.py`, `streaming_ws.py`, `streaming_client.py` |
-| `transcription.benchmark_cli` + `benchmarks/` | Multi-track evaluation and regression gates | `slower-whisper benchmark ...` |
-| `transcription.store`, `transcription.outcomes`, `transcription.integrations` | Store/outcomes/integration surfaces for downstream automation | package modules + CLI subcommands |
+print(transcript.full_text)
+print(transcript.segments[0].speaker)       # "spk_0"
+print(transcript.segments[0].audio_state)   # prosody, emotion, timing
+```
 
 ## Install
-
-Base install (transcription only):
 
 ```bash
 uv add slower-whisper
 # or: pip install slower-whisper
 ```
 
-Extras by use case:
+Add what you need:
 
-| Extra | Adds |
-|-------|------|
-| `enrich-basic` | Base DSP stack (`numpy`, `librosa`, `soundfile`) |
+| Extra | What it adds |
+|-------|-------------|
+| `enrich-basic` | DSP stack (`numpy`, `librosa`, `soundfile`) |
 | `enrich-prosody` | Praat-based prosody (`praat-parselmouth`) |
 | `emotion` | Emotion models (`torch`, `torchaudio`, `transformers`) |
 | `diarization` | Speaker diarization (`pyannote.audio`) |
-| `full` / `enrich` | Full enrichment bundle |
+| `full` | Everything above |
 | `api` | FastAPI service runtime |
 | `integrations` | LangChain + LlamaIndex adapters |
-| `dev` | Contributor toolchain |
-
-Examples:
 
 ```bash
-uv sync
-uv sync --extra full
-uv sync --extra api
-uv sync --extra full --extra dev
+uv sync                              # transcription only
+uv sync --extra full                 # all enrichment
+uv sync --extra full --extra dev     # contributor toolchain
 ```
 
-## 5-Minute CLI Quickstart
+## Package Map
 
-```bash
-git clone https://github.com/EffortlessMetrics/slower-whisper.git
-cd slower-whisper
+| Package | What it is |
+|---------|-----------|
+| `transcription` | Core Python API — batch, file, streaming, enrichment, post-processing |
+| `slower_whisper` | `faster-whisper` drop-in replacement (`WhisperModel`, `Segment`, `Word`) |
+| `slower-whisper` | CLI — `transcribe`, `enrich`, `benchmark`, `export`, `validate` |
 
-# Recommended dev environment
-nix develop
-uv sync --extra full --extra dev
+## `faster-whisper` Migration
 
-# Stage 1 transcription (reads raw_audio/, writes whisper_json/)
-uv run slower-whisper transcribe --root .
-
-# Optional stage 2 enrichment
-uv run slower-whisper enrich --root .
-```
-
-## Python API Quickstart
-
-```python
-from pathlib import Path
-
-from transcription import TranscriptionConfig, transcribe_file
-
-cfg = TranscriptionConfig(model="base", device="auto", language="en")
-transcript = transcribe_file(
-    audio_path=Path("raw_audio/meeting.wav"),
-    root=Path("."),
-    config=cfg,
-)
-
-print(transcript.full_text)
-```
-
-## `faster-whisper` Drop-In Migration
+Change one import:
 
 ```python
 # Before
@@ -107,62 +68,53 @@ from slower_whisper import WhisperModel
 model = WhisperModel("base", device="auto")
 segments, info = model.transcribe("audio.wav", word_timestamps=True)
 
-# slower-whisper extension
+# slower-whisper extension — full transcript with enrichment
 transcript = model.last_transcript
 ```
 
-See [docs/FASTER_WHISPER_MIGRATION.md](docs/FASTER_WHISPER_MIGRATION.md) for option mapping and compatibility notes.
+Full option mapping: [docs/FASTER_WHISPER_MIGRATION.md](docs/FASTER_WHISPER_MIGRATION.md)
 
-## Benchmarking
+## CLI Quickstart
 
 ```bash
-# Inspect tracks and staged datasets
-uv run slower-whisper benchmark list
-uv run slower-whisper benchmark status
+# Transcribe (reads raw_audio/, writes whisper_json/)
+uv run slower-whisper transcribe --root .
 
-# Run an ASR smoke benchmark
+# Enrich with prosody + emotion
+uv run slower-whisper enrich --root .
+
+# Benchmark against baselines
 uv run slower-whisper benchmark run --track asr --dataset smoke
-
-# Compare against stored baseline (gate mode fails on regression)
 uv run slower-whisper benchmark compare --track asr --dataset smoke --gate
 ```
 
-For benchmark details, see [benchmarks/README.md](benchmarks/README.md) and [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+## What You Get
 
-## Local Gate
-
-```bash
-./scripts/ci-local.sh
-./scripts/ci-local.sh fast
-```
-
-Inside devshell, use `nix-clean` wrapper for raw nix commands.
+- **Local-first** — all processing on your hardware. No accounts, no rate limits, no per-minute billing.
+- **Beyond words** — speaker diarization, prosody, emotion, semantic annotation as opt-in layers.
+- **Stable contracts** — JSON schema v2 with `schema_version`, `receipt`, and `run_id`. Same input + config = same output.
+- **Streaming** — WebSocket/SSE with event envelopes, resume protocol, and backpressure.
+- **Post-processing** — topic segmentation (TF-IDF), turn-taking policies, domain presets for call centers and meetings.
+- **Benchmarks** — ASR WER, diarization DER, emotion, streaming latency — with baseline gating in CI.
+- **`faster-whisper` compatible** — change one import line.
 
 ## Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [docs/INDEX.md](docs/INDEX.md) | Documentation map |
-| [docs/QUICKSTART.md](docs/QUICKSTART.md) | First-run walkthrough |
-| [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) | CLI reference |
-| [docs/API_QUICK_REFERENCE.md](docs/API_QUICK_REFERENCE.md) | Python API reference |
-| [docs/STREAMING_ARCHITECTURE.md](docs/STREAMING_ARCHITECTURE.md) | Streaming contract and architecture |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Config and precedence |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Benchmark command reference |
-| [docs/PROJECT_METADATA.md](docs/PROJECT_METADATA.md) | Metadata/governance surfaces |
+| Start here | Then |
+|-----------|------|
+| [Quickstart](docs/QUICKSTART.md) | [CLI Reference](docs/CLI_REFERENCE.md) |
+| [Python API](docs/API_QUICK_REFERENCE.md) | [Configuration](docs/CONFIGURATION.md) |
+| [faster-whisper Migration](docs/FASTER_WHISPER_MIGRATION.md) | [Streaming Architecture](docs/STREAMING_ARCHITECTURE.md) |
+| [Post-Processing](docs/POST_PROCESSING.md) | [Benchmarks](docs/BENCHMARKS.md) |
 
-Component README quick links:
+Full docs index: [docs/INDEX.md](docs/INDEX.md) | Vision and strategy: [VISION.md](VISION.md) | Changelog: [CHANGELOG.md](CHANGELOG.md) | Roadmap: [ROADMAP.md](ROADMAP.md)
 
-- [benchmarks/README.md](benchmarks/README.md)
-- [scripts/README.md](scripts/README.md)
-- [k8s/README.md](k8s/README.md)
+## Community & Support
 
-## Project Metadata Surfaces
-
-- Package metadata: [pyproject.toml](pyproject.toml)
-- Citation metadata: [CITATION.cff](CITATION.cff)
-- Release/change history: [CHANGELOG.md](CHANGELOG.md)
-- Current plan/status: [ROADMAP.md](ROADMAP.md)
+- **Issues** — [Bug reports and feature requests](https://github.com/EffortlessMetrics/slower-whisper/issues)
+- **Security** — [Report a vulnerability](https://github.com/EffortlessMetrics/slower-whisper/security/advisories/new) (see [SECURITY.md](SECURITY.md))
+- **Contributing** — See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, PR process, and coding standards
+- **Support** — [Getting help](.github/SUPPORT.md)
 
 ## License
 

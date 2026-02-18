@@ -4,6 +4,18 @@ Welcome to the **slower-whisper** documentation -- ETL for conversations, audio 
 
 ---
 
+## Start Here
+
+New to slower-whisper? These five pages cover the essentials:
+
+1. **[README](../README.md)** — Project overview, installation, and architecture map
+2. **[Quickstart](QUICKSTART.md)** — Your first transcription in 5 minutes
+3. **[CLI Reference](CLI_REFERENCE.md)** — All commands and options
+4. **[API Quick Reference](API_QUICK_REFERENCE.md)** — Python function reference
+5. **[Configuration](CONFIGURATION.md)** — Config files, env vars, CLI flags, and precedence
+
+---
+
 ## What is slower-whisper?
 
 **slower-whisper is ETL for conversations.** It transforms raw audio into schema-versioned structured data that captures not just *what* was said, but *who* said it, *when*, and *how*.
@@ -56,7 +68,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 |----------|-------------|----------|
 | [README.md](../README.md) | Project overview, features, installation, and quick start | Everyone |
 | [VISION.md](../VISION.md) | Strategic vision, positioning, and long-term goals | Everyone interested in the "why" |
-| [ROADMAP.md](../ROADMAP.md) | Detailed development timeline and planned features (v1.1-v3.0) | Contributors, users, stakeholders |
+| [ROADMAP.md](../ROADMAP.md) | Detailed development timeline and planned features (v2.0.x–v3.0) | Contributors, users, stakeholders |
 | [CHANGELOG.md](../CHANGELOG.md) | Version history and release notes | All users |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | How to contribute to the project | Contributors |
 | [SECURITY.md](../SECURITY.md) | Security policy and vulnerability reporting | Security-conscious users |
@@ -499,6 +511,6 @@ Use your browser's search (Ctrl+F / Cmd+F) or GitHub's search to find specific t
 
 ---
 
-**Last Updated:** 2026-02-16
+**Last Updated:** 2026-02-17
 
 **Feedback:** Open an issue or discussion on GitHub if you have suggestions for improving the documentation.

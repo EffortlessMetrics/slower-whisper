@@ -35,15 +35,7 @@ choco install ffmpeg -y
 
 ### Step 2: Set Up Python Environment
 
-**Option 1: Using Nix (recommended)**
-```bash
-git clone https://github.com/EffortlessMetrics/slower-whisper.git
-cd slower-whisper
-nix develop
-uv sync --extra full --extra dev
-```
-
-**Option 2: Using uv (fast)**
+**Option 1: Using uv (recommended)**
 ```bash
 git clone https://github.com/EffortlessMetrics/slower-whisper.git
 cd slower-whisper
@@ -52,6 +44,14 @@ cd slower-whisper
 uv sync --extra full --extra dev   # contributors
 # or
 uv sync --extra full               # runtime only
+```
+
+**Option 2: Using Nix (reproducible)**
+```bash
+git clone https://github.com/EffortlessMetrics/slower-whisper.git
+cd slower-whisper
+nix develop
+uv sync --extra full --extra dev
 ```
 
 **Option 3: Using pip (traditional)**
@@ -470,10 +470,12 @@ pip install transformers torch
 - **[Examples](../examples/)** - Example analysis scripts
 
 ### Advanced Usage
-- Speaker diarization (future feature)
-- Custom emotion models
-- Integration with RAG pipelines
-- LLM context enrichment
+- **[Speaker diarization](SPEAKER_DIARIZATION.md)** - Identify who said what with pyannote.audio
+- **[Streaming transcription](STREAMING_ARCHITECTURE.md)** - Real-time WebSocket/SSE pipelines
+- **[Semantic adapters](../docs/LLM_SEMANTIC_ANNOTATOR.md)** - Pluggable annotation with local or LLM backends
+- **[Post-processing](POST_PROCESSING.md)** - Topic segmentation and turn-taking policies
+- **[Benchmarks](BENCHMARKS.md)** - Evaluate and gate ASR, diarization, emotion, and streaming
+- **[LLM integration](LLM_PROMPT_PATTERNS.md)** - LangChain/LlamaIndex adapters and prompt patterns
 
 ### Contributing
 See **[CONTRIBUTING.md](../CONTRIBUTING.md)** for:

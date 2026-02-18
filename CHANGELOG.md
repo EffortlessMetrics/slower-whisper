@@ -9,15 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- (none)
+- **Real ASR smoke tests**: Smoke tests for real ASR engine and compatibility layer (`test_smoke_real_engine.py`, `test_smoke_compat.py`) gated by `SLOWER_WHISPER_TEST_REAL=1`
+- **Diarization smoke fixtures**: Speech diarization smoke audio fixtures for nightly CI
+- **Nightly diarization CI**: GitHub Actions workflow for scheduled diarization tests with real pyannote models
 
 ### Changed
 
-- (none)
+- **Test tier documentation**: Updated test tier table in CLAUDE.md to include smoke tests (real model) and nightly tier
+- **CI configuration**: Enhanced CI with separate smoke, heavy, and nightly test stages
 
-### Fixed
+### Documentation
 
-- (none)
+- **Common issues guide**: Added troubleshooting section for frequent setup and runtime problems
+- **Contributing guidelines**: Enhanced CONTRIBUTING.md with development setup, PR process, and coding standards
+- **Project overview**: Updated project descriptions across metadata files for clarity and accuracy
 
 ## [2.0.1] - 2026-02-16
 

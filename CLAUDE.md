@@ -72,6 +72,25 @@ nix-clean run .#verify -- --quick
     - Turn-level processors (roles, topics) run via `process_turn()` separately
     - Callbacks never crash pipeline (exceptions caught and logged)
 
+12. **E2E smoke tests use real models**
+    - `tests/test_smoke_*.py` run real tiny model on committed audio fixtures
+    - Keyword assertions, not exact match — resilient to model updates
+    - Gated by `SLOWER_WHISPER_TEST_REAL=1` env var; excluded from default `pytest`
+
+---
+
+## Test Tiers
+
+Tests are organized into tiers that run at different stages. The `ci-success` gate only blocks on Fast + Smoke + Integration + BDD + Docs.
+
+| Tier | When | What | Blocks merge? |
+|------|------|------|---------------|
+| **Fast** | Every PR | Unit tests, lint, type-check, format | Yes |
+| **Smoke** | Every PR | Real tiny model ASR + compat + pipeline + writers + streaming envelope | Yes |
+| **Heavy** | Main only | Emotion models (`continue-on-error` on PRs, hard fail on main) | No (informational on PR) |
+| **Nightly** | Weekly schedule | Diarization (real pyannote), benchmark gate | No (alerts) |
+| **Release** | Tag push | All of the above | PyPI publish |
+
 ---
 
 ## Key Surfaces
@@ -99,6 +118,7 @@ nix-clean run .#verify -- --quick
 | Turn-taking policies | `transcription/turn_taking_policy.py` |
 | API service | `transcription/service.py` |
 | Public API | `transcription/api.py` |
+| E2E tests (real ASR) | `tests/test_smoke_*.py` |
 
 ---
 

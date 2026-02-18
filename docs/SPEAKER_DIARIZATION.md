@@ -56,6 +56,11 @@ uv run python benchmarks/eval_diarization.py \
   --overwrite
 ```
 
+### CI coverage
+
+- **Stub regression check**: Runs on every PR via `benchmarks/check_diarization_stub.py` (no HF_TOKEN needed, 5-minute timeout).
+- **Real pyannote nightly**: The `diarization-nightly` CI job runs real pyannote on committed smoke fixtures on schedule/manual dispatch. Requires `HF_TOKEN`. Validates avg DER < 1.0 and speaker count accuracy > 0.5. See [CI_CHECKS.md](CI_CHECKS.md#diarization-nightly).
+
 ---
 
 ## Overview
@@ -668,4 +673,5 @@ Before releasing v1.1 with diarization:
 ---
 
 **Document History:**
+- 2026-02-17: Add CI coverage section (diarization nightly, stub regression check)
 - 2025-11-17: Initial speaker diarization design (v1.1 skeleton)

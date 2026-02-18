@@ -21,6 +21,16 @@
 - Minimal reproduction commands and expected vs actual behavior
 - Logs or tracebacks
 
+## Common Issues
+
+- **GPU / CUDA problems** — See [GPU_SETUP.md](https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/GPU_SETUP.md) for device selection, compute types, and driver requirements
+- **Configuration questions** — See [CONFIGURATION.md](https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/CONFIGURATION.md) for config file precedence, environment variables, and CLI flags
+- **General troubleshooting** — See [TROUBLESHOOTING.md](https://github.com/EffortlessMetrics/slower-whisper/blob/main/docs/TROUBLESHOOTING.md) for common errors and solutions
+
+## Contributing
+
+Want to contribute? See [CONTRIBUTING.md](https://github.com/EffortlessMetrics/slower-whisper/blob/main/CONTRIBUTING.md) for development setup, PR process, and coding standards.
+
 ## Response Expectations
 
-Maintainers triage issues in batches. Security reports are handled privately first, then disclosed in coordinated release notes.
+Maintainers triage issues in batches — expect initial response within a few business days for bugs and feature requests. Security reports are handled privately first, then disclosed in coordinated release notes.

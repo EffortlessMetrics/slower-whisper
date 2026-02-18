@@ -2,7 +2,6 @@
 
 # Core project metadata
 include README.md
-include LICENSE
 include LICENSE-APACHE
 include LICENSE-MIT
 include CHANGELOG.md

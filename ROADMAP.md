@@ -1,7 +1,7 @@
 # slower-whisper Roadmap
 
 **Current Version:** v2.0.1
-**Last Updated:** 2026-02-16
+**Last Updated:** 2026-02-17
 <!-- cspell:ignore backpressure smollm CALLHOME qwen pyannote Libri librispeech rttm RTTM acks goldens -->
 
 Roadmap = forward-looking execution plan.
@@ -12,14 +12,12 @@ Vision and strategic positioning live in [VISION.md](VISION.md).
 
 ## Quick Status
 
-| Track | Status | Next Action |
-|-------|--------|-------------|
-| v1.9.x Closeout | ✅ Complete | — |
-| API Polish Bundle | ✅ Complete | Close issues with receipts |
-| Track 1: Benchmarks | ✅ Complete | All phases shipped (including Phase 3 gate mode) |
-| Track 2: Streaming | ✅ Complete | Docs polish, incremental diarization (#86) |
-| Track 3: Semantics | ✅ Complete | Semantic quality benchmark (#98) |
-| Track 5: Post-Processing | ✅ Complete | Topic segmentation, turn-taking policies shipped |
+| Area | Status | Next |
+|------|--------|------|
+| v2.0 core (streaming, benchmarks, semantics, post-processing) | ✅ Shipped | Maintenance |
+| Expanded benchmark datasets | ⬜ Open | [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) |
+| Incremental diarization | ⬜ Open | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) |
+| Semantic quality benchmark (Topic F1) | ⬜ Open | [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98) |
 
 ---
 
@@ -60,50 +58,30 @@ Full history: [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
-## Now: v1.x Polish + v2.0 Prerequisites
+## Shipped in v2.0
 
-**Goal:** Clean up v1.x surface, then start v2.0 with solid contracts.
+All five development tracks completed and released.
 
-### A) v1.9.x Closeout — ✅ Complete
+| Track | What Shipped | Key Modules |
+|-------|-------------|-------------|
+| **Benchmarks** | ASR WER, DER, emotion, streaming latency runners; baseline infrastructure; gate mode (`--gate`, `--threshold`) | `benchmarks.py`, `benchmark_cli.py` |
+| **Streaming** | WebSocket + SSE endpoints, event envelope (IDs, ordering, backpressure), Python client, session registry | `streaming_ws.py`, `streaming_client.py`, `session_registry.py` |
+| **Semantics** | 5 adapters (local keywords, local LLM, OpenAI, Anthropic, noop), LLM guardrails, golden file contract tests | `semantic_adapter.py`, `llm_guardrails.py` |
+| **Cleanup** | Deprecated APIs removed (`--enrich-config`, legacy scripts) | [#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59) |
+| **Post-Processing** | `PostProcessor` orchestration, topic segmentation (TF-IDF), turn-taking policies (aggressive/balanced/conservative), domain presets | `post_process.py`, `topic_segmentation.py`, `turn_taking_policy.py` |
 
-All v1.9.x deliverables shipped:
-- ✅ Callback docs in STREAMING_ARCHITECTURE.md
-- ✅ Example callback integration (`examples/streaming/callback_demo.py`)
-- ✅ Version constant fix (v1.9.2)
+### Performance Targets
 
-P95 latency harness moves to Track 1 ([#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97)).
-
-### B) API Polish Bundle — ✅ Complete
-
-All features implemented:
-
-| Issue | Feature | Status |
-|-------|---------|--------|
-| [#70](https://github.com/EffortlessMetrics/slower-whisper/issues/70) | `transcribe_bytes()` API | ✅ `transcription/api.py` |
-| [#71](https://github.com/EffortlessMetrics/slower-whisper/issues/71) | `word_timestamps` REST parameter | ✅ `transcription/service.py` |
-| [#72](https://github.com/EffortlessMetrics/slower-whisper/issues/72) | Word-level timestamps example | ✅ `examples/word_timestamps_*.py` |
-| [#78](https://github.com/EffortlessMetrics/slower-whisper/issues/78) | `Transcript` convenience methods | ✅ `get_segments_by_speaker()`, `get_segment_at_time()`, `full_text`, `duration` |
-
-**Action:** Close issues with receipts pointing to implementation.
-
-### C) Issue Cleanup
-
-Reconcile tracker before v2 work:
-- [ ] Close completed issues (#66, #74, #132) with receipts
-- [ ] Rewrite partial issues with v2-style DoD (inputs → outputs → validation)
-
-### D) Infrastructure Issues
-
-Verify these exist (create if missing):
-
-| Issue | Purpose |
-|-------|---------|
-| #135 | Receipt contract (benchmark provenance) |
-| #136 | Stable run/event IDs (streaming correlation) |
-| #137 | Baseline file format (regression detection) |
+| Metric | Target | Source |
+|--------|--------|--------|
+| ASR WER (LibriSpeech) | < 5% | Benchmarks |
+| Diarization DER (AMI) | < 15% | Benchmarks |
+| Streaming P95 latency | < 500ms | Streaming |
+| Semantic Topic F1 | > 0.8 | Semantics |
+| Concurrent streams/GPU | > 10 | Streaming |
 
 <details>
-<summary><strong>Receipt Contract Specification (for #135)</strong></summary>
+<summary><strong>Design Notes: Receipt Contract Specification</strong></summary>
 
 Every transcript and benchmark artifact includes `meta.receipt`:
 
@@ -139,87 +117,8 @@ Every transcript and benchmark artifact includes `meta.receipt`:
 
 </details>
 
-### Exit Criteria for "Now"
-
-| Criterion | Status |
-|-----------|--------|
-| API polish implemented | ✅ All features in codebase |
-| Issue tracker reconciled | ⬜ Close completed issues with receipts |
-| Infrastructure issues exist (#135–#137) | ✅ Receipt + baseline infrastructure complete |
-| Streaming contract issues exist (#133, #134) | ✅ Event envelope + client implemented |
-
-### Recommended Execution Path
-
-```
-API Polish Bundle (#70, #71, #72, #78)
-         │
-         ▼
-Track 1: Benchmarks (#95 → #137 → #97 → #96)
-         │
-         ▼
-Track 2: Streaming (#133 → #134 → #84)
-```
-
-**Note:** Complete API polish before benchmarks. Don't mix adoption work and v2 infrastructure.
-
----
-
-## v2.0: Ready for Release
-
-**Theme:** ETL for conversations. Audio in, receipts out.
-
-**What v2.0 delivers:**
-- **Streaming protocol** — WebSocket + SSE with event envelope, backpressure, resume
-- **Semantic adapters** — 5 providers (local keywords, local LLM, OpenAI, Anthropic, noop)
-- **Benchmark infrastructure** — ASR/DER/emotion/streaming runners with baselines
-- **Schema stability** — v2 JSON with receipts and provenance
-
-**Design principles:**
-- **Benchmarks are artifacts** — JSON schemas with comparison rules, not just scripts
-- **Streaming is a protocol** — envelope spec with ordering guarantees and backpressure
-- **Semantics are pluggable** — adapter protocol, not hardcoded providers
-
----
-
-### Track 1: Benchmark Foundations
-
-**Status:** ✅ Complete — all phases shipped
-
-Benchmarks must exist before streaming work can be measured.
-
-| Order | Issue | Deliverable | Status |
-|-------|-------|-------------|--------|
-| 1 | [#95](https://github.com/EffortlessMetrics/slower-whisper/issues/95) | ASR WER runner (jiwer, smoke dataset) | ✅ `ASRBenchmarkRunner` (#186) |
-| 2 | [#137](https://github.com/EffortlessMetrics/slower-whisper/issues/137) | Baseline file format + comparator | ✅ Baseline infrastructure complete |
-| 3 | [#97](https://github.com/EffortlessMetrics/slower-whisper/issues/97) | Streaming latency (P50/P95/P99, RTF) | ✅ `StreamingBenchmarkRunner` (#190) |
-| 4 | [#96](https://github.com/EffortlessMetrics/slower-whisper/issues/96) | Diarization DER runner (AMI subset) | ✅ `DiarizationBenchmarkRunner` (#189) |
-| 5 | [#99](https://github.com/EffortlessMetrics/slower-whisper/issues/99) | CI integration (report-only initially) | ✅ All phases complete |
-
-**Also implemented:**
-
-- ✅ `EmotionBenchmarkRunner` (#187): Categorical emotion accuracy, F1, confusion matrix
-
-**Supporting:**
-
-- [#94](https://github.com/EffortlessMetrics/slower-whisper/issues/94): Dataset manifest format
-- [#57](https://github.com/EffortlessMetrics/slower-whisper/issues/57): CLI `slower-whisper benchmark --track asr|diarization|streaming`
-
-**CI Integration Phases:**
-
-1. ~~Phase 1 (report-only)~~ - ✅ Complete
-2. ~~Phase 2 (PR comments)~~ - ✅ Complete
-3. ~~Phase 3 (gate mode)~~ - ✅ Complete: `--gate` flag on `benchmark run` and `benchmark compare`
-
-**Gate mode features:**
-- `--gate` flag fails CI when metrics regress beyond thresholds
-- `--threshold METRIC=VALUE` for per-metric threshold overrides
-- Clear regression report showing what regressed and by how much
-- Works on both `benchmark run` (run + compare) and `benchmark compare` commands
-
-**Done when:** `slower-whisper benchmark --track asr` emits result JSON + baseline comparison. ✅
-
 <details>
-<summary><strong>Dataset Manifest Contract (for #94)</strong></summary>
+<summary><strong>Design Notes: Dataset Manifest Contract</strong></summary>
 
 #### Manifest File Location
 
@@ -273,16 +172,10 @@ Benchmarks must exist before streaming work can be measured.
 - **Full sets:** Downloaded via script with hash verification
 - **Invalid provenance:** Explicitly rejected (no unverified datasets)
 
-#### Local Validation
-
-```bash
-slower-whisper benchmark --track asr --dataset smoke --limit 10 --dry-run
-```
-
 </details>
 
 <details>
-<summary><strong>Benchmark Result Contract (for #95/#96/#97/#98)</strong></summary>
+<summary><strong>Design Notes: Benchmark Results & Baselines</strong></summary>
 
 #### Result File Location
 
@@ -324,26 +217,6 @@ slower-whisper benchmark --track asr --dataset smoke --limit 10 --dry-run
 | Diarization | `der`, `jer`, `speaker_count_accuracy` |
 | Streaming | `p50_ms`, `p95_ms`, `p99_ms`, `first_token_ms`, `rtf` |
 
-#### Measurement Invalidation
-
-If semantics drift is discovered after the fact:
-
-```json
-{
-  "valid": false,
-  "invalid_reason": "Baseline used different normalization; see #142",
-  "invalidated_at": "2026-01-15T10:00:00Z",
-  "superseded_by": "run-20260115-093000-abc"
-}
-```
-
-This is a first-class state transition, not social drama.
-
-</details>
-
-<details>
-<summary><strong>Track 1 Design Notes: Baselines & Regression Policy</strong></summary>
-
 #### Baseline File Format
 
 Location: `benchmarks/baselines/<track>/<dataset>.json`
@@ -369,11 +242,6 @@ Location: `benchmarks/baselines/<track>/<dataset>.json`
 
 #### Regression Policy
 
-- **Phase 1 (now):** Report-only mode. Benchmark CLI prints comparison vs baseline but never fails.
-- **Phase 2 (when Actions return):** Gate mode. Fail if primary metric exceeds threshold.
-
-#### Comparison Rule
-
 ```
 regression = (current_value - baseline_value) / baseline_value
 fail_if: regression > threshold_percent (default: 10%)
@@ -381,23 +249,8 @@ fail_if: regression > threshold_percent (default: 10%)
 
 </details>
 
-### Track 2: Streaming — ✅ Core Complete
-
-**Status:** Core streaming infrastructure complete. Incremental diarization remaining.
-
-| Order | Issue | Deliverable | Status |
-|-------|-------|-------------|--------|
-| 1 | #133 | Event envelope spec (IDs, ordering, backpressure) | ✅ `streaming_ws.py:EventEnvelope` |
-| 2 | #134 | Reference Python client + contract tests | ✅ `streaming_client.py` |
-| 3 | [#84](https://github.com/EffortlessMetrics/slower-whisper/issues/84) | WebSocket endpoint (partial/final events) | ✅ `streaming_ws.py` |
-| 4 | [#85](https://github.com/EffortlessMetrics/slower-whisper/issues/85) | REST streaming endpoints (SSE) | ✅ `service.py` |
-| 5 | [#55](https://github.com/EffortlessMetrics/slower-whisper/issues/55) | Streaming API docs | ✅ `docs/STREAMING_ARCHITECTURE.md` |
-| 6 | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) | Incremental diarization hook | ⬜ Future |
-
-**Remaining:** Incremental diarization (#86), docs polish.
-
 <details>
-<summary><strong>Track 2 Design Notes: Event Envelope Specification</strong></summary>
+<summary><strong>Design Notes: Event Envelope Specification</strong></summary>
 
 #### Event Envelope (v2 Stable Contract)
 
@@ -470,23 +323,8 @@ All streaming events share this envelope:
 
 </details>
 
-### Track 3: Semantics Adapter — ✅ Core Complete
-
-**Status:** Full semantic adapter infrastructure complete. Benchmark runner remaining.
-
-| Order | Issue | Deliverable | Status |
-|-------|-------|-------------|--------|
-| 1 | [#88](https://github.com/EffortlessMetrics/slower-whisper/issues/88) | LLM annotation schema + versioning | ✅ `SemanticAdapter` protocol + `SemanticAnnotation` schema |
-| 2 | [#90](https://github.com/EffortlessMetrics/slower-whisper/issues/90) | Cloud LLM interface (OpenAI/Anthropic) | ✅ `OpenAISemanticAdapter`, `AnthropicSemanticAdapter` |
-| 3 | [#91](https://github.com/EffortlessMetrics/slower-whisper/issues/91) | Guardrails (rate limits, cost, PII) | ✅ `llm_guardrails.py` |
-| 4 | [#92](https://github.com/EffortlessMetrics/slower-whisper/issues/92) | Golden files + contract tests | ✅ `tests/fixtures/semantic_golden/` |
-| 5 | [#89](https://github.com/EffortlessMetrics/slower-whisper/issues/89) | Local LLM backend | ✅ `LocalLLMSemanticAdapter` |
-| 6 | [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98) | Semantic quality benchmark (Topic F1) | ⬜ Future |
-
-**Remaining:** Semantic quality benchmark (#98) for Topic F1 measurement.
-
 <details>
-<summary><strong>Track 3 Design Notes: Semantics Contract</strong></summary>
+<summary><strong>Design Notes: Semantics Contract</strong></summary>
 
 #### Annotation Schema v0
 
@@ -549,39 +387,8 @@ class SemanticProvider(Protocol):
 
 </details>
 
-### Track 4: v2.0 Cleanup
-
-| Issue | Deliverable | Status |
-|-------|-------------|--------|
-| [#59](https://github.com/EffortlessMetrics/slower-whisper/issues/59) | Remove deprecated APIs (`--enrich-config`, legacy scripts) | ✅ |
-| [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) | Expanded benchmark datasets (AMI, CALLHOME, LibriSpeech) | ⬜ |
-
-### Track 5: Post-Processing — ✅ Complete
-
-**Status:** Core post-processing infrastructure complete with topic segmentation and turn-taking policies.
-
-| Order | Deliverable | Status |
-|-------|-------------|--------|
-| 1 | `PostProcessConfig` unified configuration | ✅ `post_process.py` |
-| 2 | `PostProcessor` orchestration (safety, roles, topics, turn-taking, environment) | ✅ `post_process.py` |
-| 3 | Topic segmentation with TF-IDF similarity | ✅ `topic_segmentation.py` |
-| 4 | `StreamingTopicSegmenter` for real-time boundaries | ✅ `topic_segmentation.py` |
-| 5 | Turn-taking policy presets (aggressive/balanced/conservative) | ✅ `turn_taking_policy.py` |
-| 6 | `TurnTakingEvaluator` with confidence scoring | ✅ `turn_taking_policy.py` |
-| 7 | Preset configs (`post_process_config_for_call_center()`, `_for_meetings()`) | ✅ `post_process.py` |
-
-**Features delivered:**
-
-- **Topic Segmentation**: Rolling window TF-IDF similarity detection with configurable thresholds
-- **Turn-Taking Policies**: Three presets controlling END_OF_TURN_HINT behavior:
-  - `aggressive`: Fast response (300ms silence, 0.6 confidence)
-  - `balanced`: Default (700ms silence, 0.75 confidence)
-  - `conservative`: High accuracy (1200ms silence, 0.85 confidence)
-- **Unified Orchestration**: Single `PostProcessor` runs all enabled processors in dependency order
-- **Domain Presets**: Call center and meeting configurations with appropriate defaults
-
 <details>
-<summary><strong>Track 5 Design Notes: Post-Processing Architecture</strong></summary>
+<summary><strong>Design Notes: Post-Processing Architecture</strong></summary>
 
 #### PostProcessor Execution Order
 
@@ -629,43 +436,46 @@ confidence = (
 
 ---
 
-### v2.0 Performance Targets
+## Current: v2.0.x Maintenance
 
-| Metric | Target | Source |
-|--------|--------|--------|
-| ASR WER (LibriSpeech) | < 5% | Track 1 |
-| Diarization DER (AMI) | < 15% | Track 1 |
-| Streaming P95 latency | < 500ms | Track 2 |
-| Semantic Topic F1 | > 0.8 | Track 3 |
-| Concurrent streams/GPU | > 10 | Track 2 |
+**Goal:** Stabilize v2.0, close remaining gaps, expand dataset coverage.
 
----
-
-## Later (v2.1+ / v3)
-
-Placeholders, not commitments.
-
-### v2.1+
-
-| Feature | Issue |
-|---------|-------|
-| Full incremental diarization for streaming | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) |
-| Additional cloud LLM backends | — |
-| Domain-specific prompt templates | — |
-
-### v3.0 (2027+)
-
-| Feature | Issue |
-|---------|-------|
-| Intent detection (prosody + text fusion) | [#60](https://github.com/EffortlessMetrics/slower-whisper/issues/60) |
-| Clinical speech domain pack | [#61](https://github.com/EffortlessMetrics/slower-whisper/issues/61) |
-| Acoustic scene analysis | [#62](https://github.com/EffortlessMetrics/slower-whisper/issues/62) |
-| Discourse structure analysis | [#65](https://github.com/EffortlessMetrics/slower-whisper/issues/65) |
-| Domain pack plugin architecture | — |
+| Item | Issue | Status |
+|------|-------|--------|
+| Expanded benchmark datasets (AMI, CALLHOME, LibriSpeech full) | [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) | ⬜ Open |
+| Semantic quality benchmark (Topic F1) | [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98) | ⬜ Open |
+| Incremental diarization hook for streaming | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) | ⬜ Open |
+| Real ASR smoke tests (engine + compat layer) | — | ✅ Done |
+| Nightly diarization CI with real pyannote | — | ✅ Done |
+| Test tier hardening (smoke/heavy/nightly stages) | — | ✅ Done |
+| Docs polish (streaming, post-processing, contributing) | — | ✅ Done |
 
 ---
 
-## Dependency Map
+## Next: v2.1+
+
+| Feature | Issue | Notes |
+|---------|-------|-------|
+| Full incremental diarization for streaming | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) | Real-time speaker updates as audio arrives |
+| Semantic quality benchmark (Topic F1) | [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98) | Measure annotation quality against golden sets |
+| Expanded benchmark datasets | [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) | AMI, CALLHOME, LibriSpeech full evaluation |
+| Additional cloud LLM backends | — | Beyond OpenAI/Anthropic |
+| Domain-specific prompt templates | — | Vertical-specific semantic prompts |
+| Streaming authentication | — | Bearer token or WS subprotocol auth |
+
+## Later: v3.0 (2027+)
+
+| Feature | Issue | Notes |
+|---------|-------|-------|
+| Intent detection (prosody + text fusion) | [#60](https://github.com/EffortlessMetrics/slower-whisper/issues/60) | Multimodal intent from acoustic + text signals |
+| Clinical speech domain pack | [#61](https://github.com/EffortlessMetrics/slower-whisper/issues/61) | Healthcare-specific models and vocabulary |
+| Acoustic scene analysis | [#62](https://github.com/EffortlessMetrics/slower-whisper/issues/62) | Environment and noise classification |
+| Discourse structure analysis | [#65](https://github.com/EffortlessMetrics/slower-whisper/issues/65) | Conversation structure beyond turns |
+| Domain pack plugin architecture | — | Pluggable vertical packs |
+
+---
+
+## Dependency Map (v2.0 — historical reference)
 
 ```
                     ┌─────────────────────┐
@@ -701,29 +511,6 @@ Placeholders, not commitments.
           │    Release      │
           └─────────────────┘
 ```
-
-**Key constraints:**
-- Benchmarks gate streaming (can't claim latency without measuring it)
-- Streaming depends on v1.9 callback contracts (✅ shipped)
-- Semantics depends on stable Turn/Chunk model from Track 2
-- Post-processing depends on streaming callbacks and turn model (✅ shipped)
-- Deprecated APIs removed only after docs point to replacements
-
----
-
-## Issues to Close
-
-These issues are implemented but may not be formally closed:
-
-| Issue | Track | Status | Implementation |
-|-------|-------|--------|----------------|
-| #133 | 2 | ✅ Implemented | `streaming_ws.py:EventEnvelope` |
-| #134 | 2 | ✅ Implemented | `streaming_client.py` |
-| #135 | 1 | ✅ Implemented | Receipt provenance in benchmark results |
-| #136 | 2 | ✅ Implemented | `stream_id`, `event_id` in envelope |
-| #137 | 1 | ✅ Implemented | `benchmarks/baselines/` infrastructure |
-
-**Action:** Close with receipts pointing to implementation files.
 
 ---
 
@@ -781,8 +568,8 @@ nix-clean flake check        # Nix checks
 
 | Version | Theme |
 |---------|-------|
-| **v1.x** | Stabilize, enrich, polish (current) |
-| **v2.x** | Real-time streaming + benchmarks + semantic adapters |
+| **v1.x** | Stabilize, enrich, polish |
+| **v2.x** | Real-time streaming + benchmarks + semantic adapters (current) |
 | **v3.x** | Semantic understanding + domain packs |
 
 **Principle:** Each major version adds **layers**, not rewrites. v1.x JSON is forward-compatible with v2.x readers.
