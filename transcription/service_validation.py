@@ -131,7 +131,7 @@ def validate_audio_format(audio_path: Path) -> None:
                 "format=format_name,duration",
                 "-of",
                 "default=noprint_wrappers=1:nokey=1",
-                str(audio_path),
+                str(audio_path.resolve()),
             ],
             capture_output=True,
             text=True,
@@ -220,10 +220,13 @@ def _validate_audio_format_python(audio_path: Path) -> None:
 
         # Basic header validation for common formats
         with open(audio_path, "rb") as f:
-            header = f.read(12)  # Read first 12 bytes for header check
+            # Read first 16 bytes for header check (enough for WMA GUID)
+            header = f.read(16)
+
+            suffix = audio_path.suffix.lower()
 
             # WAV files start with "RIFF" and have "WAVE" at bytes 8-11
-            if audio_path.suffix.lower() == ".wav":
+            if suffix == ".wav":
                 if len(header) < 12 or not header.startswith(b"RIFF") or header[8:12] != b"WAVE":
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -231,7 +234,7 @@ def _validate_audio_format_python(audio_path: Path) -> None:
                     )
 
             # MP3 files typically start with ID3 tag or MPEG frame sync
-            elif audio_path.suffix.lower() == ".mp3":
+            elif suffix == ".mp3":
                 if len(header) < 3 or not (
                     header.startswith(b"ID3") or header.startswith(b"\xff\xfb")
                 ):
@@ -239,9 +242,37 @@ def _validate_audio_format_python(audio_path: Path) -> None:
                     logger.warning("Possible invalid MP3 file: missing ID3 tag or MPEG sync")
 
             # M4A/AAC files start with "ftyp" box
-            elif audio_path.suffix.lower() in (".m4a", ".aac"):
+            elif suffix in (".m4a", ".aac"):
                 if len(header) < 8 or header[4:8] != b"ftyp":
                     logger.warning("Possible invalid M4A/AAC file: missing ftyp box")
+
+            # FLAC files start with "fLaC"
+            elif suffix == ".flac":
+                if len(header) < 4 or header[:4] != b"fLaC":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid FLAC file: incorrect header format.",
+                    )
+
+            # OGG files start with "OggS"
+            elif suffix == ".ogg":
+                if len(header) < 4 or header[:4] != b"OggS":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid OGG file: incorrect header format.",
+                    )
+
+            # WMA files start with specific GUID
+            elif suffix == ".wma":
+                # ASF GUID: 30 26 B2 75 8E 66 CF 11 A6 D9 00 AA 00 62 CE 6C
+                wma_guid = b"\x30\x26\xB2\x75\x8E\x66\xCF\x11\xA6\xD9\x00\xAA\x00\x62\xCE\x6C"
+                if len(header) < 16 or header[:16] != wma_guid:
+                    logger.warning("Possible invalid WMA file: missing ASF GUID")
+                    # Strict check for WMA to be safe
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid WMA file: incorrect header format.",
+                    )
 
         # If we get here, basic checks passed
         logger.info("Basic validation passed for %s (ffprobe unavailable)", audio_path.name)
