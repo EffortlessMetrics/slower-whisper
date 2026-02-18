@@ -19,6 +19,7 @@ Standard transcription gives you words. slower-whisper gives you words + speaker
 - **Contract-driven** — stable JSON schema (v2) with typed fields, stability tiers, and backward-compatibility guarantees. Every transcript carries `schema_version`, `receipt`, and `run_id` for reproducibility.
 - **Streaming** — WebSocket/SSE contracts with event envelopes, resume protocol, and backpressure handling.
 - **Pluggable enrichment** — diarization, prosody, emotion, and semantic adapters are optional layers, not monolithic dependencies. Pay only for what you use.
+- **Post-processing** — topic segmentation (TF-IDF), turn-taking policies (aggressive/balanced/conservative), and domain presets for call centers and meetings.
 - **Benchmark infrastructure** — CLI with baseline/gating support for ASR, diarization, emotion, and streaming tracks.
 - **`faster-whisper` compatible** — drop-in migration shim; change one import line.
 
@@ -136,7 +137,7 @@ For benchmark details, see [benchmarks/README.md](benchmarks/README.md) and [doc
 
 | Package | Purpose |
 |---------|---------|
-| `transcription` | Core public API — batch, file, bytes, enrichment, streaming, models |
+| `transcription` | Core public API — batch, file, bytes, enrichment, streaming, post-processing, models |
 | `slower_whisper` | `faster-whisper` compatible import surface (`WhisperModel`, `Segment`, `Word`) |
 | `slower-whisper` (CLI) | Unified CLI — `transcribe`, `enrich`, `benchmark`, `export`, `validate` |
 
@@ -169,6 +170,7 @@ Inside devshell, use `nix-clean` wrapper for raw nix commands.
 - **I want to transcribe audio** — [docs/QUICKSTART.md](docs/QUICKSTART.md)
 - **Migrating from faster-whisper** — [docs/FASTER_WHISPER_MIGRATION.md](docs/FASTER_WHISPER_MIGRATION.md)
 - **Building LLM apps** — [docs/API_QUICK_REFERENCE.md](docs/API_QUICK_REFERENCE.md) and [docs/LLM_PROMPT_PATTERNS.md](docs/LLM_PROMPT_PATTERNS.md)
+- **Post-processing (topics, turns)** — [docs/POST_PROCESSING.md](docs/POST_PROCESSING.md)
 - **Understanding the architecture** — [VISION.md](VISION.md) and [docs/STREAMING_ARCHITECTURE.md](docs/STREAMING_ARCHITECTURE.md)
 
 Component README quick links:

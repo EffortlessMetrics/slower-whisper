@@ -1,7 +1,7 @@
 # Vision: slower-whisper as ETL for Conversations
 
-**Last Updated:** 2026-01-26
-**Status:** Active Development
+**Last Updated:** 2026-02-17
+**Status:** Active Development (v2.0.1)
 
 ---
 
@@ -137,14 +137,14 @@ Building conversation-aware LLM apps:
 
 ### Why This Matters
 
-**Prioritization:**
-- v1.1: Speaker diarization (all three groups want this)
-- v1.2: Speaker analytics + evaluation (groups 1 & 2 priority)
-- v1.3: LLM adapters (group 3 priority, but useful to all)
+**How we prioritized (and continue to):**
+- v1.x: Diarization, speaker analytics, LLM adapters, enrichment
+- v2.0: Streaming, benchmarks, semantic adapters, post-processing
+- v2.1+: Expanded datasets, incremental diarization, domain packs
 
 **Feature decisions:**
-- Docker/K8s docs before LangChain adapter (group 1 > group 3)
-- Praat export before HTML viewer (group 2 > casual users)
+- Infrastructure reliability before novelty (contracts > SOTA chase)
+- All user groups served before deep vertical features
 - Schema stability before semantic SLM (infrastructure > novelty)
 
 ### Why "ETL" and "FinOps"?
@@ -281,21 +281,7 @@ Users pay only for what they use (latency, GPU memory, dependencies).
 
 ## What Success Looks Like
 
-### Near-Term (v1.x — 2025-2026)
-
-**Users say:**
-
-> "I can't believe I'm getting AssemblyAI-like enrichment, locally, for free, with contracts."
-
-**Evidence:**
-
-- 500+ GitHub stars
-- 20+ external contributors
-- Used in 5+ academic papers (linguistics, HCI, psychology)
-- Integrated into 3+ open-source meeting/coaching tools
-- Tutorial videos, blog posts, conference talks
-
-### Medium-Term (v2.x — 2026-2027)
+### Current (v2.x — 2026)
 
 **Users say:**
 
@@ -303,11 +289,25 @@ Users pay only for what they use (latency, GPU memory, dependencies).
 
 **Evidence:**
 
-- 2,000+ stars
-- LangChain/LlamaIndex adapters maintained by community
+- Streaming, benchmarks, semantic adapters, post-processing all shipped
+- LangChain/LlamaIndex adapters available
 - Appears in "awesome lists" for LLM tooling and speech AI
 - Enterprise teams run it on-prem for regulated industries
 - Research labs cite it as standard preprocessing
+
+### Medium-Term (v2.x–v3.x — 2026-2027)
+
+**Users say:**
+
+> "I can't believe I'm getting AssemblyAI-like enrichment, locally, for free, with contracts."
+
+**Evidence:**
+
+- 2,000+ stars
+- 20+ external contributors
+- Used in 5+ academic papers (linguistics, HCI, psychology)
+- Integrated into 3+ open-source meeting/coaching tools
+- Tutorial videos, blog posts, conference talks
 
 ### Long-Term (v3.x+ — 2027+)
 
@@ -441,7 +441,7 @@ Be the "standard input" for:
 
 See [ROADMAP.md](ROADMAP.md) for detailed feature timelines.
 
-**Current state (v2.0.1):** All tracks through v2.0 are shipped — diarization, streaming, semantic adapters, benchmarks, post-processing. See [ROADMAP.md](ROADMAP.md) for the forward plan.
+**Current state (v2.0.1):** All tracks through v2.0 are shipped — diarization, streaming, semantic adapters, benchmarks, post-processing. Maintenance mode with expanded smoke tests, nightly diarization CI, and test tier hardening. See [ROADMAP.md](ROADMAP.md) for the forward plan.
 
 ---
 

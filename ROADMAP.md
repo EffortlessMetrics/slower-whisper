@@ -445,7 +445,10 @@ confidence = (
 | Expanded benchmark datasets (AMI, CALLHOME, LibriSpeech full) | [#48](https://github.com/EffortlessMetrics/slower-whisper/issues/48) | ⬜ Open |
 | Semantic quality benchmark (Topic F1) | [#98](https://github.com/EffortlessMetrics/slower-whisper/issues/98) | ⬜ Open |
 | Incremental diarization hook for streaming | [#86](https://github.com/EffortlessMetrics/slower-whisper/issues/86) | ⬜ Open |
-| Docs polish (streaming, post-processing) | — | Ongoing |
+| Real ASR smoke tests (engine + compat layer) | — | ✅ Done |
+| Nightly diarization CI with real pyannote | — | ✅ Done |
+| Test tier hardening (smoke/heavy/nightly stages) | — | ✅ Done |
+| Docs polish (streaming, post-processing, contributing) | — | ✅ Done |
 
 ---
 

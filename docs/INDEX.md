@@ -68,7 +68,7 @@ See [VISION.md](../VISION.md) for strategic positioning and [ROADMAP.md](../ROAD
 |----------|-------------|----------|
 | [README.md](../README.md) | Project overview, features, installation, and quick start | Everyone |
 | [VISION.md](../VISION.md) | Strategic vision, positioning, and long-term goals | Everyone interested in the "why" |
-| [ROADMAP.md](../ROADMAP.md) | Detailed development timeline and planned features (v1.1-v3.0) | Contributors, users, stakeholders |
+| [ROADMAP.md](../ROADMAP.md) | Detailed development timeline and planned features (v2.0.x–v3.0) | Contributors, users, stakeholders |
 | [CHANGELOG.md](../CHANGELOG.md) | Version history and release notes | All users |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | How to contribute to the project | Contributors |
 | [SECURITY.md](../SECURITY.md) | Security policy and vulnerability reporting | Security-conscious users |
