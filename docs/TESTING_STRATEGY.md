@@ -1,9 +1,35 @@
 # Testing Strategy
 
-**Last Updated:** 2025-11-17
+**Last Updated:** 2026-02-17
 **Status:** Active
 
 This document defines "good enough" quality thresholds and testing strategies for each layer of slower-whisper.
+
+---
+
+## Test Tiers
+
+Tests are organized into tiers that run at different CI stages. The `ci-success` gate only blocks on Fast + Smoke + Integration + BDD + Docs.
+
+| Tier | When | What | Blocks merge? |
+|------|------|------|---------------|
+| **Fast** | Every PR | Unit tests, lint, type-check, format | Yes |
+| **Smoke** | Every PR | Real tiny model ASR + compat + pipeline + writers + streaming envelope | Yes |
+| **Heavy** | Every PR (soft) / main (hard) | Emotion models (`continue-on-error` on PRs, hard fail on main) | No (informational on PR) |
+| **Nightly** | Weekly schedule / manual | Diarization (real pyannote), benchmark gate | No (alerts) |
+| **Release** | Tag push | All of the above | PyPI publish |
+
+### Pytest markers
+
+| Marker | Description |
+|--------|-------------|
+| `smoke` | Minimal coverage of critical functionality (included in smoke CI job) |
+| `e2e` | End-to-end tests (full system integration) |
+| `heavy` | Requires large models or GPU; excluded from fast runs |
+| `slow` | Long-running tests; excluded from fast runs |
+| `gpu` | Requires CUDA GPU |
+| `diarization` | Requires pyannote / diarization extras |
+| `api` | API service BDD scenarios |
 
 ---
 
@@ -447,19 +473,26 @@ uv run pytest features/ -v -m "api and functional"
 
 ## Continuous Integration
 
-**CI pipeline runs:**
+**PR-tier checks (blocks merge):**
 
 1. ✅ Code quality (ruff format, ruff check)
 2. ✅ Type checking (mypy)
-3. ✅ Unit tests (pytest -m "not slow")
-4. ✅ Integration tests (pytest tests/test_*integration*)
-5. ✅ Library BDD scenarios (pytest tests/steps/)
-6. ✅ API BDD scenarios - smoke (pytest features/ -m "api and smoke")
-7. ✅ API BDD scenarios - functional (pytest features/ -m "api and functional", continue-on-error)
-8. ✅ Docker smoke tests (build + `--help` check)
-9. ✅ K8s validation (kubectl apply --dry-run)
+3. ✅ Unit tests (pytest -m "not slow and not heavy")
+4. ✅ Smoke tests — real tiny model ASR, compat layer, pipeline, writers, streaming envelope
+5. ✅ Integration tests (pytest tests/test_*integration*)
+6. ✅ Library BDD scenarios (pytest tests/steps/)
+7. ✅ API BDD scenarios - smoke (pytest features/ -m "api and smoke")
+8. ✅ API BDD scenarios - functional (continue-on-error)
+9. ✅ Heavy tests — emotion models (continue-on-error on PRs, hard fail on main)
+10. ✅ Docker smoke tests (build + `--help` check)
+11. ✅ K8s validation (kubectl apply --dry-run)
 
-**All must pass before merge** (except functional API tests, which are recommended but not required).
+**Nightly / manual dispatch:**
+
+12. ✅ Diarization — real pyannote on smoke fixtures (requires `HF_TOKEN`)
+13. ✅ Benchmark gate — regression detection on scheduled runs
+
+**All PR-tier checks must pass before merge** (except heavy and functional API tests, which are informational on PRs). See [CI_CHECKS.md](CI_CHECKS.md) for details.
 
 ---
 
@@ -553,4 +586,5 @@ If the answer to all three is "yes," we've succeeded.
 ---
 
 **Document History:**
+- 2026-02-17: Add test tiers, pytest markers, streaming envelope tests, diarization nightly CI
 - 2025-11-17: Initial testing strategy (v1.0.0 baseline)

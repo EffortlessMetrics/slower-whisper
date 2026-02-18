@@ -79,6 +79,20 @@ nix-clean run .#verify -- --quick
 
 ---
 
+## Test Tiers
+
+Tests are organized into tiers that run at different stages. The `ci-success` gate only blocks on Fast + Smoke + Integration + BDD + Docs.
+
+| Tier | When | What | Blocks merge? |
+|------|------|------|---------------|
+| **Fast** | Every PR | Unit tests, lint, type-check, format | Yes |
+| **Smoke** | Every PR | Real tiny model ASR + compat + pipeline + writers + streaming envelope | Yes |
+| **Heavy** | Main only | Emotion models (`continue-on-error` on PRs, hard fail on main) | No (informational on PR) |
+| **Nightly** | Weekly schedule | Diarization (real pyannote), benchmark gate | No (alerts) |
+| **Release** | Tag push | All of the above | PyPI publish |
+
+---
+
 ## Key Surfaces
 
 | Surface | Location |

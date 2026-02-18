@@ -46,7 +46,7 @@ def main() -> int:
             str(output_md),
             "--overwrite",
         ]
-        proc = subprocess.run(cmd, text=True, capture_output=True)
+        proc = subprocess.run(cmd, text=True, capture_output=True, timeout=300)
         if proc.returncode != 0:
             print(f"[check_diarization_stub] eval_diarization failed (exit={proc.returncode})")
             if proc.stdout:
