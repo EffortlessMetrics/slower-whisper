@@ -16,6 +16,7 @@ import logging
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import NoReturn
 
 from . import __version__
 from . import api as api_module
@@ -61,7 +62,7 @@ class SuggestiveArgumentParser(argparse.ArgumentParser):
     Overrides the error method to provide "Did you mean?" suggestions.
     """
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         import difflib
         import re
 

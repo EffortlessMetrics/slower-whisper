@@ -2614,7 +2614,7 @@ def handle_baseline_list() -> int:
 
 
 def build_benchmark_parser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser] | Any,
 ) -> argparse.ArgumentParser:
     """Build the benchmark subcommand parser.
 
