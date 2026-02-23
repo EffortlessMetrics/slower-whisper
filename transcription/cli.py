@@ -55,6 +55,32 @@ from .validation import DEFAULT_SCHEMA_PATH, validate_many
 logger = logging.getLogger(__name__)
 
 
+class SuggestiveArgumentParser(argparse.ArgumentParser):
+    """
+    ArgumentParser that suggests valid choices on error.
+    Overrides the error method to provide "Did you mean?" suggestions.
+    """
+
+    def error(self, message: str) -> None:
+        import difflib
+        import re
+
+        # Pattern to capture "invalid choice: 'X' (choose from ...)"
+        match = re.search(r"invalid choice: '([^']*)' \(choose from (.*)\)", message)
+
+        if match:
+            invalid_value = match.group(1)
+            choices_str = match.group(2)
+            # Handle potential quoted choices or just comma-separated
+            choices = [c.strip().strip("'") for c in choices_str.split(", ")]
+
+            suggestions = difflib.get_close_matches(invalid_value, choices, n=1, cutoff=0.4)
+            if suggestions:
+                message = f"{message}. Did you mean '{suggestions[0]}'?"
+
+        super().error(message)
+
+
 # Expose API functions for compatibility with tests/patching while delegating to api module
 def transcribe_directory(*args, **kwargs) -> list[Transcript]:
     return api_module.transcribe_directory(*args, **kwargs)
@@ -79,7 +105,7 @@ def _setup_progress_logging(show_progress: bool) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser with subcommands."""
-    parser = argparse.ArgumentParser(
+    parser = SuggestiveArgumentParser(
         prog="slower-whisper",
         description="Local transcription and audio enrichment pipeline.",
     )
