@@ -18,7 +18,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     pass
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_integrations_parser(
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser] | Any,
 ) -> None:
     """Build CLI parsers for integration commands."""
     # Export RAG subcommand (added to existing export command)
