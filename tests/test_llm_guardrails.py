@@ -85,6 +85,7 @@ class TestPIIDetection:
         guardrails = LLMGuardrails()
 
         # Test different formats
+        # 4111... is a valid Luhn test number
         formats = [
             ("Card: 4111-1111-1111-1111", "1111"),  # Visa format
             ("CC: 4111 1111 1111 1111", "1111"),  # Spaced
@@ -96,6 +97,17 @@ class TestPIIDetection:
             cards = [m for m in matches if m.type == "credit_card"]
             assert len(cards) == 1, f"Failed for format: {text}"
             assert cards[0].masked.endswith(expected_last4)
+
+    def test_detect_credit_card_luhn_invalid(self) -> None:
+        """Test that invalid credit card numbers are ignored."""
+        guardrails = LLMGuardrails()
+
+        # 4111-1111-1111-1112 (Last digit changed from 1 to 2, should fail Luhn)
+        text = "Card: 4111-1111-1111-1112"
+
+        matches = guardrails.detect_pii(text)
+        cards = [m for m in matches if m.type == "credit_card"]
+        assert len(cards) == 0
 
     def test_no_pii_in_clean_text(self) -> None:
         """Test that clean text has no PII matches."""
