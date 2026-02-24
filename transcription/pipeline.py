@@ -147,7 +147,7 @@ def run_pipeline(
             total_time_seconds=0.0,
         )
 
-    engine = TranscriptionEngine(cfg.asr)
+    engine: TranscriptionEngine | None = None
 
     logger.info("=== Step 3: Transcribing normalized audio ===")
     total = len(norm_files)
@@ -254,6 +254,9 @@ def run_pipeline(
 
         duration = _get_duration_seconds(wav)
         total_audio += duration
+
+        if engine is None:
+            engine = TranscriptionEngine(cfg.asr)
 
         start = time.time()
         try:
