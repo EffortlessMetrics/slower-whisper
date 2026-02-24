@@ -38,7 +38,7 @@ class Colors:
     BRIGHT_WHITE: ClassVar[str] = "\033[97m"
 
     @classmethod
-    def _should_use_color(cls) -> bool:
+    def should_use_color(cls) -> bool:
         """
         Determine if colors should be used.
         Returns False if NO_COLOR is set, TERM is dumb, or stdout is not a TTY.
@@ -55,9 +55,14 @@ class Colors:
         return sys.stdout.isatty()
 
     @classmethod
+    def _should_use_color(cls) -> bool:
+        """Internal alias for backward compatibility."""
+        return cls.should_use_color()
+
+    @classmethod
     def colorize(cls, text: str, color: str) -> str:
         """Apply color to text if colors are enabled."""
-        if not cls._should_use_color():
+        if not cls.should_use_color():
             return text
         return f"{color}{text}{cls.RESET}"
 
@@ -92,3 +97,46 @@ class Colors:
     @classmethod
     def dim(cls, text: str) -> str:
         return cls.colorize(text, cls.DIM)
+
+
+class Symbols:
+    """Unicode symbols for CLI output with ASCII fallbacks."""
+
+    # Unicode
+    CHECK_MARK = "\u2714"  # ✔
+    CROSS_MARK = "\u2716"  # ✖
+    WARNING_SIGN = "\u26a0"  # ⚠
+    INFO_SIGN = "\u2139"  # ℹ
+    ARROW_RIGHT = "\u279c"  # ➜
+
+    # ASCII
+    CHECK_ASCII = "[v]"
+    CROSS_ASCII = "[x]"
+    WARN_ASCII = "[!]"
+    INFO_ASCII = "[i]"
+    ARROW_ASCII = "->"
+
+    @classmethod
+    def check(cls) -> str:
+        """Return a check mark symbol."""
+        return cls.CHECK_MARK if Colors.should_use_color() else cls.CHECK_ASCII
+
+    @classmethod
+    def cross(cls) -> str:
+        """Return a cross mark symbol."""
+        return cls.CROSS_MARK if Colors.should_use_color() else cls.CROSS_ASCII
+
+    @classmethod
+    def warn(cls) -> str:
+        """Return a warning symbol."""
+        return cls.WARNING_SIGN if Colors.should_use_color() else cls.WARN_ASCII
+
+    @classmethod
+    def info(cls) -> str:
+        """Return an info symbol."""
+        return cls.INFO_SIGN if Colors.should_use_color() else cls.INFO_ASCII
+
+    @classmethod
+    def arrow(cls) -> str:
+        """Return an arrow symbol."""
+        return cls.ARROW_RIGHT if Colors.should_use_color() else cls.ARROW_ASCII

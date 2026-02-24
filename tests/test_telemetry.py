@@ -352,8 +352,9 @@ class TestFormatDoctorReport:
 
         output = format_doctor_report(report, use_color=False)
 
-        assert "[PASS]" in output
-        assert "[WARN]" in output
+        # Check for ASCII symbols (use_color=False)
+        assert "[v]" in output
+        assert "[!]" in output
         assert "Test A" in output
         assert "Test B" in output
 
