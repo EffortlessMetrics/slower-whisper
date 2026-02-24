@@ -565,13 +565,35 @@ def normalize_all(paths: Paths) -> None:
 
     # Collect files to process
     files_to_process: list[tuple[Path, Path]] = []
+    skipped_count = 0
+
     for src in sorted(paths.raw_dir.iterdir()):
-        if src.is_file():
-            dst = paths.norm_dir / f"{src.stem}.wav"
-            files_to_process.append((src, dst))
+        if not src.is_file():
+            continue
+
+        dst = paths.norm_dir / f"{src.stem}.wav"
+
+        # Check optimization: skip files that are already up-to-date
+        # This avoids submitting tasks to the thread pool for files that don't need processing
+        if dst.exists():
+            try:
+                src_mtime = src.stat().st_mtime
+                dst_mtime = dst.stat().st_mtime
+                if dst_mtime >= src_mtime:
+                    skipped_count += 1
+                    continue
+            except OSError:
+                # If stat fails, fall back to processing the file safely in the worker
+                pass
+
+        files_to_process.append((src, dst))
+
+    if skipped_count > 0:
+        logger.info("Skipped %d already normalized files (up to date)", skipped_count)
 
     if not files_to_process:
-        logger.info("No files found in raw_audio/ directory")
+        if skipped_count == 0:
+            logger.info("No files found in raw_audio/ directory")
         return
 
     # Process files in parallel using ThreadPoolExecutor
