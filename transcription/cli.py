@@ -26,7 +26,7 @@ from .cli_commands.shared import (
     get_cache_size,
     setup_progress_logging,
 )
-from .color_utils import Colors
+from .color_utils import Colors, Symbols
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -880,10 +880,10 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                 # Retry with overwrite=True
                 copied_files = copy_sample_to_project(args.dataset, project_dir, overwrite=True)
 
-            print(f"\nCopied {len(copied_files)} files to {project_dir}:")
+            print(f"\n{Symbols.check()} Copied {len(copied_files)} files to {project_dir}:")
             for f in copied_files:
                 print(f"  {f.name}")
-            print("\nReady to transcribe with:")
+            print(f"\n{Symbols.arrow()} Ready to transcribe with:")
             print(f"  cd {args.root}")
             print("  uv run slower-whisper transcribe --enable-diarization")
             return 0
@@ -902,7 +902,7 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
             output_file = output_dir / "synthetic_2speaker.wav"
             try:
                 generate_synthetic_2speaker(output_file)
-                print("\nReady to transcribe with:")
+                print(f"\n{Symbols.arrow()} Ready to transcribe with:")
                 print(
                     "  uv run slower-whisper transcribe --enable-diarization --min-speakers 2 --max-speakers 2"
                 )
@@ -998,13 +998,14 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     # Display structured results
     print(f"\n{Colors.bold('=== Transcription Summary ===')}")
     print(f"Total files:      {result.total_files}")
-    print(f"Processed:        {Colors.green(str(result.processed))}")
-    print(f"Skipped:          {Colors.yellow(str(result.skipped))}")
+    print(f"{Symbols.check()} Processed:        {Colors.green(str(result.processed))}")
+    print(f"{Symbols.warn()} Skipped:          {Colors.yellow(str(result.skipped))}")
     if result.diarized_only > 0:
-        print(f"Diarized only:    {Colors.cyan(str(result.diarized_only))}")
+        print(f"{Symbols.info()} Diarized only:    {Colors.cyan(str(result.diarized_only))}")
 
     failed_color = Colors.red if result.failed > 0 else str
-    print(f"Failed:           {failed_color(str(result.failed))}")
+    fail_symbol = Symbols.cross() if result.failed > 0 else Symbols.check()
+    print(f"{fail_symbol} Failed:           {failed_color(str(result.failed))}")
 
     # Show RTF if available
     if result.total_audio_seconds > 0 and result.total_time_seconds > 0:
@@ -1029,7 +1030,9 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
         print(f"\n{Colors.bold('Next steps:')}")
         # Include --root if non-default to make the command copy-pasteable
         root_arg = f" --root {root}" if root != Path(".") else ""
-        print(f"  Run stage 2 enrichment:  {Colors.cyan(f'slower-whisper enrich{root_arg}')}")
+        print(
+            f"  {Symbols.arrow()} Run stage 2 enrichment:  {Colors.cyan(f'slower-whisper enrich{root_arg}')}"
+        )
 
     if result.failed > 0:
         return 1
@@ -1122,12 +1125,15 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
     # Display structured results
     print(f"\n{Colors.bold('=== Enrichment Summary ===')}")
     print(f"Total files:      {total_files}")
-    print(f"Enriched:         {Colors.green(str(enriched_count))}")
+    print(f"{Symbols.check()} Enriched:         {Colors.green(str(enriched_count))}")
     if skipped_count > 0:
-        print(f"Skipped:          {Colors.yellow(str(skipped_count))} (already enriched)")
+        print(
+            f"{Symbols.warn()} Skipped:          {Colors.yellow(str(skipped_count))} (already enriched)"
+        )
 
     failed_color = Colors.red if failed_count > 0 else str
-    print(f"Failed:           {failed_color(str(failed_count))}")
+    fail_symbol = Symbols.cross() if failed_count > 0 else Symbols.check()
+    print(f"{fail_symbol} Failed:           {failed_color(str(failed_count))}")
 
     # Show first 5 failures with error messages
     if failures:
@@ -1151,7 +1157,7 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
                 example_file = str(target)
 
         print(
-            f"  Export transcripts:      {Colors.cyan(f'slower-whisper export {example_file} --format csv')}"
+            f"  {Symbols.arrow()} Export transcripts:      {Colors.cyan(f'slower-whisper export {example_file} --format csv')}"
         )
 
     if failed_count > 0:
