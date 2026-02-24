@@ -72,6 +72,35 @@ class PIIMatch:
     masked: str  # The masked version of the match
 
 
+def _check_luhn(card_number: str) -> bool:
+    """
+    Validate credit card number using the Luhn algorithm.
+
+    Args:
+        card_number: The credit card number (string of digits).
+
+    Returns:
+        True if valid, False otherwise.
+    """
+    digits = [int(d) for d in card_number if d.isdigit()]
+    if not digits:
+        return False
+
+    checksum = digits[-1]
+    payload = digits[:-1]
+    payload.reverse()
+
+    total = 0
+    for i, d in enumerate(payload):
+        if i % 2 == 0:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+
+    return (total + checksum) % 10 == 0
+
+
 @dataclass
 class GuardrailStats:
     """Statistics tracked by guardrails."""
@@ -335,15 +364,16 @@ class LLMGuardrails:
         for match in re.finditer(cc_pattern, text):
             digits = re.sub(r"[-\s]", "", match.group())
             if 13 <= len(digits) <= 19:
-                masked = "*" * (len(digits) - 4) + digits[-4:]
-                matches.append(
-                    PIIMatch(
-                        type="credit_card",
-                        start=match.start(),
-                        end=match.end(),
-                        masked=masked,
+                if _check_luhn(digits):
+                    masked = "*" * (len(digits) - 4) + digits[-4:]
+                    matches.append(
+                        PIIMatch(
+                            type="credit_card",
+                            start=match.start(),
+                            end=match.end(),
+                            masked=masked,
+                        )
                     )
-                )
 
         return matches
 
