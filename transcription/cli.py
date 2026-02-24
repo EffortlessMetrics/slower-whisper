@@ -1127,7 +1127,9 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
     print(f"Total files:      {total_files}")
     print(f"{Symbols.check()} Enriched:         {Colors.green(str(enriched_count))}")
     if skipped_count > 0:
-        print(f"{Symbols.warn()} Skipped:          {Colors.yellow(str(skipped_count))} (already enriched)")
+        print(
+            f"{Symbols.warn()} Skipped:          {Colors.yellow(str(skipped_count))} (already enriched)"
+        )
 
     failed_color = Colors.red if failed_count > 0 else str
     fail_symbol = Symbols.cross() if failed_count > 0 else Symbols.check()
