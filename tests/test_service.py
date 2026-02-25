@@ -259,6 +259,10 @@ class TestSecurityHeaders:
 
         assert response.headers.get("X-Content-Type-Options") == "nosniff"
         assert response.headers.get("X-Frame-Options") == "DENY"
+        assert "Strict-Transport-Security" in response.headers
+        assert "max-age=63072000" in response.headers["Strict-Transport-Security"]
+        assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+        assert "microphone=()" in response.headers.get("Permissions-Policy", "")
 
         csp = response.headers.get("Content-Security-Policy", "")
         assert "default-src 'self'" in csp
