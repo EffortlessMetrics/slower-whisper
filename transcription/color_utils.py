@@ -92,3 +92,56 @@ class Colors:
     @classmethod
     def dim(cls, text: str) -> str:
         return cls.colorize(text, cls.DIM)
+
+
+class Symbols:
+    """Unicode symbols with ASCII fallbacks for CLI output."""
+
+    # Unicode symbols
+    CHECK: ClassVar[str] = "✔"
+    CROSS: ClassVar[str] = "✖"
+    WARN: ClassVar[str] = "⚠"
+    INFO: ClassVar[str] = "ℹ"
+    DOT: ClassVar[str] = "•"
+
+    # ASCII fallbacks
+    CHECK_ASCII: ClassVar[str] = "[v]"
+    CROSS_ASCII: ClassVar[str] = "[x]"
+    WARN_ASCII: ClassVar[str] = "[!]"
+    INFO_ASCII: ClassVar[str] = "[i]"
+    DOT_ASCII: ClassVar[str] = "[.]"
+
+    @classmethod
+    def check(cls, use_color: bool = True) -> str:
+        """Return green check mark or ASCII fallback."""
+        if use_color and Colors._should_use_color():
+            return Colors.green(cls.CHECK)
+        return cls.CHECK_ASCII
+
+    @classmethod
+    def cross(cls, use_color: bool = True) -> str:
+        """Return red cross mark or ASCII fallback."""
+        if use_color and Colors._should_use_color():
+            return Colors.red(cls.CROSS)
+        return cls.CROSS_ASCII
+
+    @classmethod
+    def warn(cls, use_color: bool = True) -> str:
+        """Return yellow warning sign or ASCII fallback."""
+        if use_color and Colors._should_use_color():
+            return Colors.yellow(cls.WARN)
+        return cls.WARN_ASCII
+
+    @classmethod
+    def info(cls, use_color: bool = True) -> str:
+        """Return blue info sign or ASCII fallback."""
+        if use_color and Colors._should_use_color():
+            return Colors.blue(cls.INFO)
+        return cls.INFO_ASCII
+
+    @classmethod
+    def dot(cls, use_color: bool = True) -> str:
+        """Return dimmed dot or ASCII fallback."""
+        if use_color and Colors._should_use_color():
+            return Colors.dim(cls.DOT)
+        return cls.DOT_ASCII
