@@ -113,6 +113,13 @@ if not _USE_REAL_DEPS:
             },
         )
 
+    # Make sure numpy is available (it's usually in the base system)
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        sys.modules["numpy"] = mock_module("numpy", {"typing": mock_module("numpy.typing")})
+        sys.modules["numpy.typing"] = mock_module("numpy.typing")
+
     # Mock soundfile if not available
     SOUNDFILE_AVAILABLE = False
     try:
@@ -167,15 +174,6 @@ if not _USE_REAL_DEPS:
         sys.modules["soundfile"] = mock_module(
             "soundfile", {"SoundFile": MockSoundFile, "read": mock_read, "write": mock_write}
         )
-
-    # Make sure numpy is available (it's usually in the base system)
-    try:
-        import numpy  # noqa: F401
-    except ImportError:
-        # If numpy is not available, we can't really run tests
-        raise ImportError(
-            "numpy is required for tests. Please install with: pip install numpy"
-        ) from None
 
     # Skip heavy diarization tests when pyannote.audio isn't available
     try:
