@@ -92,3 +92,60 @@ class Colors:
     @classmethod
     def dim(cls, text: str) -> str:
         return cls.colorize(text, cls.DIM)
+
+
+class Symbols:
+    """
+    Common status symbols for CLI output.
+
+    Provides Unicode symbols with ASCII fallbacks based on color support.
+    """
+
+    CHECK: ClassVar[str] = "✔"
+    CROSS: ClassVar[str] = "✖"
+    WARN: ClassVar[str] = "⚠"
+    INFO: ClassVar[str] = "ℹ"
+    ARROW: ClassVar[str] = "➜"
+    DOT: ClassVar[str] = "•"
+
+    @classmethod
+    def _use_color(cls, override: bool | None = None) -> bool:
+        if override is not None:
+            return override
+        return Colors._should_use_color()
+
+    @classmethod
+    def check(cls, use_color: bool | None = None) -> str:
+        if not cls._use_color(use_color):
+            return "[v]"
+        return Colors.green(cls.CHECK)
+
+    @classmethod
+    def cross(cls, use_color: bool | None = None) -> str:
+        if not cls._use_color(use_color):
+            return "[x]"
+        return Colors.red(cls.CROSS)
+
+    @classmethod
+    def warn(cls, use_color: bool | None = None) -> str:
+        if not cls._use_color(use_color):
+            return "[!]"
+        return Colors.yellow(cls.WARN)
+
+    @classmethod
+    def info(cls, use_color: bool | None = None) -> str:
+        if not cls._use_color(use_color):
+            return "[i]"
+        return Colors.blue(cls.INFO)
+
+    @classmethod
+    def arrow(cls, use_color: bool | None = None) -> str:
+        if not cls._use_color(use_color):
+            return "->"
+        return Colors.cyan(cls.ARROW)
+
+    @classmethod
+    def dot(cls, use_color: bool | None = None) -> str:
+        if not cls._use_color(use_color):
+            return "*"
+        return Colors.dim(cls.DOT)
