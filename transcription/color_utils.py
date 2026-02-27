@@ -55,6 +55,11 @@ class Colors:
         return sys.stdout.isatty()
 
     @classmethod
+    def should_use_color(cls) -> bool:
+        """Public alias for _should_use_color."""
+        return cls._should_use_color()
+
+    @classmethod
     def colorize(cls, text: str, color: str) -> str:
         """Apply color to text if colors are enabled."""
         if not cls._should_use_color():
@@ -92,3 +97,48 @@ class Colors:
     @classmethod
     def dim(cls, text: str) -> str:
         return cls.colorize(text, cls.DIM)
+
+
+class Symbols:
+    """Unicode symbols for CLI status indicators with ASCII fallbacks."""
+
+    CHECK: ClassVar[str] = "✔"
+    CROSS: ClassVar[str] = "✖"
+    WARN: ClassVar[str] = "⚠"
+    SKIP: ClassVar[str] = "˗"
+    ARROW: ClassVar[str] = "➜"
+
+    @classmethod
+    def check(cls, use_color: bool = True) -> str:
+        """Return checkmark symbol (✔) or ASCII fallback ([v])."""
+        if use_color and Colors.should_use_color():
+            return Colors.green(cls.CHECK)
+        return "[v]"
+
+    @classmethod
+    def cross(cls, use_color: bool = True) -> str:
+        """Return cross symbol (✖) or ASCII fallback ([x])."""
+        if use_color and Colors.should_use_color():
+            return Colors.red(cls.CROSS)
+        return "[x]"
+
+    @classmethod
+    def warn(cls, use_color: bool = True) -> str:
+        """Return warning symbol (⚠) or ASCII fallback ([!])."""
+        if use_color and Colors.should_use_color():
+            return Colors.yellow(cls.WARN)
+        return "[!]"
+
+    @classmethod
+    def skip(cls, use_color: bool = True) -> str:
+        """Return skip symbol (˗) or ASCII fallback ([-])."""
+        if use_color and Colors.should_use_color():
+            return Colors.dim(cls.SKIP)
+        return "[-]"
+
+    @classmethod
+    def arrow(cls, use_color: bool = True) -> str:
+        """Return arrow symbol (➜) or ASCII fallback (->)."""
+        if use_color and Colors.should_use_color():
+            return Colors.cyan(cls.ARROW)
+        return "->"
