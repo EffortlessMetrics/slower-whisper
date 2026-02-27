@@ -767,7 +767,10 @@ class TestDoctorCommand:
         captured = capsys.readouterr()
         # Should contain formatted output markers
         assert "slower-whisper doctor" in captured.out
-        assert "Pass:" in captured.out or "[PASS]" in captured.out
+        # In testing environment, color might be off or on, but Symbols will return either [v] or unicode check
+        # Since we can't easily assert unicode in all terminals, checking for summary "Pass:" is safer
+        # or checking for [v] if we know color is off
+        assert "Pass:" in captured.out
 
 
 # ============================================================================
