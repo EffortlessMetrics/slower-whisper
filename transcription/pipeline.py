@@ -165,8 +165,8 @@ def run_pipeline(
         srt_path = paths.transcripts_dir / f"{stem}.srt"
 
         if cfg.skip_existing_json and json_path.exists():
-            needs_chunking = diarization_config and getattr(diarization_config, "enable_chunking", False)
-            needs_diarization = diarization_config and diarization_config.enable_diarization
+            needs_chunking = diarization_config is not None and getattr(diarization_config, "enable_chunking", False)
+            needs_diarization = diarization_config is not None and getattr(diarization_config, "enable_diarization", False)
 
             if needs_chunking or needs_diarization:
                 try:
@@ -189,6 +189,7 @@ def run_pipeline(
                     try:
                         from .transcription_helpers import _maybe_build_chunks
 
+                        assert diarization_config is not None
                         transcript = _maybe_build_chunks(transcript, diarization_config)
                         needs_write = True
                     except Exception as exc:
@@ -220,7 +221,7 @@ def run_pipeline(
                         transcript = _maybe_run_diarization(
                             transcript=transcript,
                             wav_path=wav,
-                            config=diarization_config,
+                            config=diarization_config,  # type: ignore[arg-type]
                         )
                     except Exception as exc:
                         logger.error(
@@ -308,6 +309,7 @@ def run_pipeline(
             if getattr(diarization_config, "enable_chunking", False):
                 from .transcription_helpers import _maybe_build_chunks
 
+                assert diarization_config is not None
                 transcript = _maybe_build_chunks(transcript, diarization_config)
 
         writers.write_json(transcript, json_path)
