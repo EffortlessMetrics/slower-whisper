@@ -22,6 +22,12 @@ import wave
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
+import pytest
+
+@pytest.fixture(autouse=True)
+def mock_ffmpeg():
+    with patch('transcription.audio_io.check_ffmpeg_installation'), patch('transcription.audio_io.normalize_all'), patch('transcription.audio_io.ensure_dirs'):
+        yield
 
 import numpy as np
 import pytest

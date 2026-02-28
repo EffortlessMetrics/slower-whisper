@@ -147,7 +147,7 @@ def run_pipeline(
             total_time_seconds=0.0,
         )
 
-    engine = TranscriptionEngine(cfg.asr)
+    engine = None
 
     logger.info("=== Step 3: Transcribing normalized audio ===")
     total = len(norm_files)
@@ -165,23 +165,10 @@ def run_pipeline(
         srt_path = paths.transcripts_dir / f"{stem}.srt"
 
         if cfg.skip_existing_json and json_path.exists():
-            if diarization_config and getattr(diarization_config, "enable_chunking", False):
-                try:
-                    transcript = writers.load_transcript_from_json(json_path)
-                    from .transcription_helpers import _maybe_build_chunks
+            needs_chunking = diarization_config and getattr(diarization_config, "enable_chunking", False)
+            needs_diarization = diarization_config and diarization_config.enable_diarization
 
-                    transcript = _maybe_build_chunks(transcript, diarization_config)
-                    writers.write_json(transcript, json_path)
-                except Exception as exc:
-                    logger.error(
-                        "Failed to update chunks for %s: %s",
-                        json_path.name,
-                        exc,
-                        exc_info=True,
-                    )
-
-            if diarization_config and diarization_config.enable_diarization:
-                # Upgrade existing transcript with diarization without re-transcribing
+            if needs_chunking or needs_diarization:
                 try:
                     transcript = writers.load_transcript_from_json(json_path)
                 except Exception as exc:
@@ -196,61 +183,87 @@ def run_pipeline(
                     )
                     continue
 
-                diar_meta = (transcript.meta or {}).get("diarization", {})
-                if diar_meta.get("status") in {"success", "ok"}:
-                    logger.debug(
-                        "[skip-transcribe] %s because %s already exists (diarization present)",
-                        wav.name,
-                        json_path.name,
-                    )
-                    skipped += 1
-                    file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
-                    continue
+                needs_write = False
 
-                logger.info("[diarize-existing] %s (reusing existing transcript)", wav.name)
-                try:
-                    from .diarization_orchestrator import _maybe_run_diarization
+                if needs_chunking:
+                    try:
+                        from .transcription_helpers import _maybe_build_chunks
 
-                    transcript = _maybe_run_diarization(
-                        transcript=transcript,
-                        wav_path=wav,
-                        config=diarization_config,
-                    )
-                except Exception as exc:
-                    logger.error(
-                        "Failed to run diarization for %s: %s",
-                        wav.name,
-                        exc,
-                        exc_info=True,
-                    )
-                    failed += 1
-                    file_results.append(
-                        PipelineFileResult(
-                            file_name=wav.name,
-                            status="error",
-                            error_message=f"Diarization failed: {exc}",
+                        transcript = _maybe_build_chunks(transcript, diarization_config)
+                        needs_write = True
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to update chunks for %s: %s",
+                            json_path.name,
+                            exc,
+                            exc_info=True,
                         )
-                    )
+
+                if needs_diarization:
+                    diar_meta = (transcript.meta or {}).get("diarization", {})
+                    if diar_meta.get("status") in {"success", "ok"}:
+                        logger.debug(
+                            "[skip-transcribe] %s because %s already exists (diarization present)",
+                            wav.name,
+                            json_path.name,
+                        )
+                        if needs_write:
+                            writers.write_json(transcript, json_path)
+                        skipped += 1
+                        file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
+                        continue
+
+                    logger.info("[diarize-existing] %s (reusing existing transcript)", wav.name)
+                    try:
+                        from .diarization_orchestrator import _maybe_run_diarization
+
+                        transcript = _maybe_run_diarization(
+                            transcript=transcript,
+                            wav_path=wav,
+                            config=diarization_config,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to run diarization for %s: %s",
+                            wav.name,
+                            exc,
+                            exc_info=True,
+                        )
+                        failed += 1
+                        file_results.append(
+                            PipelineFileResult(
+                                file_name=wav.name,
+                                status="error",
+                                error_message=f"Diarization failed: {exc}",
+                            )
+                        )
+                        continue
+
+                    writers.write_json(transcript, json_path)
+                    writers.write_txt(transcript, txt_path)
+                    writers.write_srt(transcript, srt_path)
+
+                    diarized_only += 1
+                    logger.info("  → [diarization-only] %s", json_path)
+                    logger.info("  → [diarization-only] %s", txt_path)
+                    logger.info("  → [diarization-only] %s", srt_path)
+                    file_results.append(PipelineFileResult(file_name=wav.name, status="diarized_only"))
                     continue
 
-                writers.write_json(transcript, json_path)
-                writers.write_txt(transcript, txt_path)
-                writers.write_srt(transcript, srt_path)
+                if needs_write:
+                    writers.write_json(transcript, json_path)
 
-                diarized_only += 1
-                logger.info("  → [diarization-only] %s", json_path)
-                logger.info("  → [diarization-only] %s", txt_path)
-                logger.info("  → [diarization-only] %s", srt_path)
-                file_results.append(PipelineFileResult(file_name=wav.name, status="diarized_only"))
-            else:
-                logger.debug(
-                    "[skip-transcribe] %s because %s already exists",
-                    wav.name,
-                    json_path.name,
-                )
-                skipped += 1
-                file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
+            logger.debug(
+                "[skip-transcribe] %s because %s already exists",
+                wav.name,
+                json_path.name,
+            )
+            skipped += 1
+            file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
             continue
+
+        if engine is None:
+            engine = TranscriptionEngine(cfg.asr)
 
         duration = _get_duration_seconds(wav)
         total_audio += duration
