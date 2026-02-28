@@ -151,12 +151,12 @@ class TestPathValidation:
         ]
         for p in unsafe_paths:
             with pytest.raises(ValueError, match="Invalid characters in path"):
-                audio_io._validate_path_safety(p)
+                audio_io.validate_path_safety(p)
 
     def test_validate_path_safety_rejects_leading_dash(self):
         """Should raise ValueError if path starts with - (option injection)."""
         with pytest.raises(ValueError, match="Path cannot start with '-'"):
-            audio_io._validate_path_safety("-input.wav")
+            audio_io.validate_path_safety("-input.wav")
 
     def test_validate_path_safety_accepts_safe_paths(self):
         """Should accept standard filenames and paths."""
@@ -168,7 +168,7 @@ class TestPathValidation:
             "./-file.wav",  # prefixed is safe
         ]
         for p in safe_paths:
-            audio_io._validate_path_safety(p)
+            audio_io.validate_path_safety(p)
 
     def test_normalize_single_validates_paths(self, tmp_path, monkeypatch):
         """normalize_single should validate paths before running ffmpeg."""
