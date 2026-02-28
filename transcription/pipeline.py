@@ -165,8 +165,12 @@ def run_pipeline(
         srt_path = paths.transcripts_dir / f"{stem}.srt"
 
         if cfg.skip_existing_json and json_path.exists():
-            needs_chunking = diarization_config is not None and getattr(diarization_config, "enable_chunking", False)
-            needs_diarization = diarization_config is not None and getattr(diarization_config, "enable_diarization", False)
+            needs_chunking = diarization_config is not None and getattr(
+                diarization_config, "enable_chunking", False
+            )
+            needs_diarization = diarization_config is not None and getattr(
+                diarization_config, "enable_diarization", False
+            )
 
             if needs_chunking or needs_diarization:
                 try:
@@ -211,7 +215,9 @@ def run_pipeline(
                         if needs_write:
                             writers.write_json(transcript, json_path)
                         skipped += 1
-                        file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
+                        file_results.append(
+                            PipelineFileResult(file_name=wav.name, status="skipped")
+                        )
                         continue
 
                     logger.info("[diarize-existing] %s (reusing existing transcript)", wav.name)
@@ -248,7 +254,9 @@ def run_pipeline(
                     logger.info("  → [diarization-only] %s", json_path)
                     logger.info("  → [diarization-only] %s", txt_path)
                     logger.info("  → [diarization-only] %s", srt_path)
-                    file_results.append(PipelineFileResult(file_name=wav.name, status="diarized_only"))
+                    file_results.append(
+                        PipelineFileResult(file_name=wav.name, status="diarized_only")
+                    )
                     continue
 
                 if needs_write:
