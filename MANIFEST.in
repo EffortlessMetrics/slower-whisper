@@ -35,18 +35,10 @@ include transcription/py.typed
 include slower_whisper/py.typed
 
 # Docs and examples
-recursive-include docs *.md *.txt *.json *.py
-recursive-include examples *.py *.md *.json *.txt
 
 # Benchmarks and tests
-recursive-include benchmarks *.py *.md *.json *.jsonl *.txt *.csv *.wav *.rttm
-recursive-include tests *.py *.json *.wav *.feature
 
 # Operational/deployment assets
-recursive-include scripts *.py *.sh *.md
-recursive-include config *
-recursive-include k8s *
-recursive-include .github *.yml *.yaml *.md
 
 # Exclude compiled/temporary artifacts
 global-exclude __pycache__
@@ -79,3 +71,10 @@ prune whisper_json
 prune venv
 prune env
 prune .venv
+prune tests
+prune config
+prune k8s
+prune .github
+prune benchmarks
+prune examples
+prune docs
