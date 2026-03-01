@@ -147,7 +147,10 @@ def run_pipeline(
             total_time_seconds=0.0,
         )
 
-    engine = TranscriptionEngine(cfg.asr)
+    # Optimization: Lazy-load the TranscriptionEngine only when needed.
+    # This prevents loading a large model into memory if all files are skipped
+    # (e.g., when skip_existing_json is True and all JSON files exist).
+    engine: TranscriptionEngine | None = None
 
     logger.info("=== Step 3: Transcribing normalized audio ===")
     total = len(norm_files)
@@ -256,6 +259,11 @@ def run_pipeline(
         total_audio += duration
 
         start = time.time()
+
+        # Instantiate engine lazily when first needed
+        if engine is None:
+            engine = TranscriptionEngine(cfg.asr)
+
         try:
             transcript = engine.transcribe_file(wav)
         except Exception as e:
