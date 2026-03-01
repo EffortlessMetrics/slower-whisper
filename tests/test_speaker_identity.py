@@ -675,3 +675,29 @@ class TestSpeakerIdentityIntegration:
 
         finally:
             registry.close()
+
+
+def test_cli_delete_keyboard_interrupt(capsys):
+    from unittest.mock import MagicMock, patch
+
+    from transcription.speaker_identity import handle_speakers_command
+
+    args = MagicMock()
+    args.speakers_action = "delete"
+    args.force = False
+    args.speaker_id = "test-id"
+
+    mock_registry = MagicMock()
+    mock_speaker = MagicMock()
+    mock_speaker.name = "Test Speaker"
+    mock_speaker.id = "test-id"
+    mock_registry.get_speaker.return_value = mock_speaker
+
+    with patch("transcription.speaker_identity.SpeakerRegistry", return_value=mock_registry):
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                exit_code = handle_speakers_command(args)
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Aborted." in captured.out
