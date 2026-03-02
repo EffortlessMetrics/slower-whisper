@@ -220,7 +220,7 @@ def _validate_audio_format_python(audio_path: Path) -> None:
 
         # Basic header validation for common formats
         with open(audio_path, "rb") as f:
-            header = f.read(12)  # Read first 12 bytes for header check
+            header = f.read(16)  # Read first 16 bytes for header check
 
             # WAV files start with "RIFF" and have "WAVE" at bytes 8-11
             if audio_path.suffix.lower() == ".wav":
@@ -242,6 +242,34 @@ def _validate_audio_format_python(audio_path: Path) -> None:
             elif audio_path.suffix.lower() in (".m4a", ".aac"):
                 if len(header) < 8 or header[4:8] != b"ftyp":
                     logger.warning("Possible invalid M4A/AAC file: missing ftyp box")
+
+            # FLAC files start with "fLaC"
+            elif audio_path.suffix.lower() == ".flac":
+                if len(header) < 4 or not header.startswith(b"fLaC"):
+                    logger.warning("Possible invalid FLAC file: missing fLaC header")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid FLAC file: incorrect header format.",
+                    )
+
+            # OGG files start with "OggS"
+            elif audio_path.suffix.lower() == ".ogg":
+                if len(header) < 4 or not header.startswith(b"OggS"):
+                    logger.warning("Possible invalid OGG file: missing OggS header")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid OGG file: incorrect header format.",
+                    )
+
+            # WMA files start with specific ASF GUID
+            elif audio_path.suffix.lower() == ".wma":
+                wma_guid = b"\x30\x26\xb2\x75\x8e\x66\xcf\x11\xa6\xd9\x00\xaa\x00\x62\xce\x6c"
+                if len(header) < 16 or not header.startswith(wma_guid):
+                    logger.warning("Possible invalid WMA file: missing ASF GUID header")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid WMA file: incorrect header format.",
+                    )
 
         # If we get here, basic checks passed
         logger.info("Basic validation passed for %s (ffprobe unavailable)", audio_path.name)
