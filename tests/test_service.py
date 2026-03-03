@@ -1038,6 +1038,23 @@ class TestAudioValidationEdgeCases:
         # Should fail validation
         assert response.status_code == 400
 
+    @patch("transcription.service_transcribe.validate_audio_format")
+    def test_invalid_audio_file_path_rejected(self, mock_validate, client: TestClient) -> None:
+        """Test that an audio file with an unsafe path/filename is rejected securely."""
+        from transcription.service_validation import validate_audio_format
+
+        # We need to test the actual validation logic instead of just the endpoint
+        # because the endpoint sanitizes filenames. We call validate_audio_format directly.
+        from pathlib import Path
+        import pytest
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(Path("-invalid-path.wav"))
+
+        assert exc_info.value.status_code == 400
+        assert "Invalid audio file path" in exc_info.value.detail
+
 
 # =============================================================================
 # Test Query Parameter Validation
