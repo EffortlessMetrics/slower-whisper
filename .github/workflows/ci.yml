@@ -420,7 +420,7 @@ jobs:
 
       - name: Upload BDD results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bdd-library-results
           path: .pytest_cache/
@@ -463,7 +463,7 @@ jobs:
 
       - name: Upload API BDD results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bdd-api-results
           path: .pytest_cache/
@@ -595,7 +595,7 @@ jobs:
 
       - name: Upload benchmark results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
           path: benchmark-results/
@@ -722,7 +722,7 @@ jobs:
 
       - name: Upload gate results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-gate-results
           path: benchmark-results/
@@ -845,7 +845,7 @@ jobs:
         run: ./scripts/docs-build.sh --strict
 
       - name: Upload documentation
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: docs-html
           path: docs/_build/html/
