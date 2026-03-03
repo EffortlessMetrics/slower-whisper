@@ -77,6 +77,21 @@ class TestSamplesCopyUX:
         # Second call overwrite=True
         assert mock_copy.call_args_list[1].kwargs["overwrite"] is True
 
+    def test_copy_conflict_interactive_keyboard_interrupt(self, mock_copy, tmp_path, capsys):
+        """Ctrl+C during prompt gracefully aborts."""
+        mock_copy.side_effect = SampleExistsError("Conflict", [Path("file1.wav")])
+
+        # Patch isatty to True and input to raise KeyboardInterrupt
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                exit_code = main(["samples", "copy", "mini_diarization", "--root", str(tmp_path)])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "\nAborted." in captured.out
+        # Should verify it wasn't called a second time
+        assert mock_copy.call_count == 1
+
     def test_copy_force_skips_check(self, mock_copy, tmp_path):
         """--force should pass overwrite=True immediately."""
         mock_copy.return_value = [Path("file1.wav")]
