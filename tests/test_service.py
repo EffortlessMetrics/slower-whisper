@@ -1026,6 +1026,21 @@ class TestAudioValidationEdgeCases:
         # Should fail validation
         assert response.status_code == 400
 
+    def test_unsafe_audio_filename_rejected(self, client: TestClient) -> None:
+        """Test that audio files with unsafe characters in their name are rejected."""
+        from pathlib import Path
+
+        import pytest
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        unsafe_path = Path("-i.wav")
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+        assert exc_info.value.status_code == 400
+        assert "potentially unsafe characters detected" in str(exc_info.value.detail)
+
     def test_non_audio_file_rejected(self, client: TestClient) -> None:
         """Test that non-audio files are rejected."""
         # Try to upload a text file as audio
