@@ -18,6 +18,11 @@ paths = [
   '''tests/test_semantic_cloud_providers\.py''',
   '''tests/test_llm_security\.py''',
   '''tests/test_llm_providers\.py''',
+  # Baseline file for detect-secrets which contains hashes
+  '''\.secrets\.baseline''',
+  # Docs with mock keys/tokens
+  '''docs/ENVIRONMENT_VARIABLES\.md''',
+  '''docs/STREAMING_ARCHITECTURE\.md''',
 ]
 
 regexes = [
@@ -30,6 +35,8 @@ regexes = [
   '''YOUR_TOKEN''',
   '''your-registry''',
   '''example\.com''',
+  '''hf_xyzabc123''',
+  '''eyJhbGciOiJIUzI1NiIs''',
   # Nix store hashes (not secrets)
   '''/nix/store/[a-z0-9]{32}-''',
 ]
