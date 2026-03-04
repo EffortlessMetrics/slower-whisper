@@ -1026,7 +1026,7 @@ class TestAudioValidationEdgeCases:
         # Should fail validation
         assert response.status_code == 400
 
-    def test_unsafe_audio_filename_rejected(self, client: TestClient) -> None:
+    def test_unsafe_audio_filename_rejected(self) -> None:
         """Test that audio files with unsafe characters in their name are rejected."""
         from pathlib import Path
 

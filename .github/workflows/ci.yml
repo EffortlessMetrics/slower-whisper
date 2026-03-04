@@ -117,7 +117,11 @@ jobs:
           fetch-depth: 0  # full history for gitleaks
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        run: |
+          # Download and run the latest gitleaks directly to avoid the action's org license requirement
+          wget -qO gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks detect --source . -v
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -181,7 +185,7 @@ jobs:
       - name: Install wheel in clean environment
         run: |
           uv venv .venv-smoke
-          .venv-smoke/bin/pip install dist/*.whl
+          uv pip install --python .venv-smoke dist/*.whl
 
       - name: Verify slower_whisper import (installed wheel)
         run: |
