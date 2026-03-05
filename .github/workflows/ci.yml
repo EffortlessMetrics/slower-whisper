@@ -118,7 +118,7 @@ jobs:
 
       - name: Run gitleaks
         run: |
-          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh | sh -s -- -b .
+          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh | bash -s -- -b .
           ./gitleaks detect --source . --verbose --redact
 
       - name: Install uv
