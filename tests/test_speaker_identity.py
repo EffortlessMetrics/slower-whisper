@@ -675,3 +675,27 @@ class TestSpeakerIdentityIntegration:
 
         finally:
             registry.close()
+
+
+def test_delete_speaker_interactive_keyboard_interrupt(capsys):
+    """Test speakers delete handles Ctrl+C gracefully."""
+    registry = MagicMock()
+    speaker = MagicMock()
+    speaker.name = "Test User"
+    speaker.id = "test-id-123"
+    registry.get_speaker.return_value = speaker
+
+    args = MagicMock()
+    args.speakers_action = "delete"
+    args.speaker_id = "test-id-123"
+    args.force = False
+
+    with patch("sys.stdin.isatty", return_value=True):
+        with patch("builtins.input", side_effect=KeyboardInterrupt):
+            from transcription.speaker_identity import _handle_delete
+
+            exit_code = _handle_delete(registry, args)
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Aborted." in captured.out
