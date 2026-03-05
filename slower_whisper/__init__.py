@@ -1,3 +1,4 @@
-from .compat import Segment, WhisperModel, Word
+from .compat import Segment, TranscriptionInfo, Word
+from .model import WhisperModel
 
-__all__ = ["WhisperModel", "Segment", "Word"]
+__all__ = ["WhisperModel", "Segment", "Word", "TranscriptionInfo"]
