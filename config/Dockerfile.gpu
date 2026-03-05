@@ -88,6 +88,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files and application code
 # Using layer caching optimization: copy dependency files first
 COPY pyproject.toml uv.lock README.md ./
+COPY slower_whisper/ ./slower_whisper/
 COPY transcription/ ./transcription/
 COPY scripts/ ./scripts/
 COPY integrations/ ./integrations/
@@ -112,8 +113,8 @@ RUN if [ "$INSTALL_MODE" = "base" ]; then \
         uv pip install \
             --link-mode=hardlink \
             --index-strategy unsafe-best-match \
-            --index-url "${PYPI_INDEX}" \
-            --extra-index-url "${TORCH_CUDA_INDEX}" \
+            --index-url "${TORCH_CUDA_INDEX}" \
+            --extra-index-url "${PYPI_INDEX}" \
             -c /tmp/constraints-gpu.txt \
             -e ".[full]" ; \
     else \
