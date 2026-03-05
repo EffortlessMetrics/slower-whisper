@@ -88,3 +88,15 @@ class TestSamplesCopyUX:
         assert exit_code == 0
         mock_copy.assert_called_once()
         assert mock_copy.call_args.kwargs["overwrite"] is True
+
+    def test_copy_conflict_interactive_keyboard_interrupt(self, mock_copy, tmp_path, capsys):
+        """Interactive copy with conflicts should handle Ctrl+C gracefully."""
+        mock_copy.side_effect = SampleExistsError("Conflict", [Path("file1.wav")])
+
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                exit_code = main(["samples", "copy", "mini_diarization", "--root", str(tmp_path)])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "\nAborted." in captured.out
