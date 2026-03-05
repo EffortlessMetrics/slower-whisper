@@ -1131,3 +1131,16 @@ class TestEnrichPauseThreshold:
 
         config = _config_from_enrich_args(args)
         assert config.pause_threshold == 3.0
+
+    def test_cache_clear_interactive_keyboard_interrupt(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Cache --clear <target> gracefully handles Ctrl+C."""
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                exit_code = main(["cache", "--clear", "whisper"])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
