@@ -13,6 +13,7 @@ import platform
 import re
 import shutil
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 from secrets import token_hex
 from typing import NamedTuple
@@ -224,16 +225,22 @@ def ensure_dirs(paths: Paths) -> None:
         d.mkdir(parents=True, exist_ok=True)
 
 
+@lru_cache(maxsize=1)
 def ffmpeg_available() -> bool:
     """
     Return True if ffmpeg is available on PATH.
+
+    Cached to eliminate redundant file stat operations during batch processing.
     """
     return shutil.which("ffmpeg") is not None
 
 
+@lru_cache(maxsize=1)
 def get_ffmpeg_version() -> str | None:
     """
     Get ffmpeg version string if available.
+
+    Cached to eliminate redundant subprocess calls during batch processing.
 
     Returns:
         Version string (e.g., "6.1.1") or None if ffmpeg is not available.

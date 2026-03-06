@@ -11,6 +11,10 @@ useDefault = true
 description = "Global allowlist"
 
 paths = [
+  # Mock secrets and documentation allowlist
+  '''\.secrets\.baseline''',
+  '''docs/.*''',
+  '''README\.md''',
   # Template file with empty placeholders
   '''k8s/secret\.template\.yaml''',
   # Test files with intentional mock keys/tokens
