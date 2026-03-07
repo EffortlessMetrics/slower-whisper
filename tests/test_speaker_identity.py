@@ -629,6 +629,74 @@ class TestDataTypes:
 
 
 # =============================================================================
+# CLI Tests
+# =============================================================================
+
+
+class TestSpeakerIdentityCLI:
+    """Tests for speaker identity CLI commands."""
+
+    def test_delete_speaker_interactive_confirm_and_abort(
+        self, registry: SpeakerRegistry, sample_embedding: np.ndarray, capsys
+    ):
+        """Interactive delete should show red warning and abort on 'n'."""
+        from transcription.speaker_identity import _handle_delete
+
+        speaker_id = registry.register_speaker("Test Speaker", sample_embedding)
+
+        args = MagicMock()
+        args.speaker_id = speaker_id
+        args.force = False
+
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="n") as mock_input,
+        ):
+            result = _handle_delete(registry, args)
+
+        assert result == 0
+
+        # Verify prompt contained the red warning string
+        prompt_arg = mock_input.call_args[0][0]
+        assert "Delete speaker 'Test Speaker'" in prompt_arg
+        # Note: Colors.red may return plain string if no color env variables are set,
+        # but the string "This cannot be undone." must be present.
+        assert "This cannot be undone." in prompt_arg
+
+        # Verify it was aborted
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
+
+        # Verify speaker still exists
+        assert registry.get_speaker(speaker_id) is not None
+
+    def test_delete_speaker_interactive_keyboard_interrupt(
+        self, registry: SpeakerRegistry, sample_embedding: np.ndarray, capsys
+    ):
+        """Interactive delete should handle Ctrl+C gracefully."""
+        from transcription.speaker_identity import _handle_delete
+
+        speaker_id = registry.register_speaker("Test Speaker", sample_embedding)
+
+        args = MagicMock()
+        args.speaker_id = speaker_id
+        args.force = False
+
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", side_effect=KeyboardInterrupt),
+        ):
+            result = _handle_delete(registry, args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "\nAborted." in captured.out
+
+        # Verify speaker still exists
+        assert registry.get_speaker(speaker_id) is not None
+
+
+# =============================================================================
 # Integration Tests
 # =============================================================================
 
