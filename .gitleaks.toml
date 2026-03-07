@@ -18,6 +18,11 @@ paths = [
   '''tests/test_semantic_cloud_providers\.py''',
   '''tests/test_llm_security\.py''',
   '''tests/test_llm_providers\.py''',
+  '''tests/test_privacy\.py''',
+  # Mock secrets in docs/baseline
+  '''\.secrets\.baseline''',
+  '''README\.md''',
+  '''docs/.*''',
 ]
 
 regexes = [
