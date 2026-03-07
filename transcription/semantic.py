@@ -80,7 +80,9 @@ class KeywordSemanticAnnotator:
         )
     )
     # Pre-computed tuples of (original_keyword, lowercased_keyword, compiled_regex)
-    _escalation_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
+    _escalation_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(
+        init=False, repr=False
+    )
     _churn_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
     _pricing_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
     _action_regexes: tuple[re.Pattern[str], ...] = field(init=False, repr=False)
