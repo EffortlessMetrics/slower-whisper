@@ -89,6 +89,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Using layer caching optimization: copy dependency files first
 COPY pyproject.toml uv.lock README.md ./
 COPY transcription/ ./transcription/
+COPY slower_whisper/ ./slower_whisper/
 COPY scripts/ ./scripts/
 COPY integrations/ ./integrations/
 

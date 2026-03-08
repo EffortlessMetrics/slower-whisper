@@ -43,6 +43,21 @@ class TestCacheClearConfirmation:
             captured = capsys.readouterr()
             assert "Cleared Whisper cache" in captured.out
 
+    def test_interactive_prompt_keyboard_interrupt_aborts(self, mock_cache_paths, capsys):
+        """KeyboardInterrupt during prompt cleanly aborts."""
+        with (
+            patch("shutil.rmtree") as mock_rmtree,
+            patch("builtins.input", side_effect=KeyboardInterrupt) as mock_input,
+            patch("sys.stdin.isatty", return_value=True),
+        ):
+            exit_code = main(["cache", "--clear", "whisper"])
+
+            assert exit_code == 0
+            assert mock_input.called
+            assert not mock_rmtree.called
+            captured = capsys.readouterr()
+            assert "Aborted" in captured.out
+
     def test_interactive_prompt_no_aborts(self, mock_cache_paths, capsys):
         """Answering 'n' to prompt aborts without clearing."""
         with (
