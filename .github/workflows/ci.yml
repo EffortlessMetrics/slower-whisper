@@ -120,7 +120,6 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -182,7 +181,7 @@ jobs:
       - name: Install wheel in clean environment
         run: |
           uv venv .venv-smoke
-          uv pip install --python .venv-smoke dist/*.whl
+          .venv-smoke/bin/pip install dist/*.whl
 
       - name: Verify slower_whisper import (installed wheel)
         run: |
