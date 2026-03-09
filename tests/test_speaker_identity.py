@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from transcription.cli import build_parser
 from transcription.speaker_identity import (
     MappedSegment,
     MappedTranscript,
@@ -26,6 +27,7 @@ from transcription.speaker_identity import (
     SpeakerRegistry,
     apply_identity_mapping,
     get_available_backend,
+    handle_speakers_command,
     map_diarization_to_identity,
 )
 
@@ -631,6 +633,35 @@ class TestDataTypes:
 # =============================================================================
 # Integration Tests
 # =============================================================================
+
+
+class TestSpeakerIdentityCLI:
+    """Tests for the speakers CLI subcommand."""
+
+    def test_delete_speaker_interactive_keyboard_interrupt(
+        self, registry: SpeakerRegistry, sample_embedding: np.ndarray, capsys
+    ):
+        """KeyboardInterrupt during delete prompt aborts cleanly."""
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+
+        parser = build_parser()
+        args = parser.parse_args(["speakers", "delete", speaker_id])
+
+        # Pass the created temp registry to args
+        args.registry = registry.path
+
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", side_effect=KeyboardInterrupt),
+        ):
+            exit_code = handle_speakers_command(args)
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
+
+        # Verify speaker was not deleted
+        assert registry.get_speaker(speaker_id) is not None
 
 
 @pytest.mark.integration
