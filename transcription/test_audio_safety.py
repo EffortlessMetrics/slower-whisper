@@ -1,7 +1,10 @@
-import pytest
 from pathlib import Path
+
+import pytest
 from fastapi import HTTPException
+
 from transcription.service_validation import validate_audio_format
+
 
 def test_validate_audio_format_option_injection():
     # Attempt to inject an option by prefixing with '-'
