@@ -98,7 +98,7 @@ jobs:
       - name: Build and push Docker image
         id: build
         if: ${{ !(github.event_name == 'pull_request' && matrix.variant.tag-suffix == 'gpu') }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.variant.dockerfile }}
@@ -114,7 +114,7 @@ jobs:
 
       - name: Build Docker image (gpu full PR, no cache export)
         if: ${{ github.event_name == 'pull_request' && matrix.variant.tag-suffix == 'gpu' }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.variant.dockerfile }}
