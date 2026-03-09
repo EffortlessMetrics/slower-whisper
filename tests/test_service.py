@@ -1605,17 +1605,21 @@ def _parse_sse_events(content: str) -> list[dict]:
 
     return events
 
+
 class TestAudioValidationSecurity:
     """Security tests for the validate_audio_format utility."""
 
     def test_validate_audio_format_option_injection(self):
         """Test that paths starting with '-' are rejected to prevent option injection."""
-        from transcription.service_validation import validate_audio_format
-        from fastapi import HTTPException
         from pathlib import Path
+
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
 
         unsafe_path = Path("-i")
         import pytest
+
         with pytest.raises(HTTPException) as exc_info:
             validate_audio_format(unsafe_path)
 
@@ -1624,12 +1628,15 @@ class TestAudioValidationSecurity:
 
     def test_validate_audio_format_shell_injection(self):
         """Test that paths with shell metacharacters are rejected."""
-        from transcription.service_validation import validate_audio_format
-        from fastapi import HTTPException
         from pathlib import Path
+
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
 
         unsafe_path = Path("file; rm -rf /")
         import pytest
+
         with pytest.raises(HTTPException) as exc_info:
             validate_audio_format(unsafe_path)
 
@@ -1638,18 +1645,20 @@ class TestAudioValidationSecurity:
 
     def test_validate_audio_format_subprocess_timeout(self, tmp_path, mocker):
         """Test that a subprocess timeout results in a safe 400 Bad Request."""
-        from transcription.service_validation import validate_audio_format
-        from fastapi import HTTPException
         import subprocess
+
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
 
         safe_path = tmp_path / "timeout_file.wav"
         safe_path.touch()
 
         mocker.patch(
-            "subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd=["ffprobe"], timeout=10)
+            "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd=["ffprobe"], timeout=10)
         )
         import pytest
+
         with pytest.raises(HTTPException) as exc_info:
             validate_audio_format(safe_path)
 
@@ -1658,9 +1667,11 @@ class TestAudioValidationSecurity:
 
     def test_validate_audio_format_invalid_ffprobe_output(self, tmp_path, mocker):
         """Test that non-zero exit codes from ffprobe result in a 400 Bad Request."""
-        from transcription.service_validation import validate_audio_format
-        from fastapi import HTTPException
         import subprocess
+
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
 
         safe_path = tmp_path / "bad_output.wav"
         safe_path.touch()
@@ -1669,6 +1680,7 @@ class TestAudioValidationSecurity:
         mocker.patch("subprocess.run", return_value=mock_result)
 
         import pytest
+
         with pytest.raises(HTTPException) as exc_info:
             validate_audio_format(safe_path)
 
