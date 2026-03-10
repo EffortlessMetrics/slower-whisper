@@ -162,19 +162,19 @@ class KeywordSemanticAnnotator:
             # expensive regex evaluation when the literal keyword string isn't present.
             # This is safe because these patterns only wrap the exact `keyword` in \b boundaries.
             for keyword, pattern in self._escalation_patterns:
-                if keyword in text_lower and pattern.search(text_lower):
+                if keyword.lower() in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("escalation")
                     record_match("escalation", keyword, segment_id)
 
             for keyword, pattern in self._churn_patterns:
-                if keyword in text_lower and pattern.search(text_lower):
+                if keyword.lower() in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("churn_risk")
                     record_match("churn_risk", keyword, segment_id)
 
             for keyword, pattern in self._pricing_patterns:
-                if keyword in text_lower and pattern.search(text_lower):
+                if keyword.lower() in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("pricing")
                     record_match("pricing", keyword, segment_id)
