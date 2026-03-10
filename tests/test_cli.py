@@ -216,7 +216,12 @@ class TestSamplesSubcommand:
     @patch("builtins.input", side_effect=KeyboardInterrupt)
     @patch("transcription.samples.copy_sample_to_project")
     def test_samples_copy_keyboard_interrupt(
-        self, mock_copy: MagicMock, mock_input: MagicMock, mock_isatty: MagicMock, capsys: pytest.CaptureFixture[str], tmp_path: Path
+        self,
+        mock_copy: MagicMock,
+        mock_input: MagicMock,
+        mock_isatty: MagicMock,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
     ) -> None:
         """Test that samples copy gracefully handles KeyboardInterrupt on overwrite prompt."""
         from transcription.cli import main

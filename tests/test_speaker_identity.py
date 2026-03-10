@@ -285,11 +285,18 @@ class TestSpeakerRegistry:
     @patch("sys.stdin.isatty", return_value=True)
     @patch("builtins.input", side_effect=KeyboardInterrupt)
     def test_delete_speaker_cli_keyboard_interrupt(
-        self, mock_input: MagicMock, mock_isatty: MagicMock, registry: SpeakerRegistry, sample_embedding: np.ndarray, capsys: pytest.CaptureFixture[str], tmp_path: Path
+        self,
+        mock_input: MagicMock,
+        mock_isatty: MagicMock,
+        registry: SpeakerRegistry,
+        sample_embedding: np.ndarray,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
     ) -> None:
         """Test that speaker delete gracefully handles KeyboardInterrupt on confirmation prompt."""
-        from transcription.speaker_identity import handle_speakers_command
         import argparse
+
+        from transcription.speaker_identity import handle_speakers_command
 
         speaker_id = registry.register_speaker("Jack", sample_embedding)
         args = argparse.Namespace(
