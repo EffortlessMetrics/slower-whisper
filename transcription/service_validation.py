@@ -116,6 +116,7 @@ def validate_audio_format(audio_path: Path) -> None:
         HTTPException: 400 if file is not a valid audio format
     """
     import subprocess
+
     from transcription.audio_io import _validate_path_safety
 
     try:
