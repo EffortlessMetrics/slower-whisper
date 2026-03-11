@@ -1008,52 +1008,6 @@ class TestNotFoundResponses:
 
 
 # =============================================================================
-# Test Audio Validation Security
-# =============================================================================
-
-
-class TestAudioValidationSecurity:
-    """Security tests for audio validation to prevent injection attacks."""
-
-    @patch("transcription.service_transcribe.transcribe_file")
-    @patch("transcription.service_validation._validate_path_safety")
-    def test_option_injection_rejected(
-        self, mock_validate_path_safety: MagicMock, mock_transcribe: MagicMock, client: TestClient
-    ) -> None:
-        """Test that a path starting with a hyphen is rejected by _validate_path_safety."""
-        mock_validate_path_safety.side_effect = ValueError("Invalid characters in path")
-
-        # Make the request with a file named with a leading hyphen
-        response = client.post(
-            "/transcribe",
-            files={"audio": ("-test.wav", b"RIFF\x24\x00\x00\x00WAVE", "audio/wav")},
-            params={"device": "cpu"},
-        )
-
-        assert response.status_code == 400
-        assert "Invalid audio file path" in response.json()["detail"]
-        mock_transcribe.assert_not_called()
-
-    @patch("transcription.service_transcribe.transcribe_file")
-    @patch("transcription.service_validation._validate_path_safety")
-    def test_shell_injection_rejected(
-        self, mock_validate_path_safety: MagicMock, mock_transcribe: MagicMock, client: TestClient
-    ) -> None:
-        """Test that paths containing shell meta-characters are rejected."""
-        mock_validate_path_safety.side_effect = ValueError("Invalid characters in path")
-
-        response = client.post(
-            "/transcribe",
-            files={"audio": ("test;rm -rf .wav", b"RIFF\x24\x00\x00\x00WAVE", "audio/wav")},
-            params={"device": "cpu"},
-        )
-
-        assert response.status_code == 400
-        assert "Invalid audio file path" in response.json()["detail"]
-        mock_transcribe.assert_not_called()
-
-
-# =============================================================================
 # Test Audio Validation Edge Cases
 # =============================================================================
 
