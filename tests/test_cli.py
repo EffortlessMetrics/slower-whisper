@@ -115,6 +115,18 @@ class TestCacheSubcommand:
         with pytest.raises(SystemExit):
             parser.parse_args(["cache", "--show", "--clear", "all"])
 
+    def test_cache_clear_keyboard_interrupt(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Cache clear handles KeyboardInterrupt gracefully."""
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", side_effect=KeyboardInterrupt),
+        ):
+            exit_code = main(["cache", "--clear", "samples"])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
+
     def test_cache_show_displays_info(
         self,
         capsys: pytest.CaptureFixture[str],
@@ -205,6 +217,25 @@ class TestSamplesSubcommand:
         args = parser.parse_args(["samples", "copy", "mini_diarization", "--root", str(tmp_path)])
 
         assert args.root == tmp_path
+
+    def test_samples_copy_keyboard_interrupt(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Samples copy handles KeyboardInterrupt gracefully on overwrite."""
+        # Setup mock to simulate existing files
+        from transcription.exceptions import SampleExistsError
+
+        err = SampleExistsError(message="Files exist", existing_files=[Path("file1.wav")])
+        with (
+            patch("transcription.samples.copy_sample_to_project", side_effect=err),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", side_effect=KeyboardInterrupt),
+        ):
+            exit_code = main(["samples", "copy", "mini_diarization", "--root", str(tmp_path)])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
 
     def test_samples_generate_parsing(self) -> None:
         """Samples generate action is parsed correctly."""
