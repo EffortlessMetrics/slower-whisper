@@ -1012,6 +1012,27 @@ class TestNotFoundResponses:
 # =============================================================================
 
 
+class TestAudioValidationSecurity:
+    """Tests for security validation of audio files (e.g. option injection)."""
+
+    def test_audio_filename_option_injection(self) -> None:
+        """Test that paths starting with a hyphen are rejected to prevent option injection."""
+        from pathlib import Path
+
+        import pytest
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(Path("-filename.wav"))
+
+        assert exc_info.value.status_code == 400
+        assert "Invalid filename: potentially unsafe characters or patterns detected." in str(
+            exc_info.value.detail
+        )
+
+
 class TestAudioValidationEdgeCases:
     """Tests for audio validation edge cases."""
 
