@@ -803,7 +803,7 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
                 confirm = input(f"Clear {args.clear} cache ({size_str})? {warning} [y/N] ")
             except KeyboardInterrupt:
                 print("\nAborted.")
-                return 0
+                return 130
 
             if confirm.lower() not in ("y", "yes"):
                 print("Aborted.")
@@ -881,7 +881,7 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                     confirm = input(f"{Colors.red('Overwrite?')} [y/N] ")
                 except KeyboardInterrupt:
                     print("\nAborted.")
-                    return 0
+                    return 130
 
                 if confirm.lower() not in ("y", "yes"):
                     print("Aborted.")

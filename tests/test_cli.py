@@ -115,6 +115,19 @@ class TestCacheSubcommand:
         with pytest.raises(SystemExit):
             parser.parse_args(["cache", "--show", "--clear", "all"])
 
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    def test_cache_clear_keyboard_interrupt(self, mock_input: MagicMock, mock_isatty: MagicMock) -> None:
+        """Cache clear aborts cleanly on KeyboardInterrupt."""
+        import argparse
+        from transcription.cli import _handle_cache_command
+        args = argparse.Namespace(
+            command="cache", show=False, clear="whisper", force=False
+        )
+        # Should return 130 cleanly when KeyboardInterrupt is caught
+        assert _handle_cache_command(args) == 130
+        mock_input.assert_called_once()
+
     def test_cache_show_displays_info(
         self,
         capsys: pytest.CaptureFixture[str],
@@ -205,6 +218,29 @@ class TestSamplesSubcommand:
         args = parser.parse_args(["samples", "copy", "mini_diarization", "--root", str(tmp_path)])
 
         assert args.root == tmp_path
+
+    @patch("transcription.samples.copy_sample_to_project")
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    def test_samples_copy_keyboard_interrupt(
+        self, mock_input: MagicMock, mock_isatty: MagicMock, mock_copy: MagicMock
+    ) -> None:
+        """Samples copy aborts cleanly on KeyboardInterrupt."""
+        from transcription.exceptions import SampleExistsError
+        from transcription.cli import _handle_samples_command
+        import argparse
+
+        # Simulate files already existing to trigger the prompt
+        mock_copy.side_effect = SampleExistsError("test", existing_files=[Path("a.wav")])
+        args = argparse.Namespace(
+            command="samples",
+            samples_action="copy",
+            dataset="mini_diarization",
+            root=Path.cwd(),
+            force=False,
+        )
+        assert _handle_samples_command(args) == 130
+        mock_input.assert_called_once()
 
     def test_samples_generate_parsing(self) -> None:
         """Samples generate action is parsed correctly."""

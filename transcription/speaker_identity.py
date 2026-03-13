@@ -1567,7 +1567,7 @@ def _handle_delete(registry: SpeakerRegistry, args: Any) -> int:
             confirm = input(f"Delete speaker '{speaker.name}' ({speaker.id})? [y/N] ")
         except KeyboardInterrupt:
             print("\nAborted.")
-            return 0
+            return 130
 
         if confirm.lower() not in ("y", "yes"):
             print("Aborted.")
