@@ -1045,6 +1045,7 @@ class TestAudioValidationSecurity:
     def test_option_injection_rejected(self) -> None:
         """Test that option injection via leading dash is rejected."""
         from fastapi import HTTPException
+
         from transcription.service_validation import validate_audio_format
 
         # Instantiate Path directly rather than using tmp_path since tmp_path
