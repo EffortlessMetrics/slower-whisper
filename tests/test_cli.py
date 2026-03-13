@@ -117,13 +117,15 @@ class TestCacheSubcommand:
 
     @patch("sys.stdin.isatty", return_value=True)
     @patch("builtins.input", side_effect=KeyboardInterrupt)
-    def test_cache_clear_keyboard_interrupt(self, mock_input: MagicMock, mock_isatty: MagicMock) -> None:
+    def test_cache_clear_keyboard_interrupt(
+        self, mock_input: MagicMock, mock_isatty: MagicMock
+    ) -> None:
         """Cache clear aborts cleanly on KeyboardInterrupt."""
         import argparse
+
         from transcription.cli import _handle_cache_command
-        args = argparse.Namespace(
-            command="cache", show=False, clear="whisper", force=False
-        )
+
+        args = argparse.Namespace(command="cache", show=False, clear="whisper", force=False)
         # Should return 130 cleanly when KeyboardInterrupt is caught
         assert _handle_cache_command(args) == 130
         mock_input.assert_called_once()
@@ -226,9 +228,10 @@ class TestSamplesSubcommand:
         self, mock_input: MagicMock, mock_isatty: MagicMock, mock_copy: MagicMock
     ) -> None:
         """Samples copy aborts cleanly on KeyboardInterrupt."""
-        from transcription.exceptions import SampleExistsError
-        from transcription.cli import _handle_samples_command
         import argparse
+
+        from transcription.cli import _handle_samples_command
+        from transcription.exceptions import SampleExistsError
 
         # Simulate files already existing to trigger the prompt
         mock_copy.side_effect = SampleExistsError("test", existing_files=[Path("a.wav")])
