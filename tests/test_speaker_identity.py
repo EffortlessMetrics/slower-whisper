@@ -287,6 +287,30 @@ class TestSpeakerRegistry:
         result = registry.delete_speaker("nonexistent-id")
         assert result is False
 
+    def test_delete_speaker_cli_keyboard_interrupt(
+        self, registry: SpeakerRegistry, sample_embedding: np.ndarray, capsys
+    ):
+        """Should handle KeyboardInterrupt during CLI delete prompt gracefully."""
+        # This requires importing the CLI handler function directly
+        from transcription.speaker_identity import _handle_delete
+
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+
+        # Mock args
+        args = MagicMock()
+        args.speaker_id = speaker_id
+        args.force = False
+
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                exit_code = _handle_delete(registry, args)
+
+        assert exit_code == 130
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
+        # Speaker should not be deleted
+        assert registry.get_speaker(speaker_id) is not None
+
     def test_stats(self, registry: SpeakerRegistry, sample_embedding: np.ndarray):
         """Should return registry statistics."""
         registry.register_speaker("Kate", sample_embedding)
