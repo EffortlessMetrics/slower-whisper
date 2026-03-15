@@ -1012,6 +1012,23 @@ class TestNotFoundResponses:
 # =============================================================================
 
 
+class TestAudioValidationSecurity:
+    """Test suite for audio format validation security features."""
+
+    def test_validate_audio_format_rejects_option_injection(self):
+        """Test that paths starting with a hyphen are rejected."""
+        from transcription.service_validation import validate_audio_format
+        # Create a Path object directly with a leading hyphen to simulate option injection
+        unsafe_path = Path("-filename.mp3")
+
+        # Verify that _validate_path_safety catches it and validate_audio_format raises 400
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+
+        assert exc_info.value.status_code == 400
+        assert "Invalid audio file path" in exc_info.value.detail
+
+
 class TestAudioValidationEdgeCases:
     """Tests for audio validation edge cases."""
 
