@@ -675,3 +675,30 @@ class TestSpeakerIdentityIntegration:
 
         finally:
             registry.close()
+
+
+class TestCLIKeyboardInterrupts:
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    def test_delete_speaker_keyboard_interrupt(
+        self,
+        mock_input,
+        mock_isatty,
+        registry: SpeakerRegistry,
+        sample_embedding: np.ndarray,
+    ):
+        """Test that KeyboardInterrupt during delete confirmation exits with 130."""
+        from transcription.speaker_identity import _handle_delete
+
+        # Register a speaker
+        speaker_id = registry.register_speaker("Alice", sample_embedding)
+
+        class Args:
+            speaker_id_arg = speaker_id
+            force = False
+
+        args = Args()
+        args.speaker_id = speaker_id
+
+        exit_code = _handle_delete(registry, args)
+        assert exit_code == 130
