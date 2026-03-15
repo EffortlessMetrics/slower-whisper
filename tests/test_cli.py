@@ -1131,3 +1131,41 @@ class TestEnrichPauseThreshold:
 
         config = _config_from_enrich_args(args)
         assert config.pause_threshold == 3.0
+
+
+class TestCLIKeyboardInterrupts:
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    def test_cache_clear_keyboard_interrupt(self, mock_input, mock_isatty) -> None:
+        """Test that KeyboardInterrupt during cache clear exits with 130."""
+        import argparse
+
+        from transcription.cli import _handle_cache_command
+
+        args = argparse.Namespace(show=False, clear="all", force=False)
+        assert _handle_cache_command(args) == 130
+
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    @patch("transcription.samples.copy_sample_to_project")
+    def test_samples_copy_keyboard_interrupt(
+        self, mock_copy, mock_input, mock_isatty, tmp_path: Path
+    ) -> None:
+        """Test that KeyboardInterrupt during sample copy overwrite exits with 130."""
+        import argparse
+
+        from transcription.cli import _handle_samples_command
+        from transcription.exceptions import SampleExistsError
+
+        args = argparse.Namespace(
+            samples_action="copy",
+            dataset="mini_diarization",
+            root=tmp_path,
+            force=False,
+        )
+
+        mock_copy.side_effect = SampleExistsError(
+            "Files exist", existing_files=[tmp_path / "test.wav"]
+        )
+
+        assert _handle_samples_command(args) == 130
