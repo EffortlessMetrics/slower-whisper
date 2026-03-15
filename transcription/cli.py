@@ -799,10 +799,14 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
             total_size = sum(_get_cache_size(path) for _, path in targets)
             size_str = _format_size(total_size)
             warning = Colors.red("This cannot be undone.")
-            confirm = input(f"Clear {args.clear} cache ({size_str})? {warning} [y/N] ")
-            if confirm.lower() not in ("y", "yes"):
-                print("Aborted.")
-                return 0
+            try:
+                confirm = input(f"Clear {args.clear} cache ({size_str})? {warning} [y/N] ")
+                if confirm.lower() not in ("y", "yes"):
+                    print("Aborted.")
+                    return 0
+            except KeyboardInterrupt:
+                print("\nAborted.")
+                return 130
 
         for name, target in targets:
             if target.exists():
@@ -872,10 +876,15 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                 for f in e.existing_files:
                     print(f"  {f}")
 
-                confirm = input(f"{Colors.red('Overwrite?')} [y/N] ")
-                if confirm.lower() not in ("y", "yes"):
-                    print("Aborted.")
-                    return 0
+                warning = Colors.red("This cannot be undone.")
+                try:
+                    confirm = input(f"{Colors.red('Overwrite?')} {warning} [y/N] ")
+                    if confirm.lower() not in ("y", "yes"):
+                        print("Aborted.")
+                        return 0
+                except KeyboardInterrupt:
+                    print("\nAborted.")
+                    return 130
 
                 # Retry with overwrite=True
                 copied_files = copy_sample_to_project(args.dataset, project_dir, overwrite=True)
