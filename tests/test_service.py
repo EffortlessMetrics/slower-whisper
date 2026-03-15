@@ -1018,6 +1018,7 @@ class TestAudioValidationSecurity:
     def test_validate_audio_format_rejects_option_injection(self):
         """Test that paths starting with a hyphen are rejected."""
         from transcription.service_validation import validate_audio_format
+
         # Create a Path object directly with a leading hyphen to simulate option injection
         unsafe_path = Path("-filename.mp3")
 

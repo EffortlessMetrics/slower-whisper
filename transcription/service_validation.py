@@ -121,6 +121,7 @@ def validate_audio_format(audio_path: Path) -> None:
     # before passing it to subprocess.run
     try:
         from .audio_io import _validate_path_safety
+
         _validate_path_safety(audio_path)
     except ValueError as e:
         logger.warning("Unsafe audio file path detected: %s", e)
