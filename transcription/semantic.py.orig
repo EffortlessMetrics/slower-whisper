@@ -79,9 +79,7 @@ class KeywordSemanticAnnotator:
             r"\bi['’]?ll follow up\b",
         )
     )
-    _escalation_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(
-        init=False, repr=False
-    )
+    _escalation_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
     _churn_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
     _pricing_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
     _action_regexes: tuple[re.Pattern[str], ...] = field(init=False, repr=False)
@@ -161,21 +159,18 @@ class KeywordSemanticAnnotator:
             segment_ids = [segment_id] if segment_id is not None else []
 
             for keyword, kw_lower, pattern in self._escalation_patterns:
-                # Fast-path literal string check: literal strictly required by \b word boundary regex
                 if kw_lower in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("escalation")
                     record_match("escalation", keyword, segment_id)
 
             for keyword, kw_lower, pattern in self._churn_patterns:
-                # Fast-path literal string check: literal strictly required by \b word boundary regex
                 if kw_lower in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("churn_risk")
                     record_match("churn_risk", keyword, segment_id)
 
             for keyword, kw_lower, pattern in self._pricing_patterns:
-                # Fast-path literal string check: literal strictly required by \b word boundary regex
                 if kw_lower in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("pricing")

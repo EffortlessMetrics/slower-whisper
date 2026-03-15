@@ -1,0 +1,3 @@
+## 2024-05-24 - [Fast-path literal string check in regex searches]
+**Learning:** For regex-based keyword annotators (like `transcription.semantic.KeywordSemanticAnnotator`), performance can be significantly improved by pre-computing lowercase keywords and utilizing fast-path string inclusion checks (`kw_lower in text_lower`) before falling back to the slower regex engine. This is safe to do when the literal string is strictly required by the regex pattern (e.g. `\bword\b`).
+**Action:** Always consider fast-path string checks (`in`) before expensive regex searches if the regex requires a specific string literal. Ensure the literal check doesn't compromise correctness by checking if it's strictly required by the regex. Document the safety guarantee with inline comments.
