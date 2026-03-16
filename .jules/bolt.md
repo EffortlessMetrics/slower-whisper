@@ -1,0 +1,3 @@
+## 2025-05-18 - [Optimize KeywordSemanticAnnotator with fast-path string checks]
+**Learning:** For regex-based keyword annotators where patterns strictly require literal string inclusions (e.g. `\bkeyword\b`), we can significantly improve performance by utilizing fast-path string inclusion checks (`kw_lower in text_lower`) before executing the full regex evaluation. This bypasses the regex engine's overhead for text lacking the keywords, offering an almost 2x speedup on large transcripts.
+**Action:** When working with dynamically built exact keyword regex patterns, pre-compute lowercase keywords (e.g. storing tuples of `(kw, kw_lower, pattern)`) and perform a fast `in` check before evaluating the full regular expression.
