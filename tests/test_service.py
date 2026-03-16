@@ -1012,6 +1012,34 @@ class TestNotFoundResponses:
 # =============================================================================
 
 
+class TestAudioValidationSecurity:
+    """Tests for audio validation security (e.g., path injection)."""
+
+    def test_option_injection_rejected(self) -> None:
+        """Test that paths starting with a hyphen (option injection) are rejected."""
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        unsafe_path = Path("-filename.mp3")
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+        assert exc_info.value.status_code == 400
+        assert "Invalid audio file path" in str(exc_info.value.detail)
+
+    def test_shell_injection_rejected(self) -> None:
+        """Test that paths containing shell metacharacters are rejected."""
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        unsafe_path = Path("file;rm -rf /")
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+        assert exc_info.value.status_code == 400
+        assert "Invalid audio file path" in str(exc_info.value.detail)
+
+
 class TestAudioValidationEdgeCases:
     """Tests for audio validation edge cases."""
 

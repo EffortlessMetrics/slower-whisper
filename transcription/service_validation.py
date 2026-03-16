@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
 
+from .audio_io import _validate_path_safety
 from .service_settings import HTTP_413_TOO_LARGE, STREAMING_CHUNK_SIZE
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,16 @@ def validate_audio_format(audio_path: Path) -> None:
         HTTPException: 400 if file is not a valid audio format
     """
     import subprocess
+
+    try:
+        # Security fix: Validate path safety to prevent shell and option injection
+        _validate_path_safety(audio_path)
+    except ValueError as e:
+        logger.error("Path validation failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid audio file path. Contains unsupported characters.",
+        ) from e
 
     try:
         # Use ffprobe to check if file is valid audio
