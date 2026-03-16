@@ -287,7 +287,6 @@ class TestSpeakerRegistry:
     ):
         """CLI should exit 130 on KeyboardInterrupt during deletion prompt."""
         from transcription.cli import main
-        from unittest.mock import patch
 
         # Register a speaker first so there is something to delete
         speaker_id = registry.register_speaker("AbortSpeaker", sample_embedding)
