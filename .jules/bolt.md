@@ -1,0 +1,3 @@
+## 2024-05-24 - [Fast-Path Regex Keyword Matching]
+**Learning:** For regex-based keyword annotators (like KeywordSemanticAnnotator), performance can be significantly improved by pre-computing lowercase keywords and utilizing fast-path string inclusion checks (`kw_lower in text_lower`) before performing expensive regex searches.
+**Action:** When creating keyword-based pattern matchers, if the regex strictly requires the literal string, add an initial literal string inclusion check to skip unnecessary regex evaluations. Pre-compute the lowercase string during initialization to avoid repeated `.lower()` calls.
