@@ -79,18 +79,23 @@ class KeywordSemanticAnnotator:
             r"\bi['’]?ll follow up\b",
         )
     )
-    _escalation_patterns: tuple[tuple[str, re.Pattern[str]], ...] = field(init=False, repr=False)
-    _churn_patterns: tuple[tuple[str, re.Pattern[str]], ...] = field(init=False, repr=False)
-    _pricing_patterns: tuple[tuple[str, re.Pattern[str]], ...] = field(init=False, repr=False)
+    _escalation_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(
+        init=False, repr=False
+    )
+    _churn_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
+    _pricing_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
     _action_regexes: tuple[re.Pattern[str], ...] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Pre-compile regexes for faster annotation."""
+        # Optimization: Pre-compute lowercase keywords for fast string inclusion checks.
+        # This speeds up the annotation process by checking literal inclusion before using slow regex.
+        # We store (keyword, lowercase_keyword, compiled_regex).
         object.__setattr__(
             self,
             "_escalation_patterns",
             tuple(
-                (kw, re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
+                (kw, kw.lower(), re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
                 for kw in self.escalation_keywords
             ),
         )
@@ -98,7 +103,7 @@ class KeywordSemanticAnnotator:
             self,
             "_churn_patterns",
             tuple(
-                (kw, re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
+                (kw, kw.lower(), re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
                 for kw in self.churn_keywords
             ),
         )
@@ -106,7 +111,7 @@ class KeywordSemanticAnnotator:
             self,
             "_pricing_patterns",
             tuple(
-                (kw, re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
+                (kw, kw.lower(), re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
                 for kw in self.pricing_keywords
             ),
         )
@@ -158,20 +163,23 @@ class KeywordSemanticAnnotator:
             segment_id = getattr(segment, "id", None)
             segment_ids = [segment_id] if segment_id is not None else []
 
-            for keyword, pattern in self._escalation_patterns:
-                if pattern.search(text_lower):
+            # Optimization: Use fast-path `kw_lower in text_lower` literal check to bypass slow regex
+            # execution when the literal string is clearly missing. Since our pattern is just a
+            # word boundary check around the literal keyword, the literal string is strictly required.
+            for keyword, kw_lower, pattern in self._escalation_patterns:
+                if kw_lower in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("escalation")
                     record_match("escalation", keyword, segment_id)
 
-            for keyword, pattern in self._churn_patterns:
-                if pattern.search(text_lower):
+            for keyword, kw_lower, pattern in self._churn_patterns:
+                if kw_lower in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("churn_risk")
                     record_match("churn_risk", keyword, segment_id)
 
-            for keyword, pattern in self._pricing_patterns:
-                if pattern.search(text_lower):
+            for keyword, kw_lower, pattern in self._pricing_patterns:
+                if kw_lower in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("pricing")
                     record_match("pricing", keyword, segment_id)
