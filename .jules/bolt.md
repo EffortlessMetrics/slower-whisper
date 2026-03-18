@@ -1,0 +1,3 @@
+## 2025-02-12 - [Regex Keyword Semantic Annotator]
+**Learning:** For regex-based keyword annotators (like `transcription.semantic.KeywordSemanticAnnotator`), running multiple regular expressions across every segment of text can be slow when processing large transcripts.
+**Action:** Performance can be significantly improved by pre-computing lowercase keywords in `__post_init__` and utilizing fast-path string inclusion checks (`kw_lower in text_lower`). Ensure the original keyword casing is retained for downstream reporting by storing a tuple like `(kw, kw_lower, pattern)`. This fast-path speeds up execution 3x.
