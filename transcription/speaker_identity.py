@@ -1564,6 +1564,7 @@ def _handle_delete(registry: SpeakerRegistry, args: Any) -> int:
             return 1
 
         from transcription.color_utils import Colors
+
         warning = Colors.red("This cannot be undone.")
         try:
             confirm = input(f"Delete speaker '{speaker.name}' ({speaker.id})? {warning} [y/N] ")
