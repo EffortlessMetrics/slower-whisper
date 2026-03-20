@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create non-root user for security
 # Explicitly create a same-named group (-U) so named ownership (appuser:appuser) is always resolvable.
-RUN userdel -r ubuntu || true && useradd -m -u 1000 -U -s /bin/bash appuser
+RUN useradd -m -u 1000 -U -s /bin/bash appuser
 
 # Set working directory
 WORKDIR /app
@@ -68,7 +68,6 @@ RUN pip install --no-cache-dir uv==${UV_VERSION}
 # Using layer caching optimization: copy dependency files first
 COPY pyproject.toml uv.lock README.md ./
 COPY transcription/ ./transcription/
-COPY slower_whisper/ ./slower_whisper/
 COPY scripts/ ./scripts/
 COPY integrations/ ./integrations/
 
@@ -127,7 +126,6 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY --chown=appuser:appuser transcription/ /app/transcription/
-COPY --chown=appuser:appuser slower_whisper/ /app/slower_whisper/
 COPY --chown=appuser:appuser scripts/ /app/scripts/
 COPY --chown=appuser:appuser integrations/ /app/integrations/
 COPY --chown=appuser:appuser pyproject.toml /app/

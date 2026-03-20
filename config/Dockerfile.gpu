@@ -10,8 +10,8 @@
 # Stage 1: Base image with CUDA, Python, and system dependencies
 # -----------------------------------------------------------------------------
 # Using pinned CUDA runtime image for reproducibility
-# CUDA 12.8.0 with Ubuntu 24.04 (Noble) runtime
-FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04 AS base
+# CUDA 12.8.0 with Ubuntu 22.04 (Jammy) runtime
+FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04 AS base
 
 # Metadata
 LABEL maintainer="slower-whisper contributors"
@@ -35,8 +35,11 @@ ENV PYTHONUNBUFFERED=1 \
     OMP_NUM_THREADS=4
 
 # Install Python 3.12 and system dependencies
-# Note: Ubuntu 24.04 base image includes Python 3.12 by default
+# Note: Ubuntu 22.04 base image doesn't include Python 3.12 by default
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-venv \
     ffmpeg \
@@ -64,7 +67,7 @@ RUN python -m pip install --no-cache-dir "uv==${UV_VERSION}"
 
 # Create non-root user for security
 # Explicitly create a same-named group (-U) so named ownership (appuser:appuser) is always resolvable.
-RUN userdel -r ubuntu || true && useradd -m -u 1000 -U -s /bin/bash appuser
+RUN useradd -m -u 1000 -U -s /bin/bash appuser
 
 # Set working directory
 WORKDIR /app
@@ -86,7 +89,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Using layer caching optimization: copy dependency files first
 COPY pyproject.toml uv.lock README.md ./
 COPY transcription/ ./transcription/
-COPY slower_whisper/ ./slower_whisper/
 COPY scripts/ ./scripts/
 COPY integrations/ ./integrations/
 
