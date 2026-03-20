@@ -64,7 +64,9 @@ RUN python -m pip install --no-cache-dir "uv==${UV_VERSION}"
 
 # Create non-root user for security
 # Explicitly create a same-named group (-U) so named ownership (appuser:appuser) is always resolvable.
-RUN useradd -m -u 1000 -U -s /bin/bash appuser
+# Note: Ubuntu 24.04 base creates an 'ubuntu' user with UID 1000 by default, so we remove it first.
+RUN userdel -r ubuntu || true && \
+    useradd -m -u 1000 -U -s /bin/bash appuser
 
 # Set working directory
 WORKDIR /app
