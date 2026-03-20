@@ -63,6 +63,7 @@ RUN python -m pip install --no-cache-dir "uv==${UV_VERSION}"
 
 # Create non-root user for security
 # Explicitly create a same-named group (-U) so named ownership (appuser:appuser) is always resolvable.
+RUN userdel -r ubuntu || true
 RUN useradd -m -u 1000 -U -s /bin/bash appuser
 
 # Set working directory
