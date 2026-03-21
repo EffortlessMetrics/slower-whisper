@@ -79,7 +79,9 @@ class KeywordSemanticAnnotator:
             r"\bi['’]?ll follow up\b",
         )
     )
-    _escalation_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
+    _escalation_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(
+        init=False, repr=False
+    )
     _churn_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
     _pricing_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
     _action_regexes: tuple[re.Pattern[str], ...] = field(init=False, repr=False)
