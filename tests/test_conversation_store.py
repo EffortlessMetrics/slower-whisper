@@ -27,6 +27,7 @@ from transcription.store import (
     ExportFormat,
     ExportOptions,
     IngestOptions,
+    QueryError,
     QueryFilter,
     SpeakerQuery,
     StoreError,
@@ -1048,3 +1049,11 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_search_invalid_order_by() -> None:
+    """Test search with invalid order_by column."""
+    store = ConversationStore(":memory:")
+    query = StoreQuery(order_by="1=1")
+    with pytest.raises(QueryError, match="Invalid order_by column"):
+        store.search(query)
