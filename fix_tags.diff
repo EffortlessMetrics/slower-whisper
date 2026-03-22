@@ -1,0 +1,11 @@
+--- .github/workflows/docker-build.yml
++++ .github/workflows/docker-build.yml
+@@ -86,7 +86,7 @@
+         uses: docker/metadata-action@v5
+         with:
+           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+-          tags: |
++          tags: |-
+             # Default main branch -> latest tag
+             type=raw,value=latest,enable={{is_default_branch}}
+             # Tag with variant suffix

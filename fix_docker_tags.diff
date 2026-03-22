@@ -1,0 +1,18 @@
+--- .github/workflows/docker-build.yml
++++ .github/workflows/docker-build.yml
+@@ -85,15 +85,10 @@
+             latest=false
+             suffix=-${{ matrix.variant.tag-suffix }},onlatest=true
+           tags: |
+-            # Tag as 'latest' for main branch
+             type=raw,value=latest,enable={{is_default_branch}}
+-            # Tag with version on tags
+             type=semver,pattern={{version}}
+             type=semver,pattern={{major}}.{{minor}}
+             type=semver,pattern={{major}}
+-            # Tag with branch name
+             type=ref,event=branch
+-            # Tag with PR number
+             type=ref,event=pr
+-            # Tag with git SHA
+             type=sha,prefix=sha-
