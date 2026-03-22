@@ -126,7 +126,7 @@ def validate_audio_format(audio_path: Path) -> None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid audio file name.",
-            )
+            ) from e
 
         # Use ffprobe to check if file is valid audio
         # -v error: only show errors
@@ -216,7 +216,7 @@ def _validate_audio_format_python(audio_path: Path) -> None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid audio file name.",
-            )
+            ) from e
 
         # Check file size (must be larger than 0)
         file_size = audio_path.stat().st_size
