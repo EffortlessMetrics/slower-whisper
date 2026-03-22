@@ -1604,3 +1604,22 @@ def _parse_sse_events(content: str) -> list[dict]:
                 pass
 
     return events
+
+
+class TestAudioValidationSecurity:
+    """Tests for audio validation security edge cases."""
+
+    def test_reject_option_injection(self) -> None:
+        """Test that paths mimicking options (e.g., -filename) are rejected."""
+        from pathlib import Path
+
+        import pytest
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(Path("-test.wav"))
+
+        assert exc_info.value.status_code == 400
+        assert "Invalid audio file name" in str(exc_info.value.detail)
