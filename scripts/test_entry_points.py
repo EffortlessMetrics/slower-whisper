@@ -5,6 +5,7 @@ Test script to verify entry points after installation.
 Usage: python test_entry_points.py
 """
 
+import shlex
 import shutil
 import subprocess
 import sys
@@ -65,20 +66,14 @@ def test_command(test_name, command, check_output=False):
 
     try:
         if isinstance(command, str):
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        else:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            command = shlex.split(command)
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
 
         if result.returncode == 0:
             print(f"{Colors.GREEN}✅ PASS{Colors.NC}")
@@ -100,7 +95,7 @@ def test_command(test_name, command, check_output=False):
 def test_import(module_path):
     """Test if a Python module can be imported."""
     test_name = f"Import {module_path}"
-    command = f"python3 -c 'import {module_path}'"
+    command = [sys.executable, "-c", f"import {module_path}"]
     return test_command(test_name, command)[0]
 
 
