@@ -920,6 +920,21 @@ class SQLiteConversationStore:
 
         # Order by
         order_col = "rank" if query.text else query.order_by
+
+        # Sentinel Security Fix: Prevent SQL Injection in ORDER BY
+        valid_order_cols = {
+            "start_time",
+            "end_time",
+            "text",
+            "speaker_id",
+            "speaker_confidence",
+            "file_name",
+            "language",
+            "rank",
+        }
+        if order_col not in valid_order_cols:
+            raise ValueError(f"Invalid order_by column: {order_col}")
+
         order_dir = "DESC" if query.order_desc else "ASC"
         sql_parts.append(f"ORDER BY {order_col} {order_dir}")
 
