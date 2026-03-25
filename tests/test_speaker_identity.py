@@ -24,6 +24,7 @@ from transcription.speaker_identity import (
     SpeakerEmbedder,
     SpeakerMatch,
     SpeakerRegistry,
+    _handle_delete,
     apply_identity_mapping,
     get_available_backend,
     map_diarization_to_identity,
@@ -281,6 +282,28 @@ class TestSpeakerRegistry:
 
         assert result is True
         assert registry.get_speaker(speaker_id) is None
+
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt())
+    def test_delete_speaker_keyboard_interrupt(
+        self,
+        mock_input: MagicMock,
+        mock_isatty: MagicMock,
+        registry: SpeakerRegistry,
+        sample_embedding: np.ndarray,
+    ):
+        """Should abort deletion gracefully on KeyboardInterrupt."""
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+
+        args = MagicMock()
+        args.speaker_id = speaker_id
+        args.force = False
+
+        result = _handle_delete(registry, args)
+
+        assert result == 130
+        # Verify speaker was not deleted
+        assert registry.get_speaker(speaker_id) is not None
 
     def test_delete_nonexistent_speaker(self, registry: SpeakerRegistry):
         """Should return False when deleting nonexistent speaker."""
