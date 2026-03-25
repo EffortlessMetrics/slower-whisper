@@ -1563,7 +1563,16 @@ def _handle_delete(registry: SpeakerRegistry, args: Any) -> int:
             print("Error: Delete requires --force in non-interactive mode.", file=sys.stderr)
             return 1
 
-        confirm = input(f"Delete speaker '{speaker.name}' ({speaker.id})? [y/N] ")
+        try:
+            from transcription.color_utils import Colors
+
+            confirm = input(
+                f"Delete speaker '{speaker.name}' ({speaker.id})? {Colors.red('[y/N]')} "
+            )
+        except KeyboardInterrupt:
+            print("\nAborted.")
+            return 130
+
         if confirm.lower() not in ("y", "yes"):
             print("Aborted.")
             return 0
