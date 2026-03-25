@@ -800,7 +800,9 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
             size_str = _format_size(total_size)
             warning = Colors.red("This cannot be undone.")
             try:
-                confirm = input(f"Clear {args.clear} cache ({size_str})? {warning} {Colors.red('[y/N]')} ")
+                confirm = input(
+                    f"Clear {args.clear} cache ({size_str})? {warning} {Colors.red('[y/N]')} "
+                )
             except KeyboardInterrupt:
                 print("\nAborted.")
                 return 130
