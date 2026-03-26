@@ -1,3 +1,4 @@
+
 """Tests for speaker identity system.
 
 Tests cover:
@@ -12,6 +13,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -675,3 +677,74 @@ class TestSpeakerIdentityIntegration:
 
         finally:
             registry.close()
+
+def test_handle_delete_interactive_yes(registry: SpeakerRegistry, capsys: Any) -> None:
+    """Test interactive delete confirmation."""
+    from datetime import datetime
+
+    from transcription.speaker_identity import _handle_delete
+
+    # Setup mock args
+    args = MagicMock()
+    args.speaker_id = "test-id"
+    args.force = False
+
+    # Add a mock speaker to registry
+    registry.get_speaker = MagicMock(
+        return_value=Speaker(
+            id="test-id",
+            name="Alice",
+            embedding=np.zeros(192, dtype=np.float32),
+            metadata={},
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            sample_count=1,
+        )
+    )
+    registry.delete_speaker = MagicMock()
+
+    with (
+        patch("sys.stdin.isatty", return_value=True),
+        patch("builtins.input", return_value="y"),
+    ):
+        exit_code = _handle_delete(registry, args)
+
+    assert exit_code == 0
+    registry.delete_speaker.assert_called_once_with("test-id")
+    captured = capsys.readouterr()
+    assert "Deleted speaker 'Alice'" in captured.out
+
+
+def test_handle_delete_interactive_interrupt(registry: SpeakerRegistry, capsys: Any) -> None:
+    """Test interactive delete confirmation handles Ctrl+C."""
+    from datetime import datetime
+
+    from transcription.speaker_identity import _handle_delete
+
+    args = MagicMock()
+    args.speaker_id = "test-id"
+    args.force = False
+
+    registry.get_speaker = MagicMock(
+        return_value=Speaker(
+            id="test-id",
+            name="Alice",
+            embedding=np.zeros(192, dtype=np.float32),
+            metadata={},
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            sample_count=1,
+        )
+    )
+    registry.delete_speaker = MagicMock()
+
+    with (
+        patch("sys.stdin.isatty", return_value=True),
+        patch("builtins.input", side_effect=KeyboardInterrupt()),
+    ):
+        exit_code = _handle_delete(registry, args)
+
+    assert exit_code == 130
+    registry.delete_speaker.assert_not_called()
+    captured = capsys.readouterr()
+    assert "Aborted." in captured.out
