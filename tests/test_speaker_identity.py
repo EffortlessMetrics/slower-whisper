@@ -1,4 +1,3 @@
-
 """Tests for speaker identity system.
 
 Tests cover:
@@ -677,6 +676,7 @@ class TestSpeakerIdentityIntegration:
 
         finally:
             registry.close()
+
 
 def test_handle_delete_interactive_yes(registry: SpeakerRegistry, capsys: Any) -> None:
     """Test interactive delete confirmation."""
