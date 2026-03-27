@@ -38,7 +38,7 @@ jobs:
     name: Lint (ruff check)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -61,7 +61,7 @@ jobs:
     name: Format check (ruff format)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -81,7 +81,7 @@ jobs:
     name: Type check (mypy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -112,7 +112,7 @@ jobs:
     name: Security scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # full history for gitleaks
 
@@ -120,6 +120,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -181,12 +182,12 @@ jobs:
       - name: Install wheel in clean environment
         run: |
           uv venv .venv-smoke
-          .venv-smoke/bin/pip install dist/*.whl
+          uv pip install --python .venv-smoke dist/*.whl
 
       - name: Verify slower_whisper import (installed wheel)
         run: |
           cd /tmp
-          "$GITHUB_WORKSPACE/.venv-smoke/bin/python" - <<'PY'
+          uv run --python "$GITHUB_WORKSPACE/.venv-smoke" python - <<'PY'
           import slower_whisper
           p = slower_whisper.__file__
           print("slower_whisper.__file__ =", p)
@@ -209,7 +210,7 @@ jobs:
         python-version: ["3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -257,7 +258,7 @@ jobs:
     needs: [lint, format]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -308,7 +309,7 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -362,7 +363,7 @@ jobs:
     needs: [lint, format]  # Run after quick checks pass
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -393,7 +394,7 @@ jobs:
     needs: [lint, format]  # Run after quick checks pass
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -431,7 +432,7 @@ jobs:
     needs: [lint, format]  # Run after quick checks pass
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -477,7 +478,7 @@ jobs:
     continue-on-error: true
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -613,7 +614,7 @@ jobs:
     needs: [lint, format, test]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -742,7 +743,7 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -825,7 +826,7 @@ jobs:
     needs: [lint, format]  # Run after quick checks pass
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
