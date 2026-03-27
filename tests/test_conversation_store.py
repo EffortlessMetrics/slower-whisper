@@ -27,6 +27,7 @@ from transcription.store import (
     ExportFormat,
     ExportOptions,
     IngestOptions,
+    QueryError,
     QueryFilter,
     SpeakerQuery,
     StoreError,
@@ -904,6 +905,21 @@ class TestErrorHandling:
         query = StoreQuery()
         results = store.search(query)
         assert len(results) == 4
+
+    def test_query_invalid_order_by_raises_query_error(
+        self, store: ConversationStore, sample_transcript_json: Path
+    ) -> None:
+        """Test that invalid order_by columns raise QueryError to prevent SQL injection."""
+        store.ingest(sample_transcript_json)
+
+        # Valid order_by should work
+        query = StoreQuery(order_by="start_time")
+        store.search(query)
+
+        # Invalid order_by should raise QueryError
+        query_invalid = StoreQuery(order_by="start_time; DROP TABLE users;")
+        with pytest.raises(QueryError, match="Invalid order_by column"):
+            store.search(query_invalid)
 
 
 # =============================================================================
