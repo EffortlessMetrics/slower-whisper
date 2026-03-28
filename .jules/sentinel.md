@@ -6,3 +6,7 @@
 **Vulnerability:** Dynamic column names in ORDER BY clauses were vulnerable to SQL injection because they cannot be parameterized with ? placeholders.
 **Learning:** SQLite cannot parameterize column or table names. If user input specifies an ordering column, it must be validated against a strict allowlist before string interpolation.
 **Prevention:** Use an allowlist to validate user-supplied column names before concatenating them into the SQL query string.
+## 2026-03-28 - CI Downgrades and Licensing
+**Vulnerability:** gitleaks-action failed without a license token.
+**Learning:** When fixing CI failures, do not replace official GitHub Actions (e.g., gitleaks-action) with manual binary downloads to bypass license requirements or errors, as this constitutes an over-reaching CI downgrade and violates code review policies.
+**Prevention:** Explicitly map the required license secret to an environment variable in the workflow file instead of modifying the tool execution method.
