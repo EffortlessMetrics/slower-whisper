@@ -42,6 +42,22 @@ class TestSamplesCopyUX:
 
         assert exit_code == 1
 
+    def test_copy_conflict_interactive_keyboard_interrupt(self, mock_copy, tmp_path, capsys):
+        """KeyboardInterrupt in copy with conflicts should prompt and abort."""
+        mock_copy.side_effect = SampleExistsError("Conflict", [Path("file1.wav")])
+
+        # Patch isatty to True and input to KeyboardInterrupt
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", side_effect=KeyboardInterrupt()):
+                exit_code = main(["samples", "copy", "mini_diarization", "--root", str(tmp_path)])
+
+        assert exit_code == 130
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
+        assert mock_copy.call_count == 1
+
+        mock_copy.reset_mock()
+
     def test_copy_conflict_interactive_abort(self, mock_copy, tmp_path, capsys):
         """Interactive copy with conflicts should prompt and abort if user says no."""
         mock_copy.side_effect = SampleExistsError("Conflict", [Path("file1.wav")])
