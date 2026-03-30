@@ -38,6 +38,7 @@ jobs:
     timeout-minutes: 30
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      UV_HTTP_TIMEOUT: "120"
 
     steps:
       - name: Checkout repository
@@ -96,6 +97,7 @@ jobs:
     timeout-minutes: 90
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      UV_HTTP_TIMEOUT: "120"
 
     steps:
       - name: Checkout repository
