@@ -27,6 +27,7 @@ from transcription.store import (
     ExportFormat,
     ExportOptions,
     IngestOptions,
+    QueryError,
     QueryFilter,
     SpeakerQuery,
     StoreError,
@@ -904,6 +905,11 @@ class TestErrorHandling:
         query = StoreQuery()
         results = store.search(query)
         assert len(results) == 4
+
+        # Invalid order_by column should raise QueryError
+        query = StoreQuery(order_by="invalid_column; DROP TABLE users;")
+        with pytest.raises(QueryError, match="Invalid order_by column"):
+            store.search(query)
 
 
 # =============================================================================
