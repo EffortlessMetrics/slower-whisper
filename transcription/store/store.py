@@ -918,6 +918,21 @@ class SQLiteConversationStore:
                 sql_parts.append("AND t.ingested_at < ?")
                 params.append(query.date_range.before)
 
+        # Validate order_by to prevent SQL injection
+        allowed_order_by = {
+            "start_time",
+            "end_time",
+            "segment_index",
+            "speaker_id",
+            "speaker_confidence",
+            "rank",
+            "file_name",
+            "language",
+        }
+
+        if query.order_by not in allowed_order_by:
+            raise QueryError(f"Invalid order_by column: {query.order_by}")
+
         # Order by
         order_col = "rank" if query.text else query.order_by
         order_dir = "DESC" if query.order_desc else "ASC"

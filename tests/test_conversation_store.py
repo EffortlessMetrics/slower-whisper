@@ -27,6 +27,7 @@ from transcription.store import (
     ExportFormat,
     ExportOptions,
     IngestOptions,
+    QueryError,
     QueryFilter,
     SpeakerQuery,
     StoreError,
@@ -463,6 +464,22 @@ class TestFullTextSearch:
         results = store.search(query)
 
         assert len(results) == 0
+
+    def test_search_order_by_sql_injection(
+        self, store: ConversationStore, sample_transcript_json: Path
+    ) -> None:
+        """Test that invalid order_by values are rejected to prevent SQL injection."""
+        store.ingest(sample_transcript_json)
+
+        # Valid order_by should work
+        query_valid = StoreQuery(order_by="start_time")
+        results_valid = store.search(query_valid)
+        assert len(results_valid) == 4
+
+        # Invalid order_by should raise QueryError
+        query_invalid = StoreQuery(order_by="start_time; DROP TABLE segments; --")
+        with pytest.raises(QueryError, match="Invalid order_by column"):
+            store.search(query_invalid)
 
     def test_search_with_snippet_highlighting(
         self, store: ConversationStore, sample_transcript_json: Path
