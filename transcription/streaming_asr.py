@@ -203,12 +203,12 @@ class StreamingASRAdapter:
             return []
 
         # Reshape audio to (num_frames, frame_size), truncating any partial frame at the end
-        frames = audio[:num_frames * frame_size].reshape(num_frames, frame_size)
+        frames = audio[: num_frames * frame_size].reshape(num_frames, frame_size)
 
         # Calculate energy for all frames at once using numpy vectorization
         energies = np.sqrt(np.mean(frames**2, axis=1))
 
-        return (energies > self.config.vad_energy_threshold).tolist()
+        return [bool(e) for e in energies > self.config.vad_energy_threshold]
 
     def _process_vad(
         self,
