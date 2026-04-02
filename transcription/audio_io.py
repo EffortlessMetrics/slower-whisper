@@ -348,6 +348,11 @@ def _indent_stderr(stderr: str, indent: str = "    ") -> str:
     return "\n".join(f"{indent}{line}" for line in lines)
 
 
+# This list covers characters that could be dangerous in shell context.
+# Using a frozenset for O(1) lookup in validation loops.
+_FORBIDDEN_CHARS = frozenset(["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"])
+
+
 def _validate_path_safety(path: Path | str) -> None:
     """
     Validate that a path is safe for subprocess arguments.
@@ -365,9 +370,7 @@ def _validate_path_safety(path: Path | str) -> None:
     path_str = str(path)
 
     # Check for shell metacharacters
-    # This list covers characters that could be dangerous in shell context
-    forbidden_chars = ["&", "|", ";", "`", "$", "(", ")", '"', "'", "<", ">", "\\"]
-    if any(char in path_str for char in forbidden_chars):
+    if any(char in _FORBIDDEN_CHARS for char in path_str):
         raise ValueError(f"Invalid characters in path: {path_str}")
 
     # Check for option injection (leading dash)
