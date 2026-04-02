@@ -202,13 +202,14 @@ class StreamingASRAdapter:
         if num_frames == 0:
             return []
 
-        # Truncate audio to exact multiple of frame_size
-        audio_truncated = audio[: num_frames * frame_size]
+        # Truncate audio to exact multiple of frame_size and ensure it's a NumPy array
+        audio_truncated = np.asarray(audio[: num_frames * frame_size])
 
-        # Reshape into (num_frames, frame_size)
-        frames = audio_truncated.reshape((num_frames, frame_size))
+        # Reshape into (num_frames, frame_size) safely
+        frames = np.reshape(audio_truncated, (num_frames, frame_size))
 
-        # Calculate RMS energy for each frame (vectorized)
+        # Calculate RMS energy for each frame (vectorized) equivalent to _calculate_energy
+        # (Ensure we don't overflow on int16 by using float64 internally if needed, but audio is float32)
         energies = np.sqrt(np.mean(frames**2, axis=1))
 
         # Compare against threshold
