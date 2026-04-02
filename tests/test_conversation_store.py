@@ -27,6 +27,7 @@ from transcription.store import (
     ExportFormat,
     ExportOptions,
     IngestOptions,
+    QueryError,
     QueryFilter,
     SpeakerQuery,
     StoreError,
@@ -899,6 +900,9 @@ class TestErrorHandling:
     ) -> None:
         """Test that invalid queries are handled gracefully."""
         store.ingest(sample_transcript_json)
+
+        with pytest.raises(QueryError, match="Invalid order_by column"):
+            store.search(StoreQuery(order_by="start_time; DROP TABLE segments"))
 
         # Empty query should work (returns all results)
         query = StoreQuery()
