@@ -287,7 +287,9 @@ class TestSpeakerRegistry:
         result = registry.delete_speaker("nonexistent-id")
         assert result is False
 
-    def test_handle_delete_interactive(self, registry: SpeakerRegistry, sample_embedding: np.ndarray):
+    def test_handle_delete_interactive(
+        self, registry: SpeakerRegistry, sample_embedding: np.ndarray
+    ):
         """Should apply visual warning when prompting for speaker deletion."""
         import argparse
         from unittest.mock import patch
@@ -298,7 +300,10 @@ class TestSpeakerRegistry:
         speaker_id = registry.register_speaker("Jack", sample_embedding)
         args = argparse.Namespace(speaker_id=speaker_id, force=False)
 
-        with patch("sys.stdin.isatty", return_value=True), patch("builtins.input", return_value="y") as mock_input:
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="y") as mock_input,
+        ):
             result = _handle_delete(registry, args)
 
         assert result == 0
