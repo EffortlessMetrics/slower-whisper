@@ -287,6 +287,25 @@ class TestSpeakerRegistry:
         result = registry.delete_speaker("nonexistent-id")
         assert result is False
 
+    def test_handle_delete_interactive(self, registry: SpeakerRegistry, sample_embedding: np.ndarray):
+        """Should apply visual warning when prompting for speaker deletion."""
+        import argparse
+        from unittest.mock import patch
+
+        from transcription.color_utils import Colors
+        from transcription.speaker_identity import _handle_delete
+
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+        args = argparse.Namespace(speaker_id=speaker_id, force=False)
+
+        with patch("sys.stdin.isatty", return_value=True), patch("builtins.input", return_value="y") as mock_input:
+            result = _handle_delete(registry, args)
+
+        assert result == 0
+        assert registry.get_speaker(speaker_id) is None
+        mock_input.assert_called_once()
+        assert Colors.red("This cannot be undone.") in mock_input.call_args[0][0]
+
     def test_stats(self, registry: SpeakerRegistry, sample_embedding: np.ndarray):
         """Should return registry statistics."""
         registry.register_speaker("Kate", sample_embedding)
