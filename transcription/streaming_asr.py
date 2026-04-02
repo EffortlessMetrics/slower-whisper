@@ -203,7 +203,7 @@ class StreamingASRAdapter:
             return []
 
         # Truncate audio to exact multiple of frame_size
-        audio_truncated = audio[:num_frames * frame_size]
+        audio_truncated = audio[: num_frames * frame_size]
 
         # Reshape into (num_frames, frame_size)
         frames = audio_truncated.reshape((num_frames, frame_size))
