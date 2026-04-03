@@ -160,6 +160,99 @@ class TestSpeakerRegistry:
         finally:
             registry.close()
 
+
+class TestCLIHandleDelete:
+    """Tests for the _handle_delete CLI function."""
+
+    @pytest.fixture
+    def mock_args(self):
+        """Mock args object."""
+
+        class Args:
+            speaker_id = "test-id"
+            force = False
+
+        return Args()
+
+    def test_delete_not_found(self, registry: SpeakerRegistry, mock_args, capsys):
+        """Should fail if speaker not found."""
+        from transcription.speaker_identity import _handle_delete
+
+        exit_code = _handle_delete(registry, mock_args)
+
+        assert exit_code == 1
+        assert "Speaker not found: test-id" in capsys.readouterr().err
+
+    def test_delete_non_interactive_without_force(
+        self, registry: SpeakerRegistry, mock_args, sample_embedding, capsys
+    ):
+        """Should fail in non-interactive mode without --force."""
+        from unittest.mock import patch
+
+        from transcription.speaker_identity import _handle_delete
+
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+        mock_args.speaker_id = speaker_id
+
+        with patch("sys.stdin.isatty", return_value=False):
+            exit_code = _handle_delete(registry, mock_args)
+
+        assert exit_code == 1
+        assert "Delete requires --force" in capsys.readouterr().err
+        assert registry.get_speaker(speaker_id) is not None
+
+    def test_delete_interactive_abort(
+        self, registry: SpeakerRegistry, mock_args, sample_embedding, capsys
+    ):
+        """Should abort if user says no."""
+        from unittest.mock import patch
+
+        from transcription.speaker_identity import _handle_delete
+
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+        mock_args.speaker_id = speaker_id
+
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", return_value="n"):
+                exit_code = _handle_delete(registry, mock_args)
+
+        assert exit_code == 0
+        assert "Aborted." in capsys.readouterr().out
+        assert registry.get_speaker(speaker_id) is not None
+
+    def test_delete_interactive_confirm(
+        self, registry: SpeakerRegistry, mock_args, sample_embedding, capsys
+    ):
+        """Should delete if user confirms."""
+        from unittest.mock import patch
+
+        from transcription.speaker_identity import _handle_delete
+
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+        mock_args.speaker_id = speaker_id
+
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", return_value="y"):
+                exit_code = _handle_delete(registry, mock_args)
+
+        assert exit_code == 0
+        assert f"Deleted speaker 'Jack' ({speaker_id})" in capsys.readouterr().out
+        assert registry.get_speaker(speaker_id) is None
+
+    def test_delete_force(self, registry: SpeakerRegistry, mock_args, sample_embedding, capsys):
+        """Should delete without prompting if --force."""
+        from transcription.speaker_identity import _handle_delete
+
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+        mock_args.speaker_id = speaker_id
+        mock_args.force = True
+
+        exit_code = _handle_delete(registry, mock_args)
+
+        assert exit_code == 0
+        assert f"Deleted speaker 'Jack' ({speaker_id})" in capsys.readouterr().out
+        assert registry.get_speaker(speaker_id) is None
+
     def test_registry_creates_schema(self, temp_db: Path):
         """Registry should create required tables."""
         registry = SpeakerRegistry(temp_db)
