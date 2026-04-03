@@ -22,13 +22,11 @@ from pytest_bdd import given, parsers, scenarios, then, when  # noqa: E402
 
 from transcription import TranscriptionConfig, transcribe_directory, transcribe_file
 
-# Check if ffmpeg is available
+# Check if ffmpeg is available — transcription BDD tests require audio normalization
 FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
 
-# Load all scenarios from the feature file
-# Mark all scenarios as xfail if ffmpeg is not available since they require audio normalization
-pytestmark = pytest.mark.xfail(
-    not FFMPEG_AVAILABLE, reason="Requires ffmpeg for audio normalization", strict=False
+pytestmark = pytest.mark.skipif(
+    not FFMPEG_AVAILABLE, reason="Requires ffmpeg for audio normalization"
 )
 
 scenarios("../features/transcription.feature")

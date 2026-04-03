@@ -15,6 +15,7 @@ Tests use pytest fixtures and mocking to avoid requiring actual GPU/models.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -1520,6 +1521,7 @@ def test_load_transcript_invalid_json(tmp_path):
         load_transcript(invalid_json)
 
 
+@pytest.mark.skipif(os.getuid() == 0, reason="Permission tests don't work as root")
 def test_save_transcript_to_readonly_location(test_transcript, tmp_path):
     """Test save_transcript handles permission errors."""
     # Create a read-only directory

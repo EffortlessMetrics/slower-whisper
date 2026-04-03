@@ -41,6 +41,13 @@ from transcription.pipeline import (
 # ============================================================================
 
 
+@pytest.fixture(autouse=True)
+def _mock_normalize_all():
+    """Bypass ffmpeg-dependent audio normalization in all pipeline tests."""
+    with patch("transcription.audio_io.normalize_all"):
+        yield
+
+
 @pytest.fixture
 def temp_project_structure(tmp_path: Path) -> Paths:
     """
