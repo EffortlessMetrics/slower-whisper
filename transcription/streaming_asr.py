@@ -203,7 +203,7 @@ class StreamingASRAdapter:
             return []
 
         # Vectorized energy calculation
-        truncated_audio = audio[:num_frames * frame_size]
+        truncated_audio = audio[: num_frames * frame_size]
         frames = np.reshape(np.asarray(truncated_audio), (num_frames, frame_size))
         energies = np.sqrt(np.mean(frames**2, axis=1))
         boolean_array = energies > self.config.vad_energy_threshold
