@@ -491,6 +491,7 @@ class TestQueryFilters:
     ) -> None:
         """Test that invalid order_by columns raise QueryError."""
         import pytest
+
         from transcription.store.types import QueryError
         store.ingest(sample_transcript_json)
 
