@@ -1,0 +1,3 @@
+## 2024-05-24 - [Vectorized frame energy calculation in streaming_asr.py]
+**Learning:** In audio processing loops, standard Python `for` loops to slice numpy arrays and calculate mean squared error energy (RMS) are very slow and act as a performance bottleneck when dealing with larger audio files or streams.
+**Action:** When calculating frame-wise properties over raw audio data arrays, reshape the 1D audio sequence into a 2D array of (frames, frame_size) to leverage NumPy's fast, vectorized `mean` and `sqrt` operations across a specified axis. Ensure inputs are `np.asarray()` and explicitly cast output back to basic python types where necessary to satisfy typing constraints.
