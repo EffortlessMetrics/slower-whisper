@@ -922,9 +922,15 @@ class SQLiteConversationStore:
         order_col = "rank" if query.text else query.order_by
 
         ALLOWED_ORDER_COLS = {
-            "rank", "start_time", "end_time", "segment_index",
-            "text", "speaker_id", "speaker_confidence",
-            "file_name", "language"
+            "rank",
+            "start_time",
+            "end_time",
+            "segment_index",
+            "text",
+            "speaker_id",
+            "speaker_confidence",
+            "file_name",
+            "language",
         }
 
         if order_col not in ALLOWED_ORDER_COLS:

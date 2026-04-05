@@ -493,6 +493,7 @@ class TestQueryFilters:
         import pytest
 
         from transcription.store.types import QueryError
+
         store.ingest(sample_transcript_json)
 
         query = StoreQuery(order_by="DROP TABLE segments;")
