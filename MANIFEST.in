@@ -38,6 +38,9 @@ include slower_whisper/py.typed
 recursive-include docs *.md *.txt *.json *.py
 recursive-include examples *.py *.md *.json *.txt
 
+# slower_whisper package
+recursive-include slower_whisper *.py
+
 # Benchmarks and tests
 recursive-include benchmarks *.py *.md *.json *.jsonl *.txt *.csv *.wav *.rttm
 recursive-include tests *.py *.json *.wav *.feature
