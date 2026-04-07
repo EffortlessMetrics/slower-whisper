@@ -34,9 +34,6 @@ include requirements-dev.txt
 include transcription/py.typed
 include slower_whisper/py.typed
 
-# Slower whisper subpackage
-recursive-include slower_whisper *.py *.typed
-
 # Docs and examples
 recursive-include docs *.md *.txt *.json *.py
 recursive-include examples *.py *.md *.json *.txt
