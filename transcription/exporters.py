@@ -116,6 +116,7 @@ def export_html(transcript: Transcript, output_path: Path, unit: str = "segments
         "<html>",
         "<head>",
         '<meta charset="utf-8" />',
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
         "<title>Transcript</title>",
         "<style>",
         "body { font-family: system-ui, sans-serif; color: #222; margin: 24px; }",
