@@ -33,7 +33,6 @@ include requirements-dev.txt
 # Typed package markers
 include transcription/py.typed
 include slower_whisper/py.typed
-recursive-include slower_whisper *.py
 
 # Docs and examples
 recursive-include docs *.md *.txt *.json *.py
