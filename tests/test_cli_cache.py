@@ -45,6 +45,7 @@ class TestCacheClearConfirmation:
 
             prompt_arg = mock_input.call_args[0][0]
             from transcription.color_utils import Colors
+
             assert Colors.red("0 B") in prompt_arg
 
     def test_interactive_prompt_no_aborts(self, mock_cache_paths, capsys):
