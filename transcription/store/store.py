@@ -919,7 +919,17 @@ class SQLiteConversationStore:
                 params.append(query.date_range.before)
 
         # Order by
+        ALLOWED_ORDER_COLS = {
+            "rank",
+            "start_time",
+            "end_time",
+            "segment_index",
+            "speaker_confidence",
+            "speaker_id",
+        }
         order_col = "rank" if query.text else query.order_by
+        if order_col not in ALLOWED_ORDER_COLS:
+            raise QueryError(f"Invalid order_by column: {order_col}")
         order_dir = "DESC" if query.order_desc else "ASC"
         sql_parts.append(f"ORDER BY {order_col} {order_dir}")
 
