@@ -139,7 +139,6 @@ class TestStreamingASRAdapter:
         # Should be close to 1.0 (32767/32768)
         assert float32[0] == pytest.approx(32767 / 32768, rel=1e-4)
 
-
     @pytest.mark.asyncio
     async def test_ingest_audio_empty(self):
         """Test ingesting empty audio."""
