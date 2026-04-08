@@ -1,0 +1,3 @@
+## 2026-04-08 - Vectorize audio energy calculation
+**Learning:** When optimizing audio processing loops (e.g., frame-wise energy calculations in streaming_asr.py), avoid Python `for` loops iterating over array slices. Instead, use NumPy vectorization: reshape the 1D audio array into a 2D array `(num_frames, frame_size)` using `np.reshape()`, and apply operations like `np.mean(..., axis=1)` to achieve significant C-level speedups. To satisfy strict mypy `list[bool]` types, use a list comprehension with explicit casting: `[bool(x) for x in boolean_array]`.
+**Action:** Apply NumPy vectorization to audio processing loops over array slices instead of Python `for` loops.
