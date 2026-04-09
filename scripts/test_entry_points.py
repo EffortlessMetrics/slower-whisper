@@ -138,29 +138,10 @@ def main():
         print(f"{Colors.RED}❌ FAIL{Colors.NC} - slower-whisper command not found")
         failed += 1
 
-    # Check slower-whisper-enrich
-    enrich_path = shutil.which("slower-whisper-enrich")
-    if enrich_path:
-        print(f"{Colors.GREEN}✅ PASS{Colors.NC} - slower-whisper-enrich command found")
-        print(f"  Location: {enrich_path}")
-        passed += 1
-    else:
-        print(f"{Colors.RED}❌ FAIL{Colors.NC} - slower-whisper-enrich command not found")
-        failed += 1
-
     # Test 3: Help output
     print_section("📖 Help Output")
 
     success, _ = test_command("slower-whisper --help", ["slower-whisper", "--help"])
-    if success:
-        passed += 1
-    else:
-        failed += 1
-
-    success, _ = test_command(
-        "slower-whisper-enrich --help",
-        ["slower-whisper-enrich", "--help"],
-    )
     if success:
         passed += 1
     else:
@@ -215,11 +196,9 @@ def main():
         print()
         print("You can now use the following commands:")
         print("  slower-whisper [OPTIONS]")
-        print("  slower-whisper-enrich [OPTIONS]")
         print()
         print("Run with --help for usage information:")
         print("  slower-whisper --help")
-        print("  slower-whisper-enrich --help")
         return 0
     else:
         print(f"{Colors.RED}❌ Some tests failed.{Colors.NC}")
