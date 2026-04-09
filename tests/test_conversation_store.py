@@ -1048,3 +1048,24 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+    def test_query_order_by_sql_injection(
+        self, store: ConversationStore, sample_transcript_json: Path
+    ) -> None:
+        """Verify that order_by is validated and prevents SQL injection."""
+        store.ingest(sample_transcript_json)
+
+        # Test with a valid column
+        query_valid = StoreQuery(order_by="end_time", order_desc=True)
+        results_valid = store.search(query_valid)
+        assert len(results_valid) > 0
+
+        # Test with an invalid column (injection attempt)
+        query_invalid = StoreQuery(order_by="start_time; DROP TABLE segments; --")
+        results_invalid = store.search(query_invalid)
+
+        # If it falls back to start_time successfully, it should return results without error
+        assert len(results_invalid) > 0
+
+        # Verify the table still exists (injection failed)
+        assert store.stats()["segment_count"] > 0
