@@ -79,3 +79,4 @@ prune whisper_json
 prune venv
 prune env
 prune .venv
+recursive-include slower_whisper *.py
