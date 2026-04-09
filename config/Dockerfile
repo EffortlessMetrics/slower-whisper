@@ -71,6 +71,7 @@ COPY transcription/ ./transcription/
 COPY scripts/ ./scripts/
 COPY integrations/ ./integrations/
 COPY slower_whisper/ ./slower_whisper/
+COPY benchmarks/ ./benchmarks/
 
 # Install Python dependencies using uv
 # ARG INSTALL_MODE controls which dependencies to install
