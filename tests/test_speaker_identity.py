@@ -675,3 +675,49 @@ class TestSpeakerIdentityIntegration:
 
         finally:
             registry.close()
+
+
+def test_handle_delete_command_interactive(
+    registry: SpeakerRegistry, sample_embedding: np.ndarray, monkeypatch
+):
+    """Should delete speaker interactively when user inputs 'y'."""
+    import argparse
+
+    from transcription.speaker_identity import _handle_delete
+
+    speaker_id = registry.register_speaker("Test Speaker", sample_embedding)
+    args = argparse.Namespace(speaker_id=speaker_id, force=False)
+
+    # Mock sys.stdin.isatty to simulate interactive terminal
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    # Mock input to return 'y'
+    monkeypatch.setattr("builtins.input", lambda prompt: "y")
+
+    result = _handle_delete(registry, args)
+
+    assert result == 0
+    assert registry.get_speaker(speaker_id) is None
+
+
+def test_handle_delete_command_interactive_abort(
+    registry: SpeakerRegistry, sample_embedding: np.ndarray, monkeypatch
+):
+    """Should not delete speaker interactively when user inputs 'n'."""
+    import argparse
+
+    from transcription.speaker_identity import _handle_delete
+
+    speaker_id = registry.register_speaker("Test Speaker", sample_embedding)
+    args = argparse.Namespace(speaker_id=speaker_id, force=False)
+
+    # Mock sys.stdin.isatty to simulate interactive terminal
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    # Mock input to return 'n'
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+
+    result = _handle_delete(registry, args)
+
+    assert result == 0
+    assert registry.get_speaker(speaker_id) is not None
