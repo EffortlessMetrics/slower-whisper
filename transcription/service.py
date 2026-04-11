@@ -22,6 +22,7 @@ Example usage:
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from . import models as _models
@@ -106,6 +107,22 @@ app = FastAPI(
 
 app.middleware("http")(log_requests)
 app.middleware("http")(add_security_headers)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 register_exception_handlers(app)
 
 # =============================================================================
