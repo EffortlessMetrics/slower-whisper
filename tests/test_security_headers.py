@@ -1,15 +1,19 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
 from transcription.service_middleware import add_security_headers
 
 app = FastAPI()
 app.middleware("http")(add_security_headers)
 
+
 @app.get("/")
 def read_root():
     return {"message": "Hello World"}
 
+
 client = TestClient(app)
+
 
 def test_security_headers():
     response = client.get("/")
