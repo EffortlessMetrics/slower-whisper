@@ -48,6 +48,9 @@ recursive-include config *
 recursive-include k8s *
 recursive-include .github *.yml *.yaml *.md
 
+# Slower Whisper package explicitly included
+recursive-include slower_whisper *.py
+
 # Exclude compiled/temporary artifacts
 global-exclude __pycache__
 global-exclude *.py[cod]
