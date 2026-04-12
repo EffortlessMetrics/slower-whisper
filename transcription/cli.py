@@ -789,7 +789,7 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
         if not args.force:
             if not sys.stdin.isatty():
                 print(
-                    f"Error: Cache clear requires --force in non-interactive mode.\n"
+                    f"{Colors.red('Error:')} Cache clear requires --force in non-interactive mode.\n"
                     f"Run with: slower-whisper cache --clear {args.clear} --force",
                     file=sys.stderr,
                 )
@@ -846,7 +846,7 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                 print(f"  {f}")
             return 0
         except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
+            print(f"{Colors.red('Error:')} {e}", file=sys.stderr)
             return 1
 
     elif args.samples_action == "copy":
@@ -863,7 +863,7 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                 # If interactive, prompt for confirmation
                 if not sys.stdin.isatty():
                     print(
-                        f"Error: {len(e.existing_files)} files exist. Use --force to overwrite.",
+                        f"{Colors.red('Error:')} {len(e.existing_files)} files exist. Use --force to overwrite.",
                         file=sys.stderr,
                     )
                     return 1
@@ -888,7 +888,7 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
             print("  uv run slower-whisper transcribe --enable-diarization")
             return 0
         except (ValueError, FileNotFoundError) as e:
-            print(f"Error: {e}", file=sys.stderr)
+            print(f"{Colors.red('Error:')} {e}", file=sys.stderr)
             return 1
 
     elif args.samples_action == "generate":
@@ -908,11 +908,11 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                 )
                 return 0
             except ImportError as e:
-                print(f"Error: {e}", file=sys.stderr)
+                print(f"{Colors.red('Error:')} {e}", file=sys.stderr)
                 return 1
         else:
             print(
-                f"Error: Generating {args.speakers}-speaker samples not yet implemented",
+                f"{Colors.red('Error:')} Generating {args.speakers}-speaker samples not yet implemented",
                 file=sys.stderr,
             )
             return 1
@@ -1198,13 +1198,15 @@ def _handle_outcomes_command(args: argparse.Namespace) -> int:
     # Load transcript
     transcript_path = Path(args.transcript)
     if not transcript_path.exists():
-        print(f"Error: Transcript file not found: {transcript_path}", file=sys.stderr)
+        print(
+            f"{Colors.red('Error:')} Transcript file not found: {transcript_path}", file=sys.stderr
+        )
         return 1
 
     try:
         transcript = load_transcript_from_json(transcript_path)
     except Exception as e:
-        print(f"Error loading transcript: {e}", file=sys.stderr)
+        print(f"{Colors.red('Error')} loading transcript: {e}", file=sys.stderr)
         return 1
 
     if args.outcomes_action == "extract":
@@ -1238,7 +1240,7 @@ def _handle_outcomes_extract(args: argparse.Namespace, transcript: Transcript) -
                 deduplicate=deduplicate,
             )
         except Exception as e:
-            print(f"Error initializing LLM backend: {e}", file=sys.stderr)
+            print(f"{Colors.red('Error')} initializing LLM backend: {e}", file=sys.stderr)
             print("Falling back to baseline backend...", file=sys.stderr)
             processor = OutcomeProcessor(backend="baseline", deduplicate=deduplicate)
     else:
@@ -1344,11 +1346,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(f"Unknown command: {args.command}")
 
     except SlowerWhisperError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"{Colors.red('Error:')} {e}", file=sys.stderr)
         return 1
 
     except Exception as e:
-        print(f"Unexpected error: {e}", file=sys.stderr)
+        print(f"{Colors.red('Unexpected error:')} {e}", file=sys.stderr)
         return 2
 
 
