@@ -586,7 +586,7 @@ class TestExitCodes:
 
         assert exit_code == 1
 
-    def test_unexpected_error_exit_code_two(self) -> None:
+    def test_unexpected_error_exit_code_two(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Unexpected errors return exit code 2."""
         # Patch at the module level where it's imported dynamically
         with patch.object(
@@ -597,6 +597,10 @@ class TestExitCodes:
             exit_code = main(["transcribe"])
 
         assert exit_code == 2
+        captured = capsys.readouterr()
+        # Note: Depending on environment NO_COLOR or FORCE_COLOR, escape codes may or may not be present
+        # but the actual text content will always be there.
+        assert "Unexpected error: Unexpected error" in captured.err
 
     def test_configuration_error_exit_code_one(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Configuration errors return exit code 1."""
