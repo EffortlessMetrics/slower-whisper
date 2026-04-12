@@ -32,7 +32,7 @@ include requirements-dev.txt
 
 # Typed package markers
 include transcription/py.typed
-include slower_whisper/py.typed
+include slower_whisper/*.py slower_whisper/py.typed
 
 # Docs and examples
 recursive-include docs *.md *.txt *.json *.py
@@ -79,3 +79,4 @@ prune whisper_json
 prune venv
 prune env
 prune .venv
+recursive-include slower_whisper *.py
