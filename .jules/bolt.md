@@ -1,0 +1,3 @@
+## 2024-04-13 - Vectorizing frame-wise audio energy calculation
+**Learning:** Found a performance bottleneck in `streaming_asr.py` where a Python `for` loop was iterating over audio slices to calculate RMS energy frame-by-frame. This was slow due to Python loop overhead. When optimizing audio processing loops, using NumPy vectorization (`np.reshape` and `np.mean(..., axis=1)`) provides significant C-level speedups and avoids `TypeError` on lists. Note that `.tolist()` on NumPy boolean arrays returns `list[Any]`, so to satisfy strict mypy `list[bool]` types, use a list comprehension with explicit casting: `[bool(x) for x in boolean_array]`.
+**Action:** Use NumPy vectorization instead of Python `for` loops for frame-wise audio processing whenever possible.
