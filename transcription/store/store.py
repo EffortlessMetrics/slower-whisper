@@ -918,8 +918,14 @@ class SQLiteConversationStore:
                 sql_parts.append("AND t.ingested_at < ?")
                 params.append(query.date_range.before)
 
+        # Allowlist for valid order by columns to prevent SQL injection
+        ALLOWED_ORDER_COLS = {"start_time", "speaker_id", "rank"}
+
         # Order by
         order_col = "rank" if query.text else query.order_by
+        if order_col not in ALLOWED_ORDER_COLS:
+            order_col = "start_time"
+
         order_dir = "DESC" if query.order_desc else "ASC"
         sql_parts.append(f"ORDER BY {order_col} {order_dir}")
 
