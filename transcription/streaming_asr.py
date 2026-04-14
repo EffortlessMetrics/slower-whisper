@@ -208,7 +208,7 @@ class StreamingASRAdapter:
         frames = truncated.reshape(num_frames, frame_size)
         energies = np.sqrt(np.mean(frames**2, axis=1))
 
-        return (energies > self.config.vad_energy_threshold).tolist()
+        return [bool(x) for x in (energies > self.config.vad_energy_threshold)]
 
     def _process_vad(
         self,
