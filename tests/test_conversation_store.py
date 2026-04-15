@@ -1048,3 +1048,20 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_search_invalid_order_by_raises_query_error():
+    from transcription.store.types import StoreQuery, QueryError
+    from transcription.store.store import SQLiteConversationStore
+
+    store = SQLiteConversationStore(":memory:")
+    store._init_schema()
+
+    query = StoreQuery(order_by="invalid_column; DROP TABLE segments")
+
+    import pytest
+
+    with pytest.raises(
+        QueryError, match="Invalid order_by column: invalid_column; DROP TABLE segments"
+    ):
+        store.search(query)
