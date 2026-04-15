@@ -921,9 +921,18 @@ class SQLiteConversationStore:
         # Order by
         order_col = "rank" if query.text else query.order_by
         allowed_order_cols = {
-            "segment_id", "transcript_id", "segment_index", "start_time",
-            "end_time", "text", "speaker_id", "speaker_confidence",
-            "file_name", "language", "rank", "id"
+            "segment_id",
+            "transcript_id",
+            "segment_index",
+            "start_time",
+            "end_time",
+            "text",
+            "speaker_id",
+            "speaker_confidence",
+            "file_name",
+            "language",
+            "rank",
+            "id",
         }
         if order_col not in allowed_order_cols:
             raise QueryError(f"Invalid order_by column: {order_col}")
