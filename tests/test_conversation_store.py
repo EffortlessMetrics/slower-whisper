@@ -1051,8 +1051,8 @@ class TestParquetExport:
 
 
 def test_search_invalid_order_by_raises_query_error():
-    from transcription.store.types import StoreQuery, QueryError
     from transcription.store.store import SQLiteConversationStore
+    from transcription.store.types import QueryError, StoreQuery
 
     store = SQLiteConversationStore(":memory:")
     store._init_schema()
