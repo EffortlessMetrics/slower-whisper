@@ -207,7 +207,7 @@ class StreamingASRAdapter:
         # Use explicit float32 casting to prevent integer overflow on int16 arrays
         # This mathematically mirrors self._calculate_energy(frame) but vectorized
         frames = audio[: num_frames * frame_size].reshape(num_frames, frame_size)
-        energies = np.sqrt(np.mean(frames.astype(np.float32)**2, axis=1))
+        energies = np.sqrt(np.mean(frames.astype(np.float32) ** 2, axis=1))
 
         # Convert boolean numpy array back to Python list of bools
         return [bool(x) for x in (energies > self.config.vad_energy_threshold)]
