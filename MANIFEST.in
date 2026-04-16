@@ -79,3 +79,9 @@ prune whisper_json
 prune venv
 prune env
 prune .venv
+
+# Package directories
+recursive-include transcription *.py
+recursive-include slower_whisper *.py
+recursive-include scripts *.py
+recursive-include integrations *.py
