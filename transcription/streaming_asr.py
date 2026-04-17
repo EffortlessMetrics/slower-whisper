@@ -173,19 +173,6 @@ class StreamingASRAdapter:
 
         return float32_array
 
-    def _calculate_energy(self, audio: np.ndarray) -> float:
-        """Calculate RMS energy of audio segment.
-
-        Args:
-            audio: Float32 audio array.
-
-        Returns:
-            RMS energy value (0.0-1.0 for normalized audio).
-        """
-        if len(audio) == 0:
-            return 0.0
-        return float(np.sqrt(np.mean(audio**2)))
-
     def _detect_speech_frames(self, audio: np.ndarray, frame_size_ms: int = 30) -> list[bool]:
         """Detect speech in audio using frame-wise energy analysis.
 
@@ -199,13 +186,20 @@ class StreamingASRAdapter:
         frame_size = int(self.config.sample_rate * frame_size_ms / 1000)
         num_frames = len(audio) // frame_size
 
-        speech_frames = []
-        for i in range(num_frames):
-            frame = audio[i * frame_size : (i + 1) * frame_size]
-            energy = self._calculate_energy(frame)
-            speech_frames.append(energy > self.config.vad_energy_threshold)
+        if num_frames == 0:
+            return []
 
-        return speech_frames
+        # Truncate audio to match full frames to reshape
+        audio_frames = audio[: num_frames * frame_size]
+
+        # Reshape into frames and calculate RMS energy vectorized across axis 1
+        reshaped = audio_frames.reshape(num_frames, frame_size)
+
+        # Calculate RMS energy for each frame, ensuring cast to float32 to prevent overflow
+        energies = np.sqrt(np.mean(reshaped.astype(np.float32) ** 2, axis=1))
+
+        # Explicitly cast to bool
+        return [bool(x) for x in (energies > self.config.vad_energy_threshold)]
 
     def _process_vad(
         self,
