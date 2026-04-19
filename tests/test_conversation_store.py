@@ -1048,3 +1048,12 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_search_sql_injection_prevention(store: ConversationStore) -> None:
+    """Test that invalid order_by columns raise QueryError."""
+    from transcription.store.types import QueryError
+
+    query = StoreQuery(order_by="invalid_column_name")
+    with pytest.raises(QueryError):
+        store.search(query)
