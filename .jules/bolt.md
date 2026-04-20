@@ -1,0 +1,3 @@
+## $(date +%Y-%m-%d) - Optimize multiple aggregates with single pass loops
+**Learning:** Computing multiple aggregates over small collections with list/generator comprehensions (like `sum(x.y for x in items)`) causes repeated O(n) iteration passes and function call overhead that can be optimized by unrolling them into a single pure loop. Calculating multiple percentiles using single list argument `np.percentile` is 2x faster than running it sequentially.
+**Action:** Consolidate aggregate calculations into a single iteration block where all statistics are extracted from elements concurrently, and use vectorized bulk arguments for numpy functions where possible.

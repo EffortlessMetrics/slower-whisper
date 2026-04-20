@@ -158,8 +158,7 @@ def _compute_snr_proxy(samples: np.ndarray) -> float:
     energy = samples**2
 
     # Get percentiles
-    high_energy = np.percentile(energy, _SNR_PERCENTILE_HIGH)
-    low_energy = np.percentile(energy, _SNR_PERCENTILE_LOW)
+    low_energy, high_energy = np.percentile(energy, [_SNR_PERCENTILE_LOW, _SNR_PERCENTILE_HIGH])
 
     # Avoid division by zero and log of zero
     if low_energy < 1e-10:
@@ -379,20 +378,31 @@ class AudioHealthAggregator:
         snapshots: Sequence[AudioHealthSnapshot] = list(self._snapshots)
         n = len(snapshots)
 
-        # Average scalar metrics
-        avg_clipping = sum(s.clipping_ratio for s in snapshots) / n
-        avg_rms = sum(s.rms_energy for s in snapshots) / n
-        avg_snr = sum(s.snr_proxy for s in snapshots) / n
-        avg_quality = sum(s.quality_score for s in snapshots) / n
+        # Single pass to sum all metrics
+        sum_clipping = 0.0
+        sum_rms = 0.0
+        sum_snr = 0.0
+        sum_quality = 0.0
+        sum_centroid = 0.0
+        centroid_count = 0
+        speech_count = 0
 
-        # Average spectral centroid (only over non-None values)
-        centroids = [s.spectral_centroid for s in snapshots if s.spectral_centroid is not None]
-        avg_centroid: float | None = None
-        if centroids:
-            avg_centroid = sum(centroids) / len(centroids)
+        for s in snapshots:
+            sum_clipping += s.clipping_ratio
+            sum_rms += s.rms_energy
+            sum_snr += s.snr_proxy
+            sum_quality += s.quality_score
+            if s.spectral_centroid is not None:
+                sum_centroid += s.spectral_centroid
+                centroid_count += 1
+            if s.is_speech_likely:
+                speech_count += 1
 
-        # Majority vote for speech likelihood
-        speech_count = sum(1 for s in snapshots if s.is_speech_likely)
+        avg_clipping = sum_clipping / n
+        avg_rms = sum_rms / n
+        avg_snr = sum_snr / n
+        avg_quality = sum_quality / n
+        avg_centroid = sum_centroid / centroid_count if centroid_count > 0 else None
         is_speech = speech_count > n / 2
 
         return AudioHealthSnapshot(
