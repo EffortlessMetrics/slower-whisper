@@ -34,6 +34,11 @@ include requirements-dev.txt
 include transcription/py.typed
 include slower_whisper/py.typed
 
+# Include python packages explicitly (to fix missing package errors during build)
+recursive-include transcription *.py
+recursive-include slower_whisper *.py
+recursive-include integrations *.py
+
 # Docs and examples
 recursive-include docs *.md *.txt *.json *.py
 recursive-include examples *.py *.md *.json *.txt
