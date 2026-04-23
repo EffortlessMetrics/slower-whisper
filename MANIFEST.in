@@ -32,6 +32,7 @@ include requirements-dev.txt
 
 # Typed package markers
 include transcription/py.typed
+recursive-include slower_whisper *.py
 include slower_whisper/py.typed
 
 # Docs and examples
