@@ -98,6 +98,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
             -e .; \
     elif [ "$INSTALL_MODE" = "full" ]; then \
         uv pip install --system \
+            --index-strategy unsafe-best-match \
             --index-url "${TORCH_CPU_INDEX}" \
             --extra-index-url "${PYPI_INDEX}" \
             "torch==${TORCH_VERSION}" \
