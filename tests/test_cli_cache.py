@@ -112,23 +112,6 @@ def test_interactive_prompt_skips_when_empty(mock_cache_paths, capsys):
         patch("shutil.rmtree") as mock_rmtree,
         patch("builtins.input") as mock_input,
         patch("sys.stdin.isatty", return_value=True),
-            patch("transcription.cli._get_cache_size", return_value=1024),
-        patch("transcription.cli._get_cache_size", return_value=0),
-    ):
-        exit_code = main(["cache", "--clear", "whisper"])
-
-        assert exit_code == 0
-        assert not mock_input.called
-        assert not mock_rmtree.called
-        captured = capsys.readouterr()
-        assert "is already empty" in captured.out
-
-def test_interactive_prompt_skips_when_empty(mock_cache_paths, capsys):
-    """Skips prompt and clears nothing when cache is already empty."""
-    with (
-        patch("shutil.rmtree") as mock_rmtree,
-        patch("builtins.input") as mock_input,
-        patch("sys.stdin.isatty", return_value=True),
         patch("transcription.cli._get_cache_size", return_value=0),
     ):
         exit_code = main(["cache", "--clear", "whisper"])
