@@ -206,7 +206,7 @@ Support = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/.github
 Funding = "https://github.com/sponsors/EffortlessMetrics"
 
 [tool.setuptools]
-packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "transcription.integrations", "transcription.schema", "transcription.semantic_providers", "transcription.store", "transcription.benchmark", "transcription.cli_commands", "scripts", "integrations", "slower_whisper"]
+packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "transcription.integrations", "transcription.schema", "transcription.schemas", "transcription.semantic_providers", "transcription.store", "transcription.benchmark", "transcription.cli_commands", "scripts", "integrations", "slower_whisper"]
 
 [tool.setuptools.package-data]
 transcription = ["py.typed"]
