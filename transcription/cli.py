@@ -797,6 +797,11 @@ def _handle_cache_command(args: argparse.Namespace) -> int:
 
             # Only calculate size when prompting (skip expensive traversal when --force)
             total_size = sum(_get_cache_size(path) for _, path in targets)
+
+            if total_size == 0:
+                print(f"{args.clear.title()} cache is already empty.")
+                return 0
+
             size_str = _format_size(total_size)
             warning = Colors.red("This cannot be undone.")
             confirm = input(f"Clear {args.clear} cache ({size_str})? {warning} [y/N] ")

@@ -34,6 +34,7 @@ class TestCacheClearConfirmation:
             patch("shutil.rmtree") as mock_rmtree,
             patch("builtins.input", return_value="y") as mock_input,
             patch("sys.stdin.isatty", return_value=True),
+            patch("transcription.cli._get_cache_size", return_value=100),
         ):
             exit_code = main(["cache", "--clear", "whisper"])
 
@@ -49,6 +50,7 @@ class TestCacheClearConfirmation:
             patch("shutil.rmtree") as mock_rmtree,
             patch("builtins.input", return_value="n") as mock_input,
             patch("sys.stdin.isatty", return_value=True),
+            patch("transcription.cli._get_cache_size", return_value=100),
         ):
             exit_code = main(["cache", "--clear", "whisper"])
 
@@ -57,6 +59,22 @@ class TestCacheClearConfirmation:
             assert not mock_rmtree.called
             captured = capsys.readouterr()
             assert "Aborted" in captured.out
+
+    def test_interactive_prompt_skips_if_empty(self, mock_cache_paths, capsys):
+        """If cache is empty, prompt is skipped and command returns 0."""
+        with (
+            patch("shutil.rmtree") as mock_rmtree,
+            patch("builtins.input") as mock_input,
+            patch("sys.stdin.isatty", return_value=True),
+            patch("transcription.cli._get_cache_size", return_value=0),
+        ):
+            exit_code = main(["cache", "--clear", "whisper"])
+
+            assert exit_code == 0
+            assert not mock_input.called
+            assert not mock_rmtree.called
+            captured = capsys.readouterr()
+            assert "Whisper cache is already empty." in captured.out
 
     @pytest.mark.parametrize("force_flag", ["--force", "-f", "-y"])
     def test_force_flags_skip_prompt(self, mock_cache_paths, force_flag):
