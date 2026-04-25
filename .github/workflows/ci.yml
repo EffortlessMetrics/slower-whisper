@@ -180,7 +180,7 @@ jobs:
 
       - name: Install wheel in clean environment
         run: |
-          uv venv .venv-smoke
+          uv venv --seed .venv-smoke
           .venv-smoke/bin/pip install dist/*.whl
 
       - name: Verify slower_whisper import (installed wheel)
