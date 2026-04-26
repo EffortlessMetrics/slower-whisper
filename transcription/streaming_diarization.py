@@ -433,11 +433,11 @@ class EnergyVADDiarizer:
         Returns:
             List of SpeakerAssignment objects for speech regions.
         """
-        import struct
+        import numpy as np
 
         # Convert bytes to samples
-        num_samples = len(audio_buffer) // 2
-        samples = struct.unpack(f"<{num_samples}h", audio_buffer)
+        samples = np.frombuffer(audio_buffer, dtype=np.int16)
+        num_samples = len(samples)
 
         # Calculate frame parameters
         frame_samples = int(sample_rate * self.config.frame_duration_ms / 1000)
@@ -447,18 +447,17 @@ class EnergyVADDiarizer:
             return []
 
         # Calculate RMS energy per frame
-        frame_energies = []
-        for i in range(num_frames):
-            start = i * frame_samples
-            end = start + frame_samples
-            frame = samples[start:end]
-            rms = (sum(s * s for s in frame) / len(frame)) ** 0.5
-            # Normalize to 0-1 range (assuming 16-bit audio)
-            normalized_rms = rms / 32768.0
-            frame_energies.append(normalized_rms)
+        # Truncate samples to fit complete frames
+        samples = samples[: num_frames * frame_samples]
+
+        # Reshape to (num_frames, frame_samples)
+        frames = samples.reshape(num_frames, frame_samples)
+
+        # Calculate RMS energy per frame and normalize
+        frame_energies = np.sqrt(np.mean(frames.astype(np.float32) ** 2, axis=1)) / 32768.0
 
         # Find speech regions
-        is_speech = [e > self.config.energy_threshold for e in frame_energies]
+        is_speech = [bool(e > self.config.energy_threshold) for e in frame_energies]
 
         # Merge adjacent speech frames into regions
         regions: list[tuple[float, float]] = []
