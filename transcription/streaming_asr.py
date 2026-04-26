@@ -215,7 +215,7 @@ class StreamingASRAdapter:
 
         # Calculate RMS energy per frame
         # Audio is documented as float32 but cast to ensure no overflow
-        frame_energies = np.sqrt(np.mean(frames.astype(np.float32)**2, axis=1))
+        frame_energies = np.sqrt(np.mean(frames.astype(np.float32) ** 2, axis=1))
 
         speech_frames = [bool(e > self.config.vad_energy_threshold) for e in frame_energies]
 
