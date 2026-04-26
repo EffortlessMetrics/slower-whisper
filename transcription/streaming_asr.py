@@ -202,10 +202,6 @@ class StreamingASRAdapter:
         if num_frames == 0:
             return []
 
-        # Ensure audio is a numpy array to allow reshaping
-        if not isinstance(audio, np.ndarray):
-            audio = np.array(audio)
-
         # Vectorized RMS energy calculation
         # Truncate to fit complete frames
         truncated_audio = audio[: num_frames * frame_size]
