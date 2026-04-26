@@ -5,3 +5,7 @@
 ## 2026-01-26 - Atomic Pre-flight Checks
 **Learning:** For bulk file operations (like copying samples), users prefer a "check-then-act" model where all conflicts are reported upfront, rather than failing on the first conflict.
 **Action:** Implement pre-flight checks that gather *all* conflicts and raise a custom error (like `SampleExistsError`) containing the full list, allowing the CLI to present a complete summary before asking for confirmation.
+
+## 2026-04-26 - Colored Confirmation Prompts
+**Learning:** Plain text `[y/N]` in destructive prompts can blend in. Users process color faster than text when evaluating safe vs. destructive actions.
+**Action:** Use `[{Colors.red('y')}/{Colors.green('N')}]` for destructive actions to visually reinforce that 'yes' is dangerous and 'no' is safe.
