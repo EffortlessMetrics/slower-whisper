@@ -30,6 +30,11 @@ include requirements-base.txt
 include requirements-enrich.txt
 include requirements-dev.txt
 
+# Core python packages
+recursive-include transcription *.py
+recursive-include slower_whisper *.py
+recursive-include integrations *.py
+
 # Typed package markers
 include transcription/py.typed
 include slower_whisper/py.typed
