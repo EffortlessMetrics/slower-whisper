@@ -1,4 +1,4 @@
-## 2026-01-28 - FastAPI Security Headers & CSP
-**Vulnerability:** Missing security headers (X-Content-Type-Options, X-Frame-Options, CSP) in FastAPI service.
-**Learning:** Default strict CSP (`default-src 'self'`) breaks FastAPI's auto-generated docs (Swagger UI/Redoc) which rely on `cdn.jsdelivr.net` and `unsafe-inline` styles/scripts.
-**Prevention:** Use a middleware to add security headers, but ensure CSP explicitly allows `cdn.jsdelivr.net` and `fastapi.tiangolo.com` if API docs are enabled.
+## 2024-05-24 - Strict Allowlists for ORDER BY Clauses
+**Vulnerability:** SQL Injection in `ORDER BY` interpolation in SQLite store search function.
+**Learning:** SQLite cannot parameterize column names or `ORDER BY` values (using `?`). Direct string interpolation (e.g., `f"ORDER BY {col}"`) allows attackers to inject arbitrary SQL statements, bypass security, or perform destructive operations.
+**Prevention:** Use a strict dictionary-based allowlist that maps safe, expected string values to fully qualified, safe database column aliases (e.g., `{"start_time": "s.start_time"}`). Raise a clear `QueryError` if the requested value is not explicitly present in the allowlist.
