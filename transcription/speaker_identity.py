@@ -52,6 +52,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from transcription.color_utils import Colors
+
 if TYPE_CHECKING:
     from transcription.models import Transcript
 
@@ -1563,7 +1565,8 @@ def _handle_delete(registry: SpeakerRegistry, args: Any) -> int:
             print("Error: Delete requires --force in non-interactive mode.", file=sys.stderr)
             return 1
 
-        confirm = input(f"Delete speaker '{speaker.name}' ({speaker.id})? [y/N] ")
+        options = f"[{Colors.red('y')}/{Colors.green('N')}]"
+        confirm = input(f"Delete speaker '{speaker.name}' ({speaker.id})? {options} ")
         if confirm.lower() not in ("y", "yes"):
             print("Aborted.")
             return 0
