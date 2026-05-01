@@ -60,7 +60,7 @@ jobs:
           df -h /
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.10.0
         with:
           driver-opts: |
             image=moby/buildkit:latest
@@ -75,7 +75,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v5.7.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           flavor: |
@@ -98,7 +98,7 @@ jobs:
       - name: Build and push Docker image
         id: build
         if: ${{ !(github.event_name == 'pull_request' && matrix.variant.tag-suffix == 'gpu') }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.15.0
         with:
           context: .
           file: ${{ matrix.variant.dockerfile }}
@@ -114,7 +114,7 @@ jobs:
 
       - name: Build Docker image (gpu full PR, no cache export)
         if: ${{ github.event_name == 'pull_request' && matrix.variant.tag-suffix == 'gpu' }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.15.0
         with:
           context: .
           file: ${{ matrix.variant.dockerfile }}
