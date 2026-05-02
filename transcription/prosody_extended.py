@@ -289,8 +289,8 @@ def analyze_monotony(
         return MonotonyState(level="normal", range_utilization=50.0)
 
     # Calculate actual range (use percentiles to be robust to outliers)
-    # Performance optimization: Calculate multiple percentiles in a single pass
-    p10, p90 = np.percentile(pitch_values, [10, 90])
+    p10 = np.percentile(pitch_values, 10)
+    p90 = np.percentile(pitch_values, 90)
     actual_range = p90 - p10
 
     # Get expected range

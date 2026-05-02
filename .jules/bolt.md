@@ -1,7 +1,4 @@
-## 2024-05-02 - Bolt Initialization
-**Learning:** Initialized Bolt journal.
-**Action:** Ready to record critical performance learnings.
 
-## 2024-05-02 - Batched numpy percentile calculation
-**Learning:** Calculating multiple percentiles on the same NumPy array using a list (e.g. `np.percentile(arr, [10, 90])`) computes them concurrently in a single pass, which is ~10x faster than calling `np.percentile` sequentially.
-**Action:** Always batch percentile requests into a single list argument when computing multiple percentiles on the same data.
+## 2026-05-02 - Use uv pip install for faster virtual environment setup
+**Learning:** `uv venv` does not install `pip` by default. Using `uv venv --seed` forces it to install pip, but then calling `pip install` uses standard pip, which is slow.
+**Action:** Instead of seeding `pip`, always use `uv pip install --python <venv_path> <package>` to install directly into the virtual environment using `uv`'s significantly faster resolution and installation engine.
