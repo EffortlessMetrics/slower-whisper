@@ -12,8 +12,6 @@ Tests cover:
 - Error handling
 """
 
-from transcription.store.types import StoreQuery, QueryError
-
 import json
 from pathlib import Path
 from typing import Any
@@ -35,6 +33,7 @@ from transcription.store import (
     TimeRangeQuery,
     TranscriptQuery,
 )
+from transcription.store.types import QueryError
 
 # =============================================================================
 # Fixtures
@@ -344,7 +343,7 @@ class TestIngestion:
 
     def test_ingest_invalid_json(self, store: ConversationStore, tmp_path: Path) -> None:
         """Test that ingesting invalid JSON raises error."""
-        from transcription.store.types import IngestError, QueryError
+        from transcription.store.types import IngestError
 
         invalid_json = tmp_path / "invalid.json"
         invalid_json.write_text("{ invalid json }", encoding="utf-8")
@@ -1048,6 +1047,7 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
 
 def test_search_sql_injection_order_by_allowlist():
     """Test that order_by is validated against an allowlist."""
