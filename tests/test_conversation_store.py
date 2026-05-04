@@ -12,7 +12,7 @@ Tests cover:
 - Error handling
 """
 
-from __future__ import annotations
+from transcription.store.types import StoreQuery, QueryError
 
 import json
 from pathlib import Path
@@ -344,7 +344,7 @@ class TestIngestion:
 
     def test_ingest_invalid_json(self, store: ConversationStore, tmp_path: Path) -> None:
         """Test that ingesting invalid JSON raises error."""
-        from transcription.store.types import IngestError
+        from transcription.store.types import IngestError, QueryError
 
         invalid_json = tmp_path / "invalid.json"
         invalid_json.write_text("{ invalid json }", encoding="utf-8")
@@ -1048,3 +1048,17 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+def test_search_sql_injection_order_by_allowlist():
+    """Test that order_by is validated against an allowlist."""
+    store = ConversationStore(":memory:")
+
+    # Init schema
+    store._init_schema()
+
+    query = StoreQuery(order_by="start_time DESC LIMIT 1 OFFSET 0 --")
+
+    with pytest.raises(QueryError) as exc:
+        store.search(query)
+
+    assert "Invalid order_by column" in str(exc.value)
