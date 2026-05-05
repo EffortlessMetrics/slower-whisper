@@ -27,6 +27,7 @@ from transcription.store import (
     ExportFormat,
     ExportOptions,
     IngestOptions,
+    QueryError,
     QueryFilter,
     SpeakerQuery,
     StoreError,
@@ -1048,3 +1049,27 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_store_order_by_allowlist(store: ConversationStore, sample_transcript_json: Path) -> None:
+    store.ingest(sample_transcript_json)
+
+    # Valid column should work
+    query = StoreQuery(order_by="start_time")
+    results = store.search(query)
+    assert len(results) == 4
+
+    # Another valid column
+    query = StoreQuery(order_by="speaker_id", order_desc=True)
+    results = store.search(query)
+    assert len(results) == 4
+
+    # Invalid column should raise QueryError
+    with pytest.raises(QueryError, match="Invalid order_by column: invalid_column"):
+        query = StoreQuery(order_by="invalid_column")
+        store.search(query)
+
+    # SQL injection attempt should raise QueryError
+    with pytest.raises(QueryError, match="Invalid order_by column"):
+        query = StoreQuery(order_by="start_time; DROP TABLE transcripts; --")
+        store.search(query)
