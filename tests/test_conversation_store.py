@@ -1049,11 +1049,14 @@ class TestParquetExport:
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
 
+
 def test_search_invalid_order_by():
     """Test that invalid order_by columns raise QueryError."""
-    from transcription.store import ConversationStore, StoreQuery, QueryError
+    from transcription.store import ConversationStore, QueryError, StoreQuery
+
     store = ConversationStore(":memory:")
     query = StoreQuery(order_by="invalid_col; DROP TABLE transcripts;")
     import pytest
+
     with pytest.raises(QueryError):
         store.search(query)
