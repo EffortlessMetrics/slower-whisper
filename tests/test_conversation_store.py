@@ -1060,6 +1060,7 @@ def test_sql_injection_order_by_invalid():
 
 def test_sql_injection_order_by_valid():
     store = ConversationStore(":memory:")
+    # The __init__ of ConversationStore takes care of creating the schema
     query = StoreQuery(order_by="start_time")
     try:
         store.search(query)

@@ -81,6 +81,27 @@ def get_default_store_path() -> Path:
     return store_dir / "store.db"
 
 
+ALLOWED_ORDER_COLS = frozenset([
+    "start_time",
+    "end_time",
+    "segment_index",
+    "speaker_confidence",
+    "rank",
+    "file_name",
+    "language",
+    "s.start_time",
+    "s.end_time",
+    "s.segment_index",
+    "s.speaker_confidence",
+    "t.file_name",
+    "t.language",
+    "text",
+    "s.text",
+    "speaker_id",
+    "s.speaker_id",
+])
+
+
 class SQLiteConversationStore:
     """SQLite-backed conversation store with FTS5 search.
 
@@ -920,26 +941,7 @@ class SQLiteConversationStore:
 
         # Order by
         order_col = "rank" if query.text else query.order_by
-        allowed_order_cols = {
-            "start_time",
-            "end_time",
-            "segment_index",
-            "speaker_confidence",
-            "rank",
-            "file_name",
-            "language",
-            "s.start_time",
-            "s.end_time",
-            "s.segment_index",
-            "s.speaker_confidence",
-            "t.file_name",
-            "t.language",
-            "text",
-            "s.text",
-            "speaker_id",
-            "s.speaker_id",
-        }
-        if order_col not in allowed_order_cols:
+        if order_col not in ALLOWED_ORDER_COLS:
             raise QueryError(f"Invalid order_by column: {order_col}")
 
         order_dir = "DESC" if query.order_desc else "ASC"
