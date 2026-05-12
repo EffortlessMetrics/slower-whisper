@@ -920,6 +920,28 @@ class SQLiteConversationStore:
 
         # Order by
         order_col = "rank" if query.text else query.order_by
+        allowed_order_cols = {
+            "start_time",
+            "end_time",
+            "segment_index",
+            "speaker_confidence",
+            "rank",
+            "file_name",
+            "language",
+            "s.start_time",
+            "s.end_time",
+            "s.segment_index",
+            "s.speaker_confidence",
+            "t.file_name",
+            "t.language",
+            "text",
+            "s.text",
+            "speaker_id",
+            "s.speaker_id",
+        }
+        if order_col not in allowed_order_cols:
+            raise QueryError(f"Invalid order_by column: {order_col}")
+
         order_dir = "DESC" if query.order_desc else "ASC"
         sql_parts.append(f"ORDER BY {order_col} {order_dir}")
 
