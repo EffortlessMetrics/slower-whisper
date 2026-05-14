@@ -1048,3 +1048,19 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_search_order_by_sql_injection():
+    """Test that invalid order_by columns raise QueryError instead of executing."""
+    import pytest
+
+    from transcription.store import ConversationStore, StoreQuery
+    from transcription.store.types import QueryError
+
+    store = ConversationStore(":memory:")
+
+    # Try to order by an invalid column with SQL injection
+    query = StoreQuery(order_by="start_time; DROP TABLE segments; --")
+
+    with pytest.raises(QueryError, match="Invalid order_by column"):
+        store.search(query)
