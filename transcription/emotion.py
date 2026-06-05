@@ -136,10 +136,14 @@ class EmotionRecognizer:
                     paths = CachePaths.from_env().ensure_dirs()
                     logger.info(f"Loading dimensional model: {self.DIMENSIONAL_MODEL}")
                     self._dimensional_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
-                        self.DIMENSIONAL_MODEL, cache_dir=str(paths.emotion_root)
+                        self.DIMENSIONAL_MODEL,
+                        cache_dir=str(paths.emotion_root),
+                        local_files_only=False,
                     )
                     self._dimensional_model = AutoModelForAudioClassification.from_pretrained(
-                        self.DIMENSIONAL_MODEL, cache_dir=str(paths.emotion_root)
+                        self.DIMENSIONAL_MODEL,
+                        cache_dir=str(paths.emotion_root),
+                        local_files_only=False,
                     ).to(self._device)
                     self._dimensional_model.eval()
                     logger.info("Dimensional model loaded successfully")
@@ -155,10 +159,14 @@ class EmotionRecognizer:
                     paths = CachePaths.from_env().ensure_dirs()
                     logger.info(f"Loading categorical model: {self.CATEGORICAL_MODEL}")
                     self._categorical_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
-                        self.CATEGORICAL_MODEL, cache_dir=str(paths.emotion_root)
+                        self.CATEGORICAL_MODEL,
+                        cache_dir=str(paths.emotion_root),
+                        local_files_only=False,
                     )
                     self._categorical_model = AutoModelForAudioClassification.from_pretrained(
-                        self.CATEGORICAL_MODEL, cache_dir=str(paths.emotion_root)
+                        self.CATEGORICAL_MODEL,
+                        cache_dir=str(paths.emotion_root),
+                        local_files_only=False,
                     ).to(self._device)
                     self._categorical_model.eval()
                     logger.info("Categorical model loaded successfully")

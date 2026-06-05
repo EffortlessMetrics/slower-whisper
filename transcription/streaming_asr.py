@@ -199,13 +199,18 @@ class StreamingASRAdapter:
         frame_size = int(self.config.sample_rate * frame_size_ms / 1000)
         num_frames = len(audio) // frame_size
 
-        speech_frames = []
-        for i in range(num_frames):
-            frame = audio[i * frame_size : (i + 1) * frame_size]
-            energy = self._calculate_energy(frame)
-            speech_frames.append(energy > self.config.vad_energy_threshold)
+        if num_frames == 0:
+            return []
 
-        return speech_frames
+        # Vectorized calculation of RMS energy for all frames to avoid Python loop overhead
+        truncated_audio = audio[: num_frames * frame_size]
+        frames = truncated_audio.reshape(-1, frame_size)
+
+        # Calculate RMS using optimized einsum
+        energies = np.sqrt(np.einsum("ij,ij->i", frames, frames) / frame_size)
+
+        # Determine speech presence
+        return [bool(x) for x in energies > self.config.vad_energy_threshold]
 
     def _process_vad(
         self,
