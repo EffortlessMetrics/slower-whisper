@@ -65,6 +65,7 @@ class DummyWhisperModel:
         vad_filter: bool = True,
         vad_parameters: VADParameters = None,
         language: str | None = None,
+        word_timestamps: bool = False,
         task: str | None = None,
     ) -> TranscriptionResult:
         try:
