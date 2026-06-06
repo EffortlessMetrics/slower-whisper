@@ -1048,3 +1048,13 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_sql_injection_order_by_rejected(store: ConversationStore) -> None:
+    import pytest
+
+    from transcription.store.types import QueryError, StoreQuery
+
+    query = StoreQuery(order_by="start_time; DROP TABLE segments; --")
+    with pytest.raises(QueryError):
+        store.search(query)
