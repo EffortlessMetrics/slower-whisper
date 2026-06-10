@@ -1168,7 +1168,9 @@ def _handle_validate_command(args: argparse.Namespace) -> int:
             print(f"- {Colors.red(err)}")
         return 1
 
-    print(f"[{Colors.green('ok')}] {len(args.transcripts)} transcript(s) valid against {schema_path}")
+    print(
+        f"[{Colors.green('ok')}] {len(args.transcripts)} transcript(s) valid against {schema_path}"
+    )
     return 0
 
 
