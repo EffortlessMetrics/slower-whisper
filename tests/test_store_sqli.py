@@ -1,8 +1,11 @@
-import pytest
-import tempfile
 import pathlib
+import tempfile
+
+import pytest
+
 from transcription.store.store import SQLiteConversationStore
-from transcription.store.types import StoreQuery, QueryError
+from transcription.store.types import QueryError, StoreQuery
+
 
 def test_store_order_by_sql_injection():
     with tempfile.TemporaryDirectory() as td:

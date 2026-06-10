@@ -923,8 +923,14 @@ class SQLiteConversationStore:
 
         # Prevent SQL injection by strictly allowing valid order_by columns
         allowed_order_cols = {
-            "rank", "start_time", "end_time", "segment_index",
-            "speaker_confidence", "id", "segment_id", "transcript_id"
+            "rank",
+            "start_time",
+            "end_time",
+            "segment_index",
+            "speaker_confidence",
+            "id",
+            "segment_id",
+            "transcript_id",
         }
         if order_col not in allowed_order_cols:
             raise QueryError(f"Invalid order_by column: {order_col}")
