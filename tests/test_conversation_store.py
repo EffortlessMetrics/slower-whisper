@@ -1048,3 +1048,18 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+def test_store_query_order_by_sql_injection():
+    from transcription.store.store import ConversationStore
+    from transcription.store.types import StoreQuery
+    import pytest
+
+    with ConversationStore(":memory:") as store:
+        # Valid column should work
+        query = StoreQuery(order_by="start_time")
+        store.search(query)  # Should not raise
+
+        # Invalid/malicious column should raise ValueError
+        with pytest.raises(ValueError, match="Invalid order_by column"):
+            query = StoreQuery(order_by="(SELECT 1)")
+            store.search(query)
