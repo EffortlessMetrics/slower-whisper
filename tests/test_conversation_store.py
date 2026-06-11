@@ -1049,10 +1049,12 @@ class TestParquetExport:
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
 
+
 def test_store_query_order_by_sql_injection():
+    import pytest
+
     from transcription.store.store import ConversationStore
     from transcription.store.types import StoreQuery
-    import pytest
 
     with ConversationStore(":memory:") as store:
         # Valid column should work
