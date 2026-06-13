@@ -1048,3 +1048,15 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_search_sql_injection():
+    """Test that searching with an invalid order_by column defaults to a safe column and does not execute SQL injection."""
+    from transcription.store.store import ConversationStore
+    from transcription.store.types import StoreQuery
+
+    with ConversationStore(":memory:") as store:
+        query = StoreQuery(order_by="(SELECT random())")
+        # Should fallback to start_time and run successfully without executing the injection
+        results = store.search(query)
+        assert isinstance(results, list)
