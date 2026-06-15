@@ -3,9 +3,9 @@ Tests for prosody feature extraction module.
 """
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
-from unittest.mock import patch
 
 from transcription.prosody import (
     ENERGY_THRESHOLDS,
@@ -237,8 +237,6 @@ class TestSyllableCounting(unittest.TestCase):
         self.assertEqual(count_syllables("   "), 0)
         self.assertGreater(count_syllables("a"), 0)
 
-
-
     @patch("transcription.prosody.LIBROSA_AVAILABLE", False)
     def test_extract_prosody_no_librosa_fallback(self):
         """Test prosody extraction works gracefully when librosa is not available."""
@@ -253,24 +251,9 @@ class TestSyllableCounting(unittest.TestCase):
         self.assertIn("pauses", result)
         self.assertIn("count", result["pauses"])
 
-from unittest.mock import patch
-
-class TestFallbackProsody(unittest.TestCase):
-    @patch("transcription.prosody.LIBROSA_AVAILABLE", False)
-    def test_extract_prosody_no_librosa_fallback(self):
-        """Test prosody extraction works gracefully when librosa is not available."""
-        # Use simple sine wave or random noise
-        audio = np.random.randn(16000).astype(np.float32)
-        from transcription.prosody import extract_prosody
-        result = extract_prosody(audio, 16000, "hello world")
-
-        self.assertIn("energy", result)
-        self.assertIn("db_rms", result["energy"])
-        self.assertIsNotNone(result["energy"]["db_rms"])
-
-        self.assertIn("pauses", result)
         self.assertIn("count", result["pauses"])
 
+
 class TestFallbackProsody(unittest.TestCase):
     @patch("transcription.prosody.LIBROSA_AVAILABLE", False)
     def test_extract_prosody_no_librosa_fallback(self):
@@ -278,6 +261,7 @@ class TestFallbackProsody(unittest.TestCase):
         # Use simple sine wave or random noise
         audio = np.random.randn(16000).astype(np.float32)
         from transcription.prosody import extract_prosody
+
         result = extract_prosody(audio, 16000, "hello world")
 
         self.assertIn("energy", result)
@@ -294,6 +278,7 @@ class TestFallbackProsody(unittest.TestCase):
 
     def test_extract_energy_features_exception(self):
         from transcription.prosody import extract_energy_features
+
         # Create an invalid type to trigger exception
         with patch("transcription.prosody.LIBROSA_AVAILABLE", False):
             res = extract_energy_features(None, 16000)
@@ -301,6 +286,7 @@ class TestFallbackProsody(unittest.TestCase):
 
     def test_extract_pause_features_exception(self):
         from transcription.prosody import extract_pause_features
+
         with patch("transcription.prosody.LIBROSA_AVAILABLE", False):
             # Pass incorrect type for audio to trigger an exception in frame-based logic
             res = extract_pause_features(None, 16000, 1.0)
