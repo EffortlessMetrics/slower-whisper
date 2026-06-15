@@ -1,0 +1,3 @@
+## 2026-06-15 - Optimizing RMS energy calculations
+**Learning:** When calculating RMS energy of numpy audio arrays, `np.mean(audio**2)` is common but inefficient because it allocates temporary memory for the squared array. Using `np.vdot(audio, audio) / audio.size` is around 4x faster for 1D arrays and avoids allocations. For 2D frame-based RMS, using `np.lib.stride_tricks.as_strided` with `np.einsum('ij,ij->i', frames, frames)` is nearly 20x faster than a Python loop over frames.
+**Action:** Always prefer `np.vdot` over `np.mean(arr**2)` for 1D energy/power calculations. For 2D/strided frame operations, leverage `np.einsum` to keep calculation entirely in C.
