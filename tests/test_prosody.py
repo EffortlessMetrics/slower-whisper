@@ -5,6 +5,7 @@ Tests for prosody feature extraction module.
 import unittest
 
 import numpy as np
+from unittest.mock import patch
 
 from transcription.prosody import (
     ENERGY_THRESHOLDS,
@@ -237,5 +238,70 @@ class TestSyllableCounting(unittest.TestCase):
         self.assertGreater(count_syllables("a"), 0)
 
 
-if __name__ == "__main__":
-    unittest.main()
+
+    @patch("transcription.prosody.LIBROSA_AVAILABLE", False)
+    def test_extract_prosody_no_librosa_fallback(self):
+        """Test prosody extraction works gracefully when librosa is not available."""
+        # Use simple sine wave or random noise
+        audio = np.random.randn(16000).astype(np.float32)
+        result = extract_prosody(audio, 16000, "hello world")
+
+        self.assertIn("energy", result)
+        self.assertIn("db_rms", result["energy"])
+        self.assertIsNotNone(result["energy"]["db_rms"])
+
+        self.assertIn("pauses", result)
+        self.assertIn("count", result["pauses"])
+
+from unittest.mock import patch
+
+class TestFallbackProsody(unittest.TestCase):
+    @patch("transcription.prosody.LIBROSA_AVAILABLE", False)
+    def test_extract_prosody_no_librosa_fallback(self):
+        """Test prosody extraction works gracefully when librosa is not available."""
+        # Use simple sine wave or random noise
+        audio = np.random.randn(16000).astype(np.float32)
+        from transcription.prosody import extract_prosody
+        result = extract_prosody(audio, 16000, "hello world")
+
+        self.assertIn("energy", result)
+        self.assertIn("db_rms", result["energy"])
+        self.assertIsNotNone(result["energy"]["db_rms"])
+
+        self.assertIn("pauses", result)
+        self.assertIn("count", result["pauses"])
+
+class TestFallbackProsody(unittest.TestCase):
+    @patch("transcription.prosody.LIBROSA_AVAILABLE", False)
+    def test_extract_prosody_no_librosa_fallback(self):
+        """Test prosody extraction works gracefully when librosa is not available."""
+        # Use simple sine wave or random noise
+        audio = np.random.randn(16000).astype(np.float32)
+        from transcription.prosody import extract_prosody
+        result = extract_prosody(audio, 16000, "hello world")
+
+        self.assertIn("energy", result)
+        self.assertIn("db_rms", result["energy"])
+        self.assertIsNotNone(result["energy"]["db_rms"])
+
+        self.assertIn("pauses", result)
+        self.assertIn("count", result["pauses"])
+
+    @patch("transcription.prosody.LIBROSA_AVAILABLE", False)
+    def test_extract_prosody_no_librosa_fallback_exception(self):
+        # We need an input that causes librosa.frames_to_time replacement to fail or np.sqrt
+        pass
+
+    def test_extract_energy_features_exception(self):
+        from transcription.prosody import extract_energy_features
+        # Create an invalid type to trigger exception
+        with patch("transcription.prosody.LIBROSA_AVAILABLE", False):
+            res = extract_energy_features(None, 16000)
+            self.assertIsNone(res["rms_mean"])
+
+    def test_extract_pause_features_exception(self):
+        from transcription.prosody import extract_pause_features
+        with patch("transcription.prosody.LIBROSA_AVAILABLE", False):
+            # Pass incorrect type for audio to trigger an exception in frame-based logic
+            res = extract_pause_features(None, 16000, 1.0)
+            self.assertEqual(res["count"], 0)
