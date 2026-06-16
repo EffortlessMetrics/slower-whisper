@@ -1557,13 +1557,16 @@ def _handle_delete(registry: SpeakerRegistry, args: Any) -> int:
         print(f"Speaker not found: {args.speaker_id}", file=sys.stderr)
         return 1
 
+    from transcription.color_utils import Colors
+
     # Confirm deletion
     if not args.force:
         if not sys.stdin.isatty():
             print("Error: Delete requires --force in non-interactive mode.", file=sys.stderr)
             return 1
 
-        confirm = input(f"Delete speaker '{speaker.name}' ({speaker.id})? [y/N] ")
+        warning = Colors.red("This cannot be undone.")
+        confirm = input(f"Delete speaker '{speaker.name}' ({speaker.id})? {warning} [y/N] ")
         if confirm.lower() not in ("y", "yes"):
             print("Aborted.")
             return 0
