@@ -21,7 +21,10 @@ Example usage:
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from . import models as _models
@@ -103,6 +106,20 @@ app = FastAPI(
 # =============================================================================
 # Middleware & Exception Handlers
 # =============================================================================
+
+# Sentinel: Configure CORS securely via explicit allowlist from environment variables to prevent unauthorized cross-origin requests
+allowed_origins = os.environ.get("SLOWER_WHISPER_ALLOWED_ORIGINS", "").split(",")
+allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
+if not allowed_origins:
+    allowed_origins = []  # Default to no cross-origin access if not explicitly configured
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.middleware("http")(log_requests)
 app.middleware("http")(add_security_headers)
