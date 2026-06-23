@@ -110,8 +110,12 @@ def analyze_chunk_health(
     clipped_count = np.sum(np.abs(samples_int16) >= clipping_threshold_int)
     clipping_ratio = float(clipped_count / n_samples)
 
-    # 2. Compute RMS energy
-    rms_energy = float(np.sqrt(np.mean(samples_float**2)))
+    # 2. Compute RMS energy (Bolt: Optimized RMS calculation using vdot)
+    rms_energy = (
+        float(np.sqrt(np.vdot(samples_float, samples_float) / samples_float.size))
+        if samples_float.size > 0
+        else 0.0
+    )
 
     # 3. Compute SNR proxy (ratio of top 10% energy to bottom 10%)
     snr_proxy = _compute_snr_proxy(samples_float)
