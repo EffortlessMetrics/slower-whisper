@@ -22,6 +22,7 @@ Example usage:
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from . import models as _models
@@ -103,6 +104,15 @@ app = FastAPI(
 # =============================================================================
 # Middleware & Exception Handlers
 # =============================================================================
+
+# Sentinel: Restrict CORS to explicit allowlist to prevent unauthorized cross-origin requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_service_settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.middleware("http")(log_requests)
 app.middleware("http")(add_security_headers)
