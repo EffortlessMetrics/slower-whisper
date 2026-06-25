@@ -1,5 +1,7 @@
 """Shared configuration constants for the API service."""
 
+import os
+
 from fastapi import status
 
 # Maximum allowed file size in megabytes (configurable)
@@ -17,3 +19,7 @@ HTTP_413_TOO_LARGE: int = getattr(
 HTTP_422_UNPROCESSABLE: int = getattr(
     status, "HTTP_422_UNPROCESSABLE_CONTENT", status.HTTP_422_UNPROCESSABLE_ENTITY
 )
+
+# CORS configuration
+_allowed_origins_str = os.environ.get("SLOWER_WHISPER_ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS = [origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()]
