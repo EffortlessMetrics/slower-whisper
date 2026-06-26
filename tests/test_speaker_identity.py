@@ -282,6 +282,62 @@ class TestSpeakerRegistry:
         assert result is True
         assert registry.get_speaker(speaker_id) is None
 
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    def test_delete_speaker_prompt_keyboard_interrupt(
+        self,
+        mock_input,
+        mock_isatty,
+        registry: SpeakerRegistry,
+        sample_embedding: np.ndarray,
+        capsys,
+    ):
+        """Ctrl+C during interactive delete prompt gracefully aborts."""
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+        from argparse import Namespace
+
+        from transcription.speaker_identity import _handle_delete
+
+        args = Namespace(
+            speakers_action="delete",
+            speaker_id=speaker_id,
+            store=str(registry._path),
+            force=False,
+        )
+        result = _handle_delete(registry, args)
+
+        assert result == 0
+        assert "Aborted" in capsys.readouterr().out
+        assert registry.get_speaker(speaker_id) is not None
+
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=EOFError)
+    def test_delete_speaker_prompt_eof_error(
+        self,
+        mock_input,
+        mock_isatty,
+        registry: SpeakerRegistry,
+        sample_embedding: np.ndarray,
+        capsys,
+    ):
+        """Ctrl+D during interactive delete prompt gracefully aborts."""
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+        from argparse import Namespace
+
+        from transcription.speaker_identity import _handle_delete
+
+        args = Namespace(
+            speakers_action="delete",
+            speaker_id=speaker_id,
+            store=str(registry._path),
+            force=False,
+        )
+        result = _handle_delete(registry, args)
+
+        assert result == 0
+        assert "Aborted" in capsys.readouterr().out
+        assert registry.get_speaker(speaker_id) is not None
+
     def test_delete_nonexistent_speaker(self, registry: SpeakerRegistry):
         """Should return False when deleting nonexistent speaker."""
         result = registry.delete_speaker("nonexistent-id")

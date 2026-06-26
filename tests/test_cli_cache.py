@@ -58,6 +58,36 @@ class TestCacheClearConfirmation:
             captured = capsys.readouterr()
             assert "Aborted" in captured.out
 
+    def test_interactive_prompt_keyboard_interrupt(self, mock_cache_paths, capsys):
+        """Ctrl+C at prompt gracefully aborts."""
+        with (
+            patch("shutil.rmtree") as mock_rmtree,
+            patch("builtins.input", side_effect=KeyboardInterrupt) as mock_input,
+            patch("sys.stdin.isatty", return_value=True),
+        ):
+            exit_code = main(["cache", "--clear", "whisper"])
+
+            assert exit_code == 0
+            assert mock_input.called
+            assert not mock_rmtree.called
+            captured = capsys.readouterr()
+            assert "Aborted" in captured.out
+
+    def test_interactive_prompt_eof_error(self, mock_cache_paths, capsys):
+        """Ctrl+D at prompt gracefully aborts."""
+        with (
+            patch("shutil.rmtree") as mock_rmtree,
+            patch("builtins.input", side_effect=EOFError) as mock_input,
+            patch("sys.stdin.isatty", return_value=True),
+        ):
+            exit_code = main(["cache", "--clear", "whisper"])
+
+            assert exit_code == 0
+            assert mock_input.called
+            assert not mock_rmtree.called
+            captured = capsys.readouterr()
+            assert "Aborted" in captured.out
+
     @pytest.mark.parametrize("force_flag", ["--force", "-f", "-y"])
     def test_force_flags_skip_prompt(self, mock_cache_paths, force_flag):
         """--force and its aliases skip the confirmation prompt entirely."""
