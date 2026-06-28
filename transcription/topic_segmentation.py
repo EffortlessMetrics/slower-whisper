@@ -360,23 +360,28 @@ def cosine_similarity(vec1: dict[str, float], vec2: dict[str, float]) -> float:
     if not vec1 or not vec2:
         return 0.0
 
-    # Find common terms
-    common_terms = set(vec1.keys()) & set(vec2.keys())
+    # Bolt: O(n) optimization avoids set intersection overhead and multiple value iterations
+    # Ensure vec1 is the smaller dictionary
+    if len(vec1) > len(vec2):
+        vec1, vec2 = vec2, vec1
 
-    if not common_terms:
+    # Single pass dot product (avoids set intersection)
+    dot_product = 0.0
+    mag1_sq = 0.0
+    for k, v in vec1.items():
+        mag1_sq += v * v
+        if k in vec2:
+            dot_product += v * vec2[k]
+
+    if dot_product == 0.0:
         return 0.0
 
-    # Compute dot product
-    dot_product = sum(vec1[t] * vec2[t] for t in common_terms)
+    mag2_sq = sum(v * v for v in vec2.values())
 
-    # Compute magnitudes
-    mag1 = math.sqrt(sum(v**2 for v in vec1.values()))
-    mag2 = math.sqrt(sum(v**2 for v in vec2.values()))
-
-    if mag1 == 0 or mag2 == 0:
+    if mag1_sq == 0.0 or mag2_sq == 0.0:
         return 0.0
 
-    return dot_product / (mag1 * mag2)
+    return dot_product / math.sqrt(mag1_sq * mag2_sq)
 
 
 class TopicSegmenter:
