@@ -111,9 +111,10 @@ def export_html(transcript: Transcript, output_path: Path, unit: str = "segments
     """Write a simple annotated HTML transcript."""
     rows = _collect_segments(transcript, unit=unit)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    lang = transcript.language if transcript.language else "en"
     parts: list[str] = [
         "<!doctype html>",
-        "<html>",
+        f'<html lang="{lang}">',
         "<head>",
         '<meta charset="utf-8" />',
         "<title>Transcript</title>",
@@ -125,6 +126,7 @@ def export_html(transcript: Transcript, output_path: Path, unit: str = "segments
         "</style>",
         "</head>",
         "<body>",
+        "<main>",
         f"<h2>{html.escape(transcript.file_name)}</h2>",
     ]
     for row in rows:
@@ -138,7 +140,7 @@ def export_html(transcript: Transcript, output_path: Path, unit: str = "segments
             f"<div>{html.escape(row['text'])}</div>"
             "</div>"
         )
-    parts.extend(["</body>", "</html>"])
+    parts.extend(["</main>", "</body>", "</html>"])
     output_path.write_text("\n".join(parts), encoding="utf-8")
 
 
