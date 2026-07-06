@@ -12,7 +12,7 @@ echo ""
 
 # CPU image
 echo "Building CPU image..."
-docker build -t slower-whisper:test-cpu -f config/Dockerfile . --quiet
+docker build -t slower-whisper:test-cpu -f Dockerfile . --quiet
 
 echo "✅ CPU image built"
 echo "Testing CLI in CPU image..."
@@ -22,13 +22,13 @@ echo ""
 
 # GPU image (build only, requires NVIDIA runtime to run)
 echo "Building GPU image..."
-docker build -t slower-whisper:test-gpu -f config/Dockerfile.gpu . --quiet
+docker build -t slower-whisper:test-gpu -f Dockerfile.gpu . --quiet
 echo "✅ GPU image built (runtime test skipped - requires NVIDIA Docker)"
 echo ""
 
 # API image
 echo "Building API image..."
-docker build -t slower-whisper:test-api -f config/Dockerfile.api . --quiet
+docker build -t slower-whisper:test-api -f Dockerfile.api . --quiet
 echo "✅ API image built"
 echo ""
 
