@@ -1,0 +1,139 @@
+name: Artifact Integrity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  artifact-installed:
+    name: artifact-installed (${{ matrix.artifact }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: [wheel, sdist]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Build distribution artifacts
+        run: |
+          uv build
+          uvx twine check dist/*
+
+      - name: Install selected artifact in a clean environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          VENV="$RUNNER_TEMP/slower-whisper-${{ matrix.artifact }}"
+          uv venv "$VENV" --python 3.12
+
+          if [[ "${{ matrix.artifact }}" == "wheel" ]]; then
+            TARGET=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          else
+            TARGET=$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
+          fi
+
+          test -n "$TARGET"
+          uv pip install --python "$VENV/bin/python" "$TARGET"
+          uv pip check --python "$VENV/bin/python"
+          echo "ARTIFACT_VENV=$VENV" >> "$GITHUB_ENV"
+
+      - name: Exercise installed console and import surfaces outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+
+          "$ARTIFACT_VENV/bin/slower-whisper" --version
+          "$ARTIFACT_VENV/bin/slower-whisper" --help
+          "$ARTIFACT_VENV/bin/slower-whisper" transcribe --help
+          "$ARTIFACT_VENV/bin/slower-whisper" enrich --help
+          "$ARTIFACT_VENV/bin/slower-whisper" benchmark --help
+          "$ARTIFACT_VENV/bin/slower-whisper" validate --help
+
+          "$ARTIFACT_VENV/bin/python" - <<'PY'
+          from __future__ import annotations
+
+          import importlib
+          import importlib.resources
+          import importlib.util
+          import json
+          from pathlib import Path
+
+          modules = [
+              "slower_whisper",
+              "transcription",
+              "transcription.cli",
+              "transcription.benchmark",
+              "transcription.cli_commands",
+              "transcription.integrations",
+              "transcription.semantic_providers",
+              "transcription.store",
+          ]
+
+          for name in modules:
+              module = importlib.import_module(name)
+              module_file = getattr(module, "__file__", None)
+              if module_file is not None:
+                  path = Path(module_file).resolve()
+                  assert "site-packages" in path.parts, (
+                      f"{name} imported outside site-packages: {path}"
+                  )
+              print(f"imported {name}")
+
+          package_root = importlib.resources.files("transcription")
+          required_resources = [
+              "schemas/transcript-v2.schema.json",
+              "schemas/stream_event.schema.json",
+              "schemas/README.md",
+              "py.typed",
+          ]
+          for relative_path in required_resources:
+              resource = package_root.joinpath(relative_path)
+              assert resource.is_file(), f"missing installed resource: {relative_path}"
+              print(f"found {relative_path}")
+
+          transcript_schema = package_root.joinpath("schemas/transcript-v2.schema.json")
+          json.loads(transcript_schema.read_text(encoding="utf-8"))
+
+          assert importlib.util.find_spec("scripts.verify_all") is None, (
+              "repository verifier leaked into the installed product"
+          )
+          assert importlib.util.find_spec("transcription.historian") is None, (
+              "PR historian leaked into the installed product"
+          )
+          PY
+
+      - name: Inspect wheel contents
+        if: matrix.artifact == 'wheel'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m zipfile -l dist/*.whl | tee "$RUNNER_TEMP/wheel-contents.txt"
+          grep -q 'transcription/cli_commands/' "$RUNNER_TEMP/wheel-contents.txt"
+          grep -q 'transcription/store/' "$RUNNER_TEMP/wheel-contents.txt"
+          grep -q 'transcription/benchmark/' "$RUNNER_TEMP/wheel-contents.txt"
+          grep -q 'transcription/schemas/transcript-v2.schema.json' "$RUNNER_TEMP/wheel-contents.txt"
+          ! grep -q 'transcription/historian/' "$RUNNER_TEMP/wheel-contents.txt"
+          ! grep -q 'scripts/verify_all.py' "$RUNNER_TEMP/wheel-contents.txt"
