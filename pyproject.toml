@@ -52,6 +52,7 @@ classifiers = [
 dependencies = [
     "faster-whisper>=1.2.1,<2",
     "typing-extensions>=4.15.0",
+    "jsonschema>=4.26.0",  # Required by the installed validate command and schema contract
 ]
 
 [project.optional-dependencies]
@@ -147,7 +148,6 @@ dev = [
     "httpx>=0.28.1",  # For API BDD tests
     "jiwer>=4.0.0",  # For WER computation in benchmarks
     "pyannote.metrics>=4.0.0",  # For DER computation in benchmarks
-    "jsonschema>=4.26.0",  # For schema validation CLI/tests
     # Code quality (ruff replaces black, isort, flake8)
     "mypy>=1.19.1",
     "ruff>=0.14.14",
@@ -185,9 +185,6 @@ profiling = [
 # Unified CLI
 slower-whisper = "transcription.cli:main"
 
-# Verification and testing CLI (developers)
-slower-whisper-verify = "scripts.verify_all:main"
-
 # Dogfooding workflow CLI (for testing before release)
 slower-whisper-dogfood = "transcription.dogfood:main"
 
@@ -205,11 +202,19 @@ Security = "https://github.com/EffortlessMetrics/slower-whisper/security/policy"
 Support = "https://github.com/EffortlessMetrics/slower-whisper/blob/main/.github/SUPPORT.md"
 Funding = "https://github.com/sponsors/EffortlessMetrics"
 
-[tool.setuptools]
-packages = ["transcription", "transcription.historian", "transcription.historian.analyzers", "transcription.integrations", "scripts", "slower_whisper"]
+[tool.setuptools.packages.find]
+include = ["transcription*", "slower_whisper*"]
+exclude = [
+    "transcription.historian*",
+    "tests*",
+    "benchmarks*",
+    "examples*",
+    "scripts*",
+    "integrations*",
+]
 
 [tool.setuptools.package-data]
-transcription = ["py.typed"]
+transcription = ["py.typed", "schemas/*.json", "schemas/README.md"]
 slower_whisper = ["py.typed"]
 
 [tool.black]
