@@ -50,10 +50,7 @@ class TestRealAsrEngine:
             for keyword in ["support", "password", "email", "account", "help"]
             if keyword in full_text
         ]
-        assert found, (
-            "Expected at least one keyword in real transcript, got: "
-            f"{full_text[:300]}"
-        )
+        assert found, f"Expected at least one keyword in real transcript, got: {full_text[:300]}"
         assert transcript.meta["asr_backend"] == "faster-whisper"
         assert "asr_fallback_reason" not in transcript.meta
 

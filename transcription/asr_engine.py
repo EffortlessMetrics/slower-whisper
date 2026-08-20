@@ -135,9 +135,8 @@ class TranscriptionEngine:
         self.model_load_attempts = []
         self.model_load_warnings = []
 
-        if (
-            self._backend_factory is None
-            and (not _FASTER_WHISPER_AVAILABLE or WhisperModel is None)
+        if self._backend_factory is None and (
+            not _FASTER_WHISPER_AVAILABLE or WhisperModel is None
         ):
             error = ASRUnavailableError(
                 "The faster-whisper backend is unavailable",
@@ -243,8 +242,7 @@ class TranscriptionEngine:
             return True, True
 
         has_kwargs = any(
-            param.kind == inspect.Parameter.VAR_KEYWORD
-            for param in signature.parameters.values()
+            param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
         )
         if has_kwargs:
             return True, True
@@ -309,9 +307,7 @@ class TranscriptionEngine:
         if include_vad and self._supports_vad_filter:
             kwargs["vad_filter"] = True
         if include_vad and self._supports_vad_parameters:
-            kwargs["vad_parameters"] = {
-                "min_silence_duration_ms": self.cfg.vad_min_silence_ms
-            }
+            kwargs["vad_parameters"] = {"min_silence_duration_ms": self.cfg.vad_min_silence_ms}
         if getattr(self.cfg, "word_timestamps", False):
             kwargs["word_timestamps"] = True
         return kwargs
@@ -457,10 +453,7 @@ class TranscriptionEngine:
                 )
             )
 
-        if not all(
-            validated[i][0] <= validated[i + 1][0]
-            for i in range(len(validated) - 1)
-        ):
+        if not all(validated[i][0] <= validated[i + 1][0] for i in range(len(validated) - 1)):
             validated = sorted(validated, key=lambda segment: (segment[0], segment[1]))
 
         return [
@@ -586,9 +579,7 @@ class TranscriptionEngine:
             "asr_backend": "faster-whisper",
             "asr_device": self.cfg.device,
             "asr_compute_type": self.cfg.compute_type or "unknown",
-            "asr_model_load_attempts": [
-                dict(attempt) for attempt in self.model_load_attempts
-            ],
+            "asr_model_load_attempts": [dict(attempt) for attempt in self.model_load_attempts],
         }
         if self.model_load_warnings:
             asr_meta["asr_model_load_warnings"] = list(self.model_load_warnings)

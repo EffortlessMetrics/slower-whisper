@@ -142,9 +142,7 @@ def test_cuda_load_failure_retries_real_cpu_backend(
             "reason_code": "ok",
         },
     ]
-    assert transcript.meta["asr_model_load_warnings"] == [
-        "cuda (float16) load failed"
-    ]
+    assert transcript.meta["asr_model_load_warnings"] == ["cuda (float16) load failed"]
 
 
 def test_cpu_compute_fallback_is_ordered() -> None:
@@ -327,9 +325,7 @@ def test_empty_transcript_writers_emit_no_fabricated_content(
     write_srt(transcript, srt_path)
 
     assert '"segments": []' in json_path.read_text(encoding="utf-8")
-    assert txt_path.read_text(encoding="utf-8") == (
-        "# File: silence.wav\n# Language: en\n\n"
-    )
+    assert txt_path.read_text(encoding="utf-8") == ("# File: silence.wav\n# Language: en\n\n")
     assert srt_path.read_text(encoding="utf-8") == ""
 
 
@@ -347,9 +343,7 @@ def test_legacy_vad_kwargs_are_removed_without_hiding_real_output(
         ) -> tuple[list[SimpleNamespace], SimpleNamespace]:
             self.calls.append(dict(kwargs))
             if "vad_filter" in kwargs:
-                raise TypeError(
-                    "transcribe() got an unexpected keyword argument 'vad_filter'"
-                )
+                raise TypeError("transcribe() got an unexpected keyword argument 'vad_filter'")
             return [segment(text="legacy result")], SimpleNamespace(language="en")
 
     model = LegacyModel()
@@ -378,10 +372,7 @@ def test_partial_vad_support_is_retained(
         ) -> tuple[list[SimpleNamespace], SimpleNamespace]:
             self.calls.append(dict(kwargs))
             if "vad_parameters" in kwargs:
-                raise TypeError(
-                    "transcribe() got an unexpected keyword argument "
-                    "'vad_parameters'"
-                )
+                raise TypeError("transcribe() got an unexpected keyword argument 'vad_parameters'")
             return [segment(text="partial VAD")], SimpleNamespace(language="en")
 
     model = PartialVadModel()
@@ -417,9 +408,7 @@ def test_language_normalization(
 ) -> None:
     transcript = TranscriptionEngine(
         config(language=configured_language),
-        backend_factory=static_factory(
-            StaticModel([segment(text="language")], info)
-        ),
+        backend_factory=static_factory(StaticModel([segment(text="language")], info)),
     ).transcribe_file(audio_file(tmp_path))
 
     assert transcript.language == expected
@@ -459,9 +448,7 @@ def test_word_timestamps_are_preserved(
     ]
     transcript = TranscriptionEngine(
         config(word_timestamps=True),
-        backend_factory=static_factory(
-            StaticModel([segment(text="hello", words=words)])
-        ),
+        backend_factory=static_factory(StaticModel([segment(text="hello", words=words)])),
     ).transcribe_file(audio_file(tmp_path))
 
     assert transcript.segments[0].words is not None
