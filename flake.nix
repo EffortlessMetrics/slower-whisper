@@ -273,8 +273,8 @@
 
                 # Check 8: Verify (requires HF_TOKEN for diarization models)
                 if [ -n "''${HF_TOKEN:-}" ]; then
-                  run_check "Verification suite (slower-whisper-verify --quick)" \
-                    ${pkgs.uv}/bin/uv run slower-whisper-verify --quick
+                  run_check "Verification suite (scripts/verify_all.py --quick)" \
+                    ${pkgs.uv}/bin/uv run python scripts/verify_all.py --quick
                 else
                   echo -e "''${YELLOW}⚠ Skipping verify: HF_TOKEN not set''${NC}"
                   echo ""
@@ -319,7 +319,7 @@
             '');
           };
 
-          # Verification workflow (runs slower-whisper-verify)
+          # Repository verification workflow
           verify = {
             type = "app";
             program = toString (pkgs.writeShellScript "verify" ''
@@ -331,7 +331,7 @@
               export UV_CACHE_DIR="$PWD/.cache/uv"
               export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
               export SLOWER_WHISPER_CACHE_ROOT="''${SLOWER_WHISPER_CACHE_ROOT:-$HOME/.cache/slower-whisper}"
-              exec ${pkgs.uv}/bin/uv run slower-whisper-verify "$@"
+              exec ${pkgs.uv}/bin/uv run python scripts/verify_all.py "$@"
             '');
           };
         };
