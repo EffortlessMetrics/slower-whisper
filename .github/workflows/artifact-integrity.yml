@@ -81,6 +81,12 @@ jobs:
           import json
           from pathlib import Path
 
+          def module_available(name: str) -> bool:
+              try:
+                  return importlib.util.find_spec(name) is not None
+              except ModuleNotFoundError:
+                  return False
+
           modules = [
               "slower_whisper",
               "transcription",
@@ -117,10 +123,10 @@ jobs:
           transcript_schema = package_root.joinpath("schemas/transcript-v2.schema.json")
           json.loads(transcript_schema.read_text(encoding="utf-8"))
 
-          assert importlib.util.find_spec("scripts.verify_all") is None, (
+          assert not module_available("scripts.verify_all"), (
               "repository verifier leaked into the installed product"
           )
-          assert importlib.util.find_spec("transcription.historian") is None, (
+          assert not module_available("transcription.historian"), (
               "PR historian leaked into the installed product"
           )
           PY
