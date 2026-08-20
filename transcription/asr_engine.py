@@ -138,13 +138,13 @@ class TranscriptionEngine:
         if self._backend_factory is None and (
             not _FASTER_WHISPER_AVAILABLE or WhisperModel is None
         ):
-            error = ASRUnavailableError(
+            unavailable_error = ASRUnavailableError(
                 "The faster-whisper backend is unavailable",
                 context={"backend": "faster-whisper"},
             )
             if _FASTER_WHISPER_IMPORT_ERROR is not None:
-                raise error from _FASTER_WHISPER_IMPORT_ERROR
-            raise error
+                raise unavailable_error from _FASTER_WHISPER_IMPORT_ERROR
+            raise unavailable_error
 
         try:
             paths = CachePaths.from_env().ensure_dirs()
@@ -218,7 +218,7 @@ class TranscriptionEngine:
                 self.cfg.compute_type = compute_type
             return model
 
-        error = ASRModelLoadError(
+        load_error = ASRModelLoadError(
             "The ASR model could not be loaded with any supported runtime configuration",
             context={
                 "backend": "faster-whisper",
@@ -227,8 +227,8 @@ class TranscriptionEngine:
             },
         )
         if last_error is not None:
-            raise error from last_error
-        raise error
+            raise load_error from last_error
+        raise load_error
 
     def _detect_vad_support(self) -> tuple[bool, bool]:
         """Detect whether model.transcribe accepts VAD kwargs."""
