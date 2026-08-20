@@ -30,6 +30,13 @@ jobs:
       - name: Install test environment
         run: uv sync --extra dev
 
+      - name: Show canonical formatting diff
+        run: |
+          uvx ruff@0.14.9 format --diff \
+            transcription/asr_engine.py \
+            tests/test_asr_engine.py \
+            tests/test_smoke_asr.py
+
       - name: Verify source truth contract
         run: |
           uv run pytest -q \
