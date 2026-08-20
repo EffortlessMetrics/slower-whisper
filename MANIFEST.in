@@ -30,15 +30,10 @@ include requirements-base.txt
 include requirements-enrich.txt
 include requirements-dev.txt
 
-# Typed package markers
+# Runtime package data
 include transcription/py.typed
 include slower_whisper/py.typed
-
-# Docs and examples
-
-# Benchmarks and tests
-
-# Operational/deployment assets
+recursive-include transcription/schemas *.json *.md
 
 # Exclude compiled/temporary artifacts
 global-exclude __pycache__
@@ -67,7 +62,7 @@ prune input_audio
 prune transcripts
 prune whisper_json
 
-# Exclude virtual environments
+# Exclude virtual environments and repository-only surfaces
 prune venv
 prune env
 prune .venv
@@ -78,3 +73,6 @@ prune .github
 prune benchmarks
 prune examples
 prune docs
+prune scripts
+prune integrations
+prune transcription/historian
