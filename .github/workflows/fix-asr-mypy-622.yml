@@ -2,6 +2,8 @@
 name: Fix ASR Recovery Type Contract
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [fix/asr-fail-closed-621]
 
@@ -14,7 +16,9 @@ concurrency:
 
 jobs:
   repair:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      (github.event_name == 'push' || github.event.pull_request.number == 622)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
