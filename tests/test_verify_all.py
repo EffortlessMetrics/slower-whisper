@@ -7,6 +7,7 @@ These tests verify the verification script itself runs correctly
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,12 +17,13 @@ if TYPE_CHECKING:
     pass
 
 ROOT = Path(__file__).parent.parent
+VERIFY_SCRIPT = ROOT / "scripts" / "verify_all.py"
 
 
 def test_verify_help():
-    """Test that --help flag works."""
+    """Test that --help flag works through the repository script."""
     result = subprocess.run(
-        ["uv", "run", "slower-whisper-verify", "--help"],
+        [sys.executable, str(VERIFY_SCRIPT), "--help"],
         cwd=ROOT,
         capture_output=True,
         text=True,

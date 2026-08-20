@@ -27,7 +27,7 @@ verify-quick:
 	@echo "Running quick verification..."
 	@echo "This verifies: code quality + tests + BDD + API BDD"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	uv run slower-whisper-verify --quick
+	uv run python scripts/verify_all.py --quick
 
 # Full verification (recommended before PRs)
 verify:
@@ -35,7 +35,7 @@ verify:
 	@echo "Running full verification..."
 	@echo "This includes: Docker builds + K8s validation"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	uv run slower-whisper-verify
+	uv run python scripts/verify_all.py
 
 # Development commands
 test:

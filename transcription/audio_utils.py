@@ -8,7 +8,14 @@ seeking capabilities. Designed for 16kHz mono WAV files normalized by the pipeli
 from pathlib import Path
 
 import numpy as np
-import soundfile as sf
+
+try:
+    import soundfile as sf
+
+    SOUNDFILE_AVAILABLE = True
+except ImportError:
+    SOUNDFILE_AVAILABLE = False
+    sf = None
 
 
 class AudioSegmentExtractor:
@@ -37,6 +44,12 @@ class AudioSegmentExtractor:
             ValueError: If the file is not a valid audio file.
             RuntimeError: If the audio file cannot be opened.
         """
+        if not SOUNDFILE_AVAILABLE:
+            raise ImportError(
+                "soundfile is required for audio segment extraction. "
+                "Install with: pip install slower-whisper[enrich-basic]"
+            )
+
         self.wav_path = Path(wav_path)
 
         # Validate file exists
@@ -274,6 +287,12 @@ def load_full_audio(wav_path: Path | str) -> tuple[np.ndarray, int]:
         FileNotFoundError: If the file does not exist.
         RuntimeError: If the file cannot be read.
     """
+    if not SOUNDFILE_AVAILABLE:
+        raise ImportError(
+            "soundfile is required for loading audio files. "
+            "Install with: pip install slower-whisper[enrich-basic]"
+        )
+
     wav_path = Path(wav_path)
 
     if not wav_path.exists():
@@ -302,6 +321,9 @@ def validate_wav_file(wav_path: Path | str) -> bool:
     Returns:
         True if valid, False otherwise.
     """
+    if not SOUNDFILE_AVAILABLE:
+        return False
+
     try:
         wav_path = Path(wav_path)
 

@@ -245,7 +245,7 @@ fi
 
 # Check 5: Quick verification
 run_check "Verification suite" \
-    uv run slower-whisper-verify --quick
+    uv run python scripts/verify_all.py --quick
 
 # Stop here if mode=fast
 if [ "$MODE" = "fast" ]; then
