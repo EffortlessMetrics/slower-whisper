@@ -1,4 +1,4 @@
-name: Verify (slower-whisper-verify)
+name: Verify (repository)
 
 on:
   pull_request:
@@ -97,7 +97,7 @@ jobs:
         run: nix develop .# --command uv sync --extra full --extra diarization --extra dev
 
       - name: Run verification (full)
-        run: nix develop .# --command uv run slower-whisper-verify
+        run: nix develop .# --command uv run python scripts/verify_all.py
 
       - name: Save uv cache
         if: always()
@@ -148,7 +148,7 @@ jobs:
         run: nix develop .# --command uv sync --extra api --extra dev
 
       - name: Run API verification
-        run: nix develop .# --command uv run slower-whisper-verify --api
+        run: nix develop .# --command uv run python scripts/verify_all.py --api
 
       - name: Save uv cache
         if: always()
