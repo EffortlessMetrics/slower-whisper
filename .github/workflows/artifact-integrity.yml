@@ -71,6 +71,7 @@ jobs:
           "$ARTIFACT_VENV/bin/slower-whisper" enrich --help
           "$ARTIFACT_VENV/bin/slower-whisper" benchmark --help
           "$ARTIFACT_VENV/bin/slower-whisper" validate --help
+          "$ARTIFACT_VENV/bin/slower-whisper-dogfood" --help
 
           "$ARTIFACT_VENV/bin/python" - <<'PY'
           from __future__ import annotations
