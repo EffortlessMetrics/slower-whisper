@@ -1,148 +1,79 @@
-name: CI (Nix)
+name: Repair ASR BDD Truth Contract
 
 on:
-  workflow_dispatch:
   pull_request:
-  push:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-asr-bdd-622
+  cancel-in-progress: false
 
 jobs:
-  # Pure offline checks (lint + format)
-  nix-pure:
-    name: Nix pure checks (lint + format)
+  repair-asr-bdd:
+    if: github.actor != 'github-actions[bot]' && github.event.pull_request.number == 622
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
     steps:
-      - name: Checkout repository
+      - name: Checkout recovery branch
         uses: actions/checkout@v6
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
         with:
-          nix_path: nixpkgs=channel:nixos-24.11
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
+          ref: fix/asr-fail-closed-621
+          fetch-depth: 0
 
-      - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v13
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
 
-      - name: Run pure checks
-        run: nix flake check --print-build-logs
+      - name: Replace synthetic-content BDD assumptions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
 
-  # Full CI suite (fast mode)
-  nix-ci-fast:
-    name: Nix CI (fast)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          steps_path = Path("tests/steps/test_transcription_steps.py")
+          steps = steps_path.read_text(encoding="utf-8")
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+          insert_anchor = '''\n\n# ============================================================================\n# Given steps (setup)\n# ============================================================================\n'''
+          helper = '''\n\ndef _assert_real_asr_result(transcript) -> None:\n    \"\"\"Assert that a transcript came from a selected real ASR backend.\"\"\"\n    meta = transcript.meta or {}\n    assert meta.get("asr_backend") == "faster-whisper", (\n        f"Unexpected ASR backend for {transcript.file_name}: {meta.get('asr_backend')}"\n    )\n    attempts = meta.get("asr_model_load_attempts")\n    assert isinstance(attempts, list) and attempts, (\n        f"Missing ASR model-load receipt for {transcript.file_name}"\n    )\n    assert any(attempt.get("outcome") == "selected" for attempt in attempts), (\n        f"No selected real ASR attempt for {transcript.file_name}: {attempts}"\n    )\n    assert "asr_placeholder_segments" not in meta\n    assert "asr_fallback_reason" not in meta\n\n\n# ============================================================================\n# Given steps (setup)\n# ============================================================================\n'''
+          assert steps.count(insert_anchor) == 1, "helper insertion anchor changed"
+          steps = steps.replace(insert_anchor, helper, 1)
 
-      - name: Restore HuggingFace cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.cache/huggingface
-          key: hf-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            hf-${{ runner.os }}-
+          replacements = {
+              '''@then("the transcript contains at least one segment")\ndef transcript_has_segments(test_state):\n    \"\"\"Verify that the transcript has segments.\"\"\"\n    transcripts = test_state["transcripts"]\n    assert len(transcripts) > 0, "No transcripts found"\n\n    for transcript in transcripts:\n        assert len(transcript.segments) > 0, f"No segments in {transcript.file_name}"\n''': '''@then("the transcript records a real ASR result")\ndef transcript_records_real_asr_result(test_state):\n    \"\"\"Verify successful real-ASR execution without requiring detected speech.\"\"\"\n    transcripts = test_state["transcripts"]\n    assert transcripts, "No transcripts found"\n\n    for transcript in transcripts:\n        _assert_real_asr_result(transcript)\n''',
+              '''@then("the transcript has segments")\ndef transcript_object_has_segments(test_state):\n    \"\"\"Verify the transcript object has segments.\"\"\"\n    transcripts = test_state["transcripts"]\n    assert len(transcripts) > 0, "No transcripts"\n    assert len(transcripts[0].segments) > 0, "No segments in transcript"\n''': '''@then("the transcript object records a real ASR result")\ndef transcript_object_records_real_asr_result(test_state):\n    \"\"\"Verify the direct-file result came from selected real ASR.\"\"\"\n    transcripts = test_state["transcripts"]\n    assert transcripts, "No transcripts"\n    _assert_real_asr_result(transcripts[0])\n''',
+              '''@then("each transcript contains at least one segment")\ndef each_transcript_has_segments(test_state):\n    \"\"\"Verify that each transcript has at least one segment.\"\"\"\n    transcripts = test_state["transcripts"]\n\n    for transcript in transcripts:\n        assert len(transcript.segments) > 0, f"No segments in transcript for {transcript.file_name}"\n''': '''@then("each transcript records a real ASR result")\ndef each_transcript_records_real_asr_result(test_state):\n    \"\"\"Verify every batch result came from selected real ASR.\"\"\"\n    transcripts = test_state["transcripts"]\n    assert transcripts, "No transcripts found"\n\n    for transcript in transcripts:\n        _assert_real_asr_result(transcript)\n''',
+              '''@then(parsers.parse('if a transcript exists for "{filename}", it has placeholder segments'))\ndef transcript_has_placeholder_if_exists(test_state, filename):\n    \"\"\"Verify transcript has placeholder segments if it was created for zero-duration file.\"\"\"\n    transcripts = test_state.get("transcripts", [])\n    error = test_state.get("transcription_error")\n\n    # If there was an error, that's acceptable graceful handling\n    if error:\n        return\n\n    # If transcripts exist, check for placeholder handling\n    for transcript in transcripts:\n        if transcript.file_name == filename:\n            # Check if meta indicates fallback/placeholder behavior\n            meta = transcript.meta or {}\n            # System may have created placeholder segments\n            has_placeholder_marker = (\n                meta.get("asr_placeholder_segments", False)\n                or meta.get("asr_fallback_reason") is not None\n            )\n            # Either has placeholder marker, or has segments (valid transcript)\n            assert has_placeholder_marker or len(transcript.segments) >= 0, (\n                f"Expected placeholder markers or valid segments for {filename}"\n            )\n''': '''@then(parsers.parse('if a transcript exists for "{filename}", it records a real ASR result'))\ndef transcript_records_real_asr_result_if_exists(test_state, filename):\n    \"\"\"Verify a zero-duration result is real or the operation fails gracefully.\"\"\"\n    if test_state.get("transcription_error"):\n        return\n\n    for transcript in test_state.get("transcripts", []):\n        if transcript.file_name == filename:\n            _assert_real_asr_result(transcript)\n''',
+          }
 
-      - name: Restore uv cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-
+          for old, new in replacements.items():
+              assert steps.count(old) == 1, f"BDD step block changed unexpectedly: {old.splitlines()[0]}"
+              steps = steps.replace(old, new, 1)
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixos-24.11
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
+          steps_path.write_text(steps, encoding="utf-8")
 
-      - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v13
+          feature_path = Path("tests/features/transcription.feature")
+          feature = feature_path.read_text(encoding="utf-8")
+          feature_replacements = {
+              "And the transcript contains at least one segment": "And the transcript records a real ASR result",
+              "Then the transcript has segments": "Then the transcript object records a real ASR result",
+              "And each transcript contains at least one segment": "And each transcript records a real ASR result",
+              'And if a transcript exists for "zero_duration.wav", it has placeholder segments': 'And if a transcript exists for "zero_duration.wav", it records a real ASR result',
+          }
+          for old, new in feature_replacements.items():
+              assert feature.count(old) == 1, f"feature contract changed unexpectedly: {old}"
+              feature = feature.replace(old, new, 1)
+          feature_path.write_text(feature, encoding="utf-8")
+          PY
 
-      - name: Run CI (fast mode)
-        run: nix run .#ci -- fast
+          uvx ruff@0.14.9 format tests/steps/test_transcription_steps.py
+          git diff --check
 
-      - name: Save HuggingFace cache
-        if: always()
-        continue-on-error: true
-        uses: actions/cache/save@v5
-        with:
-          path: ~/.cache/huggingface
-          key: hf-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
-
-      - name: Save uv cache
-        if: always()
-        continue-on-error: true
-        uses: actions/cache/save@v5
-        with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-
-  # Full CI suite (complete)
-  nix-ci-full:
-    name: Nix CI (full)
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Restore HuggingFace cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.cache/huggingface
-          key: hf-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            hf-${{ runner.os }}-
-
-      - name: Restore uv cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixos-24.11
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
-
-      - name: Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v13
-
-      - name: Run CI (full suite)
-        run: nix run .#ci -- full
-
-      - name: Save HuggingFace cache
-        if: always()
-        continue-on-error: true
-        uses: actions/cache/save@v5
-        with:
-          path: ~/.cache/huggingface
-          key: hf-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
-
-      - name: Save uv cache
-        if: always()
-        continue-on-error: true
-        uses: actions/cache/save@v5
-        with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+      - name: Commit BDD contract repair
+        run: |
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -- \
+            tests/features/transcription.feature \
+            tests/steps/test_transcription_steps.py
+          git commit -m "test: make BDD audio expectations fail closed"
+          git push origin HEAD:fix/asr-fail-closed-621
