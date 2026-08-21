@@ -16,7 +16,6 @@ permissions:
   id-token: write
 
 jobs:
-  # Run tests before building release
   test:
     name: Test before release
     uses: ./.github/workflows/ci.yml
@@ -40,13 +39,43 @@ jobs:
       - name: Install build dependencies
         run: uv pip install build twine
 
+      - name: Embed trusted release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            BUILD_ID="release-${GITHUB_REF_NAME#v}"
+          else
+            BUILD_ID="testpypi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
+          python scripts/write_build_info.py \
+            --source-commit "$GITHUB_SHA" \
+            --build-id "$BUILD_ID"
+          echo "EXPECTED_SOURCE_COMMIT=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+          echo "EXPECTED_BUILD_ID=$BUILD_ID" >> "$GITHUB_ENV"
+
       - name: Build package
         run: uv build
 
-      - name: Check built artifacts
+      - name: Check built artifacts and embedded identity
+        shell: bash
         run: |
+          set -euo pipefail
           ls -lh dist/
           uv run twine check dist/*
+          VENV="$RUNNER_TEMP/release-artifact-check"
+          uv venv "$VENV" --python 3.12
+          WHEEL=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$WHEEL"
+          uv pip install --python "$VENV/bin/python" "$WHEEL"
+          "$VENV/bin/python" - <<'PY'
+          import os
+          from transcription.build_info import get_package_build_info
+
+          info = get_package_build_info()
+          assert info.source_commit == os.environ["EXPECTED_SOURCE_COMMIT"]
+          assert info.build_id == os.environ["EXPECTED_BUILD_ID"]
+          PY
 
       - name: Store distribution packages
         uses: actions/upload-artifact@v6
@@ -130,7 +159,6 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          # Get commits since last tag
           LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -z "$LAST_TAG" ]; then
             COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
@@ -138,7 +166,6 @@ jobs:
             COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
           fi
 
-          # Create changelog
           cat > CHANGELOG.md << EOF
           ## What's Changed
 
