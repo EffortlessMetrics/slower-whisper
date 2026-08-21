@@ -26,12 +26,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
       - name: Install Python
         run: uv python install ${{ matrix.python-version }}
@@ -90,6 +90,7 @@ jobs:
           grep -Fq 'Every successful file, bytes, and batch REST transcription' \
             docs/RUNTIME_SERVICE_CONTRACT.md
           grep -Fq 'receipt-v1.schema.json' docs/PROVENANCE.md
+          grep -Fq 'receipt-v1.schema.json' transcription/schemas/README.md
 
   provenance-artifact-installed:
     name: provenance-artifact-installed (${{ matrix.artifact }})
@@ -102,12 +103,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
       - name: Install Python
         run: uv python install 3.12
