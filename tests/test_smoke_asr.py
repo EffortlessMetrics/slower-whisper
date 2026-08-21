@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,12 @@ from transcription.legacy_config import AsrConfig
 
 AUDIO_DIR = Path(__file__).resolve().parents[1] / "benchmarks" / "data" / "asr" / "audio"
 CALL_CENTER_WAV = AUDIO_DIR / "call_center_narrowband.wav"
+REAL_ASR_ENABLED = os.environ.get("SLOWER_WHISPER_TEST_REAL") == "1"
+
+pytestmark = pytest.mark.skipif(
+    not REAL_ASR_ENABLED,
+    reason="set SLOWER_WHISPER_TEST_REAL=1 to run real-model ASR smoke tests",
+)
 
 
 @pytest.fixture(scope="module")

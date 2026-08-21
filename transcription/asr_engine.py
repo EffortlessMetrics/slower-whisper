@@ -313,7 +313,7 @@ class TranscriptionEngine:
         return kwargs
 
     def _transcribe_with_model(self, audio_path: Path) -> Any:
-        """Call model.transcribe, retrying only for legacy VAD signatures."""
+        """Call model.transcribe, retrying only while VAD kwargs make progress."""
         transcribe_fn = getattr(self.model, "transcribe", None)
         if not callable(transcribe_fn):
             raise ASRInferenceError(
@@ -325,7 +325,6 @@ class TranscriptionEngine:
             self._warn_vad_disabled()
 
         include_vad = True
-        stripped_all_vad = False
 
         while True:
             kwargs = self._build_transcribe_kwargs(include_vad=include_vad)
@@ -336,19 +335,29 @@ class TranscriptionEngine:
                 if not (unsupported_filter or unsupported_params):
                     raise
 
+                previous_state = (
+                    include_vad,
+                    self._supports_vad_filter,
+                    self._supports_vad_parameters,
+                )
                 if unsupported_filter:
                     self._supports_vad_filter = False
                 if unsupported_params:
                     self._supports_vad_parameters = False
-                self._warn_vad_disabled()
-
-                if stripped_all_vad:
-                    raise
-
                 if not (self._supports_vad_filter or self._supports_vad_parameters):
                     include_vad = False
-                    stripped_all_vad = True
-                continue
+                self._warn_vad_disabled()
+
+                current_state = (
+                    include_vad,
+                    self._supports_vad_filter,
+                    self._supports_vad_parameters,
+                )
+                if current_state == previous_state:
+                    raise ASRInferenceError(
+                        "ASR inference failed while negotiating VAD arguments",
+                        context={"phase": "vad_negotiation"},
+                    ) from exc
 
     def _normalize_language(self, info: Any) -> str:
         """Return a language string even when backend info omits one."""
