@@ -91,9 +91,7 @@ def test_generated_run_id_validates_without_format_checker() -> None:
         device="cpu",
         compute_type="int8",
     ).to_dict()
-    errors = list(
-        Draft7Validator(load_schema("receipt-v1.schema.json")).iter_errors(receipt)
-    )
+    errors = list(Draft7Validator(load_schema("receipt-v1.schema.json")).iter_errors(receipt))
     assert errors == []
 
 
