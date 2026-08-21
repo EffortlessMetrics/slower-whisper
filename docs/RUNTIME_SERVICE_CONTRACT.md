@@ -53,9 +53,9 @@ policy before it can share the production inference slot.
 
 `POST /transcribe` resolves the process runtime before saving or normalizing the
 upload. Omitted ASR options inherit the process profile. An explicit model,
-device, compute type, language, task, beam/VAD behavior, or word-timestamp
-setting must match that profile; a mismatch returns `409` before upload or model
-work.
+device, compute type, language, task, or word-timestamp setting must match that
+profile; a mismatch returns `409` before upload or model work. Beam and VAD
+settings remain fixed to the process profile and are not request-selectable.
 
 Request-scoped post-processing options such as diarization may vary because
 they do not construct a second ASR model. The existing `/transcribe/stream` SSE
