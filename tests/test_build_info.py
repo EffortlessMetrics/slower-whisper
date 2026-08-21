@@ -89,6 +89,21 @@ def test_build_info_generator_is_byte_deterministic(tmp_path: Path) -> None:
     assert 'BUILD_ID: str | None = "github-12345-1"' in source
 
 
+def test_build_info_generator_without_identity_renders_valid_python(
+    tmp_path: Path,
+) -> None:
+    script = Path(__file__).resolve().parents[1] / "scripts" / "write_build_info.py"
+    output = tmp_path / "unknown.py"
+    subprocess.run(
+        [sys.executable, str(script), "--output", str(output)],
+        check=True,
+    )
+    source = output.read_text(encoding="utf-8")
+    assert "SOURCE_COMMIT: str | None = None" in source
+    assert "BUILD_ID: str | None = None" in source
+    compile(source, str(output), "exec")
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [
