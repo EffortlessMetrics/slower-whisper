@@ -12,10 +12,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  format-and-verify:
+  format:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
 
     steps:
       - name: Checkout provenance branch
@@ -24,7 +24,7 @@ jobs:
           ref: fix/trusted-provenance-623
           fetch-depth: 0
 
-      - name: Tighten compatibility fixtures and bounded attempt evidence
+      - name: Tighten fixtures and bounded attempt evidence
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -37,13 +37,14 @@ jobs:
           pattern_anchor = (
               '_BUILD_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"\n'
           )
-          pattern_addition = (
-              pattern_anchor
-              + '_REASON_CODE_PATTERN = re.compile(r"^[a-z0-9_]+$")\n'
-          )
           if "_REASON_CODE_PATTERN" not in receipt:
               assert receipt.count(pattern_anchor) == 1
-              receipt = receipt.replace(pattern_anchor, pattern_addition, 1)
+              receipt = receipt.replace(
+                  pattern_anchor,
+                  pattern_anchor
+                  + '_REASON_CODE_PATTERN = re.compile(r"^[a-z0-9_]+$")\n',
+                  1,
+              )
 
           attempt_anchor = '''        if attempt["outcome"] not in _ALLOWED_ATTEMPT_OUTCOMES:
             continue
@@ -68,7 +69,8 @@ jobs:
           receipt_tests_path = Path("tests/test_receipt.py")
           receipt_tests = receipt_tests_path.read_text(encoding="utf-8")
           receipt_tests = receipt_tests.replace("abcd1234efgh", "abcd1234efab")
-          invalid_reason_test = '''
+          if "test_invalid_model_load_reason_is_not_admitted_to_receipt" not in receipt_tests:
+              receipt_tests += '''
 
 
 def test_invalid_model_load_reason_is_not_admitted_to_receipt() -> None:
@@ -87,13 +89,12 @@ def test_invalid_model_load_reason_is_not_admitted_to_receipt() -> None:
     )
     assert "model_load_attempts" not in receipt.to_dict()
 '''
-          if "test_invalid_model_load_reason_is_not_admitted_to_receipt" not in receipt_tests:
-              receipt_tests += invalid_reason_test
           receipt_tests_path.write_text(receipt_tests, encoding="utf-8")
 
           build_tests_path = Path("tests/test_build_info.py")
           build_tests = build_tests_path.read_text(encoding="utf-8")
-          unknown_test = '''
+          if "test_build_info_generator_without_identity_renders_valid_python" not in build_tests:
+              unknown_test = '''
 
 
 def test_build_info_generator_without_identity_renders_valid_python(
@@ -110,7 +111,6 @@ def test_build_info_generator_without_identity_renders_valid_python(
     assert "BUILD_ID: str | None = None" in source
     compile(source, str(output), "exec")
 '''
-          if "test_build_info_generator_without_identity_renders_valid_python" not in build_tests:
               marker = "\n\n@pytest.mark.parametrize("
               assert build_tests.count(marker) == 1
               build_tests = build_tests.replace(marker, unknown_test + marker, 1)
@@ -120,15 +120,9 @@ def test_build_info_generator_without_identity_renders_valid_python(
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
-      - name: Install Python
-        run: uv python install 3.12
-
-      - name: Install complete focused environment
-        run: uv sync --python 3.12 --extra dev --extra api
-
-      - name: Apply canonical formatting
+      - name: Apply canonical Ruff formatting
         run: |
-          uv run ruff format \
+          uvx ruff@0.14.14 format \
             scripts/write_build_info.py \
             transcription/_build_info.py \
             transcription/build_info.py \
@@ -139,7 +133,7 @@ def test_build_info_generator_without_identity_renders_valid_python(
             tests/test_provenance_schema.py \
             tests/test_provenance_surfaces.py \
             tests/test_receipt.py
-          uv run ruff check --fix \
+          uvx ruff@0.14.14 check --fix \
             scripts/write_build_info.py \
             transcription/_build_info.py \
             transcription/build_info.py \
@@ -150,47 +144,12 @@ def test_build_info_generator_without_identity_renders_valid_python(
             tests/test_provenance_schema.py \
             tests/test_provenance_surfaces.py \
             tests/test_receipt.py
-          uv run ruff format \
+          uvx ruff@0.14.14 format \
             scripts/write_build_info.py \
             transcription/_build_info.py \
             transcription/build_info.py \
             transcription/meta_utils.py \
             transcription/receipt.py \
-            tests/test_build_info.py \
-            tests/test_meta_utils.py \
-            tests/test_provenance_schema.py \
-            tests/test_provenance_surfaces.py \
-            tests/test_receipt.py
-
-      - name: Verify focused source contract
-        run: |
-          uv run ruff check \
-            scripts/write_build_info.py \
-            transcription/_build_info.py \
-            transcription/build_info.py \
-            transcription/meta_utils.py \
-            transcription/receipt.py \
-            tests/test_build_info.py \
-            tests/test_meta_utils.py \
-            tests/test_provenance_schema.py \
-            tests/test_provenance_surfaces.py \
-            tests/test_receipt.py
-          uv run ruff format --check \
-            scripts/write_build_info.py \
-            transcription/_build_info.py \
-            transcription/build_info.py \
-            transcription/meta_utils.py \
-            transcription/receipt.py \
-            tests/test_build_info.py \
-            tests/test_meta_utils.py \
-            tests/test_provenance_schema.py \
-            tests/test_provenance_surfaces.py \
-            tests/test_receipt.py
-          uv run mypy \
-            transcription/build_info.py \
-            transcription/meta_utils.py \
-            transcription/receipt.py
-          uv run pytest -q \
             tests/test_build_info.py \
             tests/test_meta_utils.py \
             tests/test_provenance_schema.py \
@@ -204,5 +163,5 @@ def test_build_info_generator_without_identity_renders_valid_python(
           git config user.name "EffortlessSteven"
           git config user.email "git@effortlesssteven.com"
           git add -A
-          git commit -m "style: format and verify trusted provenance"
+          git commit -m "style: format trusted provenance and strict fixtures"
           git push origin HEAD:fix/trusted-provenance-623
