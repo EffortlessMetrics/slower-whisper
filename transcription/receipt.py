@@ -353,7 +353,7 @@ def validate_receipt(data: Mapping[str, Any]) -> list[str]:
             errors.append("model_load_attempts must be an array")
         else:
             normalized_attempts = normalize_model_load_attempts(attempts)
-            if len(normalized_attempts) != len(attempts):
+            if normalized_attempts != attempts:
                 errors.append("model_load_attempts contains an invalid attempt")
 
     return errors
