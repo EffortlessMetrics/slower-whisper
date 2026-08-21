@@ -3,6 +3,8 @@ name: Repair PR 622 Silent-Audio Contract
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [fix/asr-fail-closed-621]
 
 permissions:
   contents: write
@@ -13,7 +15,7 @@ concurrency:
 
 jobs:
   repair:
-    if: github.actor != 'github-actions[bot]' && github.event.pull_request.number == 622
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
 
     steps:
