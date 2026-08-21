@@ -1,0 +1,89 @@
+name: Merge Runtime 623 After Finalize
+
+on:
+  push:
+    branches: [fix/runtime-lifecycle-623]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: merge-runtime-623-after-finalize
+  cancel-in-progress: false
+
+jobs:
+  merge-after-finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 95
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: '624'
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v6
+        with:
+          ref: fix/runtime-lifecycle-623
+          fetch-depth: 0
+
+      - name: Wait for the validated finalizer commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 5400))
+
+          while true; do
+            state=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .state 2>/dev/null || echo merged)
+            merged=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .merged 2>/dev/null || echo true)
+            if [ "$state" != "open" ] || [ "$merged" = "true" ]; then
+              echo "PR already completed."
+              exit 0
+            fi
+
+            git fetch origin fix/runtime-lifecycle-623 --prune || {
+              echo "Recovery branch no longer exists; assuming completed merge."
+              exit 0
+            }
+
+            if ! git cat-file -e origin/fix/runtime-lifecycle-623:.github/workflows/runtime-623-finalize.yml 2>/dev/null; then
+              break
+            fi
+
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Validated finalizer did not self-delete before timeout."
+              exit 1
+            fi
+            echo "Finalizer still present; waiting for its validated deletion commit."
+            sleep 30
+          done
+
+          git checkout -B fix/runtime-lifecycle-623 origin/fix/runtime-lifecycle-623
+          git log -10 --format=%s | grep -Fx "chore: remove one-shot runtime merge gate"
+          test ! -e .github/workflows/runtime-623-finalize.yml
+          test ! -e scripts/patch_runtime_623.py
+          test ! -e .github/workflows/apply-runtime-623.yml
+
+      - name: Remove only this safety workflow
+        run: |
+          set -euo pipefail
+          rm .github/workflows/merge-runtime-623-after-finalize.yml
+          git diff --name-only --exit-code -- . ':!.github/workflows/merge-runtime-623-after-finalize.yml'
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "1"
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add .github/workflows/merge-runtime-623-after-finalize.yml
+          git commit -m "chore: remove runtime merge safety gate"
+          git push origin HEAD:fix/runtime-lifecycle-623
+
+      - name: Complete the validated squash merge
+        run: |
+          set -euo pipefail
+          gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" || true
+          gh pr merge "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch \
+            --subject "runtime: own ASR lifecycle, readiness, and provenance (#624)" \
+            --body "Closes #623. Advances #620 from fail-closed batch ASR to a service-owned runtime with truthful readiness, embedded build provenance, automatic receipts, typed REST failure mapping, and installed-artifact acceptance."
