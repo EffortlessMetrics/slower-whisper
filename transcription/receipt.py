@@ -1,50 +1,26 @@
-"""Receipt contract for provenance tracking.
+"""Receipt contract for transcript provenance and runtime evidence.
 
-This module provides a standardized receipt schema for capturing provenance
-information in transcript and benchmark outputs. Receipts enable:
-
-- Reproducibility: Config hash and git commit allow recreating runs
-- Traceability: run_id uniquely identifies each execution
-- Versioning: tool_version and schema_version track compatibility
-
-Contract fields (all required unless noted):
-- tool_version: Package version (e.g., "2.1.0")
-- schema_version: JSON schema version (int, e.g., 2)
-- model: ASR model name (e.g., "large-v3")
-- device: Resolved device (e.g., "cuda", "cpu")
-- compute_type: Compute type used (e.g., "float16", "int8")
-- config_hash: SHA-256 hash of normalized config (first 12 chars)
-- run_id: Unique identifier for this execution (format: run-YYYYMMDD-HHMMSS-XXXXXX)
-- created_at: ISO 8601 timestamp when receipt was created
-- git_commit: Optional short git commit hash (7-12 chars)
-
-Example receipt:
-    {
-        "tool_version": "2.1.0",
-        "schema_version": 2,
-        "model": "large-v3",
-        "device": "cuda",
-        "compute_type": "float16",
-        "config_hash": "a1b2c3d4e5f6",
-        "run_id": "run-20260128-143052-x7k9p2",
-        "created_at": "2024-01-15T10:30:00Z",
-        "git_commit": "abc1234"
-    }
+Receipts identify the installed package artifact and the actual selected ASR
+runtime. Runtime provenance is package-local: this module never invokes git and
+never inspects the caller's working directory or environment for source identity.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
-from dataclasses import dataclass, field
+import math
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import UTC, datetime
+from enum import Enum
+from pathlib import Path
 from typing import Any
 
+from .build_info import get_build_id, get_source_commit
 from .ids import generate_run_id as _generate_run_id
 from .ids import is_valid_run_id
 
-# Required fields in a receipt (for validation)
 RECEIPT_REQUIRED_FIELDS = frozenset(
     {
         "tool_version",
@@ -57,17 +33,17 @@ RECEIPT_REQUIRED_FIELDS = frozenset(
         "created_at",
     }
 )
-
-# Receipt schema version for the receipt contract itself
+RECEIPT_VOLATILE_FIELDS = frozenset({"run_id", "created_at"})
 RECEIPT_CONTRACT_VERSION = 1
+
+_ATTEMPT_FIELDS = ("device", "compute_type", "outcome", "reason_code")
+_ALLOWED_ATTEMPT_OUTCOMES = frozenset({"failed", "selected"})
+_GIT_COMMIT_PATTERN = r"^[0-9a-f]{7,64}$"
+_BUILD_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
 
 
 def get_tool_version() -> str:
-    """Get the current tool version from package metadata.
-
-    Returns:
-        Version string (e.g., "2.1.0") or "0.0.0-dev" if not installed.
-    """
+    """Return the installed package version, or a source-tree development value."""
     try:
         from . import __version__
 
@@ -77,73 +53,101 @@ def get_tool_version() -> str:
 
 
 def get_git_commit() -> str | None:
-    """Get the current short git commit hash if in a git repository.
+    """Return the trusted package source commit embedded during artifact build.
 
-    Returns:
-        Short commit hash (e.g., "abc1234") or None if not in a git repo.
+    The historical function name is retained for API compatibility. It no longer
+    shells out to git and cannot cite the repository containing the caller's cwd.
     """
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=None,  # Use current working directory
+    return get_source_commit()
+
+
+def _normalize_config_value(value: Any) -> Any:
+    if value is None or isinstance(value, str | int | bool):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("receipt config values must be finite")
+        return value
+    if isinstance(value, Enum):
+        return _normalize_config_value(value.value)
+    if isinstance(value, Path):
+        return value.as_posix()
+    if is_dataclass(value) and not isinstance(value, type):
+        return _normalize_config_value(asdict(value))
+    if isinstance(value, Mapping):
+        normalized: dict[str, Any] = {}
+        for key in sorted(value):
+            if not isinstance(key, str):
+                raise TypeError("receipt config keys must be strings")
+            normalized[key] = _normalize_config_value(value[key])
+        return normalized
+    if isinstance(value, list | tuple):
+        return [_normalize_config_value(item) for item in value]
+    if isinstance(value, set | frozenset):
+        normalized_items = [_normalize_config_value(item) for item in value]
+        return sorted(
+            normalized_items,
+            key=lambda item: json.dumps(
+                item,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ),
         )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return None
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return _normalize_config_value(to_dict())
+    raise TypeError(
+        f"receipt config value {type(value).__name__!r} is not canonically serializable"
+    )
 
 
-def compute_config_hash(config: dict[str, Any]) -> str:
-    """Compute a deterministic hash from a configuration dictionary.
-
-    The config is normalized by sorting keys and using consistent JSON
-    serialization to ensure the same config always produces the same hash.
-
-    Args:
-        config: Configuration dictionary to hash.
-
-    Returns:
-        First 12 characters of the SHA-256 hash.
-    """
-    # Normalize by sorting keys and using consistent serialization
-    normalized = json.dumps(config, sort_keys=True, separators=(",", ":"))
-    full_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-    return full_hash[:12]
+def compute_config_hash(config: Mapping[str, Any]) -> str:
+    """Compute a deterministic SHA-256 projection of canonical config data."""
+    normalized = _normalize_config_value(config)
+    serialized = json.dumps(
+        normalized,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:12]
 
 
 def generate_run_id() -> str:
-    """Generate a unique run identifier.
-
-    Format: `run-YYYYMMDD-HHMMSS-XXXXXX` where XXXXXX is 6 random alphanumeric chars.
-
-    Returns:
-        A unique run_id string (e.g., "run-20260128-143052-x7k9p2").
-    """
+    """Generate a unique run identifier."""
     return _generate_run_id()
+
+
+def normalize_model_load_attempts(
+    attempts: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, str]]:
+    """Project backend attempts onto the bounded public receipt contract."""
+    normalized: list[dict[str, str]] = []
+    for raw_attempt in attempts or ():
+        if not isinstance(raw_attempt, Mapping):
+            continue
+        attempt: dict[str, str] = {}
+        for field_name in _ATTEMPT_FIELDS:
+            value = raw_attempt.get(field_name)
+            if value is None or isinstance(value, bool):
+                continue
+            candidate = str(value).strip()
+            if candidate:
+                attempt[field_name] = candidate
+        if not all(field_name in attempt for field_name in _ATTEMPT_FIELDS):
+            continue
+        if attempt["outcome"] not in _ALLOWED_ATTEMPT_OUTCOMES:
+            continue
+        normalized.append(attempt)
+    return normalized
 
 
 @dataclass
 class Receipt:
-    """Provenance receipt for transcript and benchmark outputs.
-
-    This dataclass captures all the information needed to understand
-    how a transcript or benchmark result was produced.
-
-    Attributes:
-        tool_version: Package version (e.g., "2.1.0")
-        schema_version: JSON schema version (int)
-        model: ASR model name
-        device: Resolved device (cuda/cpu)
-        compute_type: Compute type used
-        config_hash: Hash of normalized config
-        run_id: Unique execution identifier
-        created_at: ISO 8601 timestamp
-        git_commit: Optional git commit hash
-    """
+    """Provenance receipt attached to a successful transcript."""
 
     tool_version: str
     schema_version: int
@@ -155,15 +159,13 @@ class Receipt:
     created_at: str = field(
         default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z")
     )
+    backend: str | None = None
+    model_revision: str | None = None
+    model_load_attempts: list[dict[str, str]] = field(default_factory=list)
     git_commit: str | None = None
+    build_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert receipt to a JSON-serializable dictionary.
-
-        Returns:
-            Dictionary with all receipt fields. git_commit is only
-            included if it has a value.
-        """
         result: dict[str, Any] = {
             "tool_version": self.tool_version,
             "schema_version": self.schema_version,
@@ -174,37 +176,53 @@ class Receipt:
             "run_id": self.run_id,
             "created_at": self.created_at,
         }
+        if self.backend is not None:
+            result["backend"] = self.backend
+        if self.model_revision is not None:
+            result["model_revision"] = self.model_revision
+        if self.model_load_attempts:
+            result["model_load_attempts"] = [
+                dict(attempt) for attempt in self.model_load_attempts
+            ]
         if self.git_commit is not None:
             result["git_commit"] = self.git_commit
+        if self.build_id is not None:
+            result["build_id"] = self.build_id
         return result
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Receipt:
-        """Create a Receipt from a dictionary.
-
-        Args:
-            data: Dictionary with receipt fields.
-
-        Returns:
-            Receipt instance.
-
-        Raises:
-            KeyError: If required fields are missing.
-        """
+    def from_dict(cls, data: Mapping[str, Any]) -> Receipt:
         return cls(
-            tool_version=data["tool_version"],
-            schema_version=data["schema_version"],
-            model=data["model"],
-            device=data["device"],
-            compute_type=data["compute_type"],
-            config_hash=data["config_hash"],
-            run_id=data.get("run_id", generate_run_id()),
-            created_at=data.get(
-                "created_at",
-                datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            tool_version=str(data["tool_version"]),
+            schema_version=int(data["schema_version"]),
+            model=str(data["model"]),
+            device=str(data["device"]),
+            compute_type=str(data["compute_type"]),
+            config_hash=str(data["config_hash"]),
+            run_id=str(data.get("run_id", generate_run_id())),
+            created_at=str(
+                data.get(
+                    "created_at",
+                    datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                )
             ),
-            git_commit=data.get("git_commit"),
+            backend=_optional_string(data.get("backend")),
+            model_revision=_optional_string(data.get("model_revision")),
+            model_load_attempts=normalize_model_load_attempts(
+                data.get("model_load_attempts")
+                if isinstance(data.get("model_load_attempts"), Sequence)
+                else None
+            ),
+            git_commit=_optional_string(data.get("git_commit")),
+            build_id=_optional_string(data.get("build_id")),
         )
+
+
+def _optional_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    return candidate or None
 
 
 def build_receipt(
@@ -212,135 +230,129 @@ def build_receipt(
     model: str,
     device: str,
     compute_type: str,
-    config: dict[str, Any] | None = None,
+    config: Mapping[str, Any] | None = None,
     schema_version: int | None = None,
     run_id: str | None = None,
     created_at: str | None = None,
     include_git_commit: bool = True,
+    include_build_id: bool = True,
+    backend: str | None = None,
+    model_revision: str | None = None,
+    model_load_attempts: Sequence[Mapping[str, Any]] | None = None,
 ) -> Receipt:
-    """Build a receipt with the given parameters.
-
-    This is the primary factory function for creating receipts. It handles
-    version detection, config hashing, and optional git commit lookup.
-
-    Args:
-        model: ASR model name (e.g., "large-v3")
-        device: Resolved device (e.g., "cuda", "cpu")
-        compute_type: Compute type (e.g., "float16", "int8")
-        config: Optional config dict for hashing. If None, uses model/device/compute_type.
-        schema_version: Override schema version. If None, uses SCHEMA_VERSION from models.
-        run_id: Override run_id. If None, generates a new UUID4.
-        created_at: Override created_at. If None, uses current UTC time.
-        include_git_commit: Whether to look up and include git commit.
-
-    Returns:
-        Receipt instance with all fields populated.
-
-    Example:
-        >>> receipt = build_receipt(
-        ...     model="large-v3",
-        ...     device="cuda",
-        ...     compute_type="float16",
-        ... )
-        >>> print(receipt.to_dict())
-    """
+    """Build a receipt from actual runtime values and package-local identity."""
     from .models import SCHEMA_VERSION
 
-    # Build config for hashing if not provided
+    receipt_config: Mapping[str, Any]
     if config is None:
-        config = {
+        generated_config: dict[str, Any] = {
             "model": model,
             "device": device,
             "compute_type": compute_type,
         }
-
-    # Compute deterministic hash
-    config_hash = compute_config_hash(config)
-
-    # Get tool version
-    tool_version = get_tool_version()
-
-    # Get git commit if requested
-    git_commit = get_git_commit() if include_git_commit else None
-
-    # Use provided or default values
-    actual_schema_version = schema_version if schema_version is not None else SCHEMA_VERSION
-    actual_run_id = run_id if run_id is not None else generate_run_id()
-    actual_created_at = (
-        created_at
-        if created_at is not None
-        else datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    )
+        if backend is not None:
+            generated_config["backend"] = backend
+        if model_revision is not None:
+            generated_config["model_revision"] = model_revision
+        receipt_config = generated_config
+    else:
+        receipt_config = config
 
     return Receipt(
-        tool_version=tool_version,
-        schema_version=actual_schema_version,
+        tool_version=get_tool_version(),
+        schema_version=(schema_version if schema_version is not None else SCHEMA_VERSION),
         model=model,
         device=device,
         compute_type=compute_type,
-        config_hash=config_hash,
-        run_id=actual_run_id,
-        created_at=actual_created_at,
-        git_commit=git_commit,
+        config_hash=compute_config_hash(receipt_config),
+        run_id=run_id if run_id is not None else generate_run_id(),
+        created_at=(
+            created_at
+            if created_at is not None
+            else datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        ),
+        backend=_optional_string(backend),
+        model_revision=_optional_string(model_revision),
+        model_load_attempts=normalize_model_load_attempts(model_load_attempts),
+        git_commit=get_git_commit() if include_git_commit else None,
+        build_id=get_build_id() if include_build_id else None,
     )
 
 
-def validate_receipt(data: dict[str, Any]) -> list[str]:
-    """Validate that a receipt dictionary has all required fields.
+def receipt_stable_projection(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove only per-run volatile fields from a receipt dictionary."""
+    return {
+        key: value
+        for key, value in data.items()
+        if key not in RECEIPT_VOLATILE_FIELDS
+    }
 
-    Args:
-        data: Dictionary to validate as a receipt.
 
-    Returns:
-        List of validation error messages. Empty list if valid.
-    """
+def validate_receipt(data: Mapping[str, Any]) -> list[str]:
+    """Validate the in-memory receipt contract without requiring jsonschema."""
+    import re
+    import uuid
+
     errors: list[str] = []
-
-    # Check required fields
     missing = RECEIPT_REQUIRED_FIELDS - set(data.keys())
     if missing:
         errors.append(f"Missing required fields: {sorted(missing)}")
 
-    # Validate types for present fields
-    if "tool_version" in data and not isinstance(data["tool_version"], str):
-        errors.append("tool_version must be a string")
+    string_fields = ("tool_version", "model", "device", "compute_type")
+    for field_name in string_fields:
+        if field_name in data and not isinstance(data[field_name], str):
+            errors.append(f"{field_name} must be a string")
 
     if "schema_version" in data and not isinstance(data["schema_version"], int):
         errors.append("schema_version must be an integer")
 
-    if "model" in data and not isinstance(data["model"], str):
-        errors.append("model must be a string")
-
-    if "device" in data and not isinstance(data["device"], str):
-        errors.append("device must be a string")
-
-    if "compute_type" in data and not isinstance(data["compute_type"], str):
-        errors.append("compute_type must be a string")
-
-    if "config_hash" in data:
-        if not isinstance(data["config_hash"], str):
+    config_hash = data.get("config_hash")
+    if config_hash is not None:
+        if not isinstance(config_hash, str):
             errors.append("config_hash must be a string")
-        elif len(data["config_hash"]) != 12:
-            errors.append("config_hash must be exactly 12 characters")
+        elif re.fullmatch(r"[0-9a-f]{12}", config_hash) is None:
+            errors.append("config_hash must be exactly 12 lowercase hexadecimal characters")
 
-    if "run_id" in data:
-        if not isinstance(data["run_id"], str):
+    run_id = data.get("run_id")
+    if run_id is not None:
+        if not isinstance(run_id, str):
             errors.append("run_id must be a string")
-        elif not is_valid_run_id(data["run_id"]):
-            # Allow legacy UUID format for backward compatibility
-            import uuid
-
+        elif not is_valid_run_id(run_id):
             try:
-                uuid.UUID(data["run_id"])
+                uuid.UUID(run_id)
             except ValueError:
-                errors.append("run_id must be in format 'run-YYYYMMDD-HHMMSS-XXXXXX' or valid UUID")
+                errors.append(
+                    "run_id must be in format 'run-YYYYMMDD-HHMMSS-XXXXXX' or valid UUID"
+                )
 
     if "created_at" in data and not isinstance(data["created_at"], str):
         errors.append("created_at must be a string")
 
-    # git_commit is optional but must be string if present
-    if "git_commit" in data and data["git_commit"] is not None:
-        if not isinstance(data["git_commit"], str):
+    for field_name in ("backend", "model_revision"):
+        if field_name in data and not isinstance(data[field_name], str):
+            errors.append(f"{field_name} must be a string")
+
+    git_commit = data.get("git_commit")
+    if git_commit is not None:
+        if not isinstance(git_commit, str):
             errors.append("git_commit must be a string or null")
+        elif re.fullmatch(_GIT_COMMIT_PATTERN, git_commit) is None:
+            errors.append("git_commit must be a 7-64 character lowercase hexadecimal revision")
+
+    build_id = data.get("build_id")
+    if build_id is not None:
+        if not isinstance(build_id, str):
+            errors.append("build_id must be a string or null")
+        elif re.fullmatch(_BUILD_ID_PATTERN, build_id) is None:
+            errors.append("build_id has an invalid format")
+
+    attempts = data.get("model_load_attempts")
+    if attempts is not None:
+        if not isinstance(attempts, list):
+            errors.append("model_load_attempts must be an array")
+        else:
+            normalized_attempts = normalize_model_load_attempts(attempts)
+            if len(normalized_attempts) != len(attempts):
+                errors.append("model_load_attempts contains an invalid attempt")
 
     return errors
