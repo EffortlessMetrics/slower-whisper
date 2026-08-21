@@ -1,8 +1,8 @@
 """
 Transcription orchestration extracted from transcription.api.
 
-These are the "real" implementations. transcription.api stays as a thin façade so
-tests (and downstream users) can continue patching transcription.api.* helpers.
+These are the real implementations. ``transcription.api`` stays as a thin
+facade so tests and downstream users can continue patching its helpers.
 """
 
 from __future__ import annotations
@@ -11,12 +11,16 @@ import logging
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .config import AsrConfig, Paths, TranscriptionConfig, validate_diarization_settings
 from .exceptions import TranscriptionError
 from .meta_utils import build_generation_metadata
 from .models import Transcript
 from .writers import load_transcript_from_json
+
+if TYPE_CHECKING:
+    from .asr_engine import TranscriptionEngine
 
 logger = logging.getLogger(__name__)
 
@@ -77,11 +81,11 @@ def _transcribe_directory_impl(
         try:
             transcript = load_transcript_from_json(json_path)
             transcripts.append(transcript)
-        except Exception as e:
+        except Exception as exc:
             raise TranscriptionError(
-                f"Failed to load transcript from {json_path.name}: {e}. "
-                f"The JSON file may be corrupted or have an invalid schema."
-            ) from e
+                f"Failed to load transcript from {json_path.name}: {exc}. "
+                "The JSON file may be corrupted or have an invalid schema."
+            ) from exc
 
     return transcripts
 
@@ -94,8 +98,8 @@ def _transcribe_file_impl(
     get_wav_duration_seconds: GetWavDurationFn,
     maybe_run_diarization: MaybeRunDiarizationFn,
     maybe_build_chunks: MaybeBuildChunksFn,
+    engine: TranscriptionEngine | None = None,
 ) -> Transcript:
-    from .asr_engine import TranscriptionEngine
     from .audio_io import ensure_dirs, ensure_within_dir, normalize_all, sanitize_filename
 
     audio_path = Path(audio_path)
@@ -110,7 +114,7 @@ def _transcribe_file_impl(
     if not audio_path.exists():
         raise TranscriptionError(
             f"Audio file not found: {audio_path}. "
-            f"Please verify the file path and ensure the file exists."
+            "Please verify the file path and ensure the file exists."
         )
     if not audio_path.is_file():
         raise TranscriptionError(
@@ -137,8 +141,8 @@ def _transcribe_file_impl(
 
     try:
         ensure_within_dir(raw_dest, paths.raw_dir)
-    except ValueError as e:
-        raise TranscriptionError(str(e)) from e
+    except ValueError as exc:
+        raise TranscriptionError(str(exc)) from exc
 
     raw_dest.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -157,12 +161,15 @@ def _transcribe_file_impl(
     if not norm_wav.exists():
         raise TranscriptionError(
             f"Audio normalization failed: {norm_wav} not found. "
-            f"Ensure ffmpeg is installed and the input audio format is supported."
+            "Ensure ffmpeg is installed and the input audio format is supported."
         )
 
     duration_sec = get_wav_duration_seconds(norm_wav)
 
-    engine = TranscriptionEngine(asr_cfg)
+    if engine is None:
+        from .asr_engine import TranscriptionEngine
+
+        engine = TranscriptionEngine(asr_cfg)
     transcript = engine.transcribe_file(norm_wav)
 
     transcript = maybe_run_diarization(
@@ -228,7 +235,7 @@ def _transcribe_bytes_impl(
     if not re.fullmatch(r"[a-z0-9][a-z0-9+.-]{0,15}", format_lower):
         raise TranscriptionError(
             f"Invalid audio format hint: '{format}'. "
-            f"Format must be a simple extension like 'wav', 'mp3', or 'flac'."
+            "Format must be a simple extension like 'wav', 'mp3', or 'flac'."
         )
 
     validate_diarization_settings(
@@ -270,11 +277,11 @@ def _transcribe_bytes_impl(
 
         try:
             normalize_single(temp_path, norm_path)
-        except Exception as e:
+        except Exception as exc:
             raise TranscriptionError(
-                f"Failed to normalize audio: {e}. "
+                f"Failed to normalize audio: {exc}. "
                 f"Ensure ffmpeg is installed and the audio data is valid {format_lower.upper()} format."
-            ) from e
+            ) from exc
 
         if not norm_path.exists():
             raise TranscriptionError(

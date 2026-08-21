@@ -11,13 +11,14 @@ import sys
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
 from . import __version__
 from . import models as _models
 from . import service_enrich as _service_enrich
 from . import service_errors as _service_errors
 from . import service_health as _service_health
+from . import service_runtime_transcribe as _service_runtime_transcribe
 from . import service_serialization as _service_serialization
 from . import service_settings as _service_settings
 from . import service_transcribe as _service_transcribe
@@ -64,9 +65,14 @@ _check_faster_whisper = _service_health._check_faster_whisper
 _check_cuda = _service_health._check_cuda
 _check_disk_space = _service_health._check_disk_space
 
-transcribe_router = _service_transcribe.router
-transcribe_audio = _service_transcribe.transcribe_audio
+transcribe_router = _service_runtime_transcribe.router
+transcribe_audio = _service_runtime_transcribe.transcribe_audio
 transcribe_audio_streaming = _service_transcribe.transcribe_audio_streaming
+
+sse_transcribe_router = APIRouter()
+for _route in _service_transcribe.router.routes:
+    if getattr(_route, "path", None) != "/transcribe":
+        sse_transcribe_router.routes.append(_route)
 
 enrich_router = _service_enrich.router
 enrich_audio = _service_enrich.enrich_audio
@@ -147,6 +153,7 @@ def create_app(*, runtime_factory: RuntimeFactory | None = None) -> FastAPI:
     application.include_router(metrics_router)
     application.include_router(streaming_router)
     application.include_router(transcribe_router)
+    application.include_router(sse_transcribe_router)
     application.include_router(enrich_router)
     return application
 
