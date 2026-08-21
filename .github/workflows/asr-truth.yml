@@ -4,14 +4,114 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, fix/asr-fail-closed-621]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  repair-silent-contract:
+    name: repair PR 622 silent-audio assertions
+    if: github.actor != 'github-actions[bot]' && github.ref == 'refs/heads/fix/asr-fail-closed-621'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v6
+        with:
+          ref: fix/asr-fail-closed-621
+          fetch-depth: 0
+
+      - name: Replace stale non-empty assertions with real-ASR receipts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_diarization_skeleton.py")
+          source = path.read_text(encoding="utf-8")
+
+          anchor = '''# ============================================================================
+# Existing integration tests
+# ============================================================================
+
+
+'''
+          helper = '''# ============================================================================
+# Existing integration tests
+# ============================================================================
+
+
+def _assert_selected_real_asr(transcript: Transcript) -> None:
+    """Assert that silent audio was processed by a selected real backend."""
+    meta = transcript.meta or {}
+    assert meta.get("asr_backend") == "faster-whisper"
+    attempts = meta.get("asr_model_load_attempts")
+    assert isinstance(attempts, list) and attempts
+    assert any(attempt.get("outcome") == "selected" for attempt in attempts)
+    assert "asr_placeholder_segments" not in meta
+    assert "asr_fallback_reason" not in meta
+
+
+'''
+          assert source.count(anchor) == 1, "integration-test anchor changed unexpectedly"
+          source = source.replace(anchor, helper, 1)
+
+          enabled_old = '''    # Verify transcript structure
+    assert isinstance(transcript, Transcript)
+    assert len(transcript.segments) > 0
+
+    # Verify diarization behavior:
+'''
+          enabled_new = '''    # Silence is a valid empty transcript; prove that real ASR ran instead.
+    assert isinstance(transcript, Transcript)
+    _assert_selected_real_asr(transcript)
+
+    # Verify diarization behavior:
+'''
+          assert source.count(enabled_old) == 1, "enabled assertion changed unexpectedly"
+          source = source.replace(enabled_old, enabled_new, 1)
+
+          disabled_old = '''    # Should complete normally
+    assert isinstance(transcript, Transcript)
+    assert len(transcript.segments) > 0
+
+    assert transcript.speakers is None
+'''
+          disabled_new = '''    # Should complete normally; silence may legitimately produce no segments.
+    assert isinstance(transcript, Transcript)
+    _assert_selected_real_asr(transcript)
+
+    assert transcript.speakers is None
+'''
+          assert source.count(disabled_old) == 1, "disabled assertion changed unexpectedly"
+          source = source.replace(disabled_old, disabled_new, 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+
+          git fetch origin main
+          git show origin/main:.github/workflows/ci-nix.yml > .github/workflows/ci-nix.yml
+          rm -f test-failure-report.txt
+          python -m pip install --quiet ruff==0.14.9
+          ruff format tests/test_diarization_skeleton.py
+          ruff check tests/test_diarization_skeleton.py
+          git diff --check
+
+      - name: Commit repaired acceptance contract
+        run: |
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -A -- \
+            .github/workflows/ci-nix.yml \
+            tests/test_diarization_skeleton.py \
+            test-failure-report.txt
+          git commit -m "test: accept real empty transcripts for silent audio"
+          git push origin HEAD:fix/asr-fail-closed-621
+
   asr-truth:
     name: asr-truth (source + installed wheel)
     runs-on: ubuntu-latest
