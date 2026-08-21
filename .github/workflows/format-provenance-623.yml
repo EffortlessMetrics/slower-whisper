@@ -1,0 +1,115 @@
+name: Format Provenance 623
+
+on:
+  push:
+    branches: [fix/trusted-provenance-623]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-provenance-623
+  cancel-in-progress: false
+
+jobs:
+  format-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout provenance branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: fix/trusted-provenance-623
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install complete focused environment
+        run: uv sync --python 3.12 --extra dev --extra api
+
+      - name: Apply canonical formatting
+        run: |
+          uv run ruff format \
+            scripts/write_build_info.py \
+            transcription/_build_info.py \
+            transcription/build_info.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py \
+            tests/test_build_info.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+          uv run ruff check --fix \
+            scripts/write_build_info.py \
+            transcription/_build_info.py \
+            transcription/build_info.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py \
+            tests/test_build_info.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+          uv run ruff format \
+            scripts/write_build_info.py \
+            transcription/_build_info.py \
+            transcription/build_info.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py \
+            tests/test_build_info.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+
+      - name: Verify focused source contract
+        run: |
+          uv run ruff check \
+            scripts/write_build_info.py \
+            transcription/_build_info.py \
+            transcription/build_info.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py \
+            tests/test_build_info.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+          uv run ruff format --check \
+            scripts/write_build_info.py \
+            transcription/_build_info.py \
+            transcription/build_info.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py \
+            tests/test_build_info.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+          uv run mypy \
+            transcription/build_info.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py
+          uv run pytest -q \
+            tests/test_build_info.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+          git diff --check
+
+      - name: Remove one-shot formatter and commit
+        run: |
+          rm .github/workflows/format-provenance-623.yml
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -A
+          git commit -m "style: format and verify trusted provenance"
+          git push origin HEAD:fix/trusted-provenance-623
