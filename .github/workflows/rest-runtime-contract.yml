@@ -81,12 +81,19 @@ jobs:
 
       - name: Verify documented REST ownership
         run: |
-          grep -Fq 'Batch REST transcription reuses that runtime.' \
-            docs/RUNTIME_SERVICE_CONTRACT.md
-          grep -Fq '`409` with `runtime_profile_mismatch`' \
-            docs/RUNTIME_SERVICE_CONTRACT.md
-          ! grep -Fq 'does not yet make REST transcription reuse' \
-            docs/RUNTIME_SERVICE_CONTRACT.md
+          python - <<'PY'
+          from pathlib import Path
+
+          document = Path("docs/RUNTIME_SERVICE_CONTRACT.md").read_text(encoding="utf-8")
+          normalized = " ".join(document.split())
+          required = (
+              "Batch REST transcription reuses that runtime.",
+              "`409` with `runtime_profile_mismatch`",
+          )
+          for statement in required:
+              assert statement in normalized, statement
+          assert "does not yet make REST transcription reuse" not in normalized
+          PY
 
       - name: Verify reuse, privacy, and typed HTTP behavior
         run: |
