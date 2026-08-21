@@ -10,7 +10,7 @@ Feature: Transcribing audio into transcripts
     Given a project with a mono WAV file named "hello.wav"
     When I transcribe the project with default settings
     Then a transcript JSON exists for "hello.wav"
-    And the transcript contains at least one segment
+    And the transcript records a real ASR result
     And the JSON file has schema version 2
 
   Scenario: Transcribe with custom model configuration
@@ -30,7 +30,7 @@ Feature: Transcribing audio into transcripts
   Scenario: Transcribe single file directly
     Given an audio file "interview.wav"
     When I transcribe the single file with default settings
-    Then the transcript has segments
+    Then the transcript object records a real ASR result
     And the transcript file name is "interview.wav"
 
   Scenario: Skip existing transcripts when configured
@@ -47,7 +47,7 @@ Feature: Transcribing audio into transcripts
       | audio3.wav  |
     When I transcribe the project with default settings
     Then transcript JSONs exist for all files
-    And each transcript contains at least one segment
+    And each transcript records a real ASR result
 
   # v1.1 Speaker diarization scenarios
   Scenario: Transcripts have nullable speaker fields by default
@@ -122,7 +122,7 @@ Feature: Transcribing audio into transcripts
     Given a project with a zero-duration WAV file named "zero_duration.wav"
     When I attempt to transcribe the project with default settings
     Then the transcription completes or fails gracefully
-    And if a transcript exists for "zero_duration.wav", it has placeholder segments
+    And if a transcript exists for "zero_duration.wav", it records a real ASR result
 
   Scenario: Silent audio file produces empty transcript
     Given a project with a silent audio file named "silence.wav"

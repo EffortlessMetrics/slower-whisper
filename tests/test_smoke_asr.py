@@ -1,20 +1,24 @@
-"""Smoke tests: real ASR engine with tiny model.
-
-These tests exercise the actual faster-whisper model on real audio.
-They require SLOWER_WHISPER_TEST_REAL=1 and are excluded from default test runs.
-"""
+"""Smoke tests: real ASR engine with the tiny faster-whisper model."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
+import transcription.asr_engine as asr_engine
 from transcription.asr_engine import TranscriptionEngine
 from transcription.legacy_config import AsrConfig
 
 AUDIO_DIR = Path(__file__).resolve().parents[1] / "benchmarks" / "data" / "asr" / "audio"
 CALL_CENTER_WAV = AUDIO_DIR / "call_center_narrowband.wav"
+REAL_ASR_ENABLED = os.environ.get("SLOWER_WHISPER_TEST_REAL") == "1"
+
+pytestmark = pytest.mark.skipif(
+    not REAL_ASR_ENABLED,
+    reason="set SLOWER_WHISPER_TEST_REAL=1 to run real-model ASR smoke tests",
+)
 
 
 @pytest.fixture(scope="module")
@@ -27,45 +31,63 @@ def engine() -> TranscriptionEngine:
 @pytest.mark.smoke
 @pytest.mark.timeout(60)
 class TestRealAsrEngine:
-    """Tests that exercise the real ASR engine with a tiny model."""
+    """Exercise a real model rather than an injected test backend."""
 
-    def test_asr_engine_loads_real_model(self, engine: TranscriptionEngine) -> None:
-        """Engine should load a real faster-whisper model, not the dummy fallback."""
-        assert not engine.using_dummy, "Expected real model but got DummyWhisperModel"
+    def test_asr_engine_loads_real_model(
+        self,
+        engine: TranscriptionEngine,
+    ) -> None:
+        assert not hasattr(asr_engine, "DummyWhisperModel")
+        assert engine.model_load_attempts[-1] == {
+            "device": "cpu",
+            "compute_type": "int8",
+            "outcome": "selected",
+            "reason_code": "ok",
+        }
 
-    def test_asr_engine_transcribes_speech(self, engine: TranscriptionEngine) -> None:
-        """Transcribing call center audio should produce text with expected keywords."""
+    def test_asr_engine_transcribes_speech(
+        self,
+        engine: TranscriptionEngine,
+    ) -> None:
         assert CALL_CENTER_WAV.exists(), f"Missing fixture: {CALL_CENTER_WAV}"
         transcript = engine.transcribe_file(CALL_CENTER_WAV)
         full_text = transcript.full_text.lower()
-        # The TTS audio is about a support call; at least one keyword should appear
         found = [
-            kw for kw in ["support", "password", "email", "account", "help"] if kw in full_text
+            keyword
+            for keyword in ["support", "password", "email", "account", "help"]
+            if keyword in full_text
         ]
-        assert found, f"Expected at least one keyword in transcript, got: {full_text[:300]}"
+        assert found, f"Expected at least one keyword in real transcript, got: {full_text[:300]}"
+        assert transcript.meta["asr_backend"] == "faster-whisper"
+        assert "asr_fallback_reason" not in transcript.meta
 
-    def test_asr_engine_returns_valid_segments(self, engine: TranscriptionEngine) -> None:
-        """Segments should have non-empty text and valid timestamps."""
+    def test_asr_engine_returns_valid_segments(
+        self,
+        engine: TranscriptionEngine,
+    ) -> None:
         assert CALL_CENTER_WAV.exists()
         transcript = engine.transcribe_file(CALL_CENTER_WAV)
-        assert len(transcript.segments) > 0, "Expected at least one segment"
-        for seg in transcript.segments:
-            assert seg.text.strip(), f"Segment {seg.id} has empty text"
-            assert seg.start >= 0, f"Segment {seg.id} has negative start"
-            assert seg.end > seg.start, f"Segment {seg.id} end <= start"
-        assert transcript.language == "en", f"Expected 'en', got '{transcript.language}'"
+        assert transcript.segments
+        for item in transcript.segments:
+            assert item.text.strip()
+            assert item.start >= 0
+            assert item.end > item.start
+        assert transcript.language == "en"
 
-    def test_word_timestamps(self, engine: TranscriptionEngine) -> None:
-        """Word timestamps should produce words with valid timing when enabled."""
+    def test_word_timestamps(self) -> None:
         assert CALL_CENTER_WAV.exists()
-        cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8", word_timestamps=True)
-        wt_engine = TranscriptionEngine(cfg)
-        transcript = wt_engine.transcribe_file(CALL_CENTER_WAV)
-        # At least one segment should have words
-        segments_with_words = [s for s in transcript.segments if s.words]
-        assert segments_with_words, "Expected at least one segment with word timestamps"
-        for seg in segments_with_words:
-            for word in seg.words:
-                assert word.word.strip(), "Word text is empty"
-                assert word.start >= 0, "Word has negative start"
-                assert word.end >= word.start, "Word end < start"
+        cfg = AsrConfig(
+            model_name="tiny",
+            device="cpu",
+            compute_type="int8",
+            word_timestamps=True,
+        )
+        transcript = TranscriptionEngine(cfg).transcribe_file(CALL_CENTER_WAV)
+        segments_with_words = [item for item in transcript.segments if item.words]
+        assert segments_with_words
+        for item in segments_with_words:
+            assert item.words is not None
+            for word in item.words:
+                assert word.word.strip()
+                assert word.start >= 0
+                assert word.end >= word.start

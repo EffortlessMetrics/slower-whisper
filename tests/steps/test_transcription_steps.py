@@ -72,6 +72,23 @@ def create_test_wav(path: Path, duration: float = 1.0, sr: int = 16000):
         path.touch()
 
 
+def _assert_real_asr_result(transcript) -> None:
+    """Assert that a transcript came from a selected real ASR backend."""
+    meta = transcript.meta or {}
+    assert meta.get("asr_backend") == "faster-whisper", (
+        f"Unexpected ASR backend for {transcript.file_name}: {meta.get('asr_backend')}"
+    )
+    attempts = meta.get("asr_model_load_attempts")
+    assert isinstance(attempts, list) and attempts, (
+        f"Missing ASR model-load receipt for {transcript.file_name}"
+    )
+    assert any(attempt.get("outcome") == "selected" for attempt in attempts), (
+        f"No selected real ASR attempt for {transcript.file_name}: {attempts}"
+    )
+    assert "asr_placeholder_segments" not in meta
+    assert "asr_fallback_reason" not in meta
+
+
 # ============================================================================
 # Given steps (setup)
 # ============================================================================
@@ -297,14 +314,14 @@ def transcript_json_exists(test_state, filename):
     assert json_path.exists(), f"JSON file not found: {json_path}"
 
 
-@then("the transcript contains at least one segment")
-def transcript_has_segments(test_state):
-    """Verify that the transcript has segments."""
+@then("the transcript records a real ASR result")
+def transcript_records_real_asr_result(test_state):
+    """Verify successful real-ASR execution without requiring detected speech."""
     transcripts = test_state["transcripts"]
-    assert len(transcripts) > 0, "No transcripts found"
+    assert transcripts, "No transcripts found"
 
     for transcript in transcripts:
-        assert len(transcript.segments) > 0, f"No segments in {transcript.file_name}"
+        _assert_real_asr_result(transcript)
 
 
 @then("the JSON file has schema version 2")
@@ -362,12 +379,12 @@ def transcript_srt_exists(test_state, filename):
     assert srt_path.exists(), f"SRT file not found: {srt_path}"
 
 
-@then("the transcript has segments")
-def transcript_object_has_segments(test_state):
-    """Verify the transcript object has segments."""
+@then("the transcript object records a real ASR result")
+def transcript_object_records_real_asr_result(test_state):
+    """Verify the direct-file result came from selected real ASR."""
     transcripts = test_state["transcripts"]
-    assert len(transcripts) > 0, "No transcripts"
-    assert len(transcripts[0].segments) > 0, "No segments in transcript"
+    assert transcripts, "No transcripts"
+    _assert_real_asr_result(transcripts[0])
 
 
 @then(parsers.parse('the transcript file name is "{filename}"'))
@@ -405,13 +422,14 @@ def all_transcript_jsons_exist(test_state):
         assert json_path.exists(), f"JSON not found for {filename}"
 
 
-@then("each transcript contains at least one segment")
-def each_transcript_has_segments(test_state):
-    """Verify that each transcript has at least one segment."""
+@then("each transcript records a real ASR result")
+def each_transcript_records_real_asr_result(test_state):
+    """Verify every batch result came from selected real ASR."""
     transcripts = test_state["transcripts"]
+    assert transcripts, "No transcripts found"
 
     for transcript in transcripts:
-        assert len(transcript.segments) > 0, f"No segments in transcript for {transcript.file_name}"
+        _assert_real_asr_result(transcript)
 
 
 @then('all segments have a "speaker" field')
@@ -709,30 +727,15 @@ def transcription_fails_gracefully_empty(test_state):
         )
 
 
-@then(parsers.parse('if a transcript exists for "{filename}", it has placeholder segments'))
-def transcript_has_placeholder_if_exists(test_state, filename):
-    """Verify transcript has placeholder segments if it was created for zero-duration file."""
-    transcripts = test_state.get("transcripts", [])
-    error = test_state.get("transcription_error")
-
-    # If there was an error, that's acceptable graceful handling
-    if error:
+@then(parsers.parse('if a transcript exists for "{filename}", it records a real ASR result'))
+def transcript_records_real_asr_result_if_exists(test_state, filename):
+    """Verify a zero-duration result is real or the operation fails gracefully."""
+    if test_state.get("transcription_error"):
         return
 
-    # If transcripts exist, check for placeholder handling
-    for transcript in transcripts:
+    for transcript in test_state.get("transcripts", []):
         if transcript.file_name == filename:
-            # Check if meta indicates fallback/placeholder behavior
-            meta = transcript.meta or {}
-            # System may have created placeholder segments
-            has_placeholder_marker = (
-                meta.get("asr_placeholder_segments", False)
-                or meta.get("asr_fallback_reason") is not None
-            )
-            # Either has placeholder marker, or has segments (valid transcript)
-            assert has_placeholder_marker or len(transcript.segments) >= 0, (
-                f"Expected placeholder markers or valid segments for {filename}"
-            )
+            _assert_real_asr_result(transcript)
 
 
 @then(parsers.parse('no transcript JSON is created for "{filename}"'))
