@@ -79,27 +79,39 @@ def build_generation_metadata(
     """
     asr_meta = transcript.meta or {}
 
-    actual_model = coalesce_runtime_value(
-        asr_meta.get("asr_model"),
-        default=model_name,
-    ) or model_name
-    actual_backend = coalesce_runtime_value(
-        asr_meta.get("asr_backend"),
-        default="faster-whisper",
-    ) or "faster-whisper"
+    actual_model = (
+        coalesce_runtime_value(
+            asr_meta.get("asr_model"),
+            default=model_name,
+        )
+        or model_name
+    )
+    actual_backend = (
+        coalesce_runtime_value(
+            asr_meta.get("asr_backend"),
+            default="faster-whisper",
+        )
+        or "faster-whisper"
+    )
     actual_model_revision = coalesce_runtime_value(
         asr_meta.get("asr_model_revision"),
     )
-    actual_device = coalesce_runtime_value(
-        asr_meta.get("asr_device"),
-        *runtime_device_candidates,
-        default=config_device,
-    ) or "unknown"
-    actual_compute_type = coalesce_runtime_value(
-        asr_meta.get("asr_compute_type"),
-        *runtime_compute_candidates,
-        default=config_compute_type,
-    ) or "unknown"
+    actual_device = (
+        coalesce_runtime_value(
+            asr_meta.get("asr_device"),
+            *runtime_device_candidates,
+            default=config_device,
+        )
+        or "unknown"
+    )
+    actual_compute_type = (
+        coalesce_runtime_value(
+            asr_meta.get("asr_compute_type"),
+            *runtime_compute_candidates,
+            default=config_compute_type,
+        )
+        or "unknown"
+    )
     attempts = _receipt_attempts(
         asr_meta,
         device=actual_device,
