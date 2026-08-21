@@ -68,6 +68,18 @@ class ASROutputError(ASRError):
     default_reason_code = "asr_output_invalid"
 
 
+class RuntimeNotReadyError(TranscriptionError):
+    """Raised when the process-owned service runtime cannot serve requests."""
+
+    default_reason_code = "runtime_not_ready"
+
+
+class RuntimeProfileMismatchError(TranscriptionError):
+    """Raised when a caller requests a different process ASR profile."""
+
+    default_reason_code = "runtime_profile_mismatch"
+
+
 class EnrichmentError(SlowerWhisperError):
     """Raised when audio enrichment fails."""
 
