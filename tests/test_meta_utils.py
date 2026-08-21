@@ -90,9 +90,11 @@ def test_build_generation_metadata_prefers_actual_runtime_and_attaches_receipt(
             "reason_code": "ok",
         },
     ]
+    assert meta["asr_model_load_attempts"] == receipt["model_load_attempts"]
     assert validate_receipt(receipt) == []
     assert "/private/caller/project" not in json.dumps(receipt)
     assert "/srv/models/private" not in json.dumps(receipt)
+    assert "/srv/models/private" not in json.dumps(meta)
 
 
 def test_build_generation_metadata_falls_back_to_runtime_candidates() -> None:
