@@ -156,5 +156,9 @@ def build_generation_metadata(
     }
 
     merged_meta = asr_meta.copy()
+    if "asr_model_load_attempts" in merged_meta:
+        merged_meta["asr_model_load_attempts"] = [
+            dict(attempt) for attempt in attempts
+        ]
     merged_meta.update(base_meta)
     return merged_meta
