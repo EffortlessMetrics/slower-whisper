@@ -1,0 +1,75 @@
+name: Apply Runtime 623 Recovery
+
+on:
+  push:
+    branches: [fix/runtime-lifecycle-623]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-runtime-623
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v6
+        with:
+          ref: fix/runtime-lifecycle-623
+          fetch-depth: 0
+
+      - name: Fetch canonical main
+        run: git fetch origin main
+
+      - name: Apply staged runtime facade and test patch
+        run: python scripts/patch_runtime_623.py
+
+      - name: Restore durable Nix workflow and remove one-shot machinery
+        run: |
+          git checkout origin/main -- .github/workflows/ci-nix.yml
+          rm -f scripts/patch_runtime_623.py
+          rm -f .github/workflows/apply-runtime-623.yml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Format touched Python files
+        run: |
+          uvx ruff@0.14.9 format \
+            transcription/api.py \
+            transcription/exceptions.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py \
+            transcription/service.py \
+            transcription/service_errors.py \
+            transcription/service_health.py \
+            transcription/service_runtime.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/service_serialization.py \
+            transcription/transcription_orchestrator.py \
+            tests/conftest.py \
+            tests/test_api_service.py \
+            tests/test_meta_utils.py \
+            tests/test_runtime_provenance.py \
+            tests/test_security_leak.py \
+            tests/test_service.py \
+            tests/test_service_health.py \
+            tests/test_service_lifecycle.py \
+            tests/test_service_runtime.py
+          git diff --check
+
+      - name: Commit integrated runtime candidate
+        run: |
+          if git diff --quiet; then
+            echo "Patch produced no changes."
+            exit 1
+          fi
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -A
+          git commit -m "runtime: integrate lifecycle, readiness, and provenance"
+          git push origin HEAD:fix/runtime-lifecycle-623
