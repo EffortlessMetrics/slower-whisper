@@ -79,6 +79,15 @@ jobs:
             transcription/transcription_orchestrator.py
           git diff --check
 
+      - name: Verify documented REST ownership
+        run: |
+          grep -Fq 'Batch REST transcription reuses that runtime.' \
+            docs/RUNTIME_SERVICE_CONTRACT.md
+          grep -Fq '`409` with `runtime_profile_mismatch`' \
+            docs/RUNTIME_SERVICE_CONTRACT.md
+          ! grep -Fq 'does not yet make REST transcription reuse' \
+            docs/RUNTIME_SERVICE_CONTRACT.md
+
       - name: Verify reuse, privacy, and typed HTTP behavior
         run: |
           uv run pytest -q \
