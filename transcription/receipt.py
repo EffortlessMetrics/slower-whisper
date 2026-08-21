@@ -61,7 +61,7 @@ def get_git_commit() -> str | None:
     return get_source_commit()
 
 
-def _normalize_config_value(value: Any) -> Any:
+def _normalize_config_value(value: object) -> Any:
     if value is None or isinstance(value, str | int | bool):
         return value
     if isinstance(value, float):
@@ -75,12 +75,15 @@ def _normalize_config_value(value: Any) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
         return _normalize_config_value(asdict(value))
     if isinstance(value, Mapping):
-        normalized: dict[str, Any] = {}
-        for key in sorted(value):
+        items: list[tuple[str, object]] = []
+        for key, item in value.items():
             if not isinstance(key, str):
                 raise TypeError("receipt config keys must be strings")
-            normalized[key] = _normalize_config_value(value[key])
-        return normalized
+            items.append((key, item))
+        return {
+            key: _normalize_config_value(item)
+            for key, item in sorted(items, key=lambda entry: entry[0])
+        }
     if isinstance(value, list | tuple):
         return [_normalize_config_value(item) for item in value]
     if isinstance(value, set | frozenset):
@@ -122,7 +125,7 @@ def generate_run_id() -> str:
 
 
 def normalize_model_load_attempts(
-    attempts: Sequence[Mapping[str, Any]] | None,
+    attempts: Sequence[object] | None,
 ) -> list[dict[str, str]]:
     """Project backend attempts onto the bounded public receipt contract."""
     normalized: list[dict[str, str]] = []
@@ -192,6 +195,13 @@ class Receipt:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Receipt:
+        raw_attempts = data.get("model_load_attempts")
+        attempts = (
+            raw_attempts
+            if isinstance(raw_attempts, Sequence)
+            and not isinstance(raw_attempts, str | bytes | bytearray)
+            else None
+        )
         return cls(
             tool_version=str(data["tool_version"]),
             schema_version=int(data["schema_version"]),
@@ -208,11 +218,7 @@ class Receipt:
             ),
             backend=_optional_string(data.get("backend")),
             model_revision=_optional_string(data.get("model_revision")),
-            model_load_attempts=normalize_model_load_attempts(
-                data.get("model_load_attempts")
-                if isinstance(data.get("model_load_attempts"), Sequence)
-                else None
-            ),
+            model_load_attempts=normalize_model_load_attempts(attempts),
             git_commit=_optional_string(data.get("git_commit")),
             build_id=_optional_string(data.get("build_id")),
         )
@@ -311,7 +317,9 @@ def validate_receipt(data: Mapping[str, Any]) -> list[str]:
         if not isinstance(config_hash, str):
             errors.append("config_hash must be a string")
         elif re.fullmatch(r"[0-9a-f]{12}", config_hash) is None:
-            errors.append("config_hash must be exactly 12 lowercase hexadecimal characters")
+            errors.append(
+                "config_hash must be exactly 12 characters of lowercase hexadecimal"
+            )
 
     run_id = data.get("run_id")
     if run_id is not None:
