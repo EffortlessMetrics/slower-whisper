@@ -51,6 +51,7 @@ jobs:
 
       - name: Verify static REST runtime contract
         run: |
+          uv run ruff format --diff transcription/service_runtime_transcribe.py
           uv run ruff check \
             transcription/api.py \
             transcription/service.py \
