@@ -201,9 +201,7 @@ async def transcribe_audio(
             min_speakers=min_speakers,
             max_speakers=max_speakers,
             word_timestamps=(
-                word_timestamps
-                if word_timestamps is not None
-                else profile.word_timestamps
+                word_timestamps if word_timestamps is not None else profile.word_timestamps
             ),
             **config_kwargs,
         )
