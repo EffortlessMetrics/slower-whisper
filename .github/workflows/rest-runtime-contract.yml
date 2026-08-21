@@ -1,0 +1,247 @@
+name: REST Runtime Contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rest-runtime-contract:
+    name: rest-runtime-contract (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install focused test environment
+        run: |
+          uv sync --python ${{ matrix.python-version }} --extra api
+          uv pip install --python .venv/bin/python \
+            pytest pytest-asyncio httpx \
+            mypy==1.19.1 ruff==0.14.14 \
+            types-jsonschema cryptography
+
+      - name: Verify static REST runtime contract
+        run: |
+          uv run ruff check \
+            transcription/api.py \
+            transcription/service.py \
+            transcription/service_errors.py \
+            transcription/service_runtime.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/transcription_orchestrator.py \
+            tests/test_service_runtime.py \
+            tests/test_service_runtime_transcribe.py
+          uv run ruff format --check \
+            transcription/api.py \
+            transcription/service.py \
+            transcription/service_errors.py \
+            transcription/service_runtime.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/transcription_orchestrator.py \
+            tests/test_service_runtime.py \
+            tests/test_service_runtime_transcribe.py
+          uv run mypy \
+            transcription/api.py \
+            transcription/service.py \
+            transcription/service_runtime.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/transcription_orchestrator.py
+          git diff --check
+
+      - name: Verify reuse and typed HTTP behavior
+        run: |
+          uv run pytest -q \
+            tests/test_service_runtime.py \
+            tests/test_service_runtime_transcribe.py
+
+  rest-runtime-installed:
+    name: rest-runtime-installed (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Build and install API wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          mapfile -t wheels < <(find dist -maxdepth 1 -type f -name '*.whl' -print)
+          test "${#wheels[@]}" -eq 1
+          WHEEL="${wheels[0]}"
+          VENV="$RUNNER_TEMP/rest-runtime-${{ matrix.python-version }}"
+          uv venv "$VENV" --python ${{ matrix.python-version }}
+          uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
+          uv pip install --python "$VENV/bin/python" httpx
+          uv pip check --python "$VENV/bin/python"
+          echo "REST_RUNTIME_VENV=$VENV" >> "$GITHUB_ENV"
+
+      - name: Exercise installed REST transaction outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+
+          "$REST_RUNTIME_VENV/bin/python" - <<'PY'
+          from __future__ import annotations
+
+          import io
+          import struct
+          import wave
+          from pathlib import Path
+          from unittest.mock import patch
+
+          from fastapi.testclient import TestClient
+
+          import transcription.service as service_module
+          from transcription.config import AsrConfig, TranscriptionConfig
+          from transcription.exceptions import ASRInferenceError
+          from transcription.models import Transcript
+          from transcription.service import create_app
+          from transcription.service_runtime import ASRRuntime, RuntimeProfile
+
+          assert "site-packages" in Path(service_module.__file__).resolve().parts
+
+          def audio() -> bytes:
+              buffer = io.BytesIO()
+              with wave.open(buffer, "wb") as wav:
+                  wav.setnchannels(1)
+                  wav.setsampwidth(2)
+                  wav.setframerate(16_000)
+                  wav.writeframes(struct.pack("h" * 160, *[0] * 160))
+              return buffer.getvalue()
+
+          class Engine:
+              instances = 0
+              closes = 0
+
+              def __init__(self, cfg: AsrConfig) -> None:
+                  type(self).instances += 1
+                  self.cfg = cfg
+                  self.model_load_attempts = [
+                      {
+                          "device": cfg.device,
+                          "compute_type": cfg.compute_type,
+                          "outcome": "selected",
+                          "reason_code": "ok",
+                      }
+                  ]
+
+              def close(self) -> None:
+                  type(self).closes += 1
+
+          config = TranscriptionConfig(
+              model="tiny",
+              device="cpu",
+              compute_type="int8",
+              language="en",
+              beam_size=3,
+              vad_min_silence_ms=400,
+          )
+          runtime = ASRRuntime(
+              RuntimeProfile.from_config(config),
+              engine_factory=Engine,
+          )
+          app = create_app(runtime_factory=lambda: runtime)
+          injected = []
+
+          def result(audio_path, _root, _config, *, _engine):
+              injected.append(_engine)
+              return Transcript(
+                  file_name=Path(audio_path).name,
+                  language="en",
+                  segments=[],
+                  meta={"asr_backend": "faster-whisper"},
+              )
+
+          with (
+              patch("transcription.service_transcribe.validate_audio_format"),
+              patch(
+                  "transcription.service_transcribe.transcribe_file",
+                  side_effect=result,
+              ) as transcribe,
+              TestClient(app) as client,
+          ):
+              for _ in range(2):
+                  response = client.post(
+                      "/transcribe",
+                      files={"audio": ("silence.wav", audio(), "audio/wav")},
+                  )
+                  assert response.status_code == 200, response.text
+                  assert response.json()["segments"] == []
+
+              mismatch = client.post(
+                  "/transcribe",
+                  files={"audio": ("silence.wav", audio(), "audio/wav")},
+                  params={"model": "base"},
+              )
+              assert mismatch.status_code == 409, mismatch.text
+              assert mismatch.json()["error"]["type"] == "runtime_profile_mismatch"
+
+              transcribe.side_effect = ASRInferenceError(
+                  "private provider path",
+                  context={"phase": "transcribe"},
+              )
+              failed = client.post(
+                  "/transcribe",
+                  files={"audio": ("silence.wav", audio(), "audio/wav")},
+              )
+              assert failed.status_code == 500, failed.text
+              assert failed.json()["error"]["type"] == "asr_inference_failed"
+              assert "private provider path" not in failed.text
+
+          assert Engine.instances == 1
+          assert Engine.closes == 1
+          assert transcribe.call_count == 3
+          assert injected[0] is injected[1]
+          PY
