@@ -1,50 +1,18 @@
-"""Receipt contract for provenance tracking.
-
-This module provides a standardized receipt schema for capturing provenance
-information in transcript and benchmark outputs. Receipts enable:
-
-- Reproducibility: Config hash and git commit allow recreating runs
-- Traceability: run_id uniquely identifies each execution
-- Versioning: tool_version and schema_version track compatibility
-
-Contract fields (all required unless noted):
-- tool_version: Package version (e.g., "2.1.0")
-- schema_version: JSON schema version (int, e.g., 2)
-- model: ASR model name (e.g., "large-v3")
-- device: Resolved device (e.g., "cuda", "cpu")
-- compute_type: Compute type used (e.g., "float16", "int8")
-- config_hash: SHA-256 hash of normalized config (first 12 chars)
-- run_id: Unique identifier for this execution (format: run-YYYYMMDD-HHMMSS-XXXXXX)
-- created_at: ISO 8601 timestamp when receipt was created
-- git_commit: Optional short git commit hash (7-12 chars)
-
-Example receipt:
-    {
-        "tool_version": "2.1.0",
-        "schema_version": 2,
-        "model": "large-v3",
-        "device": "cuda",
-        "compute_type": "float16",
-        "config_hash": "a1b2c3d4e5f6",
-        "run_id": "run-20260128-143052-x7k9p2",
-        "created_at": "2024-01-15T10:30:00Z",
-        "git_commit": "abc1234"
-    }
-"""
+"""Receipt contract for transcript and benchmark provenance."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from ._build_info import BUILD_ID, SOURCE_COMMIT
 from .ids import generate_run_id as _generate_run_id
 from .ids import is_valid_run_id
 
-# Required fields in a receipt (for validation)
 RECEIPT_REQUIRED_FIELDS = frozenset(
     {
         "tool_version",
@@ -57,17 +25,12 @@ RECEIPT_REQUIRED_FIELDS = frozenset(
         "created_at",
     }
 )
-
-# Receipt schema version for the receipt contract itself
 RECEIPT_CONTRACT_VERSION = 1
+_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{7,64}$")
 
 
 def get_tool_version() -> str:
-    """Get the current tool version from package metadata.
-
-    Returns:
-        Version string (e.g., "2.1.0") or "0.0.0-dev" if not installed.
-    """
+    """Get the installed package version or a source-tree fallback."""
     try:
         from . import __version__
 
@@ -77,73 +40,40 @@ def get_tool_version() -> str:
 
 
 def get_git_commit() -> str | None:
-    """Get the current short git commit hash if in a git repository.
+    """Return only the source identity embedded in this package artifact.
 
-    Returns:
-        Short commit hash (e.g., "abc1234") or None if not in a git repo.
+    This compatibility name is retained for the existing receipt field. It no
+    longer invokes git or inspects the caller's working directory.
     """
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=None,  # Use current working directory
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:
-        pass
+    if isinstance(SOURCE_COMMIT, str):
+        candidate = SOURCE_COMMIT.strip().lower()
+        if _COMMIT_PATTERN.fullmatch(candidate):
+            return candidate
+    return None
+
+
+def get_build_id() -> str | None:
+    if isinstance(BUILD_ID, str):
+        candidate = BUILD_ID.strip()
+        if candidate:
+            return candidate
     return None
 
 
 def compute_config_hash(config: dict[str, Any]) -> str:
-    """Compute a deterministic hash from a configuration dictionary.
-
-    The config is normalized by sorting keys and using consistent JSON
-    serialization to ensure the same config always produces the same hash.
-
-    Args:
-        config: Configuration dictionary to hash.
-
-    Returns:
-        First 12 characters of the SHA-256 hash.
-    """
-    # Normalize by sorting keys and using consistent serialization
+    """Compute a deterministic 12-character SHA-256 projection."""
     normalized = json.dumps(config, sort_keys=True, separators=(",", ":"))
     full_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     return full_hash[:12]
 
 
 def generate_run_id() -> str:
-    """Generate a unique run identifier.
-
-    Format: `run-YYYYMMDD-HHMMSS-XXXXXX` where XXXXXX is 6 random alphanumeric chars.
-
-    Returns:
-        A unique run_id string (e.g., "run-20260128-143052-x7k9p2").
-    """
     return _generate_run_id()
 
 
 @dataclass
 class Receipt:
-    """Provenance receipt for transcript and benchmark outputs.
-
-    This dataclass captures all the information needed to understand
-    how a transcript or benchmark result was produced.
-
-    Attributes:
-        tool_version: Package version (e.g., "2.1.0")
-        schema_version: JSON schema version (int)
-        model: ASR model name
-        device: Resolved device (cuda/cpu)
-        compute_type: Compute type used
-        config_hash: Hash of normalized config
-        run_id: Unique execution identifier
-        created_at: ISO 8601 timestamp
-        git_commit: Optional git commit hash
-    """
+    """Provenance for one transcript or benchmark result."""
 
     tool_version: str
     schema_version: int
@@ -156,14 +86,11 @@ class Receipt:
         default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z")
     )
     git_commit: str | None = None
+    build_id: str | None = None
+    model_revision: str | None = None
+    runtime_attempts: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert receipt to a JSON-serializable dictionary.
-
-        Returns:
-            Dictionary with all receipt fields. git_commit is only
-            included if it has a value.
-        """
         result: dict[str, Any] = {
             "tool_version": self.tool_version,
             "schema_version": self.schema_version,
@@ -176,21 +103,17 @@ class Receipt:
         }
         if self.git_commit is not None:
             result["git_commit"] = self.git_commit
+        if self.build_id is not None:
+            result["build_id"] = self.build_id
+        if self.model_revision is not None:
+            result["model_revision"] = self.model_revision
+        if self.runtime_attempts is not None:
+            result["runtime_attempts"] = [dict(item) for item in self.runtime_attempts]
         return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Receipt:
-        """Create a Receipt from a dictionary.
-
-        Args:
-            data: Dictionary with receipt fields.
-
-        Returns:
-            Receipt instance.
-
-        Raises:
-            KeyError: If required fields are missing.
-        """
+        attempts = data.get("runtime_attempts")
         return cls(
             tool_version=data["tool_version"],
             schema_version=data["schema_version"],
@@ -204,6 +127,13 @@ class Receipt:
                 datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             ),
             git_commit=data.get("git_commit"),
+            build_id=data.get("build_id"),
+            model_revision=data.get("model_revision"),
+            runtime_attempts=(
+                [dict(item) for item in attempts]
+                if isinstance(attempts, list)
+                else None
+            ),
         )
 
 
@@ -217,36 +147,12 @@ def build_receipt(
     run_id: str | None = None,
     created_at: str | None = None,
     include_git_commit: bool = True,
+    model_revision: str | None = None,
+    runtime_attempts: list[dict[str, Any]] | None = None,
 ) -> Receipt:
-    """Build a receipt with the given parameters.
-
-    This is the primary factory function for creating receipts. It handles
-    version detection, config hashing, and optional git commit lookup.
-
-    Args:
-        model: ASR model name (e.g., "large-v3")
-        device: Resolved device (e.g., "cuda", "cpu")
-        compute_type: Compute type (e.g., "float16", "int8")
-        config: Optional config dict for hashing. If None, uses model/device/compute_type.
-        schema_version: Override schema version. If None, uses SCHEMA_VERSION from models.
-        run_id: Override run_id. If None, generates a new UUID4.
-        created_at: Override created_at. If None, uses current UTC time.
-        include_git_commit: Whether to look up and include git commit.
-
-    Returns:
-        Receipt instance with all fields populated.
-
-    Example:
-        >>> receipt = build_receipt(
-        ...     model="large-v3",
-        ...     device="cuda",
-        ...     compute_type="float16",
-        ... )
-        >>> print(receipt.to_dict())
-    """
+    """Build a receipt from actual runtime values and stable config."""
     from .models import SCHEMA_VERSION
 
-    # Build config for hashing if not provided
     if config is None:
         config = {
             "model": model,
@@ -254,66 +160,45 @@ def build_receipt(
             "compute_type": compute_type,
         }
 
-    # Compute deterministic hash
-    config_hash = compute_config_hash(config)
-
-    # Get tool version
-    tool_version = get_tool_version()
-
-    # Get git commit if requested
-    git_commit = get_git_commit() if include_git_commit else None
-
-    # Use provided or default values
-    actual_schema_version = schema_version if schema_version is not None else SCHEMA_VERSION
-    actual_run_id = run_id if run_id is not None else generate_run_id()
-    actual_created_at = (
-        created_at
-        if created_at is not None
-        else datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    )
-
     return Receipt(
-        tool_version=tool_version,
-        schema_version=actual_schema_version,
+        tool_version=get_tool_version(),
+        schema_version=schema_version if schema_version is not None else SCHEMA_VERSION,
         model=model,
         device=device,
         compute_type=compute_type,
-        config_hash=config_hash,
-        run_id=actual_run_id,
-        created_at=actual_created_at,
-        git_commit=git_commit,
+        config_hash=compute_config_hash(config),
+        run_id=run_id if run_id is not None else generate_run_id(),
+        created_at=(
+            created_at
+            if created_at is not None
+            else datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        ),
+        git_commit=get_git_commit() if include_git_commit else None,
+        build_id=get_build_id(),
+        model_revision=model_revision,
+        runtime_attempts=(
+            [dict(item) for item in runtime_attempts]
+            if runtime_attempts is not None
+            else None
+        ),
     )
 
 
 def validate_receipt(data: dict[str, Any]) -> list[str]:
-    """Validate that a receipt dictionary has all required fields.
-
-    Args:
-        data: Dictionary to validate as a receipt.
-
-    Returns:
-        List of validation error messages. Empty list if valid.
-    """
+    """Validate the receipt's required and optional public fields."""
     errors: list[str] = []
-
-    # Check required fields
     missing = RECEIPT_REQUIRED_FIELDS - set(data.keys())
     if missing:
         errors.append(f"Missing required fields: {sorted(missing)}")
 
-    # Validate types for present fields
     if "tool_version" in data and not isinstance(data["tool_version"], str):
         errors.append("tool_version must be a string")
-
     if "schema_version" in data and not isinstance(data["schema_version"], int):
         errors.append("schema_version must be an integer")
-
     if "model" in data and not isinstance(data["model"], str):
         errors.append("model must be a string")
-
     if "device" in data and not isinstance(data["device"], str):
         errors.append("device must be a string")
-
     if "compute_type" in data and not isinstance(data["compute_type"], str):
         errors.append("compute_type must be a string")
 
@@ -327,20 +212,35 @@ def validate_receipt(data: dict[str, Any]) -> list[str]:
         if not isinstance(data["run_id"], str):
             errors.append("run_id must be a string")
         elif not is_valid_run_id(data["run_id"]):
-            # Allow legacy UUID format for backward compatibility
             import uuid
 
             try:
                 uuid.UUID(data["run_id"])
             except ValueError:
-                errors.append("run_id must be in format 'run-YYYYMMDD-HHMMSS-XXXXXX' or valid UUID")
+                errors.append(
+                    "run_id must be in format 'run-YYYYMMDD-HHMMSS-XXXXXX' or valid UUID"
+                )
 
     if "created_at" in data and not isinstance(data["created_at"], str):
         errors.append("created_at must be a string")
 
-    # git_commit is optional but must be string if present
-    if "git_commit" in data and data["git_commit"] is not None:
-        if not isinstance(data["git_commit"], str):
+    commit = data.get("git_commit")
+    if commit is not None:
+        if not isinstance(commit, str):
             errors.append("git_commit must be a string or null")
+        elif not _COMMIT_PATTERN.fullmatch(commit):
+            errors.append("git_commit must be a hexadecimal source revision")
+
+    for field_name in ("build_id", "model_revision"):
+        value = data.get(field_name)
+        if value is not None and not isinstance(value, str):
+            errors.append(f"{field_name} must be a string or null")
+
+    attempts = data.get("runtime_attempts")
+    if attempts is not None:
+        if not isinstance(attempts, list):
+            errors.append("runtime_attempts must be an array or null")
+        elif not all(isinstance(item, dict) for item in attempts):
+            errors.append("runtime_attempts entries must be objects")
 
     return errors
