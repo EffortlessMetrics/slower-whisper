@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/EffortlessMetrics/slower-whisper/transcription/schemas/receipt-v1.schema.json",
+  "title": "Slower-Whisper Receipt Contract v1",
+  "description": "Provenance and runtime evidence attached at transcript meta.receipt.",
+  "type": "object",
+  "required": [
+    "tool_version",
+    "schema_version",
+    "model",
+    "device",
+    "compute_type",
+    "config_hash",
+    "run_id",
+    "created_at"
+  ],
+  "properties": {
+    "tool_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "backend": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1
+    },
+    "compute_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "config_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "run_id": {
+      "type": "string",
+      "anyOf": [
+        {
+          "pattern": "^run-[0-9]{8}-[0-9]{6}-[a-z0-9]{6}$"
+        },
+        {
+          "format": "uuid"
+        }
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,64}$",
+      "description": "Trusted package source commit embedded at artifact build time."
+    },
+    "build_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "model_load_attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["device", "compute_type", "outcome", "reason_code"],
+        "properties": {
+          "device": {
+            "type": "string",
+            "minLength": 1
+          },
+          "compute_type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["failed", "selected"]
+          },
+          "reason_code": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

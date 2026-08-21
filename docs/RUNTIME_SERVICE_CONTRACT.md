@@ -88,12 +88,25 @@ Shutdown enters `stopping`, rejects queued or new work, waits for active worker
 threads to finish, closes the engine once, and reaches `stopped` even when the
 close hook raises.
 
-## Deliberate boundary
+## Provenance
 
-Successful transcripts do not yet receive trusted build/source provenance or an
-automatic receipt. That remaining transaction stays in issue #623 and requires
-its own schema and installed-artifact acceptance. Runtime code must not infer
-its source identity from the caller's working directory.
+Every successful file, bytes, and batch REST transcription receives one canonical receipt at `meta.receipt`. The receipt records the package version, transcript schema version, actual model/backend/device/compute selection, ordered model-load attempts, canonical configuration hash, run identity, and trusted source/build identity when the artifact contains it.
+
+Runtime code never invokes `git` or consults the caller's current working
+directory, `.git` directory, `PATH`, or runtime environment to identify its own
+source. Official builds write explicit values to `transcription._build_info`
+before constructing the wheel and sdist. Source checkouts and unlabelled local
+builds leave those fields unknown; unknown identity is omitted rather than
+guessed. The existing `git_commit` receipt field remains for compatibility but
+means the source commit embedded in the installed artifact.
+
+The receipt contains only bounded model-load fields and does not retain provider
+exception text or caller paths. It validates against the bundled
+`receipt-v1.schema.json`; the complete transcript remains valid against the
+bundled v2 transcript schema. See [PROVENANCE.md](PROVENANCE.md) for the build
+and artifact contract.
+
+## Deliberate boundary
 
 Direct Python and CLI operations keep their current operation-owned engine
 construction. The service runtime is not a process-global singleton for library
@@ -130,3 +143,13 @@ The `REST Runtime Contract` workflow proves on Python 3.12 and 3.13:
 - exactly one batch route and the separate SSE route remain mounted;
 - the installed API wheel passes reuse, mismatch, silence, and typed-failure
   transactions outside the checkout.
+
+The `Provenance Receipt Contract` and `Artifact Integrity` workflows prove:
+
+- file, bytes, and REST results attach the same canonical receipt;
+- selected fallback values and ordered attempts are preserved;
+- config hashes are canonical outside per-run volatile fields;
+- a fake caller repository and fake `git` executable cannot change identity;
+- identical build inputs produce identical metadata bytes;
+- wheel and sdist contain the intended generated build module;
+- installed receipts and transcripts validate against installed schemas.

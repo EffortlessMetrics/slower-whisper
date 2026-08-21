@@ -35,8 +35,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg libsndfile1
 
-      - name: Build distribution artifacts
+      - name: Embed trusted build identity and build artifacts
+        env:
+          BUILD_ID: artifact-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
+          python scripts/write_build_info.py \
+            --source-commit "$GITHUB_SHA" \
+            --build-id "$BUILD_ID"
+          echo "EXPECTED_SOURCE_COMMIT=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+          echo "EXPECTED_BUILD_ID=$BUILD_ID" >> "$GITHUB_ENV"
           uv build
           uvx twine check dist/*
 
@@ -80,7 +87,10 @@ jobs:
           import importlib.resources
           import importlib.util
           import json
+          import os
           from pathlib import Path
+
+          from transcription.build_info import get_package_build_info
 
           def module_available(name: str) -> bool:
               try:
@@ -91,6 +101,7 @@ jobs:
           modules = [
               "slower_whisper",
               "transcription",
+              "transcription.build_info",
               "transcription.cli",
               "transcription.benchmark",
               "transcription.cli_commands",
@@ -113,16 +124,25 @@ jobs:
           required_resources = [
               "schemas/transcript-v2.schema.json",
               "schemas/stream_event.schema.json",
+              "schemas/receipt-v1.schema.json",
               "schemas/README.md",
               "py.typed",
+              "_build_info.py",
           ]
           for relative_path in required_resources:
               resource = package_root.joinpath(relative_path)
               assert resource.is_file(), f"missing installed resource: {relative_path}"
               print(f"found {relative_path}")
 
-          transcript_schema = package_root.joinpath("schemas/transcript-v2.schema.json")
-          json.loads(transcript_schema.read_text(encoding="utf-8"))
+          for schema_name in (
+              "schemas/transcript-v2.schema.json",
+              "schemas/receipt-v1.schema.json",
+          ):
+              json.loads(package_root.joinpath(schema_name).read_text(encoding="utf-8"))
+
+          build_info = get_package_build_info()
+          assert build_info.source_commit == os.environ["EXPECTED_SOURCE_COMMIT"]
+          assert build_info.build_id == os.environ["EXPECTED_BUILD_ID"]
 
           assert not module_available("scripts.verify_all"), (
               "repository verifier leaked into the installed product"
@@ -138,9 +158,22 @@ jobs:
         run: |
           set -euo pipefail
           python -m zipfile -l dist/*.whl | tee "$RUNNER_TEMP/wheel-contents.txt"
+          grep -q 'transcription/_build_info.py' "$RUNNER_TEMP/wheel-contents.txt"
           grep -q 'transcription/cli_commands/' "$RUNNER_TEMP/wheel-contents.txt"
           grep -q 'transcription/store/' "$RUNNER_TEMP/wheel-contents.txt"
           grep -q 'transcription/benchmark/' "$RUNNER_TEMP/wheel-contents.txt"
           grep -q 'transcription/schemas/transcript-v2.schema.json' "$RUNNER_TEMP/wheel-contents.txt"
+          grep -q 'transcription/schemas/receipt-v1.schema.json' "$RUNNER_TEMP/wheel-contents.txt"
           ! grep -q 'transcription/historian/' "$RUNNER_TEMP/wheel-contents.txt"
           ! grep -q 'scripts/verify_all.py' "$RUNNER_TEMP/wheel-contents.txt"
+
+      - name: Inspect sdist contents
+        if: matrix.artifact == 'sdist'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -tzf dist/*.tar.gz | tee "$RUNNER_TEMP/sdist-contents.txt"
+          grep -q '/transcription/_build_info.py$' "$RUNNER_TEMP/sdist-contents.txt"
+          grep -q '/transcription/schemas/receipt-v1.schema.json$' "$RUNNER_TEMP/sdist-contents.txt"
+          ! grep -q '/transcription/historian/' "$RUNNER_TEMP/sdist-contents.txt"
+          ! grep -q '/scripts/verify_all.py$' "$RUNNER_TEMP/sdist-contents.txt"
