@@ -181,11 +181,18 @@ async def transcribe_audio(
         if overlap_threshold is not None:
             config_kwargs["overlap_threshold"] = overlap_threshold
         config = TranscriptionConfig(
-            model=model or profile.model,
+            model=model if model is not None else profile.model,
             language=language if language is not None else profile.language,
-            device=device or profile.device,
-            compute_type=normalized_compute_type or profile.compute_type,
-            task=cast(WhisperTask, task or profile.task),
+            device=device if device is not None else profile.device,
+            compute_type=(
+                normalized_compute_type
+                if normalized_compute_type is not None
+                else profile.compute_type
+            ),
+            task=cast(
+                WhisperTask,
+                task if task is not None else profile.task,
+            ),
             beam_size=profile.beam_size,
             vad_min_silence_ms=profile.vad_min_silence_ms,
             skip_existing_json=False,
