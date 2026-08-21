@@ -1,4 +1,4 @@
-name: Diagnose PR 622 Test Failures
+name: Repair PR 622 Silent-Audio Contract
 
 on:
   pull_request:
@@ -8,14 +8,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: diagnose-pr-622-tests
+  group: repair-pr-622-silent-audio
   cancel-in-progress: false
 
 jobs:
-  diagnose:
+  repair:
     if: github.actor != 'github-actions[bot]' && github.event.pull_request.number == 622
     runs-on: ubuntu-latest
-    timeout-minutes: 45
 
     steps:
       - name: Checkout recovery branch
@@ -24,39 +23,92 @@ jobs:
           ref: fix/asr-fail-closed-621
           fetch-depth: 0
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Install Python
-        run: uv python install 3.12
-
-      - name: Install system dependencies
+      - name: Repair stale diarization assertions
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libsndfile1
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Install test dependencies
-        run: uv sync --extra dev
+          path = Path("tests/test_diarization_skeleton.py")
+          source = path.read_text(encoding="utf-8")
 
-      - name: Record first broad-suite failures
-        shell: bash
+          anchor = '''# ============================================================================
+# Existing integration tests
+# ============================================================================
+
+
+'''
+          helper = '''# ============================================================================
+# Existing integration tests
+# ============================================================================
+
+
+def _assert_selected_real_asr(transcript: Transcript) -> None:
+    """Assert that silent audio was processed by a selected real backend."""
+    meta = transcript.meta or {}
+    assert meta.get("asr_backend") == "faster-whisper"
+    attempts = meta.get("asr_model_load_attempts")
+    assert isinstance(attempts, list) and attempts
+    assert any(attempt.get("outcome") == "selected" for attempt in attempts)
+    assert "asr_placeholder_segments" not in meta
+    assert "asr_fallback_reason" not in meta
+
+
+'''
+          assert source.count(anchor) == 1, "integration-test anchor changed unexpectedly"
+          source = source.replace(anchor, helper, 1)
+
+          enabled_old = '''    # Verify transcript structure
+    assert isinstance(transcript, Transcript)
+    assert len(transcript.segments) > 0
+
+    # Verify diarization behavior:
+'''
+          enabled_new = '''    # Silence is a valid empty transcript; prove that real ASR ran instead.
+    assert isinstance(transcript, Transcript)
+    _assert_selected_real_asr(transcript)
+
+    # Verify diarization behavior:
+'''
+          assert source.count(enabled_old) == 1, "enabled-diarization assertion changed unexpectedly"
+          source = source.replace(enabled_old, enabled_new, 1)
+
+          disabled_old = '''    # Should complete normally
+    assert isinstance(transcript, Transcript)
+    assert len(transcript.segments) > 0
+
+    assert transcript.speakers is None
+'''
+          disabled_new = '''    # Should complete normally; silence may legitimately produce no segments.
+    assert isinstance(transcript, Transcript)
+    _assert_selected_real_asr(transcript)
+
+    assert transcript.speakers is None
+'''
+          assert source.count(disabled_old) == 1, "disabled-diarization assertion changed unexpectedly"
+          source = source.replace(disabled_old, disabled_new, 1)
+
+          path.write_text(source, encoding="utf-8")
+          PY
+
+          git fetch origin main
+          git show origin/main:.github/workflows/ci-nix.yml > .github/workflows/ci-nix.yml
+          rm -f test-failure-report.txt
+          git diff --check
+
+      - name: Format and lint repaired test
         run: |
-          set +e
-          uv run pytest \
-            -vv \
-            --tb=long \
-            --maxfail=8 \
-            -m "not slow and not heavy and not smoke and not e2e" \
-            -n auto \
-            2>&1 | tee test-failure-report.txt
-          status=${PIPESTATUS[0]}
-          printf '\npytest_exit_status=%s\n' "$status" >> test-failure-report.txt
-          exit 0
+          python -m pip install --quiet ruff==0.14.9
+          ruff format tests/test_diarization_skeleton.py
+          ruff check tests/test_diarization_skeleton.py
+          git diff --check
 
-      - name: Commit diagnostic report
+      - name: Commit repair and restore canonical workflow
         run: |
           git config user.name "EffortlessSteven"
           git config user.email "git@effortlesssteven.com"
-          git add -- test-failure-report.txt
-          git commit -m "test: capture PR 622 broad-suite failures"
+          git add -A -- \
+            .github/workflows/ci-nix.yml \
+            tests/test_diarization_skeleton.py \
+            test-failure-report.txt
+          git commit -m "test: accept real empty transcripts for silent audio"
           git push origin HEAD:fix/asr-fail-closed-621
