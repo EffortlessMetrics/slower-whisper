@@ -83,9 +83,7 @@ def build_service_runtime() -> ASRRuntime:
             "SLOWER_WHISPER_SERVICE_MAX_CONCURRENCY must be an integer"
         ) from exc
     if max_concurrency < 1:
-        raise ConfigurationError(
-            "SLOWER_WHISPER_SERVICE_MAX_CONCURRENCY must be at least 1"
-        )
+        raise ConfigurationError("SLOWER_WHISPER_SERVICE_MAX_CONCURRENCY must be at least 1")
 
     profile = RuntimeProfile.from_config(config)
     print(

@@ -45,7 +45,7 @@ jobs:
         run: |
           uv sync --python ${{ matrix.python-version }} --extra api
           uv pip install --python .venv/bin/python \
-            pytest pytest-asyncio httpx mypy ruff
+            pytest pytest-asyncio httpx mypy==1.19.1 ruff==0.14.14
 
       - name: Verify static runtime contract
         run: |

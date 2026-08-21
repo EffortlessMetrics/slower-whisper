@@ -69,8 +69,7 @@ class RuntimeProfile:
     def from_config(cls, config: TranscriptionConfig) -> RuntimeProfile:
         if config.device not in {"cpu", "cuda"}:
             raise ValueError(
-                "Service runtime device must be resolved to 'cpu' or 'cuda', "
-                f"got {config.device!r}"
+                f"Service runtime device must be resolved to 'cpu' or 'cuda', got {config.device!r}"
             )
         compute_type = config.compute_type
         if compute_type is None:
