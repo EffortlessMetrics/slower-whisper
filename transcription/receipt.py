@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import UTC, datetime
@@ -40,6 +41,7 @@ _ATTEMPT_FIELDS = ("device", "compute_type", "outcome", "reason_code")
 _ALLOWED_ATTEMPT_OUTCOMES = frozenset({"failed", "selected"})
 _GIT_COMMIT_PATTERN = r"^[0-9a-f]{7,64}$"
 _BUILD_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+_REASON_CODE_PATTERN = re.compile(r"^[a-z0-9_]+$")
 
 
 def get_tool_version() -> str:
@@ -144,6 +146,8 @@ def normalize_model_load_attempts(
             continue
         if attempt["outcome"] not in _ALLOWED_ATTEMPT_OUTCOMES:
             continue
+        if _REASON_CODE_PATTERN.fullmatch(attempt["reason_code"]) is None:
+            continue
         normalized.append(attempt)
     return normalized
 
@@ -184,9 +188,7 @@ class Receipt:
         if self.model_revision is not None:
             result["model_revision"] = self.model_revision
         if self.model_load_attempts:
-            result["model_load_attempts"] = [
-                dict(attempt) for attempt in self.model_load_attempts
-            ]
+            result["model_load_attempts"] = [dict(attempt) for attempt in self.model_load_attempts]
         if self.git_commit is not None:
             result["git_commit"] = self.git_commit
         if self.build_id is not None:
@@ -287,16 +289,11 @@ def build_receipt(
 
 def receipt_stable_projection(data: Mapping[str, Any]) -> dict[str, Any]:
     """Remove only per-run volatile fields from a receipt dictionary."""
-    return {
-        key: value
-        for key, value in data.items()
-        if key not in RECEIPT_VOLATILE_FIELDS
-    }
+    return {key: value for key, value in data.items() if key not in RECEIPT_VOLATILE_FIELDS}
 
 
 def validate_receipt(data: Mapping[str, Any]) -> list[str]:
     """Validate the in-memory receipt contract without requiring jsonschema."""
-    import re
     import uuid
 
     errors: list[str] = []
@@ -317,9 +314,7 @@ def validate_receipt(data: Mapping[str, Any]) -> list[str]:
         if not isinstance(config_hash, str):
             errors.append("config_hash must be a string")
         elif re.fullmatch(r"[0-9a-f]{12}", config_hash) is None:
-            errors.append(
-                "config_hash must be exactly 12 characters of lowercase hexadecimal"
-            )
+            errors.append("config_hash must be exactly 12 characters of lowercase hexadecimal")
 
     run_id = data.get("run_id")
     if run_id is not None:
@@ -329,9 +324,7 @@ def validate_receipt(data: Mapping[str, Any]) -> list[str]:
             try:
                 uuid.UUID(run_id)
             except ValueError:
-                errors.append(
-                    "run_id must be in format 'run-YYYYMMDD-HHMMSS-XXXXXX' or valid UUID"
-                )
+                errors.append("run_id must be in format 'run-YYYYMMDD-HHMMSS-XXXXXX' or valid UUID")
 
     if "created_at" in data and not isinstance(data["created_at"], str):
         errors.append("created_at must be a string")
