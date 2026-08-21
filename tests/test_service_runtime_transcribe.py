@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import struct
+import threading
 import wave
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 pytest.importorskip("fastapi")
@@ -142,6 +145,73 @@ def test_two_requests_reuse_one_runtime_engine() -> None:
     assert first.json()["segments"] == []
     assert len(created) == 1
     assert public_api.call_count == 2
+    assert injected_engines == [created[0], created[0]]
+    assert created[0].close_count == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_requests_obey_the_runtime_inference_bound() -> None:
+    app, runtime, created = make_app(max_concurrency=1)
+    lock = threading.Lock()
+    first_started = threading.Event()
+    release = threading.Event()
+    active = 0
+    max_active = 0
+    injected_engines: list[RuntimeEngine] = []
+
+    def transcribe(
+        audio_path: Path,
+        root: Path,
+        config: TranscriptionConfig,
+        *,
+        _engine: RuntimeEngine,
+    ) -> Transcript:
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+            injected_engines.append(_engine)
+        first_started.set()
+        assert release.wait(timeout=2)
+        with lock:
+            active -= 1
+        return empty_result(audio_path, root, config, _engine=_engine)
+
+    async def request(client: httpx.AsyncClient) -> httpx.Response:
+        return await client.post(
+            "/transcribe",
+            files={"audio": ("test.wav", wav_bytes(), "audio/wav")},
+        )
+
+    with (
+        patch("transcription.service_transcribe.validate_audio_format"),
+        patch(
+            "transcription.service_transcribe.transcribe_file",
+            side_effect=transcribe,
+        ) as public_api,
+    ):
+        async with app.router.lifespan_context(app):
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://testserver",
+            ) as client:
+                first_task = asyncio.create_task(request(client))
+                assert await asyncio.to_thread(first_started.wait, 1)
+                second_task = asyncio.create_task(request(client))
+                await asyncio.sleep(0.05)
+                with lock:
+                    assert active == 1
+                assert not second_task.done()
+                release.set()
+                first, second = await asyncio.gather(first_task, second_task)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert max_active == 1
+    assert runtime.max_observed_inferences == 1
+    assert public_api.call_count == 2
+    assert len(created) == 1
     assert injected_engines == [created[0], created[0]]
     assert created[0].close_count == 1
 
