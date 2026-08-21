@@ -280,9 +280,14 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${{ matrix.artifact }}" == "wheel" ]]; then
-            python -m zipfile -l dist/*.whl | grep -q 'transcription/_build_info.py'
-            python -m zipfile -l dist/*.whl | grep -q 'transcription/schemas/receipt-v1.schema.json'
+            python -m zipfile -l dist/*.whl > "$RUNNER_TEMP/wheel-contents.txt"
+            grep -q 'transcription/_build_info.py' "$RUNNER_TEMP/wheel-contents.txt"
+            grep -q 'transcription/schemas/receipt-v1.schema.json' \
+              "$RUNNER_TEMP/wheel-contents.txt"
           else
-            tar -tzf dist/*.tar.gz | grep -q '/transcription/_build_info.py$'
-            tar -tzf dist/*.tar.gz | grep -q '/transcription/schemas/receipt-v1.schema.json$'
+            tar -tzf dist/*.tar.gz > "$RUNNER_TEMP/sdist-contents.txt"
+            grep -q '/transcription/_build_info.py$' \
+              "$RUNNER_TEMP/sdist-contents.txt"
+            grep -q '/transcription/schemas/receipt-v1.schema.json$' \
+              "$RUNNER_TEMP/sdist-contents.txt"
           fi
