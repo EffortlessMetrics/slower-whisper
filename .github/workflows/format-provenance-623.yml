@@ -1,8 +1,9 @@
 name: Format Provenance 623
 
 on:
-  push:
-    branches: [fix/trusted-provenance-623]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
@@ -13,7 +14,6 @@ concurrency:
 
 jobs:
   format:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
