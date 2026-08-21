@@ -77,6 +77,19 @@ def config() -> TranscriptionConfig:
     )
 
 
+def asr_config() -> AsrConfig:
+    return AsrConfig(
+        model_name="tiny",
+        device="cuda",
+        compute_type="float16",
+        language="en",
+        task="transcribe",
+        beam_size=3,
+        vad_min_silence_ms=400,
+        word_timestamps=False,
+    )
+
+
 def wav_bytes() -> bytes:
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav:
@@ -134,7 +147,7 @@ def test_direct_file_transcription_attaches_receipt(
     install_fake_normalization(monkeypatch)
     audio = tmp_path / "clip.wav"
     audio.write_bytes(wav_bytes())
-    engine = FakeEngine(config().to_asr_config())
+    engine = FakeEngine(asr_config())
 
     transcript = transcribe_file(
         audio,
