@@ -139,6 +139,8 @@ class ASRRuntime:
         self._startup_error: TranscriptionError | None = None
         self._startup_attempts: list[dict[str, Any]] = []
         self._state_lock = asyncio.Lock()
+        self._state_changed = asyncio.Condition(self._state_lock)
+        self._close_task: asyncio.Task[None] | None = None
         self._inference_limit = asyncio.Semaphore(max_concurrency)
         self._active_inferences = 0
         self._max_observed_inferences = 0
@@ -172,9 +174,11 @@ class ASRRuntime:
 
     async def start(self) -> None:
         """Initialize the configured engine once without taking down the app."""
-        async with self._state_lock:
+        async with self._state_changed:
             if self.ready:
                 return
+            if self._state is RuntimeState.STOPPING or self._close_task is not None:
+                raise self._not_ready_error()
             self._state = RuntimeState.STARTING
             self._startup_error = None
             self._startup_attempts = []
@@ -188,6 +192,7 @@ class ASRRuntime:
                 self._startup_error = exc
                 self._startup_attempts = self._attempts_from_error(exc)
                 self._state = RuntimeState.FAILED
+                self._state_changed.notify_all()
                 logger.error("ASR runtime initialization failed", exc_info=exc)
                 return
             except Exception as exc:  # noqa: BLE001 - preserve local cause
@@ -204,6 +209,7 @@ class ASRRuntime:
                 self._startup_error = load_error
                 self._startup_attempts = self._attempts_from_error(load_error)
                 self._state = RuntimeState.FAILED
+                self._state_changed.notify_all()
                 logger.exception("Unexpected ASR runtime initialization failure")
                 return
 
@@ -214,25 +220,57 @@ class ASRRuntime:
                 if isinstance(attempt, Mapping)
             ]
             self._state = RuntimeState.READY
+            self._state_changed.notify_all()
 
     async def close(self) -> None:
-        """Close the owned engine at most once and always reach stopped state."""
-        async with self._state_lock:
-            if self._state == RuntimeState.STOPPED and self._engine is None:
+        """Reject new work, drain active inference, and close the engine once."""
+        async with self._state_changed:
+            if (
+                self._state is RuntimeState.STOPPED
+                and self._engine is None
+                and self._close_task is None
+            ):
                 return
-            self._state = RuntimeState.STOPPING
-            engine = self._engine
-            self._engine = None
+            if self._close_task is None:
+                self._state = RuntimeState.STOPPING
+                self._state_changed.notify_all()
+                self._close_task = asyncio.create_task(
+                    self._close_when_idle(),
+                    name="slower-whisper-asr-runtime-close",
+                )
+            close_task = self._close_task
+
+        try:
+            await asyncio.shield(close_task)
+        except asyncio.CancelledError:
             try:
-                if engine is not None:
-                    close = getattr(engine, "close", None)
-                    if callable(close):
-                        if inspect.iscoroutinefunction(close):
-                            await close()
-                        else:
-                            await asyncio.to_thread(close)
-            finally:
+                await close_task
+            except BaseException:
+                logger.exception("ASR runtime close failed after caller cancellation")
+            raise
+
+    async def _close_when_idle(self) -> None:
+        engine: Any | None = None
+        try:
+            async with self._state_changed:
+                while self._active_inferences > 0:
+                    await self._state_changed.wait()
+                engine = self._engine
+                self._engine = None
+
+            if engine is not None:
+                close = getattr(engine, "close", None)
+                if callable(close):
+                    if inspect.iscoroutinefunction(close):
+                        await close()
+                    else:
+                        await asyncio.to_thread(close)
+        finally:
+            async with self._state_changed:
+                self._engine = None
                 self._state = RuntimeState.STOPPED
+                self._close_task = None
+                self._state_changed.notify_all()
 
     def selected_profile(self) -> dict[str, Any] | None:
         if self._engine is None:
@@ -288,24 +326,39 @@ class ASRRuntime:
         config: TranscriptionConfig,
     ) -> Transcript:
         """Run a compatible file orchestrator through the owned engine."""
-        engine = self.engine
         self.assert_profile(config)
         async with self._inference_limit:
-            self._active_inferences += 1
-            self._max_observed_inferences = max(
-                self._max_observed_inferences,
-                self._active_inferences,
-            )
-            try:
-                return await asyncio.to_thread(
+            async with self._state_changed:
+                engine = self.engine
+                self._active_inferences += 1
+                self._max_observed_inferences = max(
+                    self._max_observed_inferences,
+                    self._active_inferences,
+                )
+                self._state_changed.notify_all()
+
+            inference_task = asyncio.create_task(
+                asyncio.to_thread(
                     transcribe,
                     audio_path,
                     root,
                     config,
                     _engine=engine,
-                )
+                ),
+                name="slower-whisper-asr-runtime-inference",
+            )
+            try:
+                return await asyncio.shield(inference_task)
+            except asyncio.CancelledError:
+                try:
+                    await inference_task
+                except BaseException:
+                    logger.exception("ASR inference failed after caller cancellation")
+                raise
             finally:
-                self._active_inferences -= 1
+                async with self._state_changed:
+                    self._active_inferences -= 1
+                    self._state_changed.notify_all()
 
     def _attempts_from_error(self, error: TranscriptionError) -> list[dict[str, Any]]:
         attempts = error.context.get("attempts")

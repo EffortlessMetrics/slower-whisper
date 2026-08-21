@@ -55,6 +55,19 @@ def profile() -> RuntimeProfile:
     )
 
 
+def matching_config() -> TranscriptionConfig:
+    return TranscriptionConfig(
+        model="tiny",
+        device="cpu",
+        compute_type="int8",
+        language="en",
+        task="transcribe",
+        beam_size=3,
+        vad_min_silence_ms=400,
+        word_timestamps=False,
+    )
+
+
 @pytest.mark.asyncio
 async def test_runtime_starts_once_and_closes_once() -> None:
     created: list[FakeEngine] = []
@@ -246,23 +259,13 @@ async def test_runtime_bounds_concurrent_inference(tmp_path: Path) -> None:
             active -= 1
         return Transcript(file_name="x.wav", language="en", segments=[])
 
-    config = TranscriptionConfig(
-        model="tiny",
-        device="cpu",
-        compute_type="int8",
-        language="en",
-        task="transcribe",
-        beam_size=3,
-        vad_min_silence_ms=400,
-        word_timestamps=False,
-    )
     await asyncio.gather(
         *[
             runtime.transcribe_file(
                 transcribe,
                 audio_path=tmp_path / f"{index}.wav",
                 root=tmp_path,
-                config=config,
+                config=matching_config(),
             )
             for index in range(3)
         ]
@@ -271,6 +274,134 @@ async def test_runtime_bounds_concurrent_inference(tmp_path: Path) -> None:
     assert max_active == 1
     assert runtime.max_observed_inferences == 1
     assert runtime.status()["active_inferences"] == 0
+
+
+@pytest.mark.asyncio
+async def test_close_waits_for_active_inference_and_rejects_new_work(tmp_path: Path) -> None:
+    created: list[FakeEngine] = []
+
+    def factory(cfg: AsrConfig) -> FakeEngine:
+        engine = FakeEngine(cfg)
+        created.append(engine)
+        return engine
+
+    runtime = ASRRuntime(profile(), engine_factory=factory, max_concurrency=1)
+    await runtime.start()
+    started = threading.Event()
+    release = threading.Event()
+    second_called = False
+
+    def blocking_transcribe(
+        _audio_path: Path,
+        _root: Path,
+        _config: TranscriptionConfig,
+        *,
+        _engine: Any,
+    ) -> Transcript:
+        started.set()
+        assert release.wait(timeout=2)
+        return Transcript(file_name="first.wav", language="en", segments=[])
+
+    def second_transcribe(
+        _audio_path: Path,
+        _root: Path,
+        _config: TranscriptionConfig,
+        *,
+        _engine: Any,
+    ) -> Transcript:
+        nonlocal second_called
+        second_called = True
+        return Transcript(file_name="second.wav", language="en", segments=[])
+
+    first_task = asyncio.create_task(
+        runtime.transcribe_file(
+            blocking_transcribe,
+            audio_path=tmp_path / "first.wav",
+            root=tmp_path,
+            config=matching_config(),
+        )
+    )
+    assert await asyncio.to_thread(started.wait, 1)
+
+    close_task = asyncio.create_task(runtime.close())
+    while runtime.state is not RuntimeState.STOPPING:
+        await asyncio.sleep(0)
+    assert not close_task.done()
+    assert created[0].close_count == 0
+
+    second_task = asyncio.create_task(
+        runtime.transcribe_file(
+            second_transcribe,
+            audio_path=tmp_path / "second.wav",
+            root=tmp_path,
+            config=matching_config(),
+        )
+    )
+    await asyncio.sleep(0)
+    assert not second_task.done()
+
+    release.set()
+    await first_task
+    with pytest.raises(RuntimeNotReadyError):
+        await second_task
+    await close_task
+
+    assert second_called is False
+    assert created[0].close_count == 1
+    assert runtime.state is RuntimeState.STOPPED
+
+
+@pytest.mark.asyncio
+async def test_cancelled_inference_remains_active_until_worker_finishes(tmp_path: Path) -> None:
+    created: list[FakeEngine] = []
+
+    def factory(cfg: AsrConfig) -> FakeEngine:
+        engine = FakeEngine(cfg)
+        created.append(engine)
+        return engine
+
+    runtime = ASRRuntime(profile(), engine_factory=factory, max_concurrency=1)
+    await runtime.start()
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_transcribe(
+        _audio_path: Path,
+        _root: Path,
+        _config: TranscriptionConfig,
+        *,
+        _engine: Any,
+    ) -> Transcript:
+        started.set()
+        assert release.wait(timeout=2)
+        return Transcript(file_name="cancelled.wav", language="en", segments=[])
+
+    inference_task = asyncio.create_task(
+        runtime.transcribe_file(
+            blocking_transcribe,
+            audio_path=tmp_path / "cancelled.wav",
+            root=tmp_path,
+            config=matching_config(),
+        )
+    )
+    assert await asyncio.to_thread(started.wait, 1)
+    inference_task.cancel()
+    await asyncio.sleep(0)
+    assert runtime.status()["active_inferences"] == 1
+
+    close_task = asyncio.create_task(runtime.close())
+    await asyncio.sleep(0)
+    assert not close_task.done()
+    assert created[0].close_count == 0
+
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await inference_task
+    await close_task
+
+    assert created[0].close_count == 1
+    assert runtime.status()["active_inferences"] == 0
+    assert runtime.state is RuntimeState.STOPPED
 
 
 @pytest.mark.asyncio
