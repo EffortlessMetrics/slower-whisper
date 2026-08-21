@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fastapi import HTTPException, Request, status
@@ -37,17 +38,26 @@ def create_error_response(
     return JSONResponse(status_code=status_code, content=error_data)
 
 
-def _validation_errors_for_log(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _validation_errors_for_log(errors: Sequence[Any]) -> list[dict[str, Any]]:
     """Reduce validation failures to bounded fields safe for structured logs."""
     reduced: list[dict[str, Any]] = []
     for error in errors:
-        location = []
-        for item in error.get("loc", []):
-            if isinstance(item, int):
-                location.append(item)
-                continue
-            normalized = str(item).replace("\r", "\\r").replace("\n", "\\n")
-            location.append(normalized[:128])
+        if not isinstance(error, Mapping):
+            continue
+
+        location: list[int | str] = []
+        raw_location = error.get("loc", ())
+        if isinstance(raw_location, Sequence) and not isinstance(
+            raw_location,
+            (str, bytes, bytearray),
+        ):
+            for item in raw_location:
+                if isinstance(item, int):
+                    location.append(item)
+                    continue
+                normalized = str(item).replace("\r", "\\r").replace("\n", "\\n")
+                location.append(normalized[:128])
+
         reduced.append(
             {
                 "loc": location,
