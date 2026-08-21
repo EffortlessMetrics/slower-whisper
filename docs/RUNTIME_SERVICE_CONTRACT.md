@@ -90,11 +90,7 @@ close hook raises.
 
 ## Provenance
 
-Every successful file, bytes, and batch REST transcription receives one
-canonical receipt at `meta.receipt`. The receipt records the package version,
-transcript schema version, actual model/backend/device/compute selection,
-ordered model-load attempts, canonical configuration hash, run identity, and
-trusted source/build identity when the artifact contains it.
+Every successful file, bytes, and batch REST transcription receives one canonical receipt at `meta.receipt`. The receipt records the package version, transcript schema version, actual model/backend/device/compute selection, ordered model-load attempts, canonical configuration hash, run identity, and trusted source/build identity when the artifact contains it.
 
 Runtime code never invokes `git` or consults the caller's current working
 directory, `.git` directory, `PATH`, or runtime environment to identify its own
