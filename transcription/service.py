@@ -1,15 +1,15 @@
 """FastAPI service wrapper for slower-whisper.
 
 The service owns one configured ASR runtime per process. Use one worker per
-instance while session and model state remain in process.
+instance while model and streaming session state remain in process.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI
 
@@ -42,10 +42,6 @@ from .service_validation import (
 )
 
 RuntimeFactory = Callable[[], ASRRuntime]
-
-# =============================================================================
-# Configuration constants and compatibility exports
-# =============================================================================
 
 MAX_AUDIO_SIZE_MB = _service_settings.MAX_AUDIO_SIZE_MB
 MAX_TRANSCRIPT_SIZE_MB = _service_settings.MAX_TRANSCRIPT_SIZE_MB
@@ -90,10 +86,14 @@ def build_service_runtime() -> ASRRuntime:
         raise ConfigurationError(
             "SLOWER_WHISPER_SERVICE_MAX_CONCURRENCY must be at least 1"
         )
-    return ASRRuntime(
-        RuntimeProfile.from_config(config),
-        max_concurrency=max_concurrency,
+
+    profile = RuntimeProfile.from_config(config)
+    print(
+        f"[preflight] model={profile.model} device={profile.device} "
+        f"compute_type={profile.compute_type} max_concurrency={max_concurrency}",
+        file=sys.stderr,
     )
+    return ASRRuntime(profile, max_concurrency=max_concurrency)
 
 
 def create_app(*, runtime_factory: RuntimeFactory | None = None) -> FastAPI:
@@ -111,13 +111,13 @@ def create_app(*, runtime_factory: RuntimeFactory | None = None) -> FastAPI:
             await runtime.start()
         except TranscriptionError as exc:
             application.state.asr_startup_error = exc
-        except Exception as exc:  # noqa: BLE001 - app stays alive but not ready
-            error = RuntimeNotReadyError(
+        except Exception as exc:  # noqa: BLE001 - app stays live but not ready
+            startup_error = RuntimeNotReadyError(
                 "The ASR service runtime could not be configured",
                 context={"phase": "startup"},
             )
-            error.__cause__ = exc
-            application.state.asr_startup_error = error
+            startup_error.__cause__ = exc
+            application.state.asr_startup_error = startup_error
 
         try:
             yield
@@ -129,7 +129,7 @@ def create_app(*, runtime_factory: RuntimeFactory | None = None) -> FastAPI:
         title="Slower-Whisper API",
         description=(
             "REST API for local audio transcription and enrichment. "
-            "One configured ASR model is owned per service process."
+            "One configured ASR model lifecycle is owned per service process."
         ),
         version=__version__,
         docs_url="/docs",

@@ -1,8 +1,8 @@
 """Service-owned ASR runtime lifecycle and capacity boundary.
 
 Direct Python and CLI calls continue to construct their own engines. The FastAPI
-service owns one configured runtime per process and passes that engine through a
-private orchestration seam so repeated requests reuse the same model.
+service owns one configured runtime per process so lifecycle and readiness have
+one authority. REST reuse is a later integration seam tracked in issue #623.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -54,7 +54,7 @@ class RuntimeState(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class RuntimeProfile:
-    """ASR settings fixed for the lifetime of one service process."""
+    """Resolved ASR settings fixed for one service process."""
 
     model: str
     device: str
@@ -67,6 +67,11 @@ class RuntimeProfile:
 
     @classmethod
     def from_config(cls, config: TranscriptionConfig) -> RuntimeProfile:
+        if config.device not in {"cpu", "cuda"}:
+            raise ValueError(
+                "Service runtime device must be resolved to 'cpu' or 'cuda', "
+                f"got {config.device!r}"
+            )
         compute_type = config.compute_type
         if compute_type is None:
             raise ValueError("TranscriptionConfig must resolve compute_type")
@@ -106,16 +111,7 @@ class RuntimeProfile:
         }
 
     def mismatches(self, config: TranscriptionConfig) -> dict[str, dict[str, Any]]:
-        requested = {
-            "model": config.model,
-            "device": config.device,
-            "compute_type": config.compute_type,
-            "language": config.language,
-            "task": config.task,
-            "beam_size": config.beam_size,
-            "vad_min_silence_ms": config.vad_min_silence_ms,
-            "word_timestamps": config.word_timestamps,
-        }
+        requested = RuntimeProfile.from_config(config).to_dict()
         configured = self.to_dict()
         return {
             field: {"configured": configured[field], "requested": value}
@@ -142,6 +138,7 @@ class ASRRuntime:
         self._engine: Any | None = None
         self._state = RuntimeState.STOPPED
         self._startup_error: TranscriptionError | None = None
+        self._startup_attempts: list[dict[str, Any]] = []
         self._state_lock = asyncio.Lock()
         self._inference_limit = asyncio.Semaphore(max_concurrency)
         self._active_inferences = 0
@@ -181,6 +178,7 @@ class ASRRuntime:
                 return
             self._state = RuntimeState.STARTING
             self._startup_error = None
+            self._startup_attempts = []
             try:
                 engine = await asyncio.to_thread(
                     self._engine_factory,
@@ -189,11 +187,12 @@ class ASRRuntime:
             except TranscriptionError as exc:
                 self._engine = None
                 self._startup_error = exc
+                self._startup_attempts = self._attempts_from_error(exc)
                 self._state = RuntimeState.FAILED
                 logger.error("ASR runtime initialization failed", exc_info=exc)
                 return
             except Exception as exc:  # noqa: BLE001 - preserve local cause
-                error = ASRModelLoadError(
+                load_error = ASRModelLoadError(
                     "The configured ASR runtime could not be initialized",
                     context={
                         "model": self.profile.model,
@@ -201,32 +200,40 @@ class ASRRuntime:
                         "compute_type": self.profile.compute_type,
                     },
                 )
-                error.__cause__ = exc
+                load_error.__cause__ = exc
                 self._engine = None
-                self._startup_error = error
+                self._startup_error = load_error
+                self._startup_attempts = self._attempts_from_error(load_error)
                 self._state = RuntimeState.FAILED
                 logger.exception("Unexpected ASR runtime initialization failure")
                 return
 
             self._engine = engine
+            self._startup_attempts = [
+                dict(attempt)
+                for attempt in getattr(engine, "model_load_attempts", [])
+                if isinstance(attempt, Mapping)
+            ]
             self._state = RuntimeState.READY
 
     async def close(self) -> None:
-        """Close the owned engine at most once and transition to stopped."""
+        """Close the owned engine at most once and always reach stopped state."""
         async with self._state_lock:
             if self._state == RuntimeState.STOPPED and self._engine is None:
                 return
             self._state = RuntimeState.STOPPING
             engine = self._engine
             self._engine = None
-            if engine is not None:
-                close = getattr(engine, "close", None)
-                if callable(close):
-                    if inspect.iscoroutinefunction(close):
-                        await close()
-                    else:
-                        await asyncio.to_thread(close)
-            self._state = RuntimeState.STOPPED
+            try:
+                if engine is not None:
+                    close = getattr(engine, "close", None)
+                    if callable(close):
+                        if inspect.iscoroutinefunction(close):
+                            await close()
+                        else:
+                            await asyncio.to_thread(close)
+            finally:
+                self._state = RuntimeState.STOPPED
 
     def selected_profile(self) -> dict[str, Any] | None:
         if self._engine is None:
@@ -252,19 +259,13 @@ class ASRRuntime:
         }
 
     def status(self) -> dict[str, Any]:
-        attempts = []
-        if self._engine is not None:
-            attempts = [
-                dict(attempt)
-                for attempt in getattr(self._engine, "model_load_attempts", [])
-            ]
         error = self._startup_error.public_details() if self._startup_error else None
         return {
             "state": self._state.value,
             "ready": self.ready,
             "profile": self.profile.to_dict(),
             "selected": self.selected_profile(),
-            "attempts": attempts,
+            "attempts": [dict(attempt) for attempt in self._startup_attempts],
             "max_concurrency": self.max_concurrency,
             "active_inferences": self._active_inferences,
             "max_observed_inferences": self._max_observed_inferences,
@@ -287,7 +288,7 @@ class ASRRuntime:
         root: str | Path,
         config: TranscriptionConfig,
     ) -> Transcript:
-        """Run the existing file orchestration through the owned engine."""
+        """Run a compatible file orchestrator through the owned engine."""
         engine = self.engine
         self.assert_profile(config)
         async with self._inference_limit:
@@ -307,16 +308,17 @@ class ASRRuntime:
             finally:
                 self._active_inferences -= 1
 
-    async def deep_probe(self, audio_path: str | Path) -> Transcript:
-        """Execute a bounded real inference probe on normalized audio."""
-        engine = self.engine
-        async with self._inference_limit:
-            self._active_inferences += 1
-            self._max_observed_inferences = max(
-                self._max_observed_inferences,
-                self._active_inferences,
-            )
-            try:
-                return await asyncio.to_thread(engine.transcribe_file, Path(audio_path))
-            finally:
-                self._active_inferences -= 1
+    def _attempts_from_error(self, error: TranscriptionError) -> list[dict[str, Any]]:
+        attempts = error.context.get("attempts")
+        if isinstance(attempts, list):
+            copied = [dict(attempt) for attempt in attempts if isinstance(attempt, Mapping)]
+            if copied:
+                return copied
+        return [
+            {
+                "device": self.profile.device,
+                "compute_type": self.profile.compute_type,
+                "outcome": "failed",
+                "reason_code": error.reason_code,
+            }
+        ]

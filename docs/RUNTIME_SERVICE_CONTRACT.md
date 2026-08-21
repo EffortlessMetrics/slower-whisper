@@ -1,84 +1,84 @@
-# Runtime service contract
+# Service runtime lifecycle contract
 
-`slower-whisper` v2 service mode owns one configured ASR runtime per process. This contract is narrower than the direct Python and CLI surfaces so readiness, capacity, provenance, and streaming session ownership can remain truthful.
+Stable service mode owns one configured ASR runtime per process. This contract
+makes process lifecycle and readiness truthful without changing the ownership
+model of direct Python or CLI calls.
 
-## Process profile
+## One process, one resolved profile
 
-A service process has one ASR profile:
+A service process resolves one ASR profile before model construction:
 
-- model identifier and model revision when available;
-- selected device and compute type;
+- model;
+- device (`cpu` or `cuda`);
+- compute type;
 - language and task defaults;
 - beam, VAD, and word-timestamp settings;
-- an ordered record of real backend load attempts;
-- a bounded inference concurrency limit.
+- maximum concurrent inference count.
 
-The runtime is created during FastAPI lifespan startup and closed once during shutdown. REST requests reuse that runtime. A request that asks for a different model, device, or compute profile is rejected before inference; stable v2 service mode does not load an unbounded second model on demand.
+Unresolved service devices are rejected before the profile is stored. Startup
+prints the resolved model, device, compute type, and concurrency limit to
+stderr. Standard output remains available for script-facing output.
 
-Direct Python and CLI calls remain operation-owned. They may create an engine for one operation or reuse one explicitly for batch work. Service ownership does not introduce a process-global singleton outside the application.
+The process runtime is created through FastAPI lifespan, starts once, and closes
+once. A failed model initialization leaves the HTTP process live but the runtime
+not ready. Ordered backend attempts remain observable after failure.
 
 ## Health semantics
 
 ### Liveness
 
-`GET /health/live` proves only that the process and HTTP event loop can respond. It does not load a model or run inference.
+`GET /health/live` proves only that the process and HTTP event loop can respond.
+It does not load a model or run inference.
 
 ### Readiness
 
-`GET /health/ready` returns success only when:
+`GET /health/ready` succeeds only when:
 
-- required package resources are available;
 - ffmpeg is available;
-- the configured ASR runtime reached its ready state;
-- the selected model, device, and compute configuration are known.
+- required installed package resources are present;
+- the process-owned runtime is ready.
 
-A process may remain live while readiness returns `503`. Model-load failure, a missing backend, or a failed runtime is not downgraded to a warning.
+The response includes both the configured profile and the backend-selected
+profile. That distinction preserves a requested CUDA profile and an actual
+CPU fallback without rewriting history. Importability, CUDA diagnostics, and
+disk pressure remain visible but do not override the state of an already-ready
+runtime.
 
-### Deep probe
+There is no inference-bearing health endpoint in this contract. A deployment
+probe that runs real audio must have its own authentication, rate, and capacity
+policy before it can share the production inference slot.
 
-The optional deep probe performs bounded real inference for deployment qualification. It is not part of ordinary liveness or readiness polling. A silent result is a successful empty transcript; an inference failure remains a typed failure.
+## Concurrency
 
-## Failure mapping
+The runtime owns a server-configured inference semaphore. Callers using the
+runtime boundary cannot exceed that process limit. Queueing, request admission,
+and endpoint integration remain separate decisions.
 
-| Domain result | HTTP result |
-|---|---:|
-| Malformed request, audio, or configuration | `400` or `422` |
-| Requested profile differs from the process profile | `409` |
-| Backend unavailable, model load failed, or runtime not ready | `503` |
-| Inference failed | `500` with `asr_inference_failed` |
-| Backend output was invalid | `500` with `asr_output_invalid` |
-| Genuine silence | `200` with an empty segment list |
+## Deliberate boundary
 
-Provider exception text remains chained and logged locally. Remote responses expose stable reason codes and bounded non-sensitive context.
+This change does not yet make REST transcription reuse the process-owned engine.
+It also does not attach provenance receipts automatically. Those integrations
+remain in issue #623 and require their own cross-surface and installed-artifact
+acceptance.
 
-## Provenance
+Direct Python and CLI operations keep their current operation-owned engine
+construction. The service runtime is not a process-global singleton for library
+callers.
 
-Successful transcripts receive a receipt automatically through canonical generation metadata. The receipt records actual selected runtime values, not only requested configuration:
-
-- package and transcript-schema versions;
-- source commit and build identifier when embedded at build time;
-- model and optional model revision;
-- selected device and compute type;
-- ordered runtime attempts;
-- normalized configuration hash;
-- run identifier and creation time.
-
-The installed package never runs `git` in the caller's current working directory to infer its own source revision. Unknown build provenance is omitted rather than guessed.
-
-## Deployment boundary
-
-The runtime and streaming session registry are currently in process. The supported stable topology is therefore one application worker per service instance, or strict affinity to one process. Multiple workers would create independent models and independent registries; shared multi-worker state is a separate architecture change.
+The supported deployment topology remains one application worker per instance
+while model and streaming session state are in process. Multiple workers create
+independent runtimes.
 
 ## Acceptance evidence
 
-The `Runtime Contract` workflow exercises the service on Python 3.12 and 3.13, including:
+The `Runtime Lifecycle` workflow proves on Python 3.12 and 3.13:
 
-- startup, failure, readiness, and shutdown transitions;
-- runtime reuse and bounded concurrency;
-- request-profile rejection;
-- automatic, cwd-independent receipts;
-- typed REST failures and silence semantics;
-- installation of the built wheel with API dependencies outside the checkout;
-- repeated requests proving one runtime instance serves the process.
-
-Component tests remain useful, but this service capability is accepted only when the installed HTTP transaction passes.
+- one startup and one shutdown;
+- failed startup remains live but not ready;
+- ordered load attempts remain visible after failure;
+- actual backend selection appears in readiness;
+- unresolved service profiles fail before storage;
+- inference concurrency stays within the configured bound;
+- preflight output goes to stderr;
+- the built API wheel passes the same lifecycle and readiness transaction from
+  outside the checkout.

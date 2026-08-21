@@ -2,24 +2,16 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 from importlib import resources
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from . import __version__
-from .exceptions import (
-    ASRModelLoadError,
-    ASRUnavailableError,
-    RuntimeNotReadyError,
-    TranscriptionError,
-)
+from .exceptions import TranscriptionError
 from .models import SCHEMA_VERSION
-from .service_errors import create_error_response
 
 router = APIRouter()
 
@@ -32,7 +24,7 @@ def _check_ffmpeg() -> dict[str, Any]:
 
 
 def _check_faster_whisper() -> dict[str, Any]:
-    """Compatibility check; readiness is determined by the loaded runtime."""
+    """Report importability; runtime state remains readiness authority."""
     try:
         from . import asr_engine
 
@@ -189,9 +181,8 @@ async def health_readiness(request: Request) -> JSONResponse:
 
     critical_names = ("ffmpeg", "resources", "runtime")
     healthy = all(checks[name]["status"] == "ok" for name in critical_names)
-    status_code = 200 if healthy else 503
     return JSONResponse(
-        status_code=status_code,
+        status_code=200 if healthy else 503,
         content={
             "status": "ready" if healthy else "degraded",
             "healthy": healthy,
@@ -199,77 +190,5 @@ async def health_readiness(request: Request) -> JSONResponse:
             "version": __version__,
             "schema_version": str(SCHEMA_VERSION),
             "checks": checks,
-        },
-    )
-
-
-@router.post(
-    "/health/deep",
-    summary="Bounded real-inference readiness probe",
-    description=(
-        "Runs only when SLOWER_WHISPER_DEEP_PROBE_AUDIO identifies a normalized WAV fixture. "
-        "This endpoint is for deployment qualification, not routine liveness polling."
-    ),
-    tags=["System"],
-)
-async def health_deep(request: Request) -> JSONResponse:
-    runtime = getattr(request.app.state, "asr_runtime", None)
-    if runtime is None or not runtime.ready:
-        error = RuntimeNotReadyError(
-            "The configured ASR runtime is not ready",
-            context={"state": _runtime_check(request).get("state", "unknown")},
-        )
-        return create_error_response(
-            503,
-            error.reason_code,
-            "ASR runtime is not ready",
-            request_id=getattr(request.state, "request_id", None),
-            details=error.public_details(),
-        )
-
-    probe_value = os.getenv("SLOWER_WHISPER_DEEP_PROBE_AUDIO")
-    if not probe_value:
-        return create_error_response(
-            503,
-            "deep_probe_unconfigured",
-            "Deep inference probe is not configured",
-            request_id=getattr(request.state, "request_id", None),
-        )
-    probe_path = Path(probe_value)
-    if not probe_path.is_file():
-        return create_error_response(
-            503,
-            "deep_probe_unavailable",
-            "Deep inference probe audio is unavailable",
-            request_id=getattr(request.state, "request_id", None),
-        )
-
-    try:
-        transcript = await runtime.deep_probe(probe_path)
-    except (ASRUnavailableError, ASRModelLoadError, RuntimeNotReadyError) as exc:
-        return create_error_response(
-            503,
-            exc.reason_code,
-            "ASR runtime is not ready",
-            request_id=getattr(request.state, "request_id", None),
-            details=exc.public_details(),
-        )
-    except TranscriptionError as exc:
-        return create_error_response(
-            500,
-            exc.reason_code,
-            "ASR deep probe failed",
-            request_id=getattr(request.state, "request_id", None),
-            details=exc.public_details(),
-        )
-
-    outcome = "speech" if transcript.segments else "silence"
-    return JSONResponse(
-        status_code=200,
-        content={
-            "status": "ok",
-            "outcome": outcome,
-            "segments": len(transcript.segments),
-            "runtime": runtime.status(),
         },
     )

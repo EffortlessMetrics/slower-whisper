@@ -6,7 +6,6 @@ import asyncio
 import threading
 import time
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -74,6 +73,7 @@ async def test_runtime_starts_once_and_closes_once() -> None:
     assert runtime.ready is True
     assert len(created) == 1
     assert runtime.status()["selected"]["device"] == "cpu"
+    assert runtime.status()["attempts"] == created[0].model_load_attempts
 
     await runtime.close()
     await runtime.close()
@@ -83,18 +83,110 @@ async def test_runtime_starts_once_and_closes_once() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_start_failure_is_observable_without_raising() -> None:
+async def test_runtime_start_failure_preserves_ordered_attempts() -> None:
+    attempts = [
+        {
+            "device": "cuda",
+            "compute_type": "float16",
+            "outcome": "failed",
+            "reason_code": "asr_model_load_failed",
+        },
+        {
+            "device": "cpu",
+            "compute_type": "int8",
+            "outcome": "failed",
+            "reason_code": "asr_model_load_failed",
+        },
+    ]
+
     def factory(_cfg: AsrConfig) -> FakeEngine:
-        raise ASRModelLoadError("model unavailable", context={"model": "tiny"})
+        raise ASRModelLoadError(
+            "model unavailable",
+            context={"model": "tiny", "attempts": attempts},
+        )
 
     runtime = ASRRuntime(profile(), engine_factory=factory)
     await runtime.start()
 
+    status = runtime.status()
     assert runtime.state == RuntimeState.FAILED
     assert runtime.ready is False
-    assert runtime.status()["error"]["reason_code"] == "asr_model_load_failed"
+    assert status["error"]["reason_code"] == "asr_model_load_failed"
+    assert status["attempts"] == attempts
     with pytest.raises(RuntimeNotReadyError):
         _ = runtime.engine
+
+
+@pytest.mark.asyncio
+async def test_unexpected_start_failure_records_attempted_profile() -> None:
+    def factory(_cfg: AsrConfig) -> FakeEngine:
+        raise RuntimeError("provider detail")
+
+    runtime = ASRRuntime(profile(), engine_factory=factory)
+    await runtime.start()
+
+    assert runtime.status()["attempts"] == [
+        {
+            "device": "cpu",
+            "compute_type": "int8",
+            "outcome": "failed",
+            "reason_code": "asr_model_load_failed",
+        }
+    ]
+    assert "provider detail" not in str(runtime.status())
+
+
+def test_runtime_profile_rejects_unresolved_device() -> None:
+    config = TranscriptionConfig(
+        model="tiny",
+        device="auto",
+        compute_type=None,
+    )
+
+    with pytest.raises(ValueError, match="resolved"):
+        RuntimeProfile.from_config(config)
+
+
+@pytest.mark.asyncio
+async def test_runtime_reports_backend_selected_profile_after_fallback() -> None:
+    def factory(cfg: AsrConfig) -> FakeEngine:
+        cfg.device = "cpu"
+        cfg.compute_type = "int8"
+        engine = FakeEngine(cfg)
+        engine.model_load_attempts = [
+            {
+                "device": "cuda",
+                "compute_type": "float16",
+                "outcome": "failed",
+                "reason_code": "asr_model_load_failed",
+            },
+            {
+                "device": "cpu",
+                "compute_type": "int8",
+                "outcome": "selected",
+                "reason_code": "ok",
+            },
+        ]
+        return engine
+
+    requested = RuntimeProfile.from_config(
+        TranscriptionConfig(
+            model="tiny",
+            device="cuda",
+            compute_type="float16",
+        )
+    )
+    runtime = ASRRuntime(requested, engine_factory=factory)
+    await runtime.start()
+
+    status = runtime.status()
+    assert status["profile"]["device"] == "cuda"
+    assert status["selected"]["device"] == "cpu"
+    assert status["selected"]["compute_type"] == "int8"
+    assert [attempt["outcome"] for attempt in status["attempts"]] == [
+        "failed",
+        "selected",
+    ]
 
 
 @pytest.mark.asyncio
@@ -178,16 +270,20 @@ async def test_runtime_bounds_concurrent_inference(tmp_path: Path) -> None:
 
     assert max_active == 1
     assert runtime.max_observed_inferences == 1
+    assert runtime.status()["active_inferences"] == 0
 
 
 @pytest.mark.asyncio
-async def test_deep_probe_distinguishes_valid_silence(tmp_path: Path) -> None:
-    runtime = ASRRuntime(profile(), engine_factory=FakeEngine)
+async def test_close_failure_still_leaves_runtime_stopped() -> None:
+    class FailingCloseEngine(FakeEngine):
+        def close(self) -> None:
+            raise RuntimeError("close failed")
+
+    runtime = ASRRuntime(profile(), engine_factory=FailingCloseEngine)
     await runtime.start()
-    audio = tmp_path / "silence.wav"
-    audio.write_bytes(b"not read by fake engine")
 
-    transcript = await runtime.deep_probe(audio)
+    with pytest.raises(RuntimeError, match="close failed"):
+        await runtime.close()
 
-    assert transcript.segments == []
-    assert transcript.file_name == "silence.wav"
+    assert runtime.state == RuntimeState.STOPPED
+    assert runtime.ready is False

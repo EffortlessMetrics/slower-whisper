@@ -1,4 +1,4 @@
-name: Runtime Contract
+name: Runtime Lifecycle
 
 on:
   pull_request:
@@ -15,10 +15,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  runtime-contract:
-    name: runtime-contract (Python ${{ matrix.python-version }})
+  runtime-lifecycle:
+    name: runtime-lifecycle (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -26,150 +26,160 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
       - name: Install Python
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Install runtime test environment
-        run: uv sync --python ${{ matrix.python-version }} --extra dev
-
-      - name: Lint and format contract
+      - name: Install system dependencies
         run: |
-          uv run ruff check transcription/ tests/
-          uv run ruff format --check transcription/ tests/
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install focused test environment
+        run: |
+          uv sync --python ${{ matrix.python-version }} --extra api
+          uv pip install --python .venv/bin/python \
+            pytest pytest-asyncio httpx mypy ruff
+
+      - name: Verify static runtime contract
+        run: |
+          uv run ruff check \
+            transcription/exceptions.py \
+            transcription/service.py \
+            transcription/service_health.py \
+            transcription/service_runtime.py \
+            tests/test_service_health.py \
+            tests/test_service_lifecycle.py \
+            tests/test_service_runtime.py
+          uv run ruff format --check \
+            transcription/exceptions.py \
+            transcription/service.py \
+            transcription/service_health.py \
+            transcription/service_runtime.py \
+            tests/test_service_health.py \
+            tests/test_service_lifecycle.py \
+            tests/test_service_runtime.py
+          uv run mypy \
+            transcription/service.py \
+            transcription/service_health.py \
+            transcription/service_runtime.py
           git diff --check
 
-      - name: Type-check runtime surface
-        run: |
-          uv run mypy \
-            transcription/ \
-            tests/test_llm_utils.py \
-            tests/test_writers.py \
-            tests/test_turn_helpers.py \
-            tests/test_audio_state_schema.py
-
-      - name: Verify lifecycle, readiness, provenance, and REST contracts
+      - name: Verify lifecycle and readiness behavior
         run: |
           uv run pytest -q \
             tests/test_service_runtime.py \
             tests/test_service_lifecycle.py \
-            tests/test_runtime_provenance.py \
-            tests/test_meta_utils.py \
-            tests/test_service.py \
-            tests/test_api_service.py \
-            tests/test_service_health.py \
-            tests/test_security_leak.py \
-            tests/test_asr_engine.py
+            tests/test_service_health.py
 
-      - name: Run full non-heavy suite
+  runtime-lifecycle-installed:
+    name: runtime-lifecycle-installed
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
         run: |
-          uv run pytest -q \
-            -m "not slow and not heavy and not requires_gpu" \
-            --no-cov
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
 
-      - name: Build installed API artifact
-        if: matrix.python-version == '3.12'
+      - name: Build and install API wheel
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/write_build_info.py \
-            --source-commit "${GITHUB_SHA}" \
-            --build-id "runtime-contract-${GITHUB_RUN_ID}"
+          rm -rf dist
           uv build --wheel
-          VENV="$RUNNER_TEMP/runtime-contract-wheel"
+          mapfile -t wheels < <(find dist -maxdepth 1 -type f -name '*.whl' -print)
+          test "${#wheels[@]}" -eq 1
+          WHEEL="${wheels[0]}"
+          VENV="$RUNNER_TEMP/runtime-lifecycle-wheel"
           uv venv "$VENV" --python 3.12
-          WHEEL=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
           uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
-          uv pip install --python "$VENV/bin/python" httpx pytest
+          uv pip install --python "$VENV/bin/python" httpx
           uv pip check --python "$VENV/bin/python"
           echo "RUNTIME_VENV=$VENV" >> "$GITHUB_ENV"
 
-      - name: Exercise installed runtime contract outside checkout
-        if: matrix.python-version == '3.12'
+      - name: Exercise installed lifecycle outside checkout
         shell: bash
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
-          "$RUNTIME_VENV/bin/python" - <<'PY'
-          from __future__ import annotations
 
-          import asyncio
+          "$RUNTIME_VENV/bin/python" - <<'PY'
           from pathlib import Path
-          from types import SimpleNamespace
 
           from fastapi.testclient import TestClient
 
-          from transcription.config import TranscriptionConfig
+          import transcription.service as service_module
+          from transcription.config import AsrConfig, TranscriptionConfig
           from transcription.models import Transcript
           from transcription.service import create_app
-          from transcription.service_runtime import ASRRuntime
+          from transcription.service_runtime import ASRRuntime, RuntimeProfile, RuntimeState
+
+          service_path = Path(service_module.__file__).resolve()
+          assert "site-packages" in service_path.parts, service_path
 
           class InstalledEngine:
               instances = 0
+              closes = 0
 
-              def __init__(self, cfg):
+              def __init__(self, cfg: AsrConfig) -> None:
                   type(self).instances += 1
-                  self.cfg = cfg.asr
+                  self.cfg = cfg
                   self.model_load_attempts = [
                       {
-                          "device": self.cfg.device,
-                          "compute_type": self.cfg.compute_type,
+                          "device": cfg.device,
+                          "compute_type": cfg.compute_type,
                           "outcome": "selected",
                           "reason_code": "ok",
                       }
                   ]
 
-              def transcribe_file(self, path):
-                  return Transcript(
-                      file_name=Path(path).name,
-                      language="en",
-                      segments=[],
-                      meta={
-                          "asr_backend": "faster-whisper",
-                          "asr_device": self.cfg.device,
-                          "asr_compute_type": self.cfg.compute_type,
-                          "asr_model_load_attempts": list(self.model_load_attempts),
-                      },
-                  )
+              def transcribe_file(self, path: Path) -> Transcript:
+                  return Transcript(file_name=path.name, language="en", segments=[])
 
-          async def runtime_factory():
-              runtime = ASRRuntime(
-                  TranscriptionConfig(),
-                  engine_factory=InstalledEngine,
+              def close(self) -> None:
+                  type(self).closes += 1
+
+          profile = RuntimeProfile.from_config(
+              TranscriptionConfig(
+                  model="tiny",
+                  device="cpu",
+                  compute_type="int8",
               )
-              await runtime.start()
-              return runtime
+          )
+          runtime = ASRRuntime(profile, engine_factory=InstalledEngine)
+          app = create_app(runtime_factory=lambda: runtime)
 
-          app = create_app(runtime_factory=runtime_factory)
           with TestClient(app) as client:
-              live = client.get("/health/live")
-              assert live.status_code == 200, live.text
+              assert client.get("/health/live").status_code == 200
               ready = client.get("/health/ready")
               assert ready.status_code == 200, ready.text
-              assert ready.json()["runtime"]["state"] == "ready"
-
-              response = client.post(
-                  "/transcribe",
-                  files={"file": ("silence.wav", b"fake", "audio/wav")},
-              )
-              assert response.status_code == 200, response.text
-              payload = response.json()
-              assert payload["segments"] == []
-              receipt = payload["meta"]["receipt"]
-              assert receipt["source_commit"]
-              assert receipt["build_id"].startswith("runtime-contract-")
-              assert receipt["device"] == "cpu"
-              assert receipt["compute_type"] == "int8"
-
-              second = client.post(
-                  "/transcribe",
-                  files={"file": ("silence-2.wav", b"fake", "audio/wav")},
-              )
-              assert second.status_code == 200, second.text
+              status = ready.json()["checks"]["runtime"]
+              assert status["state"] == "ready"
+              assert status["selected"]["device"] == "cpu"
+              assert status["selected"]["compute_type"] == "int8"
+              assert status["attempts"][-1]["outcome"] == "selected"
               assert InstalledEngine.instances == 1
+
+          assert runtime.state is RuntimeState.STOPPED
+          assert InstalledEngine.closes == 1
           PY

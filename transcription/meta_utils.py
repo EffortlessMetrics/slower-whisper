@@ -7,8 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .receipt import build_receipt
-
 if TYPE_CHECKING:
     from .models import Transcript
 
@@ -16,7 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 def coalesce_runtime_value(*values: Any, default: str | None = None) -> str | None:
-    """Pick the first non-empty, non-boolean runtime metadata value."""
+    """
+    Pick the first non-empty runtime metadata value.
+
+    Treats None and whitespace-only strings as missing. Booleans are ignored to
+    avoid accidentally returning True/False as device names. Numeric values are
+    converted to strings.
+    """
     for val in values:
         if val is None or isinstance(val, bool):
             continue
@@ -46,11 +50,12 @@ def build_generation_metadata(
     runtime_device_candidates: tuple[str | None, ...] = (),
     runtime_compute_candidates: tuple[str | None, ...] = (),
 ) -> dict[str, Any]:
-    """Attach run metadata and a truthful provenance receipt.
+    """
+    Merge ASR metadata with run-level details into a final transcript.meta dict.
 
-    Runtime-selected values emitted by the ASR engine outrank requested config.
-    The receipt hash excludes output location and volatile timestamps so an
-    equivalent runtime/configuration projects to the same stable hash.
+    Prefers runtime values emitted by the ASR engine (asr_device/asr_compute_type)
+    and falls back through provided runtime candidates before using the configured
+    device/compute_type.
     """
     asr_meta = transcript.meta or {}
 
@@ -58,16 +63,15 @@ def build_generation_metadata(
         asr_meta.get("asr_device"),
         *runtime_device_candidates,
         default=config_device,
-    ) or "unknown"
+    )
     actual_compute_type = coalesce_runtime_value(
         asr_meta.get("asr_compute_type"),
         *runtime_compute_candidates,
         default=config_compute_type,
-    ) or "unknown"
+    )
 
-    generated_at = datetime.now(UTC).isoformat()
     base_meta = {
-        "generated_at": generated_at,
+        "generated_at": datetime.now(UTC).isoformat(),
         "audio_file": transcript.file_name,
         "audio_duration_sec": duration_sec,
         "model_name": model_name,
@@ -81,31 +85,6 @@ def build_generation_metadata(
         "root": str(root),
     }
 
-    attempts_value = asr_meta.get("asr_model_load_attempts")
-    runtime_attempts = (
-        [dict(item) for item in attempts_value if isinstance(item, dict)]
-        if isinstance(attempts_value, list)
-        else None
-    )
-    receipt_config = {
-        "model": model_name,
-        "device": actual_device,
-        "compute_type": actual_compute_type,
-        "beam_size": beam_size,
-        "vad_min_silence_ms": vad_min_silence_ms,
-        "language": language_hint,
-        "task": task,
-        "backend": asr_meta.get("asr_backend", "faster-whisper"),
-    }
-    receipt = build_receipt(
-        model=model_name,
-        device=actual_device,
-        compute_type=actual_compute_type,
-        config=receipt_config,
-        runtime_attempts=runtime_attempts,
-    )
-
     merged_meta = asr_meta.copy()
     merged_meta.update(base_meta)
-    merged_meta["receipt"] = receipt.to_dict()
     return merged_meta
