@@ -1,0 +1,279 @@
+name: Incremental ASR Contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  incremental-asr-contract:
+    name: incremental-asr-contract (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install focused test environment
+        run: |
+          uv sync --python ${{ matrix.python-version }}
+          uv pip install --python .venv/bin/python \
+            pytest pytest-asyncio mypy==1.19.1 ruff==0.14.14
+
+      - name: Verify static revision contract
+        run: |
+          uv run ruff check \
+            transcription/incremental_asr.py \
+            tests/test_incremental_asr.py
+          uv run ruff format --check \
+            transcription/incremental_asr.py \
+            tests/test_incremental_asr.py
+          uv run mypy transcription/incremental_asr.py
+          git diff --check
+
+      - name: Verify revision, boundary, work, memory, and failure semantics
+        run: uv run pytest -q tests/test_incremental_asr.py
+
+      - name: Fuzz packetization invariance
+        run: |
+          uv run python - <<'PY'
+          from __future__ import annotations
+
+          import asyncio
+          import random
+
+          from transcription.incremental_asr import (
+              IncrementalASRConfig,
+              IncrementalASRSession,
+          )
+
+          def pcm(samples: int, value: int = 1) -> bytes:
+              return value.to_bytes(2, "little", signed=True) * samples
+
+          class Backend:
+              def __init__(self) -> None:
+                  self.calls: list[tuple[int, int, int]] = []
+
+              def transcribe(
+                  self,
+                  data: bytes,
+                  *,
+                  sample_rate: int,
+                  start_sample: int,
+                  end_sample: int,
+              ) -> str:
+                  assert sample_rate == 16_000
+                  samples = len(data) // 2
+                  self.calls.append((samples, start_sample, end_sample))
+                  return f"samples:{samples}"
+
+          def project(revisions):
+              return [
+                  (
+                      revision.segment_id,
+                      revision.revision,
+                      revision.start_sample,
+                      revision.end_sample,
+                      revision.text,
+                      revision.final,
+                      revision.final_reason,
+                  )
+                  for revision in revisions
+              ]
+
+          async def run(chunks: list[int], total: int):
+              assert sum(chunks) == total
+              backend = Backend()
+              config = IncrementalASRConfig(
+                  min_hypothesis_samples=7,
+                  hypothesis_interval_samples=5,
+                  max_utterance_samples=23,
+                  max_chunk_bytes=512,
+              )
+              session = IncrementalASRSession(backend, config=config)
+              revisions = []
+              for chunk in chunks:
+                  revisions.extend(await session.push_pcm(pcm(chunk), speech=True))
+              revisions.extend(await session.push_pcm(pcm(3, 0), speech=False))
+              return project(revisions), backend.calls, session.metrics
+
+          async def main() -> None:
+              rng = random.Random(84)
+              for total in range(1, 161):
+                  baseline = await run([total], total)
+                  for _ in range(50):
+                      remaining = total
+                      chunks = []
+                      while remaining:
+                          take = rng.randint(1, min(remaining, 19))
+                          chunks.append(take)
+                          remaining -= take
+                      assert await run(chunks, total) == baseline, (total, chunks)
+
+          asyncio.run(main())
+          PY
+
+      - name: Verify full non-heavy repository suite
+        if: matrix.python-version == '3.12'
+        run: |
+          uv sync --python 3.12 --extra dev
+          uv run pytest -q \
+            -m "not slow and not heavy and not requires_gpu" \
+            --no-cov
+
+  incremental-asr-installed:
+    name: incremental-asr-installed (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Build and install wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          VENV="$RUNNER_TEMP/incremental-asr-${{ matrix.python-version }}"
+          uv venv "$VENV" --python ${{ matrix.python-version }}
+          WHEEL=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$WHEEL"
+          uv pip install --python "$VENV/bin/python" "$WHEEL"
+          uv pip check --python "$VENV/bin/python"
+          echo "INCREMENTAL_ASR_VENV=$VENV" >> "$GITHUB_ENV"
+
+      - name: Exercise installed semantic core outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+
+          "$INCREMENTAL_ASR_VENV/bin/python" - <<'PY'
+          from __future__ import annotations
+
+          import asyncio
+          from pathlib import Path
+
+          import transcription.incremental_asr as module
+          from transcription.exceptions import ASRInferenceError, RuntimeNotReadyError
+          from transcription.incremental_asr import (
+              IncrementalASRConfig,
+              IncrementalASRSession,
+              IncrementalASRState,
+          )
+
+          module_path = Path(module.__file__).resolve()
+          assert "site-packages" in module_path.parts, module_path
+          source = module_path.read_text(encoding="utf-8")
+          assert "dummy segment" not in source
+          assert "[processing...]" not in source
+          assert "[final segment]" not in source
+
+          def pcm(samples: int, value: int = 1) -> bytes:
+              return value.to_bytes(2, "little", signed=True) * samples
+
+          class Backend:
+              def __init__(self) -> None:
+                  self.calls: list[tuple[int, int, int]] = []
+
+              def transcribe(
+                  self,
+                  data: bytes,
+                  *,
+                  sample_rate: int,
+                  start_sample: int,
+                  end_sample: int,
+              ) -> str:
+                  assert sample_rate == 16_000
+                  samples = len(data) // 2
+                  self.calls.append((samples, start_sample, end_sample))
+                  return f"samples:{samples}"
+
+          class FailingBackend:
+              def transcribe(self, *_args, **_kwargs):
+                  raise RuntimeError("private provider detail")
+
+          async def main() -> None:
+              config = IncrementalASRConfig(
+                  min_hypothesis_samples=4,
+                  hypothesis_interval_samples=4,
+                  max_utterance_samples=12,
+                  max_chunk_bytes=64,
+              )
+              backend = Backend()
+              session = IncrementalASRSession(backend, config=config)
+              revisions = []
+              for _ in range(12):
+                  revisions.extend(await session.push_pcm(pcm(1), speech=True))
+              revisions.extend(await session.push_pcm(pcm(2, 0), speech=False))
+              assert [
+                  (
+                      revision.revision,
+                      revision.start_sample,
+                      revision.end_sample,
+                      revision.final_reason,
+                  )
+                  for revision in revisions
+              ] == [
+                  (1, 0, 4, None),
+                  (2, 0, 8, None),
+                  (3, 0, 12, "max_utterance"),
+              ]
+              assert backend.calls == [(4, 0, 4), (8, 0, 8), (12, 0, 12)]
+              assert session.metrics.peak_active_audio_bytes <= 24
+
+              failed = IncrementalASRSession(FailingBackend(), config=config)
+              try:
+                  await failed.push_pcm(pcm(4), speech=True)
+              except ASRInferenceError as error:
+                  assert error.reason_code == "asr_inference_failed"
+                  assert "private provider detail" not in str(error.public_details())
+              else:
+                  raise AssertionError("incremental inference failure returned success")
+              assert failed.state is IncrementalASRState.FAILED
+              try:
+                  await failed.push_pcm(pcm(1), speech=True)
+              except RuntimeNotReadyError:
+                  pass
+              else:
+                  raise AssertionError("failed session accepted more audio")
+
+          asyncio.run(main())
+          PY
