@@ -81,9 +81,13 @@ jobs:
             tests/test_service_health.py
 
   runtime-lifecycle-installed:
-    name: runtime-lifecycle-installed
+    name: runtime-lifecycle-installed (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
 
     steps:
       - name: Checkout repository
@@ -95,7 +99,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
       - name: Install Python
-        run: uv python install 3.12
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Install system dependencies
         run: |
@@ -111,8 +115,8 @@ jobs:
           mapfile -t wheels < <(find dist -maxdepth 1 -type f -name '*.whl' -print)
           test "${#wheels[@]}" -eq 1
           WHEEL="${wheels[0]}"
-          VENV="$RUNNER_TEMP/runtime-lifecycle-wheel"
-          uv venv "$VENV" --python 3.12
+          VENV="$RUNNER_TEMP/runtime-lifecycle-wheel-${{ matrix.python-version }}"
+          uv venv "$VENV" --python ${{ matrix.python-version }}
           uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
           uv pip install --python "$VENV/bin/python" httpx
           uv pip check --python "$VENV/bin/python"
