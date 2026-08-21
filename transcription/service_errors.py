@@ -37,6 +37,26 @@ def create_error_response(
     return JSONResponse(status_code=status_code, content=error_data)
 
 
+def _validation_errors_for_log(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reduce validation failures to bounded fields safe for structured logs."""
+    reduced: list[dict[str, Any]] = []
+    for error in errors:
+        location = []
+        for item in error.get("loc", []):
+            if isinstance(item, int):
+                location.append(item)
+                continue
+            normalized = str(item).replace("\r", "\\r").replace("\n", "\\n")
+            location.append(normalized[:128])
+        reduced.append(
+            {
+                "loc": location,
+                "type": str(error.get("type", "unknown"))[:128],
+            }
+        )
+    return reduced
+
+
 async def validation_exception_handler(
     request: Request,
     exc: RequestValidationError,
@@ -44,14 +64,6 @@ async def validation_exception_handler(
     """Handle Pydantic/FastAPI request validation errors."""
     request_id = getattr(request.state, "request_id", None)
     errors = exc.errors()
-    logger.warning(
-        "Validation error: %s %s [request_id=%s] - %d validation errors",
-        request.method,
-        request.url.path,
-        request_id,
-        len(errors),
-        extra={"request_id": request_id, "validation_errors": errors},
-    )
     formatted_errors = [
         {
             "loc": list(error.get("loc", [])),
@@ -60,6 +72,17 @@ async def validation_exception_handler(
         }
         for error in errors
     ]
+    logger.warning(
+        "Validation error: %s %s [request_id=%s] - %d validation errors",
+        request.method,
+        request.url.path,
+        request_id,
+        len(errors),
+        extra={
+            "request_id": request_id,
+            "validation_errors": _validation_errors_for_log(errors),
+        },
+    )
     return create_error_response(
         status_code=HTTP_422_UNPROCESSABLE,
         error_type="validation_error",
