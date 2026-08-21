@@ -1,15 +1,10 @@
 # Provenance and receipt contract
 
-Every successful file, bytes, and batch REST transcription receives one
-canonical receipt at `meta.receipt`. Failure responses do not manufacture a
-receipt.
+Every successful file, bytes, and batch REST transcription receives one canonical receipt at `meta.receipt`. Failure responses do not manufacture a receipt.
 
 ## Identity authority
 
-Runtime code reads source and build identity only from
-`transcription._build_info`, a Python module packaged into the wheel and sdist.
-It never runs `git`, reads the caller's repository, or infers identity from the
-current working directory or runtime environment.
+Runtime code never invokes `git`, reads the caller's repository, or infers identity from the current working directory or runtime environment. It reads source and build identity only from `transcription._build_info`, a Python module packaged into the wheel and sdist.
 
 Source checkouts and unlabelled local builds deliberately contain:
 
