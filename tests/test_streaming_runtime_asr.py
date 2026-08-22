@@ -120,6 +120,13 @@ async def test_adapter_rejects_invalid_pcm_before_runtime_work() -> None:
     await runtime.start()
     adapter = RuntimeIncrementalASRBackend(runtime)
 
+    with pytest.raises(TypeError, match="must be bytes"):
+        await adapter.transcribe(
+            bytearray(pcm(1)),  # type: ignore[arg-type]
+            sample_rate=16_000,
+            start_sample=0,
+            end_sample=1,
+        )
     with pytest.raises(ValueError, match="16 kHz"):
         await adapter.transcribe(
             pcm(1),
@@ -139,6 +146,13 @@ async def test_adapter_rejects_invalid_pcm_before_runtime_work() -> None:
             pcm(1),
             sample_rate=16_000,
             start_sample=2,
+            end_sample=1,
+        )
+    with pytest.raises(ValueError, match="span"):
+        await adapter.transcribe(
+            pcm(2),
+            sample_rate=16_000,
+            start_sample=0,
             end_sample=1,
         )
 
