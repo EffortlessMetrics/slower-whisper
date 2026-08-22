@@ -1,648 +1,367 @@
-"""Integration tests for WebSocket streaming endpoint (Issue #84).
+"""Integration contract for the public revision-aware `/stream` endpoint.
 
-This module provides comprehensive integration tests for the /stream WebSocket
-endpoint, validating the full protocol lifecycle including:
-- Connection establishment and session management
-- START_SESSION, AUDIO_CHUNK, END_SESSION, PING message handling
-- Event envelope format compliance
-- Error handling and recovery
-- Backpressure and resume capabilities
-
-These tests complement the unit tests in test_streaming_ws.py by focusing on
-the HTTP/WebSocket integration layer.
+Unit tests in ``test_streaming_ws.py`` own the legacy session object. This file
+exercises the mounted FastAPI route with a ready process runtime, deterministic
+speech decisions, real PCM wire messages, and no placeholder transcript path.
 """
 
 from __future__ import annotations
 
 import base64
 import time
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-# =============================================================================
-# Fixtures
-# =============================================================================
+from transcription.config import AsrConfig, TranscriptionConfig
+from transcription.service import create_app
+from transcription.service_runtime import ASRRuntime, RuntimeProfile
+
+
+class DeterministicEngine:
+    """Small process-owned engine used only by the public route fixture."""
+
+    def __init__(self, cfg: AsrConfig) -> None:
+        self.cfg = cfg
+        self.calls: list[int] = []
+        self.model_load_attempts = [
+            {
+                "device": cfg.device,
+                "compute_type": cfg.compute_type or "unknown",
+                "outcome": "selected",
+                "reason_code": "ok",
+            }
+        ]
+
+    def transcribe_file(self, path: Path):
+        import wave
+
+        with wave.open(str(path), "rb") as wav_file:
+            frames = wav_file.getnframes()
+        self.calls.append(frames)
+        return SimpleNamespace(segments=[SimpleNamespace(text=f"samples:{frames}")])
+
+    def close(self) -> None:
+        return None
+
+
+class AlwaysSpeechClassifier:
+    def is_speech(self, _audio: bytes, *, sample_rate: int) -> bool:
+        assert sample_rate == 16_000
+        return True
+
+
+def runtime_profile() -> RuntimeProfile:
+    return RuntimeProfile.from_config(
+        TranscriptionConfig(
+            model="tiny",
+            device="cpu",
+            compute_type="int8",
+            language="en",
+            task="transcribe",
+            beam_size=3,
+            vad_min_silence_ms=400,
+            word_timestamps=False,
+        )
+    )
 
 
 @pytest.fixture
 def client() -> TestClient:
-    """Create FastAPI test client for WebSocket testing."""
-    from transcription.service import app
-
-    return TestClient(app)
+    """Run the route through a real ASRRuntime lifecycle."""
+    runtime = ASRRuntime(runtime_profile(), engine_factory=DeterministicEngine)
+    app = create_app(runtime_factory=lambda: runtime)
+    app.state.streaming_speech_classifier_factory = AlwaysSpeechClassifier
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 @pytest.fixture
 def sample_audio_data() -> bytes:
-    """Generate sample audio data (1 second at 16kHz, 16-bit mono)."""
-    # 16000 samples/sec * 2 bytes/sample = 32000 bytes per second
-    return b"\x00\x01" * 16000  # 1 second of audio
+    """Generate one second of mono signed-16 PCM at 16 kHz."""
+    return b"\x00\x01" * 16_000
 
 
 @pytest.fixture
-def sample_audio_chunk(sample_audio_data: bytes) -> dict:
-    """Create a sample AUDIO_CHUNK message payload."""
+def sample_audio_chunk(sample_audio_data: bytes) -> dict[str, Any]:
+    return audio_message(sample_audio_data, 1)
+
+
+def audio_message(audio: bytes, sequence: int) -> dict[str, Any]:
     return {
         "type": "AUDIO_CHUNK",
-        "data": base64.b64encode(sample_audio_data).decode(),
-        "sequence": 1,
+        "data": base64.b64encode(audio).decode("ascii"),
+        "sequence": sequence,
     }
 
 
-# =============================================================================
-# Connection Lifecycle Tests
-# =============================================================================
+def start_message(**overrides: Any) -> dict[str, Any]:
+    config = {
+        "sample_rate": 16_000,
+        "channels": 1,
+        "audio_format": "pcm_s16le",
+        "max_gap_sec": 0.5,
+    }
+    config.update(overrides)
+    return {"type": "START_SESSION", "config": config}
+
+
+def receive_until(websocket, expected: str, *, limit: int = 32) -> dict[str, Any]:
+    observed: list[str | None] = []
+    for _ in range(limit):
+        message = websocket.receive_json()
+        message_type = message.get("type")
+        observed.append(message_type)
+        if message_type == expected:
+            return message
+    raise AssertionError(f"missing {expected}; observed={observed}")
 
 
 class TestWebSocketConnection:
-    """Tests for WebSocket connection establishment and teardown."""
-
-    def test_websocket_connect_success(self, client: TestClient) -> None:
-        """Test successful WebSocket connection."""
+    def test_ping_before_session(self, client: TestClient) -> None:
         with client.websocket_connect("/stream") as websocket:
-            # Connection should be established
-            # Send a PING to verify connection is working
-            websocket.send_json({"type": "PING", "timestamp": 12345})
-            msg = websocket.receive_json()
-            assert msg["type"] == "PONG"
+            websocket.send_json({"type": "PING", "timestamp": 12_345})
+            message = websocket.receive_json()
 
-    def test_websocket_graceful_close(self, client: TestClient) -> None:
-        """Test graceful connection close after END_SESSION."""
+        assert message["type"] == "PONG"
+        assert message["payload"]["timestamp"] == 12_345
+        assert "server_timestamp" in message["payload"]
+
+    def test_graceful_empty_session(self, client: TestClient) -> None:
         with client.websocket_connect("/stream") as websocket:
-            # Start session
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            msg = websocket.receive_json()
-            assert msg["type"] == "SESSION_STARTED"
-
-            # End session
+            websocket.send_json(start_message())
+            started = websocket.receive_json()
             websocket.send_json({"type": "END_SESSION"})
+            ended = receive_until(websocket, "SESSION_ENDED")
 
-            # Should receive SESSION_ENDED
-            events = []
-            while True:
-                try:
-                    msg = websocket.receive_json()
-                    events.append(msg)
-                    if msg["type"] == "SESSION_ENDED":
-                        break
-                except Exception:
-                    break
-
-            assert any(e["type"] == "SESSION_ENDED" for e in events)
-
-
-# =============================================================================
-# START_SESSION Message Tests
-# =============================================================================
+        assert started["type"] == "SESSION_STARTED"
+        assert ended["stream_id"] == started["stream_id"]
 
 
 class TestStartSession:
-    """Tests for START_SESSION message handling."""
-
-    def test_start_session_default_config(self, client: TestClient) -> None:
-        """Test START_SESSION with default configuration."""
+    def test_default_and_stable_custom_config(self, client: TestClient) -> None:
         with client.websocket_connect("/stream") as websocket:
             websocket.send_json({"type": "START_SESSION"})
-            msg = websocket.receive_json()
+            default = websocket.receive_json()
 
-            assert msg["type"] == "SESSION_STARTED"
-            assert "event_id" in msg
-            assert msg["event_id"] == 1
-            assert msg["stream_id"].startswith("str-")
-            assert "payload" in msg
-            assert "session_id" in msg["payload"]
+        assert default["type"] == "SESSION_STARTED"
+        assert default["event_id"] == 1
+        assert default["stream_id"].startswith("str-")
+        assert "session_id" in default["payload"]
 
-    def test_start_session_custom_config(self, client: TestClient) -> None:
-        """Test START_SESSION with custom configuration."""
         with client.websocket_connect("/stream") as websocket:
-            websocket.send_json(
-                {
-                    "type": "START_SESSION",
-                    "config": {
-                        "max_gap_sec": 0.5,
-                        "enable_prosody": True,
-                        "enable_emotion": True,
-                        "sample_rate": 16000,
-                    },
-                }
-            )
-            msg = websocket.receive_json()
+            websocket.send_json(start_message(max_gap_sec=0.25))
+            custom = websocket.receive_json()
 
-            assert msg["type"] == "SESSION_STARTED"
-            assert msg["stream_id"].startswith("str-")
+        assert custom["type"] == "SESSION_STARTED"
 
-    def test_start_session_duplicate_error(self, client: TestClient) -> None:
-        """Test error when starting session twice."""
+    def test_unearned_live_enrichment_is_rejected(self, client: TestClient) -> None:
         with client.websocket_connect("/stream") as websocket:
-            # First START_SESSION
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            msg = websocket.receive_json()
-            assert msg["type"] == "SESSION_STARTED"
+            websocket.send_json(start_message(enable_prosody=True))
+            error = websocket.receive_json()
 
-            # Second START_SESSION should error
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            msg = websocket.receive_json()
-            assert msg["type"] == "ERROR"
-            assert msg["payload"]["code"] == "session_already_started"
-            assert msg["payload"]["recoverable"] is True
+        assert error["type"] == "ERROR"
+        assert error["payload"]["code"] == "streaming_audio_unsupported"
+        assert error["payload"]["recoverable"] is False
+        assert error["payload"]["context"]["mismatches"] == {
+            "enable_prosody": True
+        }
 
+    def test_non_object_config_is_rejected(self, client: TestClient) -> None:
+        with client.websocket_connect("/stream") as websocket:
+            websocket.send_json({"type": "START_SESSION", "config": "invalid"})
+            error = websocket.receive_json()
 
-# =============================================================================
-# AUDIO_CHUNK Message Tests
-# =============================================================================
+        assert error["type"] == "ERROR"
+        assert error["payload"]["code"] == "streaming_audio_unsupported"
+
+    def test_duplicate_start_is_recoverable(self, client: TestClient) -> None:
+        with client.websocket_connect("/stream") as websocket:
+            websocket.send_json(start_message())
+            websocket.receive_json()
+            websocket.send_json(start_message())
+            error = websocket.receive_json()
+
+        assert error["type"] == "ERROR"
+        assert error["payload"]["code"] == "session_already_started"
+        assert error["payload"]["recoverable"] is True
 
 
 class TestAudioChunk:
-    """Tests for AUDIO_CHUNK message handling."""
-
-    def test_audio_chunk_processing(self, client: TestClient, sample_audio_chunk: dict) -> None:
-        """Test audio chunk is processed and generates events."""
-        with client.websocket_connect("/stream") as websocket:
-            # Start session
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            msg = websocket.receive_json()
-            assert msg["type"] == "SESSION_STARTED"
-
-            # Send audio chunk
-            websocket.send_json(sample_audio_chunk)
-
-            # Should receive PARTIAL event(s)
-            msg = websocket.receive_json()
-            assert msg["type"] == "PARTIAL"
-            assert "segment" in msg["payload"]
-            assert "start" in msg["payload"]["segment"]
-            assert "end" in msg["payload"]["segment"]
-            assert "text" in msg["payload"]["segment"]
-
-    def test_audio_chunk_without_session(
-        self, client: TestClient, sample_audio_chunk: dict
+    def test_audio_produces_real_replacement_event(
+        self,
+        client: TestClient,
+        sample_audio_chunk: dict[str, Any],
     ) -> None:
-        """Test error when sending AUDIO_CHUNK without starting session."""
+        with client.websocket_connect("/stream") as websocket:
+            websocket.send_json(start_message())
+            started = websocket.receive_json()
+            websocket.send_json(sample_audio_chunk)
+            partial = websocket.receive_json()
+
+        assert partial["type"] == "PARTIAL"
+        assert partial["stream_id"] == started["stream_id"]
+        assert partial["payload"]["revision"] == 1
+        assert partial["payload"]["text"] == "samples:16000"
+        assert partial["payload"]["segment"]["text"] == "samples:16000"
+        assert partial["payload"]["start_sample"] == 0
+        assert partial["payload"]["end_sample"] == 16_000
+        assert "[processing...]" not in str(partial)
+
+    def test_audio_without_session_is_recoverable(
+        self,
+        client: TestClient,
+        sample_audio_chunk: dict[str, Any],
+    ) -> None:
         with client.websocket_connect("/stream") as websocket:
             websocket.send_json(sample_audio_chunk)
-            msg = websocket.receive_json()
+            error = websocket.receive_json()
 
-            assert msg["type"] == "ERROR"
-            assert msg["payload"]["code"] == "no_session"
+        assert error["payload"]["code"] == "no_session"
+        assert error["payload"]["recoverable"] is True
 
-    def test_audio_chunk_sequence_ordering(
-        self, client: TestClient, sample_audio_data: bytes
+    def test_sequence_and_encoding_validation(
+        self,
+        client: TestClient,
+        sample_audio_chunk: dict[str, Any],
     ) -> None:
-        """Test audio chunks must have increasing sequence numbers."""
         with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            websocket.receive_json()  # SESSION_STARTED
-
-            # Send first chunk with sequence 1 - use full second of audio
-            websocket.send_json(
-                {
-                    "type": "AUDIO_CHUNK",
-                    "data": base64.b64encode(sample_audio_data).decode(),
-                    "sequence": 1,
-                }
-            )
-            # Receive the PARTIAL event that will be generated
-            msg = websocket.receive_json()
-            assert msg["type"] in ("PARTIAL", "FINALIZED")
-
-            # Send chunk with duplicate sequence should error
-            websocket.send_json(
-                {
-                    "type": "AUDIO_CHUNK",
-                    "data": base64.b64encode(sample_audio_data).decode(),
-                    "sequence": 1,  # Duplicate sequence
-                }
-            )
-            msg = websocket.receive_json()
-            assert msg["type"] == "ERROR"
-            assert "sequence" in msg["payload"]["message"].lower()
-
-    def test_audio_chunk_invalid_base64(self, client: TestClient) -> None:
-        """Test error on invalid base64 audio data."""
-        with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            websocket.receive_json()  # SESSION_STARTED
-
+            websocket.send_json(start_message())
+            websocket.receive_json()
+            websocket.send_json(sample_audio_chunk)
+            websocket.receive_json()
+            websocket.send_json(sample_audio_chunk)
+            duplicate = websocket.receive_json()
             websocket.send_json(
                 {
                     "type": "AUDIO_CHUNK",
                     "data": "not-valid-base64!!!",
-                    "sequence": 1,
+                    "sequence": 2,
                 }
             )
-            msg = websocket.receive_json()
-
-            assert msg["type"] == "ERROR"
-            assert msg["payload"]["code"] == "invalid_audio_chunk"
-
-    def test_audio_chunk_missing_sequence(self, client: TestClient) -> None:
-        """Test error when sequence is missing from AUDIO_CHUNK."""
-        with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            websocket.receive_json()  # SESSION_STARTED
-
+            invalid_base64 = websocket.receive_json()
             websocket.send_json(
                 {
                     "type": "AUDIO_CHUNK",
-                    "data": base64.b64encode(b"\x00" * 100).decode(),
-                    # Missing sequence
+                    "data": base64.b64encode(b"\x00\x00").decode("ascii"),
                 }
             )
-            msg = websocket.receive_json()
+            missing_sequence = websocket.receive_json()
 
-            assert msg["type"] == "ERROR"
-
-
-# =============================================================================
-# END_SESSION Message Tests
-# =============================================================================
+        assert duplicate["payload"]["code"] == "invalid_audio_chunk"
+        assert invalid_base64["payload"]["code"] == "invalid_audio_chunk"
+        assert missing_sequence["payload"]["code"] == "invalid_audio_chunk"
 
 
 class TestEndSession:
-    """Tests for END_SESSION message handling."""
-
-    def test_end_session_with_audio(self, client: TestClient, sample_audio_chunk: dict) -> None:
-        """Test END_SESSION finalizes segments and returns stats."""
+    def test_end_finalizes_before_stats(
+        self,
+        client: TestClient,
+        sample_audio_chunk: dict[str, Any],
+    ) -> None:
         with client.websocket_connect("/stream") as websocket:
-            # Start session
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            websocket.receive_json()  # SESSION_STARTED
-
-            # Send audio
-            websocket.send_json(sample_audio_chunk)
-            websocket.receive_json()  # PARTIAL
-
-            # End session
-            websocket.send_json({"type": "END_SESSION"})
-
-            # Collect all end events
-            events = []
-            while True:
-                try:
-                    msg = websocket.receive_json()
-                    events.append(msg)
-                    if msg["type"] == "SESSION_ENDED":
-                        break
-                except Exception:
-                    break
-
-            # Should have FINALIZED segment
-            finalized = [e for e in events if e["type"] == "FINALIZED"]
-            assert len(finalized) >= 1
-
-            # Should have SESSION_ENDED with stats
-            ended = [e for e in events if e["type"] == "SESSION_ENDED"]
-            assert len(ended) == 1
-            stats = ended[0]["payload"]["stats"]
-            assert "chunks_received" in stats
-            assert "bytes_received" in stats
-            assert "duration_sec" in stats
-
-    def test_end_session_without_start(self, client: TestClient) -> None:
-        """Test error when ending session that was never started."""
-        with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "END_SESSION"})
-            msg = websocket.receive_json()
-
-            assert msg["type"] == "ERROR"
-            assert msg["payload"]["code"] == "no_session"
-
-
-# =============================================================================
-# PING Message Tests
-# =============================================================================
-
-
-class TestPingPong:
-    """Tests for PING/PONG heartbeat mechanism."""
-
-    def test_ping_before_session(self, client: TestClient) -> None:
-        """Test PING works even before session is started."""
-        with client.websocket_connect("/stream") as websocket:
-            client_ts = int(time.time() * 1000)
-            websocket.send_json({"type": "PING", "timestamp": client_ts})
-            msg = websocket.receive_json()
-
-            assert msg["type"] == "PONG"
-            assert msg["payload"]["timestamp"] == client_ts
-            assert "server_timestamp" in msg["payload"]
-
-    def test_ping_during_session(self, client: TestClient) -> None:
-        """Test PING works during active session."""
-        with client.websocket_connect("/stream") as websocket:
-            # Start session
-            websocket.send_json({"type": "START_SESSION", "config": {}})
+            websocket.send_json(start_message())
             websocket.receive_json()
-
-            # PING should work
-            client_ts = int(time.time() * 1000)
-            websocket.send_json({"type": "PING", "timestamp": client_ts})
-            msg = websocket.receive_json()
-
-            assert msg["type"] == "PONG"
-            assert msg["payload"]["timestamp"] == client_ts
-
-    def test_ping_roundtrip_latency(self, client: TestClient) -> None:
-        """Test PING roundtrip captures server timestamp for latency measurement."""
-        with client.websocket_connect("/stream") as websocket:
-            client_ts = int(time.time() * 1000)
-            websocket.send_json({"type": "PING", "timestamp": client_ts})
-            msg = websocket.receive_json()
-
-            server_ts = msg["payload"]["server_timestamp"]
-            # Server timestamp should be reasonable (within 10 seconds)
-            assert abs(server_ts - client_ts) < 10000
-
-
-# =============================================================================
-# Event Envelope Tests
-# =============================================================================
-
-
-class TestEventEnvelope:
-    """Tests for event envelope format compliance."""
-
-    def test_envelope_has_required_fields(self, client: TestClient) -> None:
-        """Test all events have required envelope fields."""
-        with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            msg = websocket.receive_json()
-
-            # Required fields per event envelope spec
-            assert "event_id" in msg
-            assert "stream_id" in msg
-            assert "type" in msg
-            assert "ts_server" in msg
-            assert "payload" in msg
-
-    def test_envelope_event_ids_monotonic(
-        self, client: TestClient, sample_audio_chunk: dict
-    ) -> None:
-        """Test event IDs are monotonically increasing."""
-        with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            msg1 = websocket.receive_json()
-
             websocket.send_json(sample_audio_chunk)
-            msg2 = websocket.receive_json()
+            partial = websocket.receive_json()
+            websocket.send_json({"type": "END_SESSION"})
+            finalized = receive_until(websocket, "FINALIZED")
+            ended = receive_until(websocket, "SESSION_ENDED")
 
-            websocket.send_json({"type": "PING", "timestamp": 0})
-            msg3 = websocket.receive_json()
+        assert finalized["segment_id"] == partial["segment_id"]
+        assert finalized["payload"]["revision"] == 2
+        assert finalized["payload"]["final_reason"] == "end_of_stream"
+        assert finalized["event_id"] < ended["event_id"]
+        assert ended["payload"]["stats"]["chunks_received"] == 1
+        assert ended["payload"]["stats"]["bytes_received"] == 32_000
 
-            assert msg1["event_id"] == 1
-            assert msg2["event_id"] > msg1["event_id"]
-            assert msg3["event_id"] > msg2["event_id"]
-
-    def test_envelope_stream_id_consistent(
-        self, client: TestClient, sample_audio_chunk: dict
-    ) -> None:
-        """Test stream_id remains consistent across all events in a session."""
+    def test_end_without_session_is_recoverable(self, client: TestClient) -> None:
         with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            msg1 = websocket.receive_json()
-            stream_id = msg1["stream_id"]
+            websocket.send_json({"type": "END_SESSION"})
+            error = websocket.receive_json()
 
-            websocket.send_json(sample_audio_chunk)
-            msg2 = websocket.receive_json()
+        assert error["payload"]["code"] == "no_session"
 
-            assert msg2["stream_id"] == stream_id
 
-    def test_envelope_segment_events_have_audio_timestamps(
-        self, client: TestClient, sample_audio_chunk: dict
+class TestControlAndEnvelope:
+    def test_ping_during_session_and_event_ids_are_monotonic(
+        self,
+        client: TestClient,
+        sample_audio_chunk: dict[str, Any],
     ) -> None:
-        """Test PARTIAL and FINALIZED events have audio timestamps."""
         with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            websocket.receive_json()  # SESSION_STARTED
-
+            websocket.send_json(start_message())
+            started = websocket.receive_json()
             websocket.send_json(sample_audio_chunk)
-            msg = websocket.receive_json()
+            partial = websocket.receive_json()
+            websocket.send_json({"type": "PING", "timestamp": 1_000})
+            pong = websocket.receive_json()
 
-            if msg["type"] in ("PARTIAL", "FINALIZED"):
-                assert "ts_audio_start" in msg
-                assert "ts_audio_end" in msg
-                assert "segment_id" in msg
+        assert pong["type"] == "PONG"
+        assert pong["payload"]["timestamp"] == 1_000
+        assert started["stream_id"] == partial["stream_id"] == pong["stream_id"]
+        assert [started["event_id"], partial["event_id"], pong["event_id"]] == [
+            1,
+            2,
+            3,
+        ]
+        assert partial["ts_audio_start"] == 0.0
+        assert partial["ts_audio_end"] == 1.0
+        assert partial["segment_id"]
 
+    def test_ping_timestamp_is_current(self, client: TestClient) -> None:
+        with client.websocket_connect("/stream") as websocket:
+            client_timestamp = int(time.time() * 1_000)
+            websocket.send_json({"type": "PING", "timestamp": client_timestamp})
+            pong = websocket.receive_json()
 
-# =============================================================================
-# Error Handling Tests
-# =============================================================================
+        assert abs(pong["payload"]["server_timestamp"] - client_timestamp) < 10_000
+
+    def test_tts_state_keeps_active_session_alive(self, client: TestClient) -> None:
+        with client.websocket_connect("/stream") as websocket:
+            websocket.send_json(start_message())
+            websocket.receive_json()
+            websocket.send_json({"type": "TTS_STATE", "playing": True})
+            websocket.send_json({"type": "PING", "timestamp": 12_345})
+            pong = websocket.receive_json()
+
+        assert pong["type"] == "PONG"
 
 
 class TestErrorHandling:
-    """Tests for error handling and recovery."""
-
-    def test_invalid_message_type(self, client: TestClient) -> None:
-        """Test handling of invalid message type."""
+    def test_invalid_message_is_recoverable(self, client: TestClient) -> None:
         with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
+            websocket.send_json(start_message())
             websocket.receive_json()
-
             websocket.send_json({"type": "INVALID_TYPE"})
-            msg = websocket.receive_json()
-
-            assert msg["type"] == "ERROR"
-            assert msg["payload"]["code"] == "invalid_message_type"
-            assert msg["payload"]["recoverable"] is True
-
-    def test_malformed_json(self, client: TestClient) -> None:
-        """Test handling of malformed JSON (when possible via TestClient)."""
-        # Note: FastAPI's TestClient auto-parses JSON, so we test via dict
-        with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            websocket.receive_json()
-
-            # Missing 'type' field
+            invalid_type = websocket.receive_json()
             websocket.send_json({"config": {}})
-            msg = websocket.receive_json()
+            missing_type = websocket.receive_json()
+            websocket.send_json({"type": "PING", "timestamp": 7})
+            pong = websocket.receive_json()
 
-            assert msg["type"] == "ERROR"
-
-    def test_recoverable_error_continues_session(
-        self, client: TestClient, sample_audio_data: bytes
-    ) -> None:
-        """Test recoverable errors don't terminate the session."""
-        with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            websocket.receive_json()
-
-            # Cause a recoverable error
-            websocket.send_json({"type": "INVALID_TYPE"})
-            msg = websocket.receive_json()
-            assert msg["type"] == "ERROR"
-            assert msg["payload"]["recoverable"] is True
-
-            # Session should still work
-            websocket.send_json(
-                {
-                    "type": "AUDIO_CHUNK",
-                    "data": base64.b64encode(sample_audio_data).decode(),
-                    "sequence": 1,
-                }
-            )
-            msg = websocket.receive_json()
-            # Should get a PARTIAL, not an error
-            assert msg["type"] in ("PARTIAL", "ERROR")
-
-
-# =============================================================================
-# Full Session Flow Tests
-# =============================================================================
-
-
-class TestFullSessionFlow:
-    """Integration tests for complete session workflows."""
-
-    def test_complete_transcription_session(
-        self, client: TestClient, sample_audio_data: bytes
-    ) -> None:
-        """Test complete transcription session from start to end."""
-        with client.websocket_connect("/stream") as websocket:
-            # 1. Start session
-            websocket.send_json(
-                {
-                    "type": "START_SESSION",
-                    "config": {"max_gap_sec": 1.0},
-                }
-            )
-            msg = websocket.receive_json()
-            assert msg["type"] == "SESSION_STARTED"
-            stream_id = msg["stream_id"]
-
-            # 2. Send a single audio chunk (1 second of audio)
-            websocket.send_json(
-                {
-                    "type": "AUDIO_CHUNK",
-                    "data": base64.b64encode(sample_audio_data).decode(),
-                    "sequence": 1,
-                }
-            )
-            # Receive the PARTIAL event
-            msg = websocket.receive_json()
-            assert msg["stream_id"] == stream_id
-            assert msg["type"] in ("PARTIAL", "FINALIZED")
-
-            # 3. End session
-            websocket.send_json({"type": "END_SESSION"})
-
-            # 4. Collect final events
-            events = []
-            while True:
-                try:
-                    msg = websocket.receive_json()
-                    events.append(msg)
-                    if msg["type"] == "SESSION_ENDED":
-                        break
-                except Exception:
-                    break
-
-            # Verify final events
-            types = [e["type"] for e in events]
-            assert "SESSION_ENDED" in types
-
-            # Verify SESSION_ENDED has proper stats
-            ended_event = next(e for e in events if e["type"] == "SESSION_ENDED")
-            stats = ended_event["payload"]["stats"]
-            assert stats["chunks_received"] == 1
-            assert stats["bytes_received"] > 0
-
-    def test_session_with_ping_heartbeat(
-        self, client: TestClient, sample_audio_data: bytes
-    ) -> None:
-        """Test session interleaved with PING heartbeats."""
-        with client.websocket_connect("/stream") as websocket:
-            # Start session
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            websocket.receive_json()
-
-            # Interleave PING with audio
-            websocket.send_json({"type": "PING", "timestamp": 1000})
-            msg = websocket.receive_json()
-            assert msg["type"] == "PONG"
-
-            websocket.send_json(
-                {
-                    "type": "AUDIO_CHUNK",
-                    "data": base64.b64encode(sample_audio_data).decode(),
-                    "sequence": 1,
-                }
-            )
-            msg = websocket.receive_json()
-            assert msg["type"] in ("PARTIAL", "FINALIZED")
-
-            websocket.send_json({"type": "PING", "timestamp": 2000})
-            msg = websocket.receive_json()
-            assert msg["type"] == "PONG"
-
-
-# =============================================================================
-# TTS State Tests
-# =============================================================================
-
-
-class TestTTSState:
-    """Tests for TTS_STATE message handling (v2.1 feature)."""
-
-    def test_tts_state_update(self, client: TestClient) -> None:
-        """Test TTS_STATE message is accepted during active session."""
-        with client.websocket_connect("/stream") as websocket:
-            # Start session
-            websocket.send_json({"type": "START_SESSION", "config": {}})
-            websocket.receive_json()
-
-            # Send TTS_STATE - should be accepted without error
-            websocket.send_json({"type": "TTS_STATE", "playing": True})
-
-            # Verify session still works by sending PING
-            websocket.send_json({"type": "PING", "timestamp": 12345})
-            msg = websocket.receive_json()
-            assert msg["type"] == "PONG"
-
-    def test_tts_state_without_session(self, client: TestClient) -> None:
-        """Test error when sending TTS_STATE without active session."""
-        with client.websocket_connect("/stream") as websocket:
-            websocket.send_json({"type": "TTS_STATE", "playing": True})
-            msg = websocket.receive_json()
-
-            assert msg["type"] == "ERROR"
-            assert msg["payload"]["code"] == "no_session"
-
-
-# =============================================================================
-# REST API Companion Endpoints Tests
-# =============================================================================
+        assert invalid_type["payload"]["code"] == "invalid_message_type"
+        assert invalid_type["payload"]["recoverable"] is True
+        assert missing_type["payload"]["code"] == "invalid_message_type"
+        assert pong["type"] == "PONG"
 
 
 class TestStreamConfigEndpoint:
-    """Tests for /stream/config REST endpoint."""
-
-    def test_get_stream_config(self, client: TestClient) -> None:
-        """Test GET /stream/config returns valid configuration."""
+    def test_get_stream_config_reports_only_earned_surface(
+        self,
+        client: TestClient,
+    ) -> None:
         response = client.get("/stream/config")
         assert response.status_code == 200
-
         data = response.json()
-        assert "default_config" in data
-        assert "supported_audio_formats" in data
-        assert "supported_sample_rates" in data
-        assert "message_types" in data
 
-        # Verify config structure
-        config = data["default_config"]
-        assert "max_gap_sec" in config
-        assert "sample_rate" in config
-        assert "audio_format" in config
-
-        # Verify message types
+        assert data["supported_audio_formats"] == ["pcm_s16le"]
+        assert data["supported_sample_rates"] == [16_000]
+        assert data["supported_channels"] == [1]
+        assert data["optional_live_enrichment"] is False
         assert "START_SESSION" in data["message_types"]["client"]
-        assert "AUDIO_CHUNK" in data["message_types"]["client"]
-        assert "END_SESSION" in data["message_types"]["client"]
-        assert "PING" in data["message_types"]["client"]
-
-        assert "SESSION_STARTED" in data["message_types"]["server"]
         assert "PARTIAL" in data["message_types"]["server"]
         assert "FINALIZED" in data["message_types"]["server"]
-        assert "ERROR" in data["message_types"]["server"]
-        assert "SESSION_ENDED" in data["message_types"]["server"]
-        assert "PONG" in data["message_types"]["server"]
