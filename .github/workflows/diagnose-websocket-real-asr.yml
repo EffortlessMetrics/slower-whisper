@@ -1,0 +1,99 @@
+name: Diagnose WebSocket Real ASR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - transcription/**
+      - tests/test_incremental_asr.py
+      - tests/test_public_streaming_real_asr.py
+      - tests/test_streaming_revision_controller.py
+      - tests/test_streaming_revision_edges.py
+      - tests/test_streaming_runtime_asr.py
+      - tests/test_websocket_real_asr_source_policy.py
+      - tests/test_websocket_streaming.py
+      - tests/test_streaming_ws.py
+      - .github/workflows/diagnose-websocket-real-asr.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-websocket-real-asr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Install test environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+      - name: incremental core
+        id: incremental
+        continue-on-error: true
+        run: uv run pytest -q --tb=short tests/test_incremental_asr.py
+      - name: public route
+        id: public_route
+        continue-on-error: true
+        run: uv run pytest -q --tb=short tests/test_public_streaming_real_asr.py
+      - name: revision controller
+        id: controller
+        continue-on-error: true
+        run: uv run pytest -q --tb=short tests/test_streaming_revision_controller.py
+      - name: revision edges
+        id: edges
+        continue-on-error: true
+        run: uv run pytest -q --tb=short tests/test_streaming_revision_edges.py
+      - name: runtime adapter
+        id: runtime_adapter
+        continue-on-error: true
+        run: uv run pytest -q --tb=short tests/test_streaming_runtime_asr.py
+      - name: source policy
+        id: source_policy
+        continue-on-error: true
+        run: uv run pytest -q --tb=short tests/test_websocket_real_asr_source_policy.py
+      - name: public integration
+        id: integration
+        continue-on-error: true
+        run: uv run pytest -q --tb=short tests/test_websocket_streaming.py
+      - name: legacy session object
+        id: legacy_session
+        continue-on-error: true
+        run: uv run pytest -q --tb=short tests/test_streaming_ws.py
+      - name: Fail if any focused ownership seam failed
+        env:
+          INCREMENTAL: ${{ steps.incremental.outcome }}
+          PUBLIC_ROUTE: ${{ steps.public_route.outcome }}
+          CONTROLLER: ${{ steps.controller.outcome }}
+          EDGES: ${{ steps.edges.outcome }}
+          RUNTIME_ADAPTER: ${{ steps.runtime_adapter.outcome }}
+          SOURCE_POLICY: ${{ steps.source_policy.outcome }}
+          INTEGRATION: ${{ steps.integration.outcome }}
+          LEGACY_SESSION: ${{ steps.legacy_session.outcome }}
+        run: |
+          printf '%s\n' \
+            "incremental=$INCREMENTAL" \
+            "public_route=$PUBLIC_ROUTE" \
+            "controller=$CONTROLLER" \
+            "edges=$EDGES" \
+            "runtime_adapter=$RUNTIME_ADAPTER" \
+            "source_policy=$SOURCE_POLICY" \
+            "integration=$INTEGRATION" \
+            "legacy_session=$LEGACY_SESSION"
+          test "$INCREMENTAL" = success
+          test "$PUBLIC_ROUTE" = success
+          test "$CONTROLLER" = success
+          test "$EDGES" = success
+          test "$RUNTIME_ADAPTER" = success
+          test "$SOURCE_POLICY" = success
+          test "$INTEGRATION" = success
+          test "$LEGACY_SESSION" = success
