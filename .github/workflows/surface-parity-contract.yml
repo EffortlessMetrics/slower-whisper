@@ -1,0 +1,113 @@
+name: Surface Parity Contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  surface-parity-source:
+    name: surface-parity-source (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install locked test environment
+        run: uv sync --frozen --python ${{ matrix.python-version }} --extra dev --extra api
+
+      - name: Verify static parity contract
+        run: |
+          uv run ruff check tests/test_surface_parity.py
+          uv run ruff format --check tests/test_surface_parity.py
+          git diff --check
+
+      - name: Verify file, bytes, and REST parity
+        run: |
+          uv run pytest -q \
+            tests/test_surface_parity.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py
+
+  surface-parity-installed:
+    name: surface-parity-installed (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Build and install API wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          VENV="$RUNNER_TEMP/surface-parity-${{ matrix.python-version }}"
+          uv venv "$VENV" --python ${{ matrix.python-version }}
+          WHEEL=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$WHEEL"
+          uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
+          uv pip install --python "$VENV/bin/python" \
+            pytest==9.0.2 \
+            jsonschema==4.25.1 \
+            httpx==0.28.1
+          uv pip check --python "$VENV/bin/python"
+          echo "SURFACE_PARITY_VENV=$VENV" >> "$GITHUB_ENV"
+
+      - name: Exercise installed surfaces outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_ROOT="$RUNNER_TEMP/surface-parity-test"
+          mkdir -p "$TEST_ROOT"
+          cp tests/test_surface_parity.py "$TEST_ROOT/"
+          cd "$TEST_ROOT"
+          unset PYTHONPATH
+          "$SURFACE_PARITY_VENV/bin/python" -m pytest -q test_surface_parity.py
