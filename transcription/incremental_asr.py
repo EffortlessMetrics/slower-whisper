@@ -306,13 +306,11 @@ class IncrementalASRSession:
         end_sample = self._absolute_sample
         active_samples = self._active_sample_count
         cached_text = self._last_hypothesis_text
-        reuse_cached_text = (
+        if (
             final_reason is not None
             and active_samples == self._last_hypothesis_samples
             and cached_text is not None
-        )
-
-        if reuse_cached_text:
+        ):
             text = cached_text
         else:
             pcm = bytes(self._active_audio)
