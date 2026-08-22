@@ -153,9 +153,7 @@ async def websocket_stream(websocket: WebSocket) -> None:
             if message_type is ClientMessageType.PING:
                 await _send(
                     websocket,
-                    (session or connection_controls).create_pong_event(
-                        _client_timestamp(payload)
-                    ),
+                    (session or connection_controls).create_pong_event(_client_timestamp(payload)),
                 )
                 continue
 
@@ -176,9 +174,7 @@ async def websocket_stream(websocket: WebSocket) -> None:
                     session = WebSocketStreamingSession()
                     negotiation_error = StreamingNegotiationError(
                         "Streaming audio configuration is unsupported",
-                        context={
-                            "mismatches": {"config": "must_be_object"}
-                        },
+                        context={"mismatches": {"config": "must_be_object"}},
                     )
                     await _send(websocket, _terminal_event(session, negotiation_error))
                     await websocket.close(code=1003)
