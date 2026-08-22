@@ -257,6 +257,7 @@ def _transcribe_bytes_impl(
 
     temp_file = None
     norm_temp = None
+    engine: TranscriptionEngine | None = None
     try:
         temp_file = tempfile.NamedTemporaryFile(
             suffix=f".{format_lower}",
@@ -327,6 +328,16 @@ def _transcribe_bytes_impl(
         return transcript
 
     finally:
+        if engine is not None:
+            close = getattr(engine, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as cleanup_exc:
+                    logger.debug(
+                        "Failed to close bytes transcription engine: %s",
+                        cleanup_exc,
+                    )
         if temp_file is not None:
             try:
                 Path(temp_file.name).unlink(missing_ok=True)
