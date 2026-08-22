@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 from .audio_io import sanitize_filename
 
 _MAX_SOURCE_NAME_CHARS = 255
+_MAX_SOURCE_SUFFIX_CHARS = 32
 
 
 def safe_source_name(
@@ -26,6 +27,7 @@ def safe_source_name(
         fallback_suffix,
         default="audio",
     )
+    safe_fallback_suffix = safe_fallback_suffix[:_MAX_SOURCE_SUFFIX_CHARS]
     fallback = f"audio{safe_fallback_suffix}"
     if not filename:
         return fallback
@@ -45,6 +47,7 @@ def safe_source_name(
     )
     if not safe_suffix:
         safe_suffix = safe_fallback_suffix
+    safe_suffix = safe_suffix[:_MAX_SOURCE_SUFFIX_CHARS]
 
     stem_limit = max(1, _MAX_SOURCE_NAME_CHARS - len(safe_suffix))
     return f"{safe_stem[:stem_limit]}{safe_suffix}"
