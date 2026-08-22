@@ -16,9 +16,7 @@ def function_source(path: Path, name: str) -> str:
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(path))
     matches = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == name
+        node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == name
     ]
     assert len(matches) == 1
     extracted = ast.get_source_segment(source, matches[0])
