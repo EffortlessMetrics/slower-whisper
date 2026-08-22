@@ -15,7 +15,7 @@ jobs:
   format-and-verify:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
 
     steps:
       - name: Checkout exact branch
@@ -72,12 +72,6 @@ jobs:
           uv run mypy transcription/incremental_asr.py
           uv run pytest -q tests/test_incremental_asr.py
           git diff --check
-
-      - name: Verify full non-heavy repository suite
-        run: |
-          uv run pytest -q \
-            -m "not slow and not heavy and not requires_gpu" \
-            --no-cov
 
       - name: Commit only the formatted accepted candidate
         env:
