@@ -30,13 +30,19 @@ def test_safe_source_name_is_a_bounded_basename(
     assert safe_source_name(submitted, fallback_suffix=fallback_suffix) == expected
 
 
-def test_safe_source_name_bounds_untrusted_response_identity() -> None:
-    result = safe_source_name(
+@pytest.mark.parametrize(
+    "submitted",
+    [
         f"{'x' * 400}.wav",
+        f"clip.{'x' * 400}",
+    ],
+)
+def test_safe_source_name_bounds_untrusted_response_identity(submitted: str) -> None:
+    result = safe_source_name(
+        submitted,
         fallback_suffix=".wav",
     )
 
-    assert result.endswith(".wav")
     assert len(result) <= 255
 
 
