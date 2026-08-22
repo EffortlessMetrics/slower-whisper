@@ -80,6 +80,12 @@ class RuntimeProfileMismatchError(TranscriptionError):
     default_reason_code = "runtime_profile_mismatch"
 
 
+class StreamingNegotiationError(TranscriptionError):
+    """Raised when a client requests an unsupported stable streaming format."""
+
+    default_reason_code = "streaming_audio_unsupported"
+
+
 class EnrichmentError(SlowerWhisperError):
     """Raised when audio enrichment fails."""
 
