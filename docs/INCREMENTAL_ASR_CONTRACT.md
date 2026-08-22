@@ -19,7 +19,7 @@ resampling, WebSocket framing, and VAD detection remain outside this seam.
 
 ## Revision identity
 
-One active utterance receives one stable `segment_id`:
+One active utterance receives one stable and unique `segment_id`:
 
 ```text
 segment_id = seg-00000001
@@ -36,6 +36,10 @@ the same segment identity and names one reason:
 - `max_utterance`;
 - `end_of_stream`.
 
+The core validates those reasons at runtime rather than relying on static
+`Literal` typing alone. Injected segment-ID factories may not return blank,
+non-string, or duplicate identifiers.
+
 ## Time authority
 
 The core owns integer sample positions. Public intervals are half-open:
@@ -49,14 +53,21 @@ Inference cadence is determined by received audio samples, not network packet
 frequency. Equivalent PCM under different packet fragmentation produces the
 same revision sequence, backend calls, and work metrics.
 
-The active buffer never exceeds `max_utterance_samples`. Finalization reuses the
+The default cadence uses deterministic geometric backoff. A 30-second
+continuous utterance submits prefixes at 1, 2, 4, 8, 16, and 30 seconds. That is
+six model calls and 61 seconds of submitted prefix audio, rather than 59 calls
+and 914.5 seconds from a fixed half-second cadence. Tests may set the backoff
+factor to one when they need a linear schedule.
+
+Active audio never exceeds `max_utterance_samples`. The PCM buffer never exceeds
+`max_utterance_samples * bytes_per_sample_frame` bytes. Finalization reuses the
 last hypothesis when no new audio arrived, avoiding a duplicate model call at a
 VAD boundary.
 
 The metrics receipt records:
 
 - model calls;
-- total decoded prefix samples;
+- total submitted prefix samples;
 - peak active audio bytes;
 - revisions emitted;
 - segments finalized;
@@ -69,8 +80,9 @@ Backend inference failure becomes `ASRInferenceError` and moves the session to
 observationally equivalent to “not enough audio for a hypothesis yet.” A failed
 or ended session rejects further audio with `RuntimeNotReadyError`.
 
-Provider exception text remains available only through local exception chaining;
-the public error context contains bounded phase, segment, and sample identity.
+Terminal inference failure clears the active PCM buffer and segment state. The
+failure reason remains available through bounded public context, while provider
+exception text remains available only through local exception chaining.
 
 ## Deliberate boundary
 
@@ -87,11 +99,12 @@ stable revision contract.
 
 The `Incremental ASR Contract` workflow proves on Python 3.12 and 3.13:
 
-- stable identity and replacement revisions;
-- explicit VAD, maximum-utterance, and end-of-stream finality;
+- stable unique identity and replacement revisions;
+- explicit and runtime-validated finality;
 - absolute monotonic sample time;
 - packetization-invariant revisions and model work;
-- bounded active memory;
+- geometrically bounded default prefix work;
+- bounded active memory and failure cleanup;
 - typed inference and output failure;
 - strict PCM input negotiation;
 - synchronous and asynchronous backend support;
