@@ -34,7 +34,7 @@ from .exceptions import (
 from .service_metrics import router as metrics_router
 from .service_middleware import add_security_headers, log_requests
 from .service_runtime import ASRRuntime, RuntimeProfile
-from .service_streaming import router as streaming_router
+from .service_runtime_streaming import router as streaming_router
 from .service_validation import (
     save_upload_file_streaming,
     validate_audio_format,
