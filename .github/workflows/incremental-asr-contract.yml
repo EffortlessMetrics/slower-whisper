@@ -36,11 +36,8 @@ jobs:
       - name: Install Python
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Install focused test environment
-        run: |
-          uv sync --python ${{ matrix.python-version }}
-          uv pip install --python .venv/bin/python \
-            pytest pytest-asyncio mypy==1.19.1 ruff==0.14.14
+      - name: Install locked development environment
+        run: uv sync --python ${{ matrix.python-version }} --extra dev
 
       - name: Verify static revision contract
         run: |
@@ -138,7 +135,6 @@ jobs:
       - name: Verify full non-heavy repository suite
         if: matrix.python-version == '3.12'
         run: |
-          uv sync --python 3.12 --extra dev
           uv run pytest -q \
             -m "not slow and not heavy and not requires_gpu" \
             --no-cov
