@@ -54,6 +54,9 @@ class RuntimeIncrementalASRBackend:
             raise ValueError("pcm_s16le must contain complete 16-bit samples")
         if start_sample < 0 or end_sample < start_sample:
             raise ValueError("incremental sample bounds are invalid")
+        sample_count = len(pcm_s16le) // 2
+        if end_sample - start_sample != sample_count:
+            raise ValueError("incremental sample span does not match the PCM payload")
         if not self.runtime.ready:
             raise RuntimeNotReadyError(
                 "The process-owned ASR runtime is not ready",
