@@ -1,0 +1,509 @@
+name: Prepare Directory CLI Parity Discovery
+
+on:
+  push:
+    branches: [automation/directory-cli-parity-discovery]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: prepare-directory-cli-parity-discovery
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CHECKPOINT_A_BRANCH: feature/surface-parity-620
+      CHECKPOINT_B_BRANCH: feature/directory-cli-parity-620
+
+    steps:
+      - name: Wait for checkpoint A to merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 7200))
+          while true; do
+            pr=$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --head "$CHECKPOINT_A_BRANCH" \
+              --state all \
+              --json number,state,mergedAt \
+              --jq '.[0] // empty')
+            if [ -n "$pr" ] && [ "$(jq -r .mergedAt <<<"$pr")" != "null" ]; then
+              echo "CHECKPOINT_A_PR=$(jq -r .number <<<"$pr")" >> "$GITHUB_ENV"
+              break
+            fi
+            if [ -n "$pr" ] && [ "$(jq -r .state <<<"$pr")" = "CLOSED" ]; then
+              echo "Checkpoint A closed without merge"
+              exit 1
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Timed out waiting for checkpoint A"
+              exit 1
+            fi
+            sleep 30
+          done
+
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Create a clean checkpoint-B branch from merged main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --prune
+          git switch -C "$CHECKPOINT_B_BRANCH" origin/main
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install locked development environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Generate the executable entrypoint inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p contracts docs tests
+          python - <<'PY'
+          from __future__ import annotations
+
+          import ast
+          import json
+          import subprocess
+          import tomllib
+          from pathlib import Path
+          from typing import Any
+
+          ROOT = Path.cwd()
+          INTERESTING_CALLS = {
+              "TranscriptionEngine",
+              "build_generation_metadata",
+              "normalize_all",
+              "run_pipeline",
+              "transcribe_bytes",
+              "transcribe_file",
+              "write_json",
+              "write_srt",
+              "write_text",
+              "write_vtt",
+          }
+          INTERESTING_NAMES = {
+              "main",
+              "run_pipeline",
+              "transcribe",
+              "transcribe_command",
+              "transcribe_directory",
+          }
+
+          def dotted_name(node: ast.AST) -> str | None:
+              if isinstance(node, ast.Name):
+                  return node.id
+              if isinstance(node, ast.Attribute):
+                  parent = dotted_name(node.value)
+                  return f"{parent}.{node.attr}" if parent else node.attr
+              return None
+
+          def call_names(node: ast.AST) -> list[str]:
+              names: set[str] = set()
+              for child in ast.walk(node):
+                  if not isinstance(child, ast.Call):
+                      continue
+                  name = dotted_name(child.func)
+                  if name:
+                      names.add(name)
+                      names.add(name.rsplit(".", 1)[-1])
+              return sorted(names)
+
+          def decorators(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+              values: list[str] = []
+              for decorator in node.decorator_list:
+                  target = decorator.func if isinstance(decorator, ast.Call) else decorator
+                  name = dotted_name(target)
+                  if name:
+                      values.append(name)
+              return sorted(values)
+
+          records: list[dict[str, Any]] = []
+          for path in sorted((ROOT / "transcription").rglob("*.py")):
+              source = path.read_text(encoding="utf-8")
+              try:
+                  tree = ast.parse(source, filename=str(path))
+              except SyntaxError:
+                  continue
+              module = path.relative_to(ROOT).with_suffix("").as_posix().replace("/", ".")
+              for top in tree.body:
+                  owners: list[tuple[str, ast.AST]] = []
+                  if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                      owners.append((top.name, top))
+                  elif isinstance(top, ast.ClassDef):
+                      for member in top.body:
+                          if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                              owners.append((f"{top.name}.{member.name}", member))
+                  for symbol, node in owners:
+                      assert isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                      calls = call_names(node)
+                      decos = decorators(node)
+                      interesting = (
+                          symbol.rsplit(".", 1)[-1] in INTERESTING_NAMES
+                          or bool(INTERESTING_CALLS.intersection(calls))
+                          or any(
+                              value.endswith(".command")
+                              or value.endswith(".callback")
+                              for value in decos
+                          )
+                      )
+                      if not interesting:
+                          continue
+                      records.append(
+                          {
+                              "module": module,
+                              "path": path.relative_to(ROOT).as_posix(),
+                              "symbol": symbol,
+                              "line": node.lineno,
+                              "async": isinstance(node, ast.AsyncFunctionDef),
+                              "calls": calls,
+                              "decorators": decos,
+                              "canonical_metadata_call": (
+                                  "build_generation_metadata" in calls
+                                  or "transcribe_file" in calls
+                                  or "transcribe_bytes" in calls
+                              ),
+                              "constructs_engine": "TranscriptionEngine" in calls,
+                              "manual_writer_calls": sorted(
+                                  {
+                                      name
+                                      for name in calls
+                                      if name in {
+                                          "write_json",
+                                          "write_srt",
+                                          "write_text",
+                                          "write_vtt",
+                                      }
+                                  }
+                              ),
+                          }
+                      )
+
+          pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+          scripts = dict(sorted(pyproject.get("project", {}).get("scripts", {}).items()))
+
+          def run_help(*arguments: str) -> dict[str, Any]:
+              process = subprocess.run(
+                  ["uv", "run", "slower-whisper", *arguments],
+                  cwd=ROOT,
+                  text=True,
+                  capture_output=True,
+                  check=False,
+                  timeout=30,
+              )
+              return {
+                  "arguments": list(arguments),
+                  "returncode": process.returncode,
+                  "stdout": process.stdout,
+                  "stderr": process.stderr,
+              }
+
+          test_references: list[str] = []
+          for path in sorted((ROOT / "tests").glob("test*.py")):
+              source = path.read_text(encoding="utf-8")
+              if any(
+                  needle in source
+                  for needle in (
+                      "run_pipeline",
+                      "slower-whisper",
+                      "transcribe --help",
+                      "transcribe_directory",
+                  )
+              ):
+                  test_references.append(path.relative_to(ROOT).as_posix())
+
+          cli_candidates = [
+              record
+              for record in records
+              if ".cli" in record["module"]
+              or "cli_" in record["module"]
+              or any(
+                  decorator.endswith(".command")
+                  or decorator.endswith(".callback")
+                  for decorator in record["decorators"]
+              )
+          ]
+          batch_candidates = [
+              record
+              for record in records
+              if record["symbol"].rsplit(".", 1)[-1] in {
+                  "run_pipeline",
+                  "transcribe_directory",
+              }
+              or "pipeline" in record["module"]
+              or "normalize_all" in record["calls"]
+          ]
+
+          contract = {
+              "contract_version": 1,
+              "project_scripts": scripts,
+              "cli_help": run_help("--help"),
+              "transcribe_help": run_help("transcribe", "--help"),
+              "cli_candidates": cli_candidates,
+              "batch_candidates": batch_candidates,
+              "test_references": test_references,
+          }
+          contract_path = ROOT / "contracts" / "surface_parity_entrypoints.json"
+          contract_path.write_text(
+              json.dumps(contract, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          def table(records: list[dict[str, Any]]) -> str:
+              if not records:
+                  return "_No candidates found._\n"
+              lines = [
+                  "| Module | Symbol | Canonical metadata | Constructs engine | Manual writers |",
+                  "|---|---|---:|---:|---|",
+              ]
+              for record in records:
+                  lines.append(
+                      "| `{module}` | `{symbol}` | {canonical} | {engine} | {writers} |".format(
+                          module=record["module"],
+                          symbol=record["symbol"],
+                          canonical="yes" if record["canonical_metadata_call"] else "no",
+                          engine="yes" if record["constructs_engine"] else "no",
+                          writers=(
+                              ", ".join(f"`{value}`" for value in record["manual_writer_calls"])
+                              or "—"
+                          ),
+                      )
+                  )
+              return "\n".join(lines) + "\n"
+
+          report = [
+              "# Directory and CLI surface-parity discovery",
+              "",
+              "This report is generated from the merged checkpoint-A source tree. It exposes owners and call edges; it does **not** claim semantic parity.",
+              "",
+              "## Installed console scripts",
+              "",
+          ]
+          for name, target in scripts.items():
+              report.append(f"- `{name}` → `{target}`")
+          report.extend(
+              [
+                  "",
+                  "## Directory and batch candidates",
+                  "",
+                  table(batch_candidates).rstrip(),
+                  "",
+                  "## CLI candidates",
+                  "",
+                  table(cli_candidates).rstrip(),
+                  "",
+                  "## Existing tests that mention the surfaces",
+                  "",
+              ]
+          )
+          report.extend(f"- `{path}`" for path in test_references)
+          report.extend(
+              [
+                  "",
+                  "## `slower-whisper transcribe --help`",
+                  "",
+                  "```text",
+                  contract["transcribe_help"]["stdout"].rstrip(),
+                  contract["transcribe_help"]["stderr"].rstrip(),
+                  "```",
+                  "",
+                  "## Interpretation rule",
+                  "",
+                  "A candidate is only marked as reaching canonical metadata when its local call graph invokes `build_generation_metadata`, `transcribe_file`, or `transcribe_bytes`. This is a shift-left ownership signal, not behavioral proof. Checkpoint B must still run the same deterministic audio/runtime fixture through the actual directory and CLI entrypoints and compare the complete schema-valid semantic projection.",
+                  "",
+              ]
+          )
+          (ROOT / "docs" / "SURFACE_PARITY_DISCOVERY.md").write_text(
+              "\n".join(report),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Add an executable discovery-contract test
+        run: |
+          cat > tests/test_surface_parity_entrypoints.py <<'PY'
+          """The directory and CLI parity owners must remain explicit and resolvable."""
+
+          from __future__ import annotations
+
+          import ast
+          import json
+          from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parents[1]
+          CONTRACT = ROOT / "contracts" / "surface_parity_entrypoints.json"
+
+
+          def load_contract() -> dict:
+              return json.loads(CONTRACT.read_text(encoding="utf-8"))
+
+
+          def declared_symbols(path: Path) -> set[str]:
+              tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              symbols: set[str] = set()
+              for node in tree.body:
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                      symbols.add(node.name)
+                  elif isinstance(node, ast.ClassDef):
+                      for member in node.body:
+                          if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                              symbols.add(f"{node.name}.{member.name}")
+              return symbols
+
+
+          def test_console_and_transcribe_help_are_executable() -> None:
+              contract = load_contract()
+              assert contract["contract_version"] == 1
+              assert "slower-whisper" in contract["project_scripts"]
+              assert contract["cli_help"]["returncode"] == 0
+              assert contract["transcribe_help"]["returncode"] == 0
+              assert "transcribe" in contract["transcribe_help"]["stdout"].lower()
+
+
+          def test_batch_and_cli_candidates_are_present_and_resolvable() -> None:
+              contract = load_contract()
+              assert contract["batch_candidates"], "No directory/batch owner was discovered"
+              assert contract["cli_candidates"], "No CLI owner was discovered"
+
+              for record in [
+                  *contract["batch_candidates"],
+                  *contract["cli_candidates"],
+              ]:
+                  path = ROOT / record["path"]
+                  assert path.is_file(), record
+                  assert record["symbol"] in declared_symbols(path), record
+
+
+          def test_discovery_exposes_canonical_and_manual_ownership_signals() -> None:
+              contract = load_contract()
+              candidates = [
+                  *contract["batch_candidates"],
+                  *contract["cli_candidates"],
+              ]
+              assert any(
+                  record["canonical_metadata_call"]
+                  for record in candidates
+              ), "No candidate reaches the canonical metadata/API seam"
+              assert any(
+                  record["constructs_engine"] or record["manual_writer_calls"]
+                  for record in candidates
+              ), "Discovery found no operation-owned engine or writer seam to review"
+          PY
+
+      - name: Verify deterministic discovery and existing contracts
+        run: |
+          uv run ruff check --fix tests/test_surface_parity_entrypoints.py
+          uv run ruff format tests/test_surface_parity_entrypoints.py
+          uv run ruff check tests/test_surface_parity_entrypoints.py
+          uv run ruff format --check tests/test_surface_parity_entrypoints.py
+          uv run pytest -q \
+            tests/test_surface_parity_entrypoints.py \
+            tests/test_surface_parity.py \
+            tests/test_cli.py
+          git diff --check
+
+      - name: Commit the discovery candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add \
+            contracts/surface_parity_entrypoints.json \
+            docs/SURFACE_PARITY_DISCOVERY.md \
+            tests/test_surface_parity_entrypoints.py
+          git commit -m "test: expose directory and CLI parity ownership"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force-with-lease origin HEAD:"$CHECKPOINT_B_BRANCH"
+
+      - name: Open checkpoint-B draft PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head "$CHECKPOINT_B_BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -z "$existing" ]; then
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --head "$CHECKPOINT_B_BRANCH" \
+              --base main \
+              --draft \
+              --title "test: expose directory and CLI parity ownership" \
+              --body-file - <<'BODY'
+          ## Ruling
+
+          This is the discovery half of checkpoint B for #633.
+
+          It generates an executable inventory of the installed CLI entrypoint, directory/batch owners, engine-construction seams, writer calls, and local reachability to the canonical metadata/API path. The generated contract is tested against the live AST so later refactors cannot silently move or duplicate ownership.
+
+          Refs #633. Advances #620.
+
+          ## What this earns
+
+          - the actual `slower-whisper` and `transcribe` help surfaces execute from the merged source tree;
+          - directory/batch and CLI owner candidates are explicit and resolvable;
+          - engine construction, manual writers, and canonical metadata/API calls are visible in one deterministic contract;
+          - existing tests touching those surfaces are indexed;
+          - checkpoint B can now add behavioral parity to the real entrypoints rather than guessing their signatures.
+
+          ## What this does not earn
+
+          This PR does **not** claim directory or CLI transcript parity. The next change must run the deterministic checkpoint-A fixture through the discovered public entrypoints, compare complete schema-valid transcript and stable receipt projections, and repair the owning orchestration path when they diverge.
+
+          ## Review map
+
+          1. `contracts/surface_parity_entrypoints.json` — deterministic machine-readable ownership inventory.
+          2. `docs/SURFACE_PARITY_DISCOVERY.md` — human call-graph and CLI surface report.
+          3. `tests/test_surface_parity_entrypoints.py` — live-symbol and executable-help contract.
+          BODY
+          fi
+
+      - name: Comment the parity issue
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr_number=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head "$CHECKPOINT_B_BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+          gh issue comment 633 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Checkpoint B discovery opened as #${pr_number}. It inventories the actual directory/batch and CLI owners after checkpoint A, including engine construction, writer seams, canonical metadata reachability, executable help, and test references. It intentionally makes no behavioral parity claim yet."
+
+      - name: Delete disposable automation branch
+        if: success()
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/directory-cli-parity-discovery" || true
