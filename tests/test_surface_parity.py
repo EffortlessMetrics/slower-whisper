@@ -25,7 +25,7 @@ from transcription.models import Transcript  # noqa: E402
 from transcription.receipt import receipt_stable_projection  # noqa: E402
 from transcription.service import create_app  # noqa: E402
 from transcription.service_runtime import ASRRuntime, RuntimeProfile  # noqa: E402
-from transcription.service_serialization import _transcript_to_dict  # noqa: E402
+from transcription.writers import write_json  # noqa: E402
 
 
 class ParityEngine:
@@ -180,10 +180,6 @@ def semantic_projection(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def transcript_document(transcript: Transcript) -> dict[str, Any]:
-    return _transcript_to_dict(transcript, include_words=False)
-
-
 def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -199,11 +195,15 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     audio_path.write_bytes(wav_bytes())
 
     file_engine = ParityEngine(asr_config())
+    file_root = tmp_path / "file-project"
     file_result = transcribe_file(
         audio_path,
-        tmp_path / "file-project",
+        file_root,
         config(),
         _engine=file_engine,
+    )
+    file_document = json.loads(
+        (file_root / "json" / "surface.json").read_text(encoding="utf-8")
     )
 
     monkeypatch.setattr("transcription.asr_engine.TranscriptionEngine", ParityEngine)
@@ -212,6 +212,9 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
         config(),
         file_name=source_name,
     )
+    bytes_path = tmp_path / "bytes.json"
+    write_json(bytes_result, bytes_path)
+    bytes_document = json.loads(bytes_path.read_text(encoding="utf-8"))
 
     runtime = ASRRuntime(
         RuntimeProfile.from_config(config()),
@@ -224,23 +227,24 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
             files={"audio": (source_name, wav_bytes(), "audio/mpeg")},
         )
     assert response.status_code == 200, response.text
-    assert response.json()["file"] == source_name
-    assert response.json()["file_name"] == source_name
-    assert response.json()["meta"]["audio_file"] == source_name
+    rest_document = response.json()
+    assert rest_document["file"] == source_name
+    assert rest_document["file_name"] == source_name
+    assert rest_document["meta"]["audio_file"] == source_name
 
-    documents = [
-        transcript_document(file_result),
-        transcript_document(bytes_result),
-        response.json(),
-    ]
+    documents = [file_document, bytes_document, rest_document]
     for document in documents:
         validate_document(document)
-        assert document["file_name"] == document["file"] == source_name
+        assert document["file"] == source_name
         assert document["meta"]["audio_file"] == source_name
+
+    assert "file_name" not in file_document
+    assert "file_name" not in bytes_document
 
     projections = [semantic_projection(document) for document in documents]
     assert projections[1:] == projections[:-1]
 
+    assert file_result.file_name == bytes_result.file_name == source_name
     assert projections[0]["runtime"] == {
         "backend": "faster-whisper",
         "model": "tiny",
