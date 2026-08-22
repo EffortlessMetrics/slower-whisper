@@ -25,6 +25,7 @@ from transcription.models import Transcript  # noqa: E402
 from transcription.receipt import receipt_stable_projection  # noqa: E402
 from transcription.service import create_app  # noqa: E402
 from transcription.service_runtime import ASRRuntime, RuntimeProfile  # noqa: E402
+from transcription.service_serialization import _transcript_to_dict  # noqa: E402
 
 
 class ParityEngine:
@@ -165,6 +166,7 @@ def semantic_projection(document: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": document["schema_version"],
         "file": document["file"],
+        "audio_file": meta["audio_file"],
         "language": document["language"],
         "segments": document["segments"],
         "runtime": {
@@ -179,7 +181,7 @@ def semantic_projection(document: dict[str, Any]) -> dict[str, Any]:
 
 
 def transcript_document(transcript: Transcript) -> dict[str, Any]:
-    return transcript.to_dict()
+    return _transcript_to_dict(transcript, include_words=False)
 
 
 def test_file_bytes_and_rest_have_equivalent_transcript_truth(
@@ -221,6 +223,9 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
             files={"audio": ("surface.wav", wav_bytes(), "audio/wav")},
         )
     assert response.status_code == 200, response.text
+    assert response.json()["file"] == "surface.wav"
+    assert response.json()["file_name"] == "surface.wav"
+    assert response.json()["meta"]["audio_file"] == "surface.wav"
 
     documents = [
         transcript_document(file_result),
@@ -229,6 +234,8 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     ]
     for document in documents:
         validate_document(document)
+        assert document["file_name"] == document["file"] == "surface.wav"
+        assert document["meta"]["audio_file"] == "surface.wav"
 
     projections = [semantic_projection(document) for document in documents]
     assert projections[1:] == projections[:-1]
