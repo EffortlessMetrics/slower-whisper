@@ -13,7 +13,7 @@ import math
 import struct
 import time
 from collections.abc import Awaitable
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 from .exceptions import (
     ASRInferenceError,
@@ -161,7 +161,7 @@ class RevisionStreamingController:
                 sample_rate=self.incremental.config.sample_rate,
             )
             decision = (
-                await cast(Awaitable[bool], raw_decision)
+                await raw_decision
                 if inspect.isawaitable(raw_decision)
                 else raw_decision
             )
