@@ -1,0 +1,57 @@
+name: Fix Surface Parity Merge Guard
+
+on:
+  push:
+    branches: [automation/surface-parity-merge]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-surface-parity-merge-guard
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout automation branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: automation/surface-parity-merge
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Align the documentation assertion with the contract heading
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/workflows/merge-surface-parity-checkpoint-a.yml")
+          source = path.read_text(encoding="utf-8")
+          old = (
+              "          grep -Fq 'Directory/batch and CLI remain checkpoint B' \\\n"
+              "            docs/SURFACE_PARITY_CONTRACT.md\n"
+          )
+          new = (
+              "          grep -Fq '## Checkpoint B: directory and CLI' \\\n"
+              "            docs/SURFACE_PARITY_CONTRACT.md\n"
+          )
+          if new not in source:
+              assert source.count(old) == 1, "documentation assertion changed"
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+      - name: Commit the corrected guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm .github/workflows/fix-surface-parity-merge-guard.yml
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -A
+          git commit -m "ci: align the surface parity documentation guard"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:automation/surface-parity-merge
