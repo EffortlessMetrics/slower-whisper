@@ -224,9 +224,7 @@ async def transcribe_audio(
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
-        audio_path = tmpdir_path / (
-            f"audio_{secrets.token_hex(16)}{audio_suffix}"
-        )
+        audio_path = tmpdir_path / f"audio_{secrets.token_hex(16)}{audio_suffix}"
         try:
             await _legacy_transcribe.save_upload_file_streaming(
                 audio,
