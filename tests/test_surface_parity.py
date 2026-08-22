@@ -263,3 +263,28 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     }
     assert ParityEngine.instances == 3
     assert ParityEngine.closes == 2
+
+
+def test_operation_owned_file_engine_closes_without_closing_injected_engines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ParityEngine.instances = 0
+    ParityEngine.closes = 0
+    install_fake_audio_boundary(monkeypatch)
+    monkeypatch.setattr("transcription.asr_engine.TranscriptionEngine", ParityEngine)
+
+    source_name = "owned.flac"
+    audio_path = tmp_path / source_name
+    audio_path.write_bytes(wav_bytes())
+
+    result = transcribe_file(
+        audio_path,
+        tmp_path / "owned-project",
+        config(),
+    )
+
+    assert result.file_name == source_name
+    assert result.meta["audio_file"] == source_name
+    assert ParityEngine.instances == 1
+    assert ParityEngine.closes == 1
