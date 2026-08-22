@@ -1,0 +1,289 @@
+name: Merge Surface Parity Checkpoint A
+
+on:
+  push:
+    branches: [automation/surface-parity-merge]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: merge-surface-parity-checkpoint-a
+  cancel-in-progress: false
+
+jobs:
+  validate-and-merge:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FEATURE_BRANCH: feature/surface-parity-620
+
+    steps:
+      - name: Wait for the feature branch to settle
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 7200))
+          while true; do
+            pr_number=$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --head "$FEATURE_BRANCH" \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty')
+            settled=true
+            if [ -z "$pr_number" ]; then
+              settled=false
+            else
+              git fetch origin "$FEATURE_BRANCH" main --prune
+              head_sha=$(git rev-parse "origin/$FEATURE_BRANCH")
+              for path in \
+                .github/workflows/repair-rest-source-identity-parity.yml \
+                .github/workflows/repair-rest-source-identity-parity-v2.yml; do
+                if git cat-file -e "$head_sha:$path" 2>/dev/null; then
+                  settled=false
+                fi
+              done
+              for path in \
+                .github/workflows/surface-parity-contract.yml \
+                docs/SURFACE_PARITY_CONTRACT.md \
+                tests/test_service_source_identity.py \
+                tests/test_surface_parity.py \
+                transcription/service_runtime_transcribe.py; do
+                git cat-file -e "$head_sha:$path" 2>/dev/null || settled=false
+              done
+              git show "$head_sha:transcription/service_runtime_transcribe.py" \
+                | grep -Fq 'def _safe_source_name' || settled=false
+              git show "$head_sha:transcription/service_runtime_transcribe.py" \
+                | grep -Fq 'transcript.meta["audio_file"] = source_name' || settled=false
+              git show "$head_sha:tests/test_surface_parity.py" \
+                | grep -Fq '"audio_file": meta["audio_file"]' || settled=false
+            fi
+
+            if [ "$settled" = true ]; then
+              echo "PR_NUMBER=$pr_number" >> "$GITHUB_ENV"
+              echo "SETTLED_HEAD=$head_sha" >> "$GITHUB_ENV"
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Surface parity branch did not settle"
+              exit 1
+            fi
+            sleep 30
+          done
+
+      - name: Checkout exact settled head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: feature/surface-parity-620
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify PR and branch identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          TESTED_HEAD=$(git rev-parse HEAD)
+          test "$TESTED_HEAD" = "$SETTLED_HEAD"
+          test "$TESTED_HEAD" = "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.ref)" = "$FEATURE_BRANCH"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .base.ref)" = "main"
+          git merge-base --is-ancestor origin/main HEAD
+          git diff --check origin/main...HEAD
+          echo "TESTED_HEAD=$TESTED_HEAD" >> "$GITHUB_ENV"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python 3.12 and 3.13
+        run: uv python install 3.12 3.13
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install complete Python 3.12 environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Verify static ownership and documentation
+        run: |
+          uv run ruff check \
+            transcription/service_runtime_transcribe.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py
+          uv run ruff format --check \
+            transcription/service_runtime_transcribe.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py
+          grep -Fq 'removes only the declared per-run fields' \
+            docs/SURFACE_PARITY_CONTRACT.md
+          grep -Fq 'Directory/batch and CLI remain checkpoint B' \
+            docs/SURFACE_PARITY_CONTRACT.md
+          git diff --check
+
+      - name: Verify source parity and adjacent contracts
+        run: |
+          uv run pytest -q \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py \
+            tests/test_service_runtime_transcribe.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_receipt.py
+
+      - name: Verify full non-heavy repository suite
+        run: |
+          uv run pytest -q \
+            -m "not slow and not heavy and not requires_gpu" \
+            --no-cov
+
+      - name: Verify focused source parity on Python 3.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          VENV="$RUNNER_TEMP/surface-parity-source-313"
+          uv venv "$VENV" --python 3.13
+          uv pip install --python "$VENV/bin/python" -e '.[dev,api]'
+          "$VENV/bin/python" -m pytest -q \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py
+
+      - name: Verify installed wheel on Python 3.12 and 3.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          WHEEL=$(realpath "$(find dist -maxdepth 1 -name '*.whl' -print -quit)")
+          test -n "$WHEEL"
+          TEST_ROOT="$RUNNER_TEMP/surface-parity-installed-test"
+          mkdir -p "$TEST_ROOT"
+          cp tests/test_surface_parity.py tests/test_service_source_identity.py "$TEST_ROOT/"
+          for version in 3.12 3.13; do
+            VENV="$RUNNER_TEMP/surface-parity-wheel-$version"
+            uv venv "$VENV" --python "$version"
+            uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
+            uv pip install --python "$VENV/bin/python" \
+              pytest==9.0.2 \
+              jsonschema==4.25.1 \
+              httpx==0.28.1
+            uv pip check --python "$VENV/bin/python"
+            (
+              cd "$TEST_ROOT"
+              unset PYTHONPATH
+              "$VENV/bin/python" -m pytest -q \
+                test_service_source_identity.py \
+                test_surface_parity.py
+            )
+          done
+
+      - name: Wait for durable PR-head checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 5400))
+          required=(
+            "surface-parity-source (Python 3.12)"
+            "surface-parity-source (Python 3.13)"
+            "surface-parity-installed (Python 3.12)"
+            "surface-parity-installed (Python 3.13)"
+          )
+          while true; do
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$TESTED_HEAD"
+            checks=$(gh api -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/commits/${TESTED_HEAD}/check-runs?per_page=100")
+            latest=$(jq '
+              .check_runs
+              | sort_by(.name)
+              | group_by(.name)
+              | map(max_by(.id))
+            ' <<<"$checks")
+
+            all_required=true
+            for name in "${required[@]}"; do
+              jq -e --arg name "$name" '
+                .[]
+                | select(.name == $name)
+                | select(.status == "completed")
+                | select(.conclusion == "success")
+              ' <<<"$latest" >/dev/null || all_required=false
+            done
+
+            failed=$(jq -r '[.[]
+              | select((.name | ascii_downcase | contains("gitleaks")) | not)
+              | select(.status == "completed")
+              | select((.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") | not)]
+              | length' <<<"$latest")
+            test "$failed" -eq 0
+
+            pending=$(jq -r '[.[]
+              | select((.name | ascii_downcase | contains("gitleaks")) | not)
+              | select(.status != "completed")] | length' <<<"$latest")
+            if [ "$all_required" = true ] && [ "$pending" -eq 0 ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Timed out waiting for PR-head checks"
+              exit 1
+            fi
+            sleep 25
+          done
+
+      - name: Merge checkpoint A
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$TESTED_HEAD"
+          gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" || true
+          gh pr merge "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch \
+            --subject "test: establish non-streaming surface parity (#${PR_NUMBER})" \
+            --body "Checkpoint A for #620: file, bytes, and batch REST now prove schema-valid equivalent transcript truth, stable receipts, fallback evidence, safe caller filename identity, and correct engine lifecycle from source and installed wheels. Directory/batch and CLI remain open."
+
+      - name: Record checkpoint and create checkpoint-B branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+          test "$(jq -r .merged <<<"$pr")" = "true"
+          merge_sha=$(jq -r .merge_commit_sha <<<"$pr")
+          parity_issue=$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --search 'runtime: make transcript and receipt output equivalent across public surfaces in:title' \
+            --json number,title \
+            --jq '.[] | select(.title == "runtime: make transcript and receipt output equivalent across public surfaces") | .number' \
+            | head -1)
+          if [ -n "$parity_issue" ]; then
+            gh issue comment "$parity_issue" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body "Checkpoint A merged via #${PR_NUMBER} at \`${merge_sha}\`: file, bytes, and batch REST now share schema-valid transcript truth, stable receipt projection, fallback evidence, safe source identity, and lifecycle receipts. The issue remains open for directory/batch and CLI parity."
+          fi
+          gh issue comment 620 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Non-streaming surface parity checkpoint A merged via #${PR_NUMBER} at \`${merge_sha}\`. File, bytes, and batch REST now have one executable schema/receipt comparison surface. The next lane extends that same harness to directory/batch and CLI; no parity claim is made for those paths yet."
+
+          main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feature/directory-cli-parity-620" >/dev/null 2>&1; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref='refs/heads/feature/directory-cli-parity-620' \
+              -f sha="$main_sha" >/dev/null
+          fi
+
+      - name: Delete disposable automation branch
+        if: success()
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/surface-parity-merge" || true
