@@ -166,13 +166,31 @@ def _transcribe_file_impl(
 
     duration_sec = get_wav_duration_seconds(norm_wav)
 
+    owns_engine = engine is None
     if engine is None:
         from .asr_engine import TranscriptionEngine
 
         engine = TranscriptionEngine(asr_cfg)
-    transcript = engine.transcribe_file(norm_wav)
-    transcript.file_name = raw_dest.name
 
+    engine_cfg = getattr(engine, "cfg", None)
+    engine_device = getattr(engine_cfg, "device", None) if engine_cfg else None
+    engine_compute_type = getattr(engine_cfg, "compute_type", None) if engine_cfg else None
+
+    try:
+        transcript = engine.transcribe_file(norm_wav)
+    finally:
+        if owns_engine:
+            close = getattr(engine, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as cleanup_exc:
+                    logger.debug(
+                        "Failed to close file transcription engine: %s",
+                        cleanup_exc,
+                    )
+
+    transcript.file_name = raw_dest.name
     transcript = maybe_run_diarization(
         transcript,
         norm_wav,
@@ -185,10 +203,6 @@ def _transcribe_file_impl(
     json_path = paths.json_dir / f"{stem}.json"
     txt_path = paths.transcripts_dir / f"{stem}.txt"
     srt_path = paths.transcripts_dir / f"{stem}.srt"
-
-    engine_cfg = getattr(engine, "cfg", None)
-    engine_device = getattr(engine_cfg, "device", None) if engine_cfg else None
-    engine_compute_type = getattr(engine_cfg, "compute_type", None) if engine_cfg else None
 
     transcript.meta = build_generation_metadata(
         transcript,
