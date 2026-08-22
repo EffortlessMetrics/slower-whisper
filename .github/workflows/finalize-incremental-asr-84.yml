@@ -9,7 +9,7 @@ permissions:
 
 concurrency:
   group: finalize-incremental-asr-84
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   finalize:
@@ -24,7 +24,7 @@ jobs:
           ref: feature/incremental-asr-84
           fetch-depth: 0
 
-      - name: Preserve runtime output validation under strict typing
+      - name: Preserve output validation, identity, and failed-session bounds
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -32,15 +32,16 @@ jobs:
           path = Path("transcription/incremental_asr.py")
           source = path.read_text(encoding="utf-8")
 
-          protocol_old = '''    ) -> str | Awaitable[str]: ...
-'''
-          protocol_new = '''    ) -> object | Awaitable[object]: ...
-'''
-          if protocol_new not in source:
-              assert source.count(protocol_old) == 1, "backend protocol return changed"
-              source = source.replace(protocol_old, protocol_new, 1)
-
-          cache_old = '''        reuse_cached_text = (
+          replacements = (
+              (
+                  '''    ) -> str | Awaitable[str]: ...
+''',
+                  '''    ) -> object | Awaitable[object]: ...
+''',
+                  "backend protocol return",
+              ),
+              (
+                  '''        reuse_cached_text = (
             final_reason is not None
             and active_samples == self._last_hypothesis_samples
             and self._last_hypothesis_text is not None
@@ -49,8 +50,8 @@ jobs:
         if reuse_cached_text:
             text = self._last_hypothesis_text
         else:
-'''
-          cache_new = '''        cached_text = self._last_hypothesis_text
+''',
+                  '''        cached_text = self._last_hypothesis_text
         reuse_cached_text = (
             final_reason is not None
             and active_samples == self._last_hypothesis_samples
@@ -60,40 +61,161 @@ jobs:
         if reuse_cached_text:
             text = cached_text
         else:
-'''
-          if cache_new not in source:
-              assert source.count(cache_old) == 1, "cached-text block changed"
-              source = source.replace(cache_old, cache_new, 1)
-
-          result_old = '''                text = await result if inspect.isawaitable(result) else result
-'''
-          result_new = '''                raw_text = await result if inspect.isawaitable(result) else result
-'''
-          if result_new not in source:
-              assert source.count(result_old) == 1, "backend result assignment changed"
-              source = source.replace(result_old, result_new, 1)
-
-          validation_old = '''            if not isinstance(text, str):
+''',
+                  "cached-text block",
+              ),
+              (
+                  '''                text = await result if inspect.isawaitable(result) else result
+''',
+                  '''                raw_text = await result if inspect.isawaitable(result) else result
+''',
+                  "backend result assignment",
+              ),
+              (
+                  '''            if not isinstance(text, str):
                 output_error = ASROutputError(
-'''
-          validation_new = '''            if not isinstance(raw_text, str):
+''',
+                  '''            if not isinstance(raw_text, str):
                 output_error = ASROutputError(
-'''
-          if validation_new not in source:
-              assert source.count(validation_old) == 1, "output validation block changed"
-              source = source.replace(validation_old, validation_new, 1)
+''',
+                  "output validation block",
+              ),
+              (
+                  '''            text = text.strip()
+            self._last_hypothesis_text = text
+''',
+                  '''            text = raw_text.strip()
+            self._last_hypothesis_text = text
+''',
+                  "text normalization block",
+              ),
+              (
+                  '''        self._segment_number = 0
 
-          strip_old = '''            text = text.strip()
-            self._last_hypothesis_text = text
-'''
-          strip_new = '''            text = raw_text.strip()
-            self._last_hypothesis_text = text
-'''
-          if strip_new not in source:
-              assert source.count(strip_old) == 1, "text normalization block changed"
-              source = source.replace(strip_old, strip_new, 1)
+        self._model_calls = 0
+''',
+                  '''        self._segment_number = 0
+        self._seen_segment_ids: set[str] = set()
+
+        self._model_calls = 0
+''',
+                  "segment identity state",
+              ),
+              (
+                  '''        segment_id = self._segment_id_factory(self._segment_number)
+        if not segment_id:
+            raise ValueError("segment_id_factory returned an empty identifier")
+        self._active_segment_id = segment_id
+''',
+                  '''        segment_id = self._segment_id_factory(self._segment_number)
+        if not isinstance(segment_id, str) or not segment_id.strip():
+            raise ValueError("segment_id_factory returned an invalid identifier")
+        if segment_id in self._seen_segment_ids:
+            raise ValueError("segment_id_factory returned a duplicate identifier")
+        self._seen_segment_ids.add(segment_id)
+        self._active_segment_id = segment_id
+''',
+                  "segment identity validation",
+              ),
+              (
+                  '''    def _fail(self, error: TranscriptionError) -> None:
+        self._state = IncrementalASRState.FAILED
+        self._failure = error
+''',
+                  '''    def _fail(self, error: TranscriptionError) -> None:
+        self._state = IncrementalASRState.FAILED
+        self._failure = error
+        self._reset_active_utterance()
+''',
+                  "failed-session cleanup",
+              ),
+          )
+
+          for old, new, description in replacements:
+              if new in source:
+                  continue
+              assert source.count(old) == 1, f"{description} changed"
+              source = source.replace(old, new, 1)
 
           path.write_text(source, encoding="utf-8")
+
+          tests_path = Path("tests/test_incremental_asr.py")
+          tests = tests_path.read_text(encoding="utf-8")
+          failure_anchor = '''    assert "provider detail" not in str(exc_info.value.public_details())
+    assert session.state is IncrementalASRState.FAILED
+
+    with pytest.raises(RuntimeNotReadyError) as not_ready:
+'''
+          failure_replacement = '''    assert "provider detail" not in str(exc_info.value.public_details())
+    assert session.state is IncrementalASRState.FAILED
+    assert session.active_segment_id is None
+    assert session.active_audio_bytes == 0
+
+    with pytest.raises(RuntimeNotReadyError) as not_ready:
+'''
+          if failure_replacement not in tests:
+              assert tests.count(failure_anchor) == 1
+              tests = tests.replace(failure_anchor, failure_replacement, 1)
+
+          output_anchor = '''    assert exc_info.value.context["violation"] == "text_not_string"
+    assert session.state is IncrementalASRState.FAILED
+
+
+@pytest.mark.asyncio
+async def test_async_backend_is_supported() -> None:
+'''
+          output_replacement = '''    assert exc_info.value.context["violation"] == "text_not_string"
+    assert session.state is IncrementalASRState.FAILED
+    assert session.active_segment_id is None
+    assert session.active_audio_bytes == 0
+
+
+@pytest.mark.asyncio
+async def test_async_backend_is_supported() -> None:
+'''
+          if output_replacement not in tests:
+              assert tests.count(output_anchor) == 1
+              tests = tests.replace(output_anchor, output_replacement, 1)
+
+          identity_test = '''
+
+@pytest.mark.asyncio
+async def test_segment_id_factory_must_return_unique_nonblank_strings() -> None:
+    backend = RecordingBackend()
+    duplicate_ids = iter(["segment", "segment"])
+    session = IncrementalASRSession(
+        backend,
+        config=config(minimum=1, interval=1, maximum=2),
+        segment_id_factory=lambda _number: next(duplicate_ids),
+    )
+
+    assert len(await session.push_pcm(pcm(1), speech=True)) == 1
+    assert len(await session.push_pcm(pcm(1, 0), speech=False)) == 1
+    with pytest.raises(ValueError, match="duplicate"):
+        await session.push_pcm(pcm(1), speech=True)
+
+    blank = IncrementalASRSession(
+        RecordingBackend(),
+        config=config(minimum=1, interval=1, maximum=2),
+        segment_id_factory=lambda _number: "   ",
+    )
+    with pytest.raises(ValueError, match="invalid"):
+        await blank.push_pcm(pcm(1), speech=True)
+
+    non_string = IncrementalASRSession(
+        RecordingBackend(),
+        config=config(minimum=1, interval=1, maximum=2),
+        segment_id_factory=lambda _number: 7,  # type: ignore[return-value]
+    )
+    with pytest.raises(ValueError, match="invalid"):
+        await non_string.push_pcm(pcm(1), speech=True)
+'''
+          if "test_segment_id_factory_must_return_unique_nonblank_strings" not in tests:
+              marker = "\n\ndef test_revision_validates_identity_time_and_finality() -> None:\n"
+              assert tests.count(marker) == 1
+              tests = tests.replace(marker, identity_test + marker, 1)
+
+          tests_path.write_text(tests, encoding="utf-8")
           PY
 
       - name: Install uv
