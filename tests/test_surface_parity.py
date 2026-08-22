@@ -194,7 +194,8 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     monkeypatch.setattr(_build_info, "BUILD_ID", "surface-parity-1")
     install_fake_audio_boundary(monkeypatch)
 
-    audio_path = tmp_path / "surface.wav"
+    source_name = "surface.mp3"
+    audio_path = tmp_path / source_name
     audio_path.write_bytes(wav_bytes())
 
     file_engine = ParityEngine(asr_config())
@@ -209,7 +210,7 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     bytes_result = transcribe_bytes(
         wav_bytes(),
         config(),
-        file_name="surface.wav",
+        file_name=source_name,
     )
 
     runtime = ASRRuntime(
@@ -220,12 +221,12 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     with TestClient(app) as client:
         response = client.post(
             "/transcribe",
-            files={"audio": ("surface.wav", wav_bytes(), "audio/wav")},
+            files={"audio": (source_name, wav_bytes(), "audio/mpeg")},
         )
     assert response.status_code == 200, response.text
-    assert response.json()["file"] == "surface.wav"
-    assert response.json()["file_name"] == "surface.wav"
-    assert response.json()["meta"]["audio_file"] == "surface.wav"
+    assert response.json()["file"] == source_name
+    assert response.json()["file_name"] == source_name
+    assert response.json()["meta"]["audio_file"] == source_name
 
     documents = [
         transcript_document(file_result),
@@ -234,8 +235,8 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     ]
     for document in documents:
         validate_document(document)
-        assert document["file_name"] == document["file"] == "surface.wav"
-        assert document["meta"]["audio_file"] == "surface.wav"
+        assert document["file_name"] == document["file"] == source_name
+        assert document["meta"]["audio_file"] == source_name
 
     projections = [semantic_projection(document) for document in documents]
     assert projections[1:] == projections[:-1]
