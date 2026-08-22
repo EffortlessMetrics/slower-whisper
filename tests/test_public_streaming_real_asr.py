@@ -163,9 +163,7 @@ def audio_message(data: bytes, sequence: int) -> dict[str, Any]:
 
 
 def install_classifier(app, decisions: list[bool | BaseException]) -> None:
-    app.state.streaming_speech_classifier_factory = lambda: SequenceClassifier(
-        list(decisions)
-    )
+    app.state.streaming_speech_classifier_factory = lambda: SequenceClassifier(list(decisions))
 
 
 def reset_engine() -> None:
