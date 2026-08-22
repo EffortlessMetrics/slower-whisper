@@ -51,8 +51,10 @@ jobs:
             tests/test_incremental_asr.py \
             tests/test_public_streaming_real_asr.py \
             tests/test_streaming_revision_controller.py \
+            tests/test_streaming_revision_edges.py \
             tests/test_streaming_runtime_asr.py \
-            tests/test_websocket_real_asr_source_policy.py
+            tests/test_websocket_real_asr_source_policy.py \
+            tests/test_websocket_streaming.py
           uv run ruff format --check \
             transcription/exceptions.py \
             transcription/incremental_asr.py \
@@ -63,8 +65,10 @@ jobs:
             tests/test_incremental_asr.py \
             tests/test_public_streaming_real_asr.py \
             tests/test_streaming_revision_controller.py \
+            tests/test_streaming_revision_edges.py \
             tests/test_streaming_runtime_asr.py \
-            tests/test_websocket_real_asr_source_policy.py
+            tests/test_websocket_real_asr_source_policy.py \
+            tests/test_websocket_streaming.py
           uv run mypy \
             transcription/service_runtime_streaming.py \
             transcription/streaming_revision_controller.py \
@@ -77,8 +81,10 @@ jobs:
             tests/test_incremental_asr.py \
             tests/test_public_streaming_real_asr.py \
             tests/test_streaming_revision_controller.py \
+            tests/test_streaming_revision_edges.py \
             tests/test_streaming_runtime_asr.py \
             tests/test_websocket_real_asr_source_policy.py \
+            tests/test_websocket_streaming.py \
             tests/test_streaming_ws.py
 
       - name: Verify public documentation
