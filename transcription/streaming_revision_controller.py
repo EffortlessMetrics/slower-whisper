@@ -69,9 +69,7 @@ class PCMChunkEnergyClassifier:
         sample_count = len(pcm_s16le) // 2
         if sample_count == 0:
             return False
-        sum_squares = sum(
-            sample * sample for (sample,) in struct.iter_unpack("<h", pcm_s16le)
-        )
+        sum_squares = sum(sample * sample for (sample,) in struct.iter_unpack("<h", pcm_s16le))
         normalized_rms = math.sqrt(sum_squares / sample_count) / 32_768.0
         return normalized_rms > self.threshold
 
@@ -126,9 +124,7 @@ class RevisionStreamingController:
             max(frame_bytes, requested_gap_bytes),
             self.incremental.config.max_chunk_bytes,
         )
-        self._silence_limit_bytes = bounded_gap_bytes - (
-            bounded_gap_bytes % frame_bytes
-        )
+        self._silence_limit_bytes = bounded_gap_bytes - (bounded_gap_bytes % frame_bytes)
         self._silence_limit_bytes = max(frame_bytes, self._silence_limit_bytes)
 
     @property
@@ -178,9 +174,7 @@ class RevisionStreamingController:
             revisions: list[ASRRevision] = []
             if decision:
                 revisions.extend(await self._flush_pending_silence(as_speech=True))
-                revisions.extend(
-                    await self.incremental.push_pcm(audio_data, speech=True)
-                )
+                revisions.extend(await self.incremental.push_pcm(audio_data, speech=True))
             else:
                 revisions.extend(await self._consume_silence(audio_data))
         except Exception as error:  # noqa: BLE001 - converted to typed terminal state
@@ -358,9 +352,7 @@ class RevisionStreamingController:
             raise TypeError("audio sequence must be an integer")
         previous = self.session._last_chunk_sequence
         if previous is not None and sequence <= previous:
-            raise ValueError(
-                f"audio sequence {sequence} must be greater than {previous}"
-            )
+            raise ValueError(f"audio sequence {sequence} must be greater than {previous}")
 
     def _require_active(self) -> None:
         if self._terminal_error is not None:
