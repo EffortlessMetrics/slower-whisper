@@ -167,6 +167,7 @@ async def test_revisions_replace_text_and_finalize_on_vad_without_reinference() 
     assert backend.calls == [(4, 0, 4), (8, 0, 8)]
     assert session.metrics.model_calls == 2
     assert session.metrics.submitted_audio_samples == 12
+    assert session.metrics.absolute_samples_received == 10
 
     next_revision = await session.push_pcm(pcm(4), speech=True)
     assert len(next_revision) == 1
@@ -217,6 +218,7 @@ async def test_max_utterance_rollover_keeps_absolute_half_open_time() -> None:
         for previous, following in zip(finals, finals[1:], strict=False)
     )
     assert session.absolute_sample == 25
+    assert session.metrics.absolute_samples_received == 25
     assert session.state is IncrementalASRState.ENDED
 
 
@@ -282,6 +284,7 @@ async def test_active_memory_never_exceeds_max_utterance() -> None:
     assert session.metrics.peak_active_audio_bytes <= 10 * 2
     assert session.active_audio_bytes == 0
     assert session.metrics.segments_finalized == 10
+    assert session.metrics.absolute_samples_received == 100
 
 
 @pytest.mark.asyncio
@@ -299,11 +302,24 @@ async def test_backend_failure_is_distinct_from_no_revision_yet() -> None:
     assert session.state is IncrementalASRState.FAILED
     assert session.active_segment_id is None
     assert session.active_audio_bytes == 0
+    assert session.metrics.absolute_samples_received == 4
 
     with pytest.raises(RuntimeNotReadyError) as not_ready:
         await session.push_pcm(pcm(1), speech=True)
     assert not_ready.value.context["state"] == "failed"
     assert not_ready.value.context["failure_reason_code"] == "asr_inference_failed"
+
+
+@pytest.mark.asyncio
+async def test_received_metric_counts_the_entire_accepted_chunk_on_failure() -> None:
+    session = IncrementalASRSession(FailingBackend(), config=config())
+
+    with pytest.raises(ASRInferenceError):
+        await session.push_pcm(pcm(12), speech=True)
+
+    assert session.absolute_sample == 4
+    assert session.metrics.absolute_samples_received == 12
+    assert session.active_audio_bytes == 0
 
 
 @pytest.mark.asyncio
@@ -330,6 +346,27 @@ async def test_async_backend_is_supported() -> None:
     assert len(revisions) == 1
     assert revisions[0].text == "samples:4"
     assert backend.calls == [(4, 0, 4)]
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("sample_rate", 16_000.0),
+        ("channels", True),
+        ("sample_width_bytes", 2.0),
+        ("min_hypothesis_samples", 16_000.0),
+        ("hypothesis_interval_samples", True),
+        ("hypothesis_backoff_factor", 1.5),
+        ("max_utterance_samples", 480_000.0),
+        ("max_chunk_bytes", 131_072.0),
+    ],
+)
+def test_config_rejects_non_integer_numeric_fields(
+    field_name: str,
+    value: object,
+) -> None:
+    with pytest.raises(TypeError, match=field_name):
+        IncrementalASRConfig(**{field_name: value})  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
@@ -361,6 +398,7 @@ async def test_input_contract_rejects_unsupported_or_unbounded_audio_before_mode
     assert backend.calls == []
     assert session.metrics.model_calls == 0
     assert session.absolute_sample == 0
+    assert session.metrics.absolute_samples_received == 0
 
 
 @pytest.mark.asyncio
@@ -376,6 +414,7 @@ async def test_empty_input_and_end_are_idempotent() -> None:
     assert ended[0].text == "samples:2"
     assert ended[0].final_reason == "end_of_stream"
     assert session.state is IncrementalASRState.ENDED
+    assert session.metrics.absolute_samples_received == 2
     assert await session.end() == ()
 
     with pytest.raises(RuntimeNotReadyError):
