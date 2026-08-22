@@ -24,13 +24,13 @@ jobs:
           ref: feature/incremental-asr-84
           fetch-depth: 0
 
-      - name: Preserve output validation, identity, and failed-session bounds
+      - name: Harden typing, identity, failure cleanup, and default work
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("transcription/incremental_asr.py")
-          source = path.read_text(encoding="utf-8")
+          source_path = Path("transcription/incremental_asr.py")
+          source = source_path.read_text(encoding="utf-8")
 
           replacements = (
               (
@@ -38,7 +38,87 @@ jobs:
 ''',
                   '''    ) -> object | Awaitable[object]: ...
 ''',
-                  "backend protocol return",
+              ),
+              (
+                  '''    hypothesis_interval_samples: int = 8_000
+    max_utterance_samples: int = 480_000
+''',
+                  '''    hypothesis_interval_samples: int = 8_000
+    hypothesis_backoff_factor: int = 2
+    max_utterance_samples: int = 480_000
+''',
+              ),
+              (
+                  '''        if self.hypothesis_interval_samples <= 0:
+            raise ValueError("hypothesis_interval_samples must be positive")
+        if self.max_utterance_samples < self.min_hypothesis_samples:
+''',
+                  '''        if self.hypothesis_interval_samples <= 0:
+            raise ValueError("hypothesis_interval_samples must be positive")
+        if self.hypothesis_backoff_factor < 1:
+            raise ValueError("hypothesis_backoff_factor must be at least 1")
+        if self.max_utterance_samples < self.min_hypothesis_samples:
+''',
+              ),
+              (
+                  '''    decoded_audio_samples: int
+''',
+                  '''    submitted_audio_samples: int
+''',
+              ),
+              (
+                  '''        self._segment_number = 0
+
+        self._model_calls = 0
+        self._decoded_audio_samples = 0
+''',
+                  '''        self._segment_number = 0
+        self._seen_segment_ids: set[str] = set()
+
+        self._model_calls = 0
+        self._submitted_audio_samples = 0
+''',
+              ),
+              (
+                  '''            decoded_audio_samples=self._decoded_audio_samples,
+''',
+                  '''            submitted_audio_samples=self._submitted_audio_samples,
+''',
+              ),
+              (
+                  '''        segment_id = self._segment_id_factory(self._segment_number)
+        if not segment_id:
+            raise ValueError("segment_id_factory returned an empty identifier")
+        self._active_segment_id = segment_id
+''',
+                  '''        segment_id = self._segment_id_factory(self._segment_number)
+        if not isinstance(segment_id, str) or not segment_id.strip():
+            raise ValueError("segment_id_factory returned an invalid identifier")
+        if segment_id in self._seen_segment_ids:
+            raise ValueError("segment_id_factory returned a duplicate identifier")
+        self._seen_segment_ids.add(segment_id)
+        self._active_segment_id = segment_id
+''',
+              ),
+              (
+                  '''    def _next_hypothesis_threshold(self) -> int:
+        if self._last_hypothesis_samples == 0:
+            return self.config.min_hypothesis_samples
+        return self._last_hypothesis_samples + self.config.hypothesis_interval_samples
+''',
+                  '''    def _next_hypothesis_threshold(self) -> int:
+        if self._last_hypothesis_samples == 0:
+            return self.config.min_hypothesis_samples
+        linear_threshold = (
+            self._last_hypothesis_samples
+            + self.config.hypothesis_interval_samples
+        )
+        geometric_threshold = (
+            self._last_hypothesis_samples
+            * self.config.hypothesis_backoff_factor
+        )
+        return max(linear_threshold, geometric_threshold)
+''',
               ),
               (
                   '''        reuse_cached_text = (
@@ -62,14 +142,18 @@ jobs:
             text = cached_text
         else:
 ''',
-                  "cached-text block",
+              ),
+              (
+                  '''            self._decoded_audio_samples += active_samples
+''',
+                  '''            self._submitted_audio_samples += active_samples
+''',
               ),
               (
                   '''                text = await result if inspect.isawaitable(result) else result
 ''',
                   '''                raw_text = await result if inspect.isawaitable(result) else result
 ''',
-                  "backend result assignment",
               ),
               (
                   '''            if not isinstance(text, str):
@@ -78,7 +162,6 @@ jobs:
                   '''            if not isinstance(raw_text, str):
                 output_error = ASROutputError(
 ''',
-                  "output validation block",
               ),
               (
                   '''            text = text.strip()
@@ -87,35 +170,6 @@ jobs:
                   '''            text = raw_text.strip()
             self._last_hypothesis_text = text
 ''',
-                  "text normalization block",
-              ),
-              (
-                  '''        self._segment_number = 0
-
-        self._model_calls = 0
-''',
-                  '''        self._segment_number = 0
-        self._seen_segment_ids: set[str] = set()
-
-        self._model_calls = 0
-''',
-                  "segment identity state",
-              ),
-              (
-                  '''        segment_id = self._segment_id_factory(self._segment_number)
-        if not segment_id:
-            raise ValueError("segment_id_factory returned an empty identifier")
-        self._active_segment_id = segment_id
-''',
-                  '''        segment_id = self._segment_id_factory(self._segment_number)
-        if not isinstance(segment_id, str) or not segment_id.strip():
-            raise ValueError("segment_id_factory returned an invalid identifier")
-        if segment_id in self._seen_segment_ids:
-            raise ValueError("segment_id_factory returned a duplicate identifier")
-        self._seen_segment_ids.add(segment_id)
-        self._active_segment_id = segment_id
-''',
-                  "segment identity validation",
               ),
               (
                   '''    def _fail(self, error: TranscriptionError) -> None:
@@ -127,44 +181,62 @@ jobs:
         self._failure = error
         self._reset_active_utterance()
 ''',
-                  "failed-session cleanup",
               ),
           )
-
-          for old, new, description in replacements:
+          for old, new in replacements:
               if new in source:
                   continue
-              assert source.count(old) == 1, f"{description} changed"
+              assert source.count(old) == 1, old
               source = source.replace(old, new, 1)
-
-          path.write_text(source, encoding="utf-8")
+          source_path.write_text(source, encoding="utf-8")
 
           tests_path = Path("tests/test_incremental_asr.py")
           tests = tests_path.read_text(encoding="utf-8")
-          failure_anchor = '''    assert "provider detail" not in str(exc_info.value.public_details())
+          tests = tests.replace("decoded_audio_samples", "submitted_audio_samples")
+          tests = tests.replace(
+              '''    max_chunk_bytes: int = 256,
+) -> IncrementalASRConfig:
+''',
+              '''    max_chunk_bytes: int = 256,
+    backoff: int = 1,
+) -> IncrementalASRConfig:
+''',
+              1,
+          )
+          tests = tests.replace(
+              '''        hypothesis_interval_samples=interval,
+        max_utterance_samples=maximum,
+''',
+              '''        hypothesis_interval_samples=interval,
+        hypothesis_backoff_factor=backoff,
+        max_utterance_samples=maximum,
+''',
+              1,
+          )
+          tests = tests.replace(
+              '''    assert "provider detail" not in str(exc_info.value.public_details())
     assert session.state is IncrementalASRState.FAILED
 
     with pytest.raises(RuntimeNotReadyError) as not_ready:
-'''
-          failure_replacement = '''    assert "provider detail" not in str(exc_info.value.public_details())
+''',
+              '''    assert "provider detail" not in str(exc_info.value.public_details())
     assert session.state is IncrementalASRState.FAILED
     assert session.active_segment_id is None
     assert session.active_audio_bytes == 0
 
     with pytest.raises(RuntimeNotReadyError) as not_ready:
-'''
-          if failure_replacement not in tests:
-              assert tests.count(failure_anchor) == 1
-              tests = tests.replace(failure_anchor, failure_replacement, 1)
-
-          output_anchor = '''    assert exc_info.value.context["violation"] == "text_not_string"
+''',
+              1,
+          )
+          tests = tests.replace(
+              '''    assert exc_info.value.context["violation"] == "text_not_string"
     assert session.state is IncrementalASRState.FAILED
 
 
 @pytest.mark.asyncio
 async def test_async_backend_is_supported() -> None:
-'''
-          output_replacement = '''    assert exc_info.value.context["violation"] == "text_not_string"
+''',
+              '''    assert exc_info.value.context["violation"] == "text_not_string"
     assert session.state is IncrementalASRState.FAILED
     assert session.active_segment_id is None
     assert session.active_audio_bytes == 0
@@ -172,12 +244,49 @@ async def test_async_backend_is_supported() -> None:
 
 @pytest.mark.asyncio
 async def test_async_backend_is_supported() -> None:
-'''
-          if output_replacement not in tests:
-              assert tests.count(output_anchor) == 1
-              tests = tests.replace(output_anchor, output_replacement, 1)
+''',
+              1,
+          )
+          tests = tests.replace(
+              '''    with pytest.raises(ValueError, match="pcm_s16le"):
+        IncrementalASRConfig(encoding="float32")
 
-          identity_test = '''
+    backend = RecordingBackend()
+''',
+              '''    with pytest.raises(ValueError, match="pcm_s16le"):
+        IncrementalASRConfig(encoding="float32")
+    with pytest.raises(ValueError, match="backoff"):
+        IncrementalASRConfig(hypothesis_backoff_factor=0)
+
+    backend = RecordingBackend()
+''',
+              1,
+          )
+
+          additions = '''
+
+@pytest.mark.asyncio
+async def test_default_geometric_backoff_bounds_prefix_submission_work() -> None:
+    backend = RecordingBackend()
+    policy = IncrementalASRConfig()
+    session = IncrementalASRSession(backend, config=policy)
+    remaining = policy.max_utterance_samples
+    chunk_samples = policy.max_chunk_bytes // policy.bytes_per_sample_frame
+
+    while remaining > 0:
+        take = min(remaining, chunk_samples)
+        await session.push_pcm(pcm(take), speech=True)
+        remaining -= take
+
+    expected_prefixes = [16_000, 32_000, 64_000, 128_000, 256_000, 480_000]
+    assert [samples for samples, _start, _end in backend.calls] == expected_prefixes
+    assert session.metrics.model_calls == 6
+    assert session.metrics.submitted_audio_samples == sum(expected_prefixes)
+    assert (
+        session.metrics.submitted_audio_samples
+        <= policy.max_utterance_samples * 3
+    )
+
 
 @pytest.mark.asyncio
 async def test_segment_id_factory_must_return_unique_nonblank_strings() -> None:
@@ -210,12 +319,30 @@ async def test_segment_id_factory_must_return_unique_nonblank_strings() -> None:
     with pytest.raises(ValueError, match="invalid"):
         await non_string.push_pcm(pcm(1), speech=True)
 '''
-          if "test_segment_id_factory_must_return_unique_nonblank_strings" not in tests:
+          if "test_default_geometric_backoff_bounds_prefix_submission_work" not in tests:
               marker = "\n\ndef test_revision_validates_identity_time_and_finality() -> None:\n"
               assert tests.count(marker) == 1
-              tests = tests.replace(marker, identity_test + marker, 1)
-
+              tests = tests.replace(marker, additions + marker, 1)
           tests_path.write_text(tests, encoding="utf-8")
+
+          docs_path = Path("docs/INCREMENTAL_ASR_CONTRACT.md")
+          docs = docs_path.read_text(encoding="utf-8")
+          docs = docs.replace(
+              '''Inference cadence is determined by received audio samples, not network packet
+frequency. Equivalent PCM under different packet fragmentation produces the
+same revision sequence, backend calls, and work metrics.
+''',
+              '''Inference cadence is determined by received audio samples, not network packet
+frequency. Equivalent PCM under different packet fragmentation produces the
+same revision sequence, backend calls, and work metrics. The default cadence
+uses geometric backoff: a 30-second continuous utterance submits prefixes at
+1, 2, 4, 8, 16, and 30 seconds, rather than every network packet or every
+half-second for the whole utterance.
+''',
+              1,
+          )
+          docs = docs.replace("total decoded prefix samples", "total submitted prefix samples")
+          docs_path.write_text(docs, encoding="utf-8")
           PY
 
       - name: Install uv
@@ -297,6 +424,7 @@ async def test_segment_id_factory_must_return_unique_nonblank_strings() -> None:
                   config=IncrementalASRConfig(
                       min_hypothesis_samples=4,
                       hypothesis_interval_samples=4,
+                      hypothesis_backoff_factor=1,
                       max_utterance_samples=12,
                       max_chunk_bytes=64,
                   ),
