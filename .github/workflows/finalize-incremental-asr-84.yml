@@ -24,14 +24,23 @@ jobs:
           ref: feature/incremental-asr-84
           fetch-depth: 0
 
-      - name: Make cached final text explicitly typed
+      - name: Preserve runtime output validation under strict typing
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path("transcription/incremental_asr.py")
           source = path.read_text(encoding="utf-8")
-          old = '''        reuse_cached_text = (
+
+          protocol_old = '''    ) -> str | Awaitable[str]: ...
+'''
+          protocol_new = '''    ) -> object | Awaitable[object]: ...
+'''
+          if protocol_new not in source:
+              assert source.count(protocol_old) == 1, "backend protocol return changed"
+              source = source.replace(protocol_old, protocol_new, 1)
+
+          cache_old = '''        reuse_cached_text = (
             final_reason is not None
             and active_samples == self._last_hypothesis_samples
             and self._last_hypothesis_text is not None
@@ -39,8 +48,9 @@ jobs:
 
         if reuse_cached_text:
             text = self._last_hypothesis_text
+        else:
 '''
-          new = '''        cached_text = self._last_hypothesis_text
+          cache_new = '''        cached_text = self._last_hypothesis_text
         reuse_cached_text = (
             final_reason is not None
             and active_samples == self._last_hypothesis_samples
@@ -49,10 +59,40 @@ jobs:
 
         if reuse_cached_text:
             text = cached_text
+        else:
 '''
-          if new not in source:
-              assert source.count(old) == 1, "cached-text block changed unexpectedly"
-              source = source.replace(old, new, 1)
+          if cache_new not in source:
+              assert source.count(cache_old) == 1, "cached-text block changed"
+              source = source.replace(cache_old, cache_new, 1)
+
+          result_old = '''                text = await result if inspect.isawaitable(result) else result
+'''
+          result_new = '''                raw_text = await result if inspect.isawaitable(result) else result
+'''
+          if result_new not in source:
+              assert source.count(result_old) == 1, "backend result assignment changed"
+              source = source.replace(result_old, result_new, 1)
+
+          validation_old = '''            if not isinstance(text, str):
+                output_error = ASROutputError(
+'''
+          validation_new = '''            if not isinstance(raw_text, str):
+                output_error = ASROutputError(
+'''
+          if validation_new not in source:
+              assert source.count(validation_old) == 1, "output validation block changed"
+              source = source.replace(validation_old, validation_new, 1)
+
+          strip_old = '''            text = text.strip()
+            self._last_hypothesis_text = text
+'''
+          strip_new = '''            text = raw_text.strip()
+            self._last_hypothesis_text = text
+'''
+          if strip_new not in source:
+              assert source.count(strip_old) == 1, "text normalization block changed"
+              source = source.replace(strip_old, strip_new, 1)
+
           path.write_text(source, encoding="utf-8")
           PY
 
@@ -65,7 +105,7 @@ jobs:
       - name: Install complete Python 3.12 environment
         run: uv sync --python 3.12 --extra dev
 
-      - name: Apply canonical formatting and lint repairs
+      - name: Apply canonical formatting and verify strict contracts
         run: |
           uv run ruff check --fix \
             transcription/incremental_asr.py \
