@@ -166,9 +166,7 @@ class TestStartSession:
         assert error["type"] == "ERROR"
         assert error["payload"]["code"] == "streaming_audio_unsupported"
         assert error["payload"]["recoverable"] is False
-        assert error["payload"]["context"]["mismatches"] == {
-            "enable_prosody": True
-        }
+        assert error["payload"]["context"]["mismatches"] == {"enable_prosody": True}
 
     def test_non_object_config_is_rejected(self, client: TestClient) -> None:
         with client.websocket_connect("/stream") as websocket:
