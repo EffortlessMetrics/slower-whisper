@@ -14,8 +14,11 @@ The core accepts boundary-homogeneous audio chunks:
 - a trusted upstream `speech` decision covering the complete chunk;
 - server-owned chunk, cadence, and active-utterance bounds.
 
-A caller must split a chunk at a speech/silence boundary. General decoding,
-resampling, WebSocket framing, and VAD detection remain outside this seam.
+General decoding and resampling remain outside this seam.
+
+The public `/stream` ASR path accepts this exact PCM contract. Its route-owned
+classifier supplies the speech decision, and its bounded silence window turns
+the configured gap into explicit `vad_boundary` finality.
 
 ## Revision identity
 
@@ -84,16 +87,21 @@ Terminal inference failure clears the active PCM buffer and segment state. The
 failure reason remains available through bounded public context, while provider
 exception text remains available only through local exception chaining.
 
-## Deliberate boundary
+## Public route ownership
 
-This core does not construct a model and does not yet change `/stream`. The
-backend is injected and the route-integration PR must adapt the process-owned
-ASR runtime to this port. WebSocket event serialization, one-writer delivery,
-replay, resume, and optional live enrichment remain separate owners.
+`service_runtime_streaming` now consumes `ASRRevision` directly. It adapts the
+process-owned `ASRRuntime`, creates events through the existing session envelope
+API, and never invokes the legacy `StreamingASRAdapter` or mock transcript path.
+The legacy module remains mounted only for its non-WebSocket session-management
+endpoints.
 
-The legacy `StreamingASRAdapter` remains transitional until the route consumes
-`ASRRevision` directly. Its append-shaped `TranscriptChunk` output is not the
-stable revision contract.
+WebSocket event serialization, session envelope IDs, and replay remain owned by
+`WebSocketStreamingSession`. Optional live enrichment remains a separate lane
+and is rejected by the stable negotiation contract rather than silently
+ignored.
+
+See [WEBSOCKET_REAL_ASR_CONTRACT.md](WEBSOCKET_REAL_ASR_CONTRACT.md) for the
+installed route transaction.
 
 ## Acceptance evidence
 
@@ -110,3 +118,7 @@ The `Incremental ASR Contract` workflow proves on Python 3.12 and 3.13:
 - synchronous and asynchronous backend support;
 - randomized packet fragmentation;
 - the same semantic transaction from the installed wheel outside the checkout.
+
+The `WebSocket Real ASR Contract` additionally proves that the public installed
+route uses this core with the process-owned engine, stable envelope identity,
+bounded silence, and sanitized terminal failure.
