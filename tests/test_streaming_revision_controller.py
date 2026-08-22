@@ -38,9 +38,7 @@ class TextEngine:
 
     def transcribe_file(self, path: Path):
         self.calls.append(path.stat().st_size)
-        return SimpleNamespace(
-            segments=[SimpleNamespace(text=f"call-{len(self.calls)}")]
-        )
+        return SimpleNamespace(segments=[SimpleNamespace(text=f"call-{len(self.calls)}")])
 
 
 class FailingEngine(TextEngine):
@@ -202,9 +200,7 @@ async def test_continuous_silence_is_bounded_and_never_invokes_asr() -> None:
         return engine
 
     runtime = await ready_runtime(factory)
-    protocol = WebSocketStreamingSession(
-        config=WebSocketSessionConfig(max_gap_sec=10.0)
-    )
+    protocol = WebSocketStreamingSession(config=WebSocketSessionConfig(max_gap_sec=10.0))
     controller = RevisionStreamingController(
         protocol,
         runtime,
