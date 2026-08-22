@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
-import inspect
+import queue
+import threading
 import wave
+from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -29,6 +31,7 @@ class DeterministicEngine:
     instances = 0
     closes = 0
     calls: list[int] = []
+    wav_params: list[tuple[int, int, int]] = []
 
     def __init__(self, cfg: AsrConfig) -> None:
         type(self).instances += 1
@@ -45,9 +48,13 @@ class DeterministicEngine:
     def transcribe_file(self, path: Path):
         with wave.open(str(path), "rb") as wav_file:
             frames = wav_file.getnframes()
-            assert wav_file.getframerate() == 16_000
-            assert wav_file.getnchannels() == 1
-            assert wav_file.getsampwidth() == 2
+            type(self).wav_params.append(
+                (
+                    wav_file.getframerate(),
+                    wav_file.getnchannels(),
+                    wav_file.getsampwidth(),
+                )
+            )
         type(self).calls.append(frames)
         return SimpleNamespace(segments=[SimpleNamespace(text=f"samples:{frames}")])
 
@@ -61,52 +68,16 @@ class FailingEngine(DeterministicEngine):
         raise RuntimeError("private provider path /srv/models/tiny")
 
 
-class VADDecision:
-    def __init__(self, *, is_speech: bool, should_finalize: bool) -> None:
-        self.is_speech = is_speech
-        self.should_finalize = should_finalize
-        self.speech_probability = 1.0 if is_speech else 0.0
-        self.probability = self.speech_probability
-        self.confidence = self.speech_probability
+class SequenceClassifier:
+    def __init__(self, decisions: list[bool | BaseException]) -> None:
+        self.decisions = deque(decisions)
 
-    def __iter__(self):
-        yield self.is_speech
-        yield self.should_finalize
-
-    def __await__(self):
-        async def resolve():
-            return self
-
-        return resolve().__await__()
-
-
-class DeterministicVADProcessor:
-    """Treat the first chunk as speech and the second as a finalizing silence."""
-
-    instances: list["DeterministicVADProcessor"] = []
-
-    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-        self.calls = 0
-        type(self).instances.append(self)
-
-    def _decision(self) -> VADDecision:
-        self.calls += 1
-        return VADDecision(
-            is_speech=self.calls == 1,
-            should_finalize=self.calls >= 2,
-        )
-
-    def process_chunk(self, *_args: Any, **_kwargs: Any) -> VADDecision:
-        return self._decision()
-
-    def process_audio(self, *_args: Any, **_kwargs: Any) -> VADDecision:
-        return self._decision()
-
-    def process(self, *_args: Any, **_kwargs: Any) -> VADDecision:
-        return self._decision()
-
-    def reset(self) -> None:
-        self.calls = 0
+    def is_speech(self, _audio: bytes, *, sample_rate: int) -> bool:
+        assert sample_rate == 16_000
+        decision = self.decisions.popleft()
+        if isinstance(decision, BaseException):
+            raise decision
+        return decision
 
 
 def profile() -> RuntimeProfile:
@@ -130,28 +101,42 @@ def app_with_engine(engine_factory):
 
 
 def event_type(payload: dict[str, Any]) -> str | None:
-    for key in ("event_type", "event", "type"):
-        value = payload.get(key)
-        if isinstance(value, str) and value.upper() not in {
-            "EVENT",
-            "STREAM_EVENT",
-            "MESSAGE",
-        }:
-            return value.upper()
-    data = payload.get("data")
-    return event_type(data) if isinstance(data, dict) else None
+    value = payload.get("type")
+    return value.upper() if isinstance(value, str) else None
 
 
-def event_data(payload: dict[str, Any]) -> dict[str, Any]:
-    data = payload.get("data")
-    return data if isinstance(data, dict) else payload
+def event_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    data = payload.get("payload")
+    return data if isinstance(data, dict) else {}
+
+
+def receive_json_bounded(websocket, *, timeout: float = 5.0) -> dict[str, Any]:
+    result: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+    def receive() -> None:
+        try:
+            result.put((True, websocket.receive_json()))
+        except BaseException as error:  # noqa: BLE001 - propagate into test thread
+            result.put((False, error))
+
+    thread = threading.Thread(target=receive, daemon=True)
+    thread.start()
+    try:
+        succeeded, value = result.get(timeout=timeout)
+    except queue.Empty as error:
+        raise AssertionError("timed out waiting for WebSocket event") from error
+    if not succeeded:
+        raise value
+    if not isinstance(value, dict):
+        raise AssertionError(f"expected JSON object, got {type(value).__name__}")
+    return value
 
 
 def receive_type(websocket, expected: str, *, limit: int = 64) -> dict[str, Any]:
     expected = expected.upper()
     observed: list[str | None] = []
     for _ in range(limit):
-        payload = websocket.receive_json()
+        payload = receive_json_bounded(websocket)
         observed.append(event_type(payload))
         if event_type(payload) == expected:
             return payload
@@ -163,52 +148,62 @@ def start_message(**overrides: Any) -> dict[str, Any]:
         "sample_rate": 16_000,
         "audio_format": "pcm_s16le",
         "channels": 1,
+        "max_gap_sec": 0.5,
     }
     config.update(overrides)
     return {"type": "START_SESSION", "config": config}
 
 
-def audio_message(data: bytes) -> dict[str, Any]:
-    encoded = base64.b64encode(data).decode("ascii")
+def audio_message(data: bytes, sequence: int) -> dict[str, Any]:
     return {
         "type": "AUDIO_CHUNK",
-        "audio": encoded,
-        "data": {"audio": encoded},
+        "data": base64.b64encode(data).decode("ascii"),
+        "sequence": sequence,
     }
 
 
-def install_vad(monkeypatch) -> None:
-    DeterministicVADProcessor.instances.clear()
-    monkeypatch.setattr(
-        "transcription.streaming_ws.VADProcessor",
-        DeterministicVADProcessor,
+def install_classifier(app, decisions: list[bool | BaseException]) -> None:
+    app.state.streaming_speech_classifier_factory = lambda: SequenceClassifier(
+        list(decisions)
     )
 
 
-def test_public_route_emits_real_revisions_and_no_placeholder_text(monkeypatch) -> None:
+def reset_engine() -> None:
     DeterministicEngine.instances = 0
     DeterministicEngine.closes = 0
     DeterministicEngine.calls = []
-    install_vad(monkeypatch)
+    DeterministicEngine.wav_params = []
+
+
+def test_public_route_emits_real_revisions_and_no_placeholder_text() -> None:
+    reset_engine()
     app, runtime = app_with_engine(DeterministicEngine)
+    install_classifier(app, [True, False])
 
     with TestClient(app) as client:
         with client.websocket_connect("/stream") as websocket:
             websocket.send_json(start_message())
-            receive_type(websocket, "SESSION_STARTED")
+            started = receive_type(websocket, "SESSION_STARTED")
 
-            websocket.send_json(audio_message(pcm(16_000)))
+            websocket.send_json(audio_message(pcm(16_000), 1))
             partial = receive_type(websocket, "PARTIAL")
-            partial_data = event_data(partial)
 
-            websocket.send_json(audio_message(pcm(8_000, 0)))
+            websocket.send_json(audio_message(pcm(8_000, 0), 2))
             finalized = receive_type(websocket, "FINALIZED")
-            final_data = event_data(finalized)
 
             websocket.send_json({"type": "END_SESSION"})
-            receive_type(websocket, "SESSION_ENDED")
+            ended = receive_type(websocket, "SESSION_ENDED")
 
-    assert partial_data["segment_id"] == final_data["segment_id"]
+    partial_data = event_payload(partial)
+    final_data = event_payload(finalized)
+    assert partial["stream_id"] == finalized["stream_id"] == ended["stream_id"]
+    assert [
+        started["event_id"],
+        partial["event_id"],
+        finalized["event_id"],
+        ended["event_id"],
+    ] == [1, 2, 3, 4]
+    assert partial["segment_id"] == finalized["segment_id"]
     assert partial_data["revision"] == 1
     assert final_data["revision"] == 2
     assert partial_data["text"] == final_data["text"] == "samples:16000"
@@ -217,48 +212,48 @@ def test_public_route_emits_real_revisions_and_no_placeholder_text(monkeypatch) 
     assert partial_data["final"] is False
     assert final_data["final"] is True
     assert final_data["final_reason"] == "vad_boundary"
+    assert partial_data["segment"]["text"] == "samples:16000"
     assert "[processing...]" not in str(partial)
     assert "[final segment]" not in str(finalized)
     assert DeterministicEngine.instances == 1
     assert DeterministicEngine.calls == [16_000]
+    assert DeterministicEngine.wav_params == [(16_000, 1, 2)]
     assert DeterministicEngine.closes == 1
     assert runtime.max_observed_inferences == 1
 
 
-def test_public_route_rejects_unsupported_audio_before_engine_work(monkeypatch) -> None:
-    DeterministicEngine.instances = 0
-    DeterministicEngine.calls = []
-    install_vad(monkeypatch)
+def test_public_route_rejects_unsupported_audio_before_engine_work() -> None:
+    reset_engine()
     app, _runtime = app_with_engine(DeterministicEngine)
+    install_classifier(app, [])
 
     with TestClient(app) as client:
         with client.websocket_connect("/stream") as websocket:
             websocket.send_json(start_message(sample_rate=8_000))
             error = receive_type(websocket, "ERROR")
 
-    data = event_data(error)
-    assert data["code"] == "runtime_not_ready"
+    data = event_payload(error)
+    assert data["code"] == "streaming_audio_unsupported"
+    assert data["message"] == "Unsupported streaming audio configuration"
     assert data["recoverable"] is False
     assert data["context"]["mismatches"] == {"sample_rate": 8_000}
     assert DeterministicEngine.instances == 1
     assert DeterministicEngine.calls == []
 
 
-def test_public_route_maps_inference_failure_to_one_sanitized_terminal_error(
-    monkeypatch,
-) -> None:
-    FailingEngine.instances = 0
-    install_vad(monkeypatch)
+def test_public_route_maps_inference_failure_to_one_sanitized_terminal_error() -> None:
+    reset_engine()
     app, _runtime = app_with_engine(FailingEngine)
+    install_classifier(app, [True])
 
     with TestClient(app) as client:
         with client.websocket_connect("/stream") as websocket:
             websocket.send_json(start_message())
             receive_type(websocket, "SESSION_STARTED")
-            websocket.send_json(audio_message(pcm(16_000)))
+            websocket.send_json(audio_message(pcm(16_000), 1))
             error = receive_type(websocket, "ERROR")
 
-    data = event_data(error)
+    data = event_payload(error)
     assert data["code"] == "asr_inference_failed"
     assert data["message"] == "Streaming ASR failed"
     assert data["recoverable"] is False
@@ -266,8 +261,23 @@ def test_public_route_maps_inference_failure_to_one_sanitized_terminal_error(
     assert "[processing...]" not in str(error)
 
 
-def test_vad_fake_is_compatible_with_sync_await_and_tuple_consumers() -> None:
-    processor = DeterministicVADProcessor()
-    first = processor.process_chunk(b"x")
-    assert tuple(first) == (True, False)
-    assert inspect.isawaitable(first)
+def test_public_route_sanitizes_unexpected_classifier_failure() -> None:
+    reset_engine()
+    app, _runtime = app_with_engine(DeterministicEngine)
+    install_classifier(app, [RuntimeError("private classifier detail")])
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/stream") as websocket:
+            websocket.send_json(start_message())
+            receive_type(websocket, "SESSION_STARTED")
+            websocket.send_json(audio_message(pcm(16_000), 1))
+            error = receive_type(websocket, "ERROR")
+
+    data = event_payload(error)
+    assert data["code"] == "asr_inference_failed"
+    assert data["message"] == "Streaming ASR failed"
+    assert data["context"] == {
+        "phase": "process_audio",
+        "violation": "unexpected_streaming_error",
+    }
+    assert "private classifier detail" not in str(error)
