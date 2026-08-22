@@ -96,11 +96,12 @@ def _write_pcm_wav(
 
 def _transcribe_owned_engine(
     audio_path: str | Path,
-    _root: str | Path,
-    _config: TranscriptionConfig,
+    root: str | Path,
+    config: TranscriptionConfig,
     *,
     _engine: Any | None = None,
 ) -> Transcript:
+    del root, config
     if _engine is None:
         raise RuntimeNotReadyError("The process-owned ASR engine is unavailable")
     return cast(Transcript, _engine.transcribe_file(Path(audio_path)))
