@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from transcription import _build_info  # noqa: E402
 from transcription.api import transcribe_bytes, transcribe_file  # noqa: E402
 from transcription.config import AsrConfig, Paths, TranscriptionConfig  # noqa: E402
-from transcription.models import Transcript  # noqa: E402
+from transcription.models import Segment, Transcript, Word  # noqa: E402
 from transcription.receipt import receipt_stable_projection  # noqa: E402
 from transcription.service import create_app  # noqa: E402
 from transcription.service_runtime import ASRRuntime, RuntimeProfile  # noqa: E402
@@ -58,7 +58,22 @@ class ParityEngine:
         return Transcript(
             file_name=audio_path.name,
             language="en",
-            segments=[],
+            segments=[
+                Segment(
+                    id=0,
+                    start=0.0,
+                    end=0.01,
+                    text="hello",
+                    words=[
+                        Word(
+                            word="hello",
+                            start=0.0,
+                            end=0.01,
+                            probability=0.99,
+                        )
+                    ],
+                )
+            ],
             meta={
                 "asr_backend": "faster-whisper",
                 "asr_model": self.cfg.model_name,
@@ -81,7 +96,7 @@ def config() -> TranscriptionConfig:
         task="transcribe",
         beam_size=3,
         vad_min_silence_ms=400,
-        word_timestamps=False,
+        word_timestamps=True,
     )
 
 
@@ -94,7 +109,7 @@ def asr_config() -> AsrConfig:
         task="transcribe",
         beam_size=3,
         vad_min_silence_ms=400,
-        word_timestamps=False,
+        word_timestamps=True,
     )
 
 
@@ -239,6 +254,25 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
         validate_document(document)
         assert document["file"] == source_name
         assert document["meta"]["audio_file"] == source_name
+        assert document["segments"] == [
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": 0.01,
+                "text": "hello",
+                "speaker": None,
+                "tone": None,
+                "audio_state": None,
+                "words": [
+                    {
+                        "word": "hello",
+                        "start": 0.0,
+                        "end": 0.01,
+                        "probability": 0.99,
+                    }
+                ],
+            }
+        ]
 
     assert "file_name" not in file_document
     assert "file_name" not in bytes_document
