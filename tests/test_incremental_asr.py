@@ -145,11 +145,7 @@ async def test_revisions_replace_text_and_finalize_on_vad_without_reinference() 
     second_revision = second[0]
     final_revision = final[0]
 
-    assert (
-        first_revision.segment_id
-        == second_revision.segment_id
-        == final_revision.segment_id
-    )
+    assert first_revision.segment_id == second_revision.segment_id == final_revision.segment_id
     assert [
         first_revision.revision,
         second_revision.revision,
@@ -182,9 +178,7 @@ async def test_revisions_replace_text_and_finalize_on_vad_without_reinference() 
 @pytest.mark.asyncio
 async def test_packet_fragmentation_does_not_change_revision_sequence_or_work() -> None:
     whole, whole_backend, whole_session = await run_fragmented([12])
-    fragmented, fragmented_backend, fragmented_session = await run_fragmented(
-        [1] * 12
-    )
+    fragmented, fragmented_backend, fragmented_session = await run_fragmented([1] * 12)
     uneven, uneven_backend, uneven_session = await run_fragmented([3, 2, 5, 2])
 
     expected = [projection(revision) for revision in whole]
@@ -207,8 +201,7 @@ async def test_max_utterance_rollover_keeps_absolute_half_open_time() -> None:
 
     finals = [revision for revision in revisions if revision.final]
     assert [
-        (revision.start_sample, revision.end_sample, revision.final_reason)
-        for revision in finals
+        (revision.start_sample, revision.end_sample, revision.final_reason) for revision in finals
     ] == [
         (0, 10, "max_utterance"),
         (10, 20, "max_utterance"),
@@ -272,10 +265,7 @@ async def test_default_geometric_backoff_bounds_prefix_submission_work() -> None
     assert [samples for samples, _start, _end in backend.calls] == expected_prefixes
     assert session.metrics.model_calls == 6
     assert session.metrics.submitted_audio_samples == sum(expected_prefixes)
-    assert (
-        session.metrics.submitted_audio_samples
-        <= policy.max_utterance_samples * 3
-    )
+    assert session.metrics.submitted_audio_samples <= policy.max_utterance_samples * 3
 
 
 @pytest.mark.asyncio
@@ -343,9 +333,7 @@ async def test_async_backend_is_supported() -> None:
 
 
 @pytest.mark.asyncio
-async def test_input_contract_rejects_unsupported_or_unbounded_audio_before_model_work() -> (
-    None
-):
+async def test_input_contract_rejects_unsupported_or_unbounded_audio_before_model_work() -> None:
     with pytest.raises(ValueError, match="16 kHz"):
         IncrementalASRConfig(sample_rate=8_000)
     with pytest.raises(ValueError, match="mono"):
