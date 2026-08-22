@@ -84,9 +84,7 @@ def core_config() -> IncrementalASRConfig:
 @pytest.mark.asyncio
 async def test_short_leading_silence_advances_clock_without_joining_utterance() -> None:
     runtime, engines = await ready_runtime()
-    protocol = WebSocketStreamingSession(
-        config=WebSocketSessionConfig(max_gap_sec=4 / 16_000)
-    )
+    protocol = WebSocketStreamingSession(config=WebSocketSessionConfig(max_gap_sec=4 / 16_000))
     controller = RevisionStreamingController(
         protocol,
         runtime,
@@ -119,9 +117,7 @@ async def test_present_unsupported_feature_requires_exact_false() -> None:
         )
         with pytest.raises(StreamingNegotiationError) as exc_info:
             await rejected.start({"enable_prosody": "false"})
-        assert exc_info.value.context["mismatches"] == {
-            "enable_prosody": "false"
-        }
+        assert exc_info.value.context["mismatches"] == {"enable_prosody": "false"}
 
         accepted = RevisionStreamingController(
             WebSocketStreamingSession(),
