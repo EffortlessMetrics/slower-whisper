@@ -170,9 +170,7 @@ class RevisionStreamingController:
             revisions: list[ASRRevision] = []
             if decision:
                 bridge_silence = self.incremental.active_segment_id is not None
-                revisions.extend(
-                    await self._flush_pending_silence(as_speech=bridge_silence)
-                )
+                revisions.extend(await self._flush_pending_silence(as_speech=bridge_silence))
                 revisions.extend(await self.incremental.push_pcm(audio_data, speech=True))
             else:
                 revisions.extend(await self._consume_silence(audio_data))
