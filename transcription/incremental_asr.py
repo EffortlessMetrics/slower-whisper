@@ -78,9 +78,7 @@ class IncrementalASRConfig:
         if self.hypothesis_backoff_factor < 1:
             raise ValueError("hypothesis_backoff_factor must be at least 1")
         if self.max_utterance_samples < self.min_hypothesis_samples:
-            raise ValueError(
-                "max_utterance_samples must be at least min_hypothesis_samples"
-            )
+            raise ValueError("max_utterance_samples must be at least min_hypothesis_samples")
         if self.max_chunk_bytes <= 0:
             raise ValueError("max_chunk_bytes must be positive")
         if self.max_chunk_bytes % self.bytes_per_sample_frame != 0:
@@ -154,9 +152,7 @@ class IncrementalASRSession:
     ) -> None:
         self.backend = backend
         self.config = config or IncrementalASRConfig()
-        self._segment_id_factory = segment_id_factory or (
-            lambda number: f"seg-{number:08d}"
-        )
+        self._segment_id_factory = segment_id_factory or (lambda number: f"seg-{number:08d}")
 
         self._state = IncrementalASRState.ACTIVE
         self._absolute_sample = 0
@@ -297,12 +293,8 @@ class IncrementalASRSession:
     def _next_hypothesis_threshold(self) -> int:
         if self._last_hypothesis_samples == 0:
             return self.config.min_hypothesis_samples
-        linear_threshold = (
-            self._last_hypothesis_samples + self.config.hypothesis_interval_samples
-        )
-        geometric_threshold = (
-            self._last_hypothesis_samples * self.config.hypothesis_backoff_factor
-        )
+        linear_threshold = self._last_hypothesis_samples + self.config.hypothesis_interval_samples
+        geometric_threshold = self._last_hypothesis_samples * self.config.hypothesis_backoff_factor
         return max(linear_threshold, geometric_threshold)
 
     async def _emit(self, *, final_reason: FinalReason | None) -> ASRRevision:
