@@ -174,11 +174,7 @@ async def websocket_stream(websocket: WebSocket) -> None:
                 session = WebSocketStreamingSession(config=config)
                 runtime = _runtime(websocket)
                 if runtime is None or not runtime.ready:
-                    state = (
-                        runtime.state.value
-                        if runtime is not None
-                        else "missing"
-                    )
+                    state = runtime.state.value if runtime is not None else "missing"
                     readiness_error = RuntimeNotReadyError(
                         "The process-owned ASR runtime is not ready",
                         context={"state": state},
