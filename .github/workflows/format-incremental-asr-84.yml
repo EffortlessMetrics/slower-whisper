@@ -9,7 +9,7 @@ permissions:
 
 concurrency:
   group: format-incremental-asr-84
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   format-and-verify:
