@@ -63,6 +63,20 @@ class IncrementalASRConfig:
     max_chunk_bytes: int = 128 * 1024
 
     def __post_init__(self) -> None:
+        integer_values = {
+            "sample_rate": self.sample_rate,
+            "channels": self.channels,
+            "sample_width_bytes": self.sample_width_bytes,
+            "min_hypothesis_samples": self.min_hypothesis_samples,
+            "hypothesis_interval_samples": self.hypothesis_interval_samples,
+            "hypothesis_backoff_factor": self.hypothesis_backoff_factor,
+            "max_utterance_samples": self.max_utterance_samples,
+            "max_chunk_bytes": self.max_chunk_bytes,
+        }
+        for name, value in integer_values.items():
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+
         if self.sample_rate != 16_000:
             raise ValueError("stable incremental ASR requires a 16 kHz sample rate")
         if self.channels != 1:
@@ -156,6 +170,7 @@ class IncrementalASRSession:
 
         self._state = IncrementalASRState.ACTIVE
         self._absolute_sample = 0
+        self._samples_received = 0
         self._active_start_sample: int | None = None
         self._active_segment_id: str | None = None
         self._active_audio = bytearray()
@@ -196,7 +211,7 @@ class IncrementalASRSession:
             peak_active_audio_bytes=self._peak_active_audio_bytes,
             revisions_emitted=self._revisions_emitted,
             segments_finalized=self._segments_finalized,
-            absolute_samples_received=self._absolute_sample,
+            absolute_samples_received=self._samples_received,
         )
 
     async def push_pcm(
@@ -211,6 +226,7 @@ class IncrementalASRSession:
         sample_count = len(pcm) // self.config.bytes_per_sample_frame
         if sample_count == 0:
             return ()
+        self._samples_received += sample_count
 
         if not speech:
             revisions: list[ASRRevision] = []
