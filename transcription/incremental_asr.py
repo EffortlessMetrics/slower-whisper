@@ -21,6 +21,7 @@ from .exceptions import (
 )
 
 FinalReason = Literal["vad_boundary", "max_utterance", "end_of_stream"]
+_FINAL_REASONS = frozenset({"vad_boundary", "max_utterance", "end_of_stream"})
 
 
 class IncrementalASRBackend(Protocol):
@@ -33,7 +34,7 @@ class IncrementalASRBackend(Protocol):
         sample_rate: int,
         start_sample: int,
         end_sample: int,
-    ) -> str | Awaitable[str]: ...
+    ) -> object | Awaitable[object]: ...
 
 
 SegmentIdFactory = Callable[[int], str]
@@ -57,6 +58,7 @@ class IncrementalASRConfig:
     encoding: str = "pcm_s16le"
     min_hypothesis_samples: int = 16_000
     hypothesis_interval_samples: int = 8_000
+    hypothesis_backoff_factor: int = 2
     max_utterance_samples: int = 480_000
     max_chunk_bytes: int = 128 * 1024
 
@@ -73,6 +75,8 @@ class IncrementalASRConfig:
             raise ValueError("min_hypothesis_samples must be positive")
         if self.hypothesis_interval_samples <= 0:
             raise ValueError("hypothesis_interval_samples must be positive")
+        if self.hypothesis_backoff_factor < 1:
+            raise ValueError("hypothesis_backoff_factor must be at least 1")
         if self.max_utterance_samples < self.min_hypothesis_samples:
             raise ValueError(
                 "max_utterance_samples must be at least min_hypothesis_samples"
@@ -110,6 +114,8 @@ class ASRRevision:
             raise ValueError("end_sample must not precede start_sample")
         if self.final != (self.final_reason is not None):
             raise ValueError("final and final_reason must agree")
+        if self.final_reason is not None and self.final_reason not in _FINAL_REASONS:
+            raise ValueError("final_reason is not a supported finalization reason")
 
     def to_seconds(self, sample_rate: int) -> tuple[float, float]:
         """Derive seconds without changing sample-clock authority."""
@@ -123,7 +129,7 @@ class IncrementalASRMetrics:
     """Bounded-work receipt for an incremental session."""
 
     model_calls: int
-    decoded_audio_samples: int
+    submitted_audio_samples: int
     peak_active_audio_bytes: int
     revisions_emitted: int
     segments_finalized: int
@@ -161,9 +167,10 @@ class IncrementalASRSession:
         self._last_hypothesis_samples = 0
         self._last_hypothesis_text: str | None = None
         self._segment_number = 0
+        self._seen_segment_ids: set[str] = set()
 
         self._model_calls = 0
-        self._decoded_audio_samples = 0
+        self._submitted_audio_samples = 0
         self._peak_active_audio_bytes = 0
         self._revisions_emitted = 0
         self._segments_finalized = 0
@@ -189,7 +196,7 @@ class IncrementalASRSession:
     def metrics(self) -> IncrementalASRMetrics:
         return IncrementalASRMetrics(
             model_calls=self._model_calls,
-            decoded_audio_samples=self._decoded_audio_samples,
+            submitted_audio_samples=self._submitted_audio_samples,
             peak_active_audio_bytes=self._peak_active_audio_bytes,
             revisions_emitted=self._revisions_emitted,
             segments_finalized=self._segments_finalized,
@@ -272,8 +279,11 @@ class IncrementalASRSession:
             return
         self._segment_number += 1
         segment_id = self._segment_id_factory(self._segment_number)
-        if not segment_id:
-            raise ValueError("segment_id_factory returned an empty identifier")
+        if not isinstance(segment_id, str) or not segment_id.strip():
+            raise ValueError("segment_id_factory returned an invalid identifier")
+        if segment_id in self._seen_segment_ids:
+            raise ValueError("segment_id_factory returned a duplicate identifier")
+        self._seen_segment_ids.add(segment_id)
         self._active_segment_id = segment_id
         self._active_start_sample = self._absolute_sample
         self._active_revision = 0
@@ -287,7 +297,13 @@ class IncrementalASRSession:
     def _next_hypothesis_threshold(self) -> int:
         if self._last_hypothesis_samples == 0:
             return self.config.min_hypothesis_samples
-        return self._last_hypothesis_samples + self.config.hypothesis_interval_samples
+        linear_threshold = (
+            self._last_hypothesis_samples + self.config.hypothesis_interval_samples
+        )
+        geometric_threshold = (
+            self._last_hypothesis_samples * self.config.hypothesis_backoff_factor
+        )
+        return max(linear_threshold, geometric_threshold)
 
     async def _emit(self, *, final_reason: FinalReason | None) -> ASRRevision:
         segment_id = self._active_segment_id
@@ -297,18 +313,19 @@ class IncrementalASRSession:
 
         end_sample = self._absolute_sample
         active_samples = self._active_sample_count
+        cached_text = self._last_hypothesis_text
         reuse_cached_text = (
             final_reason is not None
             and active_samples == self._last_hypothesis_samples
-            and self._last_hypothesis_text is not None
+            and cached_text is not None
         )
 
         if reuse_cached_text:
-            text = self._last_hypothesis_text
+            text = cached_text
         else:
             pcm = bytes(self._active_audio)
             self._model_calls += 1
-            self._decoded_audio_samples += active_samples
+            self._submitted_audio_samples += active_samples
             try:
                 result = self.backend.transcribe(
                     pcm,
@@ -316,7 +333,7 @@ class IncrementalASRSession:
                     start_sample=start_sample,
                     end_sample=end_sample,
                 )
-                text = await result if inspect.isawaitable(result) else result
+                raw_text = await result if inspect.isawaitable(result) else result
             except (ASRInferenceError, ASROutputError) as error:
                 self._fail(error)
                 raise
@@ -333,7 +350,7 @@ class IncrementalASRSession:
                 self._fail(inference_error)
                 raise inference_error from error
 
-            if not isinstance(text, str):
+            if not isinstance(raw_text, str):
                 output_error = ASROutputError(
                     "Incremental ASR backend returned non-text output",
                     context={
@@ -343,7 +360,7 @@ class IncrementalASRSession:
                 )
                 self._fail(output_error)
                 raise output_error
-            text = text.strip()
+            text = raw_text.strip()
             self._last_hypothesis_text = text
 
         self._active_revision += 1
@@ -376,6 +393,7 @@ class IncrementalASRSession:
     def _fail(self, error: TranscriptionError) -> None:
         self._state = IncrementalASRState.FAILED
         self._failure = error
+        self._reset_active_utterance()
 
     def _require_active(self) -> None:
         if self._state is IncrementalASRState.ACTIVE:
