@@ -10,7 +10,7 @@ Parity is evaluated on the complete schema-valid transcript, with these
 semantic fields compared directly:
 
 - transcript schema version;
-- source filename;
+- source filename in both top-level `file` and `meta.audio_file`;
 - detected language;
 - ordered segments, words, and timing;
 - actual ASR backend, model, device, and compute type;
@@ -40,8 +40,18 @@ failed, then selects CPU/int8. Every surface must preserve the same selected
 runtime and ordered attempts, attach a schema-valid receipt, and close only the
 engine it owns.
 
+The bytes and REST boundaries restore one shared safe caller-facing basename to
+both `Transcript.file_name` and `meta.audio_file`. REST still writes the upload
+to a randomized temporary filesystem path. The temporary path cannot escape
+into the public transcript or receipt.
+
+REST responses use the schema-authoritative `file` key. The legacy `file_name`
+key remains temporarily as a compatibility alias and must equal `file` exactly.
+The REST serializer also carries the same optional annotations, turns, speaker
+statistics, and chunks as the canonical transcript model when present.
+
 This checkpoint establishes the comparison harness. It does not claim that the
-older directory/batch or CLI orchestration paths are already equivalent.
+directory/batch or CLI orchestration paths are already equivalent.
 
 ## Checkpoint B: directory and CLI
 
@@ -70,7 +80,7 @@ Parity includes failure behavior, not only successful JSON:
 
 ## Artifact acceptance
 
-The installed-wheel lane runs from outside the checkout and loads schemas
+The installed-wheel lanes run from outside the checkout and load schemas
 through `importlib.resources`. This proves the comparison uses the packaged
 public API, packaged schemas, and packaged provenance implementation rather
 than source-tree-relative files.
