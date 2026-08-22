@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from transcription import _build_info  # noqa: E402
 from transcription.api import transcribe_bytes, transcribe_file  # noqa: E402
-from transcription.config import AsrConfig, TranscriptionConfig  # noqa: E402
+from transcription.config import AsrConfig, Paths, TranscriptionConfig  # noqa: E402
 from transcription.models import Transcript  # noqa: E402
 from transcription.receipt import receipt_stable_projection  # noqa: E402
 from transcription.service import create_app  # noqa: E402
@@ -202,7 +202,11 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
         config(),
         _engine=file_engine,
     )
-    file_document = json.loads((file_root / "json" / "surface.json").read_text(encoding="utf-8"))
+    file_document = json.loads(
+        (Paths(root=file_root).json_dir / "surface.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     monkeypatch.setattr("transcription.asr_engine.TranscriptionEngine", ParityEngine)
     bytes_result = transcribe_bytes(
