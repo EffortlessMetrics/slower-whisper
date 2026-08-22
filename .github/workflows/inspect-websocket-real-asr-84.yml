@@ -1,0 +1,60 @@
+name: Inspect WebSocket Real ASR 84
+
+on:
+  push:
+    branches: [feature/websocket-real-asr-84]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv python install 3.12
+      - name: Print exact route and session seams
+        run: |
+          uv run --python 3.12 python - <<'PY'
+          import ast
+          import inspect
+          from pathlib import Path
+
+          from transcription.streaming_ws import (
+              AudioFormat,
+              EventType,
+              SessionConfig,
+              SessionState,
+              WebSocketStreamingSession,
+          )
+
+          print('=== ENUMS ===')
+          print('AudioFormat', list(AudioFormat))
+          print('EventType', list(EventType))
+          print('SessionState', list(SessionState))
+          print('SessionConfig', inspect.signature(SessionConfig))
+          print('WebSocketStreamingSession', inspect.signature(WebSocketStreamingSession))
+
+          for name in (
+              '__init__',
+              'handle_start_session',
+              'handle_audio_chunk',
+              '_finalize_segment',
+              'handle_end_session',
+              'send_event',
+              'send_error',
+          ):
+              print(f'=== {name} {inspect.signature(getattr(WebSocketStreamingSession, name))} ===')
+              print(inspect.getsource(getattr(WebSocketStreamingSession, name)))
+
+          source = Path('transcription/service_streaming.py').read_text(encoding='utf-8')
+          tree = ast.parse(source)
+          route = next(
+              node for node in tree.body
+              if isinstance(node, ast.AsyncFunctionDef) and node.name == 'websocket_stream'
+          )
+          print('=== ROUTE ===')
+          print(ast.get_source_segment(source, route))
+          PY
