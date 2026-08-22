@@ -42,8 +42,10 @@ jobs:
       - name: Verify static route ownership
         run: |
           uv run ruff check \
+            transcription/exceptions.py \
             transcription/incremental_asr.py \
-            transcription/service_streaming.py \
+            transcription/service.py \
+            transcription/service_runtime_streaming.py \
             transcription/streaming_revision_controller.py \
             transcription/streaming_runtime_asr.py \
             tests/test_incremental_asr.py \
@@ -52,8 +54,10 @@ jobs:
             tests/test_streaming_runtime_asr.py \
             tests/test_websocket_real_asr_source_policy.py
           uv run ruff format --check \
+            transcription/exceptions.py \
             transcription/incremental_asr.py \
-            transcription/service_streaming.py \
+            transcription/service.py \
+            transcription/service_runtime_streaming.py \
             transcription/streaming_revision_controller.py \
             transcription/streaming_runtime_asr.py \
             tests/test_incremental_asr.py \
@@ -62,7 +66,7 @@ jobs:
             tests/test_streaming_runtime_asr.py \
             tests/test_websocket_real_asr_source_policy.py
           uv run mypy \
-            transcription/incremental_asr.py \
+            transcription/service_runtime_streaming.py \
             transcription/streaming_revision_controller.py \
             transcription/streaming_runtime_asr.py
           git diff --check
