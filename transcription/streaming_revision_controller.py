@@ -160,11 +160,7 @@ class RevisionStreamingController:
                 audio_data,
                 sample_rate=self.incremental.config.sample_rate,
             )
-            decision = (
-                await raw_decision
-                if inspect.isawaitable(raw_decision)
-                else raw_decision
-            )
+            decision = await raw_decision if inspect.isawaitable(raw_decision) else raw_decision
             if not isinstance(decision, bool):
                 raise ASROutputError(
                     "Streaming speech classifier returned invalid output",
