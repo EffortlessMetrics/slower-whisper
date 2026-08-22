@@ -1,0 +1,243 @@
+name: Merge Directory CLI Parity Discovery
+
+on:
+  push:
+    branches: [automation/directory-cli-discovery-merge]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: merge-directory-cli-parity-discovery
+  cancel-in-progress: false
+
+jobs:
+  validate-and-merge:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FEATURE_BRANCH: feature/directory-cli-parity-620
+
+    steps:
+      - name: Wait for the discovery PR to settle
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 7200))
+          while true; do
+            pr_number=$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --head "$FEATURE_BRANCH" \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty')
+            settled=true
+            if [ -z "$pr_number" ]; then
+              settled=false
+            else
+              git fetch origin "$FEATURE_BRANCH" main --prune
+              head_sha=$(git rev-parse "origin/$FEATURE_BRANCH")
+              for path in \
+                contracts/surface_parity_entrypoints.json \
+                docs/SURFACE_PARITY_DISCOVERY.md \
+                tests/test_surface_parity_entrypoints.py; do
+                git cat-file -e "$head_sha:$path" 2>/dev/null || settled=false
+              done
+              if git ls-tree -r --name-only "$head_sha" \
+                | grep -Eq '^\.github/workflows/(prepare|fix)-directory-cli-parity'; then
+                settled=false
+              fi
+            fi
+
+            if [ "$settled" = true ]; then
+              echo "PR_NUMBER=$pr_number" >> "$GITHUB_ENV"
+              echo "SETTLED_HEAD=$head_sha" >> "$GITHUB_ENV"
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Directory/CLI discovery branch did not settle"
+              exit 1
+            fi
+            sleep 30
+          done
+
+      - name: Checkout exact discovery head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: feature/directory-cli-parity-620
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact PR identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          TESTED_HEAD=$(git rev-parse HEAD)
+          test "$TESTED_HEAD" = "$SETTLED_HEAD"
+          test "$TESTED_HEAD" = "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.ref)" = "$FEATURE_BRANCH"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .base.ref)" = "main"
+          git merge-base --is-ancestor origin/main HEAD
+          git diff --check origin/main...HEAD
+          echo "TESTED_HEAD=$TESTED_HEAD" >> "$GITHUB_ENV"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python 3.12 and 3.13
+        run: uv python install 3.12 3.13
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install complete Python 3.12 environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Verify the generated ownership contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check tests/test_surface_parity_entrypoints.py
+          uv run ruff format --check tests/test_surface_parity_entrypoints.py
+          jq -e '.contract_version == 1' \
+            contracts/surface_parity_entrypoints.json >/dev/null
+          jq -e '.project_scripts["slower-whisper"] | type == "string"' \
+            contracts/surface_parity_entrypoints.json >/dev/null
+          jq -e '.batch_candidates | length > 0' \
+            contracts/surface_parity_entrypoints.json >/dev/null
+          jq -e '.cli_candidates | length > 0' \
+            contracts/surface_parity_entrypoints.json >/dev/null
+          grep -Fq 'does **not** claim semantic parity' \
+            docs/SURFACE_PARITY_DISCOVERY.md
+          git diff --check
+
+      - name: Verify source entrypoints and existing CLI tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t cli_tests < <(
+            find tests -maxdepth 1 -type f -name 'test_cli*.py' -print | sort
+          )
+          uv run pytest -q \
+            tests/test_surface_parity_entrypoints.py \
+            tests/test_surface_parity.py \
+            "${cli_tests[@]}"
+          uv run slower-whisper --help >/dev/null
+          uv run slower-whisper transcribe --help >/dev/null
+
+      - name: Verify full non-heavy repository suite
+        run: |
+          uv run pytest -q \
+            -m "not slow and not heavy and not requires_gpu" \
+            --no-cov
+
+      - name: Verify installed console surfaces on Python 3.12 and 3.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          WHEEL=$(realpath "$(find dist -maxdepth 1 -name '*.whl' -print -quit)")
+          test -n "$WHEEL"
+          for version in 3.12 3.13; do
+            VENV="$RUNNER_TEMP/directory-cli-discovery-$version"
+            uv venv "$VENV" --python "$version"
+            uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
+            uv pip check --python "$VENV/bin/python"
+            (
+              cd "$RUNNER_TEMP"
+              unset PYTHONPATH
+              "$VENV/bin/slower-whisper" --help >/dev/null
+              "$VENV/bin/slower-whisper" transcribe --help >/dev/null
+              "$VENV/bin/python" - <<'PY'
+          from pathlib import Path
+          import transcription
+
+          package_path = Path(transcription.__file__).resolve()
+          assert "site-packages" in package_path.parts, package_path
+          PY
+            )
+          done
+
+      - name: Wait for durable PR-head checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 5400))
+          while true; do
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$TESTED_HEAD"
+            checks=$(gh api -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/commits/${TESTED_HEAD}/check-runs?per_page=100")
+            latest=$(jq '
+              .check_runs
+              | sort_by(.name)
+              | group_by(.name)
+              | map(max_by(.id))
+            ' <<<"$checks")
+            failed=$(jq -r '[.[]
+              | select((.name | ascii_downcase | contains("gitleaks")) | not)
+              | select(.status == "completed")
+              | select((.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") | not)]
+              | length' <<<"$latest")
+            test "$failed" -eq 0
+            pending=$(jq -r '[.[]
+              | select((.name | ascii_downcase | contains("gitleaks")) | not)
+              | select(.status != "completed")] | length' <<<"$latest")
+            if [ "$pending" -eq 0 ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Timed out waiting for discovery PR checks"
+              exit 1
+            fi
+            sleep 25
+          done
+
+      - name: Merge discovery checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$TESTED_HEAD"
+          gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" || true
+          gh pr merge "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch \
+            --subject "test: expose directory and CLI parity ownership (#${PR_NUMBER})" \
+            --body "Discovery checkpoint for #633: installed console entrypoints, directory/batch and CLI owners, engine construction, writer seams, canonical metadata reachability, and existing tests are now explicit and executable. Behavioral parity remains open."
+
+      - name: Record discovery and create behavioral branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+          test "$(jq -r .merged <<<"$pr")" = "true"
+          merge_sha=$(jq -r .merge_commit_sha <<<"$pr")
+          gh issue comment 633 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Directory/CLI ownership discovery merged via #${PR_NUMBER} at \`${merge_sha}\`. The inventory now identifies actual console entrypoints, batch/CLI owners, engine construction, manual writer calls, canonical metadata reachability, and test references. #633 remains open for the behavioral parity and repair transaction."
+          gh issue comment 620 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Directory/CLI parity ownership discovery merged via #${PR_NUMBER} at \`${merge_sha}\`. No behavioral parity claim was made; the next branch must run the checkpoint-A deterministic fixture through the discovered entrypoints and repair the owning path."
+
+          main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feature/directory-cli-parity-behavior-620" >/dev/null 2>&1; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref='refs/heads/feature/directory-cli-parity-behavior-620' \
+              -f sha="$main_sha" >/dev/null
+          fi
+
+      - name: Delete disposable automation branch
+        if: success()
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/directory-cli-discovery-merge" || true
