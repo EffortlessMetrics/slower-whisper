@@ -102,10 +102,19 @@ def _recoverable_event(
     )
 
 
+def _client_timestamp(payload: dict[str, Any]) -> int:
+    timestamp = payload.get("timestamp", 0)
+    try:
+        return int(timestamp)
+    except (TypeError, ValueError):
+        return 0
+
+
 @router.websocket("/stream")
 async def websocket_stream(websocket: WebSocket) -> None:
     """Run stable revision-aware ASR on one accepted WebSocket connection."""
     await websocket.accept()
+    connection_controls = WebSocketStreamingSession()
     session: WebSocketStreamingSession | None = None
     controller: RevisionStreamingController | None = None
 
@@ -117,11 +126,10 @@ async def websocket_stream(websocket: WebSocket) -> None:
                 raise
             except Exception as error:  # noqa: BLE001 - return bounded protocol detail
                 logger.warning("Failed to decode WebSocket message", exc_info=error)
-                target = session or WebSocketStreamingSession()
                 await _send(
                     websocket,
                     _recoverable_event(
-                        target,
+                        session or connection_controls,
                         code="invalid_message",
                         message="WebSocket message is invalid",
                     ),
@@ -132,13 +140,21 @@ async def websocket_stream(websocket: WebSocket) -> None:
                 message_type, payload = parse_client_message(message)
             except (TypeError, ValueError) as error:
                 logger.warning("Invalid WebSocket message type", exc_info=error)
-                target = session or WebSocketStreamingSession()
                 await _send(
                     websocket,
                     _recoverable_event(
-                        target,
+                        session or connection_controls,
                         code="invalid_message_type",
                         message="WebSocket message type is invalid",
+                    ),
+                )
+                continue
+
+            if message_type is ClientMessageType.PING:
+                await _send(
+                    websocket,
+                    (session or connection_controls).create_pong_event(
+                        _client_timestamp(payload)
                     ),
                 )
                 continue
@@ -157,7 +173,17 @@ async def websocket_stream(websocket: WebSocket) -> None:
 
                 config_data = payload.get("config", {})
                 if not isinstance(config_data, dict):
-                    config_data = {"config": config_data}
+                    session = WebSocketStreamingSession()
+                    negotiation_error = StreamingNegotiationError(
+                        "Streaming audio configuration is unsupported",
+                        context={
+                            "mismatches": {"config": "must_be_object"}
+                        },
+                    )
+                    await _send(websocket, _terminal_event(session, negotiation_error))
+                    await websocket.close(code=1003)
+                    return
+
                 try:
                     config = WebSocketSessionConfig.from_dict(config_data)
                 except (TypeError, ValueError) as error:
@@ -204,11 +230,10 @@ async def websocket_stream(websocket: WebSocket) -> None:
                 continue
 
             if session is None or controller is None:
-                temporary = WebSocketStreamingSession()
                 await _send(
                     websocket,
                     _recoverable_event(
-                        temporary,
+                        connection_controls,
                         code="no_session",
                         message="Send START_SESSION before this message",
                     ),
@@ -296,18 +321,6 @@ async def websocket_stream(websocket: WebSocket) -> None:
                     return
                 for event in replay:
                     await _send(websocket, event)
-                continue
-
-            if message_type is ClientMessageType.PING:
-                timestamp = payload.get("timestamp", 0)
-                try:
-                    client_timestamp = int(timestamp)
-                except (TypeError, ValueError):
-                    client_timestamp = 0
-                await _send(
-                    websocket,
-                    session.create_pong_event(client_timestamp),
-                )
                 continue
 
             if message_type is ClientMessageType.TTS_STATE:
