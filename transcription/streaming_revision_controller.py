@@ -169,7 +169,10 @@ class RevisionStreamingController:
 
             revisions: list[ASRRevision] = []
             if decision:
-                revisions.extend(await self._flush_pending_silence(as_speech=True))
+                bridge_silence = self.incremental.active_segment_id is not None
+                revisions.extend(
+                    await self._flush_pending_silence(as_speech=bridge_silence)
+                )
                 revisions.extend(await self.incremental.push_pcm(audio_data, speech=True))
             else:
                 revisions.extend(await self._consume_silence(audio_data))
@@ -331,8 +334,8 @@ class RevisionStreamingController:
         ):
             mismatches["max_gap_sec"] = max_gap_sec
         for field_name in _UNSUPPORTED_FEATURE_FLAGS:
-            if config_data.get(field_name) is True:
-                mismatches[field_name] = True
+            if field_name in config_data and config_data[field_name] is not False:
+                mismatches[field_name] = config_data[field_name]
         return mismatches
 
     def _validate_audio(self, audio_data: bytes) -> None:
