@@ -94,10 +94,12 @@ def config(
     interval: int = 4,
     maximum: int = 20,
     max_chunk_bytes: int = 256,
+    backoff: int = 1,
 ) -> IncrementalASRConfig:
     return IncrementalASRConfig(
         min_hypothesis_samples=minimum,
         hypothesis_interval_samples=interval,
+        hypothesis_backoff_factor=backoff,
         max_utterance_samples=maximum,
         max_chunk_bytes=max_chunk_bytes,
     )
@@ -143,8 +145,16 @@ async def test_revisions_replace_text_and_finalize_on_vad_without_reinference() 
     second_revision = second[0]
     final_revision = final[0]
 
-    assert first_revision.segment_id == second_revision.segment_id == final_revision.segment_id
-    assert [first_revision.revision, second_revision.revision, final_revision.revision] == [1, 2, 3]
+    assert (
+        first_revision.segment_id
+        == second_revision.segment_id
+        == final_revision.segment_id
+    )
+    assert [
+        first_revision.revision,
+        second_revision.revision,
+        final_revision.revision,
+    ] == [1, 2, 3]
     assert [first_revision.text, second_revision.text, final_revision.text] == [
         "samples:4",
         "samples:8",
@@ -160,7 +170,7 @@ async def test_revisions_replace_text_and_finalize_on_vad_without_reinference() 
     assert session.active_segment_id is None
     assert backend.calls == [(4, 0, 4), (8, 0, 8)]
     assert session.metrics.model_calls == 2
-    assert session.metrics.decoded_audio_samples == 12
+    assert session.metrics.submitted_audio_samples == 12
 
     next_revision = await session.push_pcm(pcm(4), speech=True)
     assert len(next_revision) == 1
@@ -172,7 +182,9 @@ async def test_revisions_replace_text_and_finalize_on_vad_without_reinference() 
 @pytest.mark.asyncio
 async def test_packet_fragmentation_does_not_change_revision_sequence_or_work() -> None:
     whole, whole_backend, whole_session = await run_fragmented([12])
-    fragmented, fragmented_backend, fragmented_session = await run_fragmented([1] * 12)
+    fragmented, fragmented_backend, fragmented_session = await run_fragmented(
+        [1] * 12
+    )
     uneven, uneven_backend, uneven_session = await run_fragmented([3, 2, 5, 2])
 
     expected = [projection(revision) for revision in whole]
@@ -228,7 +240,7 @@ async def test_model_work_is_bounded_by_audio_not_network_packets() -> None:
         await session.end()
         return (
             session.metrics.model_calls,
-            session.metrics.decoded_audio_samples,
+            session.metrics.submitted_audio_samples,
             backend.calls,
         )
 
@@ -237,10 +249,33 @@ async def test_model_work_is_bounded_by_audio_not_network_packets() -> None:
     uneven_packets = await run([7, 2, 11, 1, 9])
 
     assert one_packet == thirty_packets == uneven_packets
-    model_calls, decoded_samples, calls = one_packet
+    model_calls, submitted_samples, calls = one_packet
     assert model_calls == 3
-    assert decoded_samples == 60
+    assert submitted_samples == 60
     assert calls == [(10, 0, 10), (20, 0, 20), (30, 0, 30)]
+
+
+@pytest.mark.asyncio
+async def test_default_geometric_backoff_bounds_prefix_submission_work() -> None:
+    backend = RecordingBackend()
+    policy = IncrementalASRConfig()
+    session = IncrementalASRSession(backend, config=policy)
+    remaining = policy.max_utterance_samples
+    chunk_samples = policy.max_chunk_bytes // policy.bytes_per_sample_frame
+
+    while remaining > 0:
+        take = min(remaining, chunk_samples)
+        await session.push_pcm(pcm(take), speech=True)
+        remaining -= take
+
+    expected_prefixes = [16_000, 32_000, 64_000, 128_000, 256_000, 480_000]
+    assert [samples for samples, _start, _end in backend.calls] == expected_prefixes
+    assert session.metrics.model_calls == 6
+    assert session.metrics.submitted_audio_samples == sum(expected_prefixes)
+    assert (
+        session.metrics.submitted_audio_samples
+        <= policy.max_utterance_samples * 3
+    )
 
 
 @pytest.mark.asyncio
@@ -272,6 +307,8 @@ async def test_backend_failure_is_distinct_from_no_revision_yet() -> None:
     assert exc_info.value.reason_code == "asr_inference_failed"
     assert "provider detail" not in str(exc_info.value.public_details())
     assert session.state is IncrementalASRState.FAILED
+    assert session.active_segment_id is None
+    assert session.active_audio_bytes == 0
 
     with pytest.raises(RuntimeNotReadyError) as not_ready:
         await session.push_pcm(pcm(1), speech=True)
@@ -289,6 +326,8 @@ async def test_non_text_backend_output_is_typed_invalid_output() -> None:
     assert exc_info.value.reason_code == "asr_output_invalid"
     assert exc_info.value.context["violation"] == "text_not_string"
     assert session.state is IncrementalASRState.FAILED
+    assert session.active_segment_id is None
+    assert session.active_audio_bytes == 0
 
 
 @pytest.mark.asyncio
@@ -304,7 +343,9 @@ async def test_async_backend_is_supported() -> None:
 
 
 @pytest.mark.asyncio
-async def test_input_contract_rejects_unsupported_or_unbounded_audio_before_model_work() -> None:
+async def test_input_contract_rejects_unsupported_or_unbounded_audio_before_model_work() -> (
+    None
+):
     with pytest.raises(ValueError, match="16 kHz"):
         IncrementalASRConfig(sample_rate=8_000)
     with pytest.raises(ValueError, match="mono"):
@@ -313,6 +354,8 @@ async def test_input_contract_rejects_unsupported_or_unbounded_audio_before_mode
         IncrementalASRConfig(sample_width_bytes=4)
     with pytest.raises(ValueError, match="pcm_s16le"):
         IncrementalASRConfig(encoding="float32")
+    with pytest.raises(ValueError, match="backoff"):
+        IncrementalASRConfig(hypothesis_backoff_factor=0)
 
     backend = RecordingBackend()
     session = IncrementalASRSession(
@@ -351,6 +394,38 @@ async def test_empty_input_and_end_are_idempotent() -> None:
         await session.push_pcm(pcm(1), speech=True)
 
 
+@pytest.mark.asyncio
+async def test_segment_id_factory_must_return_unique_nonblank_strings() -> None:
+    backend = RecordingBackend()
+    duplicate_ids = iter(["segment", "segment"])
+    session = IncrementalASRSession(
+        backend,
+        config=config(minimum=1, interval=1, maximum=2),
+        segment_id_factory=lambda _number: next(duplicate_ids),
+    )
+
+    assert len(await session.push_pcm(pcm(1), speech=True)) == 1
+    assert len(await session.push_pcm(pcm(1, 0), speech=False)) == 1
+    with pytest.raises(ValueError, match="duplicate"):
+        await session.push_pcm(pcm(1), speech=True)
+
+    blank = IncrementalASRSession(
+        RecordingBackend(),
+        config=config(minimum=1, interval=1, maximum=2),
+        segment_id_factory=lambda _number: "   ",
+    )
+    with pytest.raises(ValueError, match="invalid"):
+        await blank.push_pcm(pcm(1), speech=True)
+
+    non_string = IncrementalASRSession(
+        RecordingBackend(),
+        config=config(minimum=1, interval=1, maximum=2),
+        segment_id_factory=lambda _number: 7,  # type: ignore[return-value]
+    )
+    with pytest.raises(ValueError, match="invalid"):
+        await non_string.push_pcm(pcm(1), speech=True)
+
+
 def test_revision_validates_identity_time_and_finality() -> None:
     with pytest.raises(ValueError, match="segment_id"):
         ASRRevision("", 1, 0, 1, "text", False)
@@ -360,6 +435,16 @@ def test_revision_validates_identity_time_and_finality() -> None:
         ASRRevision("seg", 1, 2, 1, "text", False)
     with pytest.raises(ValueError, match="agree"):
         ASRRevision("seg", 1, 0, 1, "text", True)
+    with pytest.raises(ValueError, match="supported"):
+        ASRRevision(
+            "seg",
+            1,
+            0,
+            1,
+            "text",
+            True,
+            "other",  # type: ignore[arg-type]
+        )
 
     revision = ASRRevision(
         "seg",
