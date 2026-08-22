@@ -1,0 +1,66 @@
+name: Fix Surface Parity Settle Check
+
+on:
+  push:
+    branches: [automation/surface-parity-merge]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-surface-parity-settle-check
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout automation branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: automation/surface-parity-merge
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Make temporary-workflow detection pipefail-safe
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/workflows/merge-surface-parity-checkpoint-a-v2.yml")
+          source = path.read_text(encoding="utf-8")
+          old = '''              if git ls-tree -r --name-only "$head_sha" \\
+                | grep -Eq '^\\.github/workflows/repair-rest-source-identity-parity'; then
+                settled=false
+              fi
+'''
+          new = '''              repair_paths=$(git ls-tree -r --name-only "$head_sha" \\
+                | grep -E '^\\.github/workflows/repair-rest-source-identity-parity' \\
+                || true)
+              if [ -n "$repair_paths" ]; then
+                settled=false
+              fi
+'''
+          if new not in source:
+              assert source.count(old) == 1, "settle check changed"
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Remove superseded automation and commit the final guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -f \
+            .github/workflows/fix-surface-parity-merge-guard.yml \
+            .github/workflows/fix-surface-parity-settle-check.yml \
+            .github/workflows/merge-surface-parity-checkpoint-a.yml
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -A
+          git commit -m "ci: make surface parity settlement pipefail-safe"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:automation/surface-parity-merge
