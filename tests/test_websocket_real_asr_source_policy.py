@@ -26,43 +26,57 @@ def function_source(path: Path, name: str) -> str:
     return extracted
 
 
-def test_public_route_constructs_revision_controller_not_legacy_adapter() -> None:
-    path = module_path("service_streaming.py")
-    route = function_source(path, "websocket_stream")
+def test_public_route_constructs_controller_and_never_invokes_legacy_asr() -> None:
+    route = function_source(module_path("service_runtime_streaming.py"), "websocket_stream")
 
     assert "RevisionStreamingController" in route
-    assert "controller.handle_start_session" in route
-    assert "controller.handle_end_session" in route
+    assert "controller.process_audio_chunk" in route
+    assert "controller.end" in route
     assert "StreamingASRAdapter" not in route
+    assert "session.process_audio_chunk" not in route
+    assert "session.end()" not in route
     assert "[processing...]" not in route
     assert "[final segment]" not in route
 
 
 def test_public_route_resolves_the_process_owned_runtime() -> None:
-    route = function_source(module_path("service_streaming.py"), "websocket_stream")
+    route = function_source(module_path("service_runtime_streaming.py"), "websocket_stream")
 
-    assert 'websocket.scope.get("app")' in route
-    assert '"asr_runtime"' in route
+    assert "_runtime(websocket)" in route
     assert "runtime.ready" in route
     assert "RuntimeNotReadyError" in route
 
 
-def test_public_route_does_not_return_raw_exception_text() -> None:
-    route = function_source(module_path("service_streaming.py"), "websocket_stream")
+def test_public_route_uses_stable_generic_error_messages() -> None:
+    source = module_path("service_runtime_streaming.py").read_text(encoding="utf-8")
 
-    assert '"message": str(' not in route
-    assert "Internal server error:" not in route
-    assert "Unexpected error:" not in route
-    assert '"message": "Unexpected streaming failure"' in route
+    assert '"message": str(' not in source
+    assert "Internal server error:" not in source
+    assert "Unexpected error:" not in source
+    assert '"Unexpected streaming failure"' in source
+    assert '"Streaming ASR failed"' in source
 
 
-def test_revision_controller_is_the_public_asr_event_projection_owner() -> None:
+def test_controller_uses_the_session_envelope_authority_without_monkeypatching() -> None:
     source = module_path("streaming_revision_controller.py").read_text(encoding="utf-8")
 
     assert "ASRRevision" in source
+    assert "session._create_envelope" in source
+    assert "ServerMessageType.PARTIAL" in source
+    assert "ServerMessageType.FINALIZED" in source
     assert "segment_id" in source
     assert "revision" in source
     assert "start_sample" in source
     assert "end_sample" in source
     assert "final_reason" in source
-    assert 'frozenset({"[processing...]", "[final segment]"})' in source
+    assert "MethodType" not in source
+    assert "session.send_event" not in source
+    assert "[processing...]" not in source
+    assert "[final segment]" not in source
+
+
+def test_service_mounts_the_runtime_streaming_router() -> None:
+    source = module_path("service.py").read_text(encoding="utf-8")
+
+    assert "from .service_runtime_streaming import router as streaming_router" in source
+    assert "from .service_streaming import router as streaming_router" not in source
