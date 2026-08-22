@@ -171,6 +171,7 @@ def _transcribe_file_impl(
 
         engine = TranscriptionEngine(asr_cfg)
     transcript = engine.transcribe_file(norm_wav)
+    transcript.file_name = raw_dest.name
 
     transcript = maybe_run_diarization(
         transcript,
