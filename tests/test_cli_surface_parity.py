@@ -319,7 +319,7 @@ def write_startup_injection(
         encoding="utf-8",
     )
     (root / "parity_injection.py").write_text(
-        f'''from __future__ import annotations
+        f"""from __future__ import annotations
 
 import atexit
 import io
@@ -435,7 +435,7 @@ def install():
 @atexit.register
 def write_lifecycle():
     LIFECYCLE_PATH.write_text(json.dumps(STATE), encoding="utf-8")
-''',
+""",
         encoding="utf-8",
     )
     return root
@@ -466,9 +466,7 @@ def test_wheel_installed_console_matches_canonical_file_surface(
     unrelated.mkdir()
 
     environment = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith("SLOWER_WHISPER_")
+        key: value for key, value in os.environ.items() if not key.startswith("SLOWER_WHISPER_")
     }
     environment["PYTHONPATH"] = str(injection)
 
