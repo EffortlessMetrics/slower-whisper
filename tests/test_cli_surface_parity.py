@@ -31,9 +31,11 @@ class ParityEngine:
     instances = 0
     closes = 0
     calls = 0
+    word_timestamp_values: list[bool] = []
 
     def __init__(self, cfg: AsrConfig) -> None:
         type(self).instances += 1
+        type(self).word_timestamp_values.append(bool(cfg.word_timestamps))
         self.cfg = cfg
         self.model_load_attempts = [
             {
@@ -90,6 +92,7 @@ def reset_engine() -> None:
     ParityEngine.instances = 0
     ParityEngine.closes = 0
     ParityEngine.calls = 0
+    ParityEngine.word_timestamp_values = []
 
 
 def config() -> TranscriptionConfig:
@@ -303,6 +306,7 @@ def test_argparse_transcribe_matches_canonical_file_surface(
     assert ParityEngine.instances == 2
     assert ParityEngine.calls == 2
     assert ParityEngine.closes == 1
+    assert ParityEngine.word_timestamp_values == [True, True]
 
 
 def write_startup_injection(
@@ -325,12 +329,18 @@ import wave
 from pathlib import Path
 
 LIFECYCLE_PATH = Path({str(lifecycle_path)!r})
-STATE = {{"instances": 0, "calls": 0, "closes": 0}}
+STATE = {{
+    "instances": 0,
+    "calls": 0,
+    "closes": 0,
+    "word_timestamp_values": [],
+}}
 
 
 class Engine:
     def __init__(self, cfg):
         STATE["instances"] += 1
+        STATE["word_timestamp_values"].append(bool(cfg.word_timestamps))
         self.cfg = cfg
         self.model_load_attempts = [
             {{
@@ -479,4 +489,5 @@ def test_wheel_installed_console_matches_canonical_file_surface(
         "instances": 1,
         "calls": 1,
         "closes": 1,
+        "word_timestamp_values": [True],
     }
