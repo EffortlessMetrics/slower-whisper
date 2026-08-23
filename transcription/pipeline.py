@@ -174,6 +174,9 @@ def run_pipeline(
             total_time_seconds=0.0,
         )
 
+    if diarization_config is not None:
+        cfg.asr.word_timestamps = diarization_config.word_timestamps
+
     engine = TranscriptionEngine(cfg.asr)
     try:
         return _run_normalized_files(

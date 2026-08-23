@@ -18,7 +18,7 @@ jobs:
   surface-parity-contract:
     name: surface-parity-contract (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +49,7 @@ jobs:
         run: |
           uv run ruff check \
             transcription/api.py \
+            transcription/cli.py \
             transcription/generation_receipt.py \
             transcription/pipeline.py \
             transcription/service_runtime_transcribe.py \
@@ -56,6 +57,7 @@ jobs:
             transcription/source_identity.py \
             transcription/transcription_orchestrator.py \
             transcription/writers.py \
+            tests/test_cli_surface_parity.py \
             tests/test_generation_receipt.py \
             tests/test_pipeline_surface_parity.py \
             tests/test_service_serialization.py \
@@ -63,6 +65,7 @@ jobs:
             tests/test_surface_parity.py
           uv run ruff format --check \
             transcription/api.py \
+            transcription/cli.py \
             transcription/generation_receipt.py \
             transcription/pipeline.py \
             transcription/service_runtime_transcribe.py \
@@ -70,6 +73,7 @@ jobs:
             transcription/source_identity.py \
             transcription/transcription_orchestrator.py \
             transcription/writers.py \
+            tests/test_cli_surface_parity.py \
             tests/test_generation_receipt.py \
             tests/test_pipeline_surface_parity.py \
             tests/test_service_serialization.py \
@@ -77,6 +81,7 @@ jobs:
             tests/test_surface_parity.py
           uv run mypy \
             transcription/api.py \
+            transcription/cli.py \
             transcription/generation_receipt.py \
             transcription/pipeline.py \
             transcription/service_runtime_transcribe.py \
@@ -110,6 +115,7 @@ jobs:
       - name: Verify receipt and public-surface parity
         run: |
           uv run pytest -q \
+            tests/test_cli_surface_parity.py \
             tests/test_generation_receipt.py \
             tests/test_pipeline_surface_parity.py \
             tests/test_pipeline.py \
@@ -128,11 +134,11 @@ jobs:
         run: |
           grep -Fq 'temporary filenames are not a valid substitute' \
             docs/SURFACE_PARITY_CONTRACT.md
-          grep -Fq 'direct file and bytes operations close their operation-owned engines' \
-            docs/SURFACE_PARITY_CONTRACT.md
           grep -Fq 'one operation-owned engine across the batch' \
             docs/SURFACE_PARITY_CONTRACT.md
-          grep -Fq 'Call-graph discovery is not behavioral parity' \
+          grep -Fq 'transcription.cli.main()' \
+            docs/SURFACE_PARITY_CONTRACT.md
+          grep -Fq 'wheel-installed `slower-whisper transcribe`' \
             docs/SURFACE_PARITY_CONTRACT.md
 
   surface-parity-full-suite:
@@ -169,7 +175,7 @@ jobs:
   surface-parity-installed:
     name: surface-parity-installed (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
@@ -208,15 +214,17 @@ jobs:
             jsonschema==4.26.0 \
             httpx==0.28.1
           uv pip check --python "$venv/bin/python"
+          test -x "$venv/bin/slower-whisper"
           echo "SURFACE_PARITY_VENV=$venv" >> "$GITHUB_ENV"
 
-      - name: Exercise installed public surfaces outside checkout
+      - name: Exercise installed Python surfaces outside checkout
         shell: bash
         run: |
           set -euo pipefail
           test_root="$RUNNER_TEMP/surface-parity-test"
           mkdir -p "$test_root"
           cp \
+            tests/test_cli_surface_parity.py \
             tests/test_pipeline_surface_parity.py \
             tests/test_service_serialization.py \
             tests/test_service_source_identity.py \
@@ -226,10 +234,27 @@ jobs:
           unset PYTHONPATH
           "$SURFACE_PARITY_VENV/bin/python" -c 'import fastapi, uvicorn'
           "$SURFACE_PARITY_VENV/bin/python" -m pytest -q \
+            test_cli_surface_parity.py \
             test_pipeline_surface_parity.py \
             test_service_serialization.py \
             test_service_source_identity.py \
             test_surface_parity.py
+
+      - name: Exercise wheel-installed console outside checkout
+        shell: bash
+        env:
+          SLOWER_WHISPER_INSTALLED_CLI_PARITY: '1'
+        run: |
+          set -euo pipefail
+          test_root="$RUNNER_TEMP/surface-parity-test"
+          cd "$test_root"
+          unset PYTHONPATH
+          export PATH="$SURFACE_PARITY_VENV/bin:$PATH"
+          "$SURFACE_PARITY_VENV/bin/python" -m pytest -q \
+            test_cli_surface_parity.py \
+            -k wheel_installed_console_matches_canonical_file_surface
+          "$SURFACE_PARITY_VENV/bin/slower-whisper" --help >/dev/null
+          "$SURFACE_PARITY_VENV/bin/slower-whisper" transcribe --help >/dev/null
 
       - name: Exercise installed receipt completion outside checkout
         shell: bash
