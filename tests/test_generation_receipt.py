@@ -63,9 +63,7 @@ def canonical_meta() -> dict:
             "asr_model": "tiny",
             "asr_device": "cpu",
             "asr_compute_type": "int8",
-            "asr_model_load_attempts": legacy_generation_meta()[
-                "asr_model_load_attempts"
-            ],
+            "asr_model_load_attempts": legacy_generation_meta()["asr_model_load_attempts"],
         },
     )
     return build_generation_metadata(
@@ -97,9 +95,7 @@ def test_legacy_generation_metadata_receipt_matches_canonical_surface(
     )
     assert legacy["receipt"]["device"] == "cpu"
     assert legacy["receipt"]["compute_type"] == "int8"
-    assert legacy["asr_model_load_attempts"] == legacy["receipt"][
-        "model_load_attempts"
-    ]
+    assert legacy["asr_model_load_attempts"] == legacy["receipt"]["model_load_attempts"]
     serialized = json.dumps(legacy)
     assert "/srv/private/model" not in serialized
     assert "/private/caller/project" not in json.dumps(legacy["receipt"])
@@ -158,14 +154,10 @@ def test_write_json_attaches_receipt_and_validates_complete_transcript(
 
     package_root = resources.files("transcription")
     receipt_schema = json.loads(
-        package_root.joinpath("schemas/receipt-v1.schema.json").read_text(
-            encoding="utf-8"
-        )
+        package_root.joinpath("schemas/receipt-v1.schema.json").read_text(encoding="utf-8")
     )
     transcript_schema = json.loads(
-        package_root.joinpath("schemas/transcript-v2.schema.json").read_text(
-            encoding="utf-8"
-        )
+        package_root.joinpath("schemas/transcript-v2.schema.json").read_text(encoding="utf-8")
     )
     assert not list(
         Draft7Validator(
