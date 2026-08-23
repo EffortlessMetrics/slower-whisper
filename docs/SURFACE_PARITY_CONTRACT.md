@@ -57,15 +57,15 @@ Expected lifecycle differences remain explicit:
 - direct file calls do not close an injected engine;
 - direct file and bytes operations close their operation-owned engines;
 - service requests reuse and close one process runtime;
-- directory work reuses one operation-owned engine across the batch and closes
-  it on success, inference failure, and writer failure;
+- directory and CLI work reuse one operation-owned engine across the batch and
+  close it on success, inference failure, and writer failure;
 - no surface constructs one engine per output format.
 
 ## Checkpoint B1: directory operation
 
 The directory operation runs the checkpoint-A deterministic fixture through
 `run_pipeline()` and compares the resulting JSON with the canonical direct-file
-document. The batch must preserve:
+document. The batch preserves:
 
 - the original raw source filename rather than the normalized WAV name;
 - the selected runtime and ordered fallback evidence;
@@ -83,18 +83,36 @@ engine is constructed, terminal cleanup runs after successful processing,
 per-file inference failure, and output-writer failure. Cleanup failure is logged
 locally and does not replace the operation's primary result or exception.
 
-## Checkpoint B2: CLI
+## Checkpoint B2: argparse and installed console
 
-The same fixture and semantic projection still need to execute through:
+The deterministic fixture now executes through both CLI boundaries:
 
 1. `transcription.cli.main()` with the actual argparse `transcribe` command;
-2. the wheel-installed `slower-whisper` executable from an unrelated working
-   directory.
+2. the wheel-installed `slower-whisper transcribe` executable from an unrelated
+   working directory.
 
-Call-graph discovery is not behavioral parity. CLI parity is earned only by
-executing those entrypoints against the complete bundled schemas and stable
-receipt projection. When the CLI diverges, repair its owning orchestration path;
-do not normalize a divergent document inside the test.
+Every material configuration value is supplied through the real command-line
+surface: root, model, requested device, compute type, language, task, beam size,
+VAD silence, word timestamps, existing-output policy, chunking, and
+diarization. Device discovery is controlled only at the external hardware seam;
+the argparse parser, config merge, command dispatch, summary/exit code, and
+`run_pipeline()` call remain real.
+
+The source command is compared directly with the canonical file document. The
+installed executable is launched through the wheel-generated console script.
+A Python startup injection supplies only the deterministic engine, audio
+normalization, build identity, and device probe. A separate lifecycle file
+proves the subprocess constructed one engine, called it once, and closed it
+once.
+
+The source and installed CLI documents validate against bundled transcript and
+receipt schemas and preserve the complete semantic and stable-receipt
+projection. The console test runs from a directory unrelated to the checkout
+or project root, with no source-tree `PYTHONPATH`.
+
+Call-graph discovery does not substitute for this transaction. CLI parity is
+an executed source-and-artifact result, not an inference from the shared batch
+owner.
 
 ## Failure truth
 
@@ -105,18 +123,22 @@ Parity includes failure behavior, not only successful JSON:
 - inference and invalid-output failures retain stable reason codes;
 - provider paths and raw exception text remain local;
 - profile mismatch is rejected before upload or model work in service mode;
-- ambiguous raw-to-normalized identity fails before normalization and inference.
+- ambiguous raw-to-normalized identity fails before normalization and inference;
+- the CLI returns a non-zero exit code when its batch result contains failures.
 
 ## Artifact acceptance
 
 The installed-wheel lanes run from outside the checkout and load schemas
 through `importlib.resources`. This proves the comparison uses the packaged
-public API, packaged schemas, and packaged provenance implementation rather
-than source-tree-relative files.
+public API, packaged schemas, packaged provenance implementation, and generated
+console script rather than source-tree-relative files.
 
-The batch lane copies its executable parity test outside the checkout and runs
-`run_pipeline()` from the installed wheel on Python 3.12 and 3.13. The later CLI
-lane must separately invoke the installed console script itself.
+Python 3.12 and 3.13 each execute:
+
+- direct, bytes, REST, and batch Python surfaces from the installed wheel;
+- the wheel-installed `slower-whisper transcribe` executable;
+- root and `transcribe` help through that executable;
+- installed receipt completion and provider-detail redaction.
 
 ## Deliberate boundary
 
