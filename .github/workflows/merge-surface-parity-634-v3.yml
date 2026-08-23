@@ -1,0 +1,327 @@
+name: Merge Surface Parity 634 v3
+
+on:
+  push:
+    branches: [automation/merge-surface-parity-634-v3]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: merge-surface-parity-634-v3
+  cancel-in-progress: false
+
+jobs:
+  verify-and-merge:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: '634'
+
+    steps:
+      - name: Resolve and stabilize the exact PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          stable=0
+          previous=""
+          deadline=$((SECONDS + 1800))
+          while [ "$stable" -lt 3 ]; do
+            pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+            test "$(jq -r .state <<<"$pr")" = "open"
+            test "$(jq -r .head.ref <<<"$pr")" = "feature/surface-parity-620"
+            test "$(jq -r .base.ref <<<"$pr")" = "main"
+            current=$(jq -r .head.sha <<<"$pr")
+            if [ "$current" = "$previous" ]; then
+              stable=$((stable + 1))
+            else
+              previous="$current"
+              stable=1
+            fi
+            if [ "$stable" -lt 3 ]; then
+              test "$SECONDS" -lt "$deadline"
+              sleep 20
+            fi
+          done
+          echo "PR_HEAD=$previous" >> "$GITHUB_ENV"
+
+      - name: Checkout exact PR head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: refs/pull/634/head
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify object identity and bounded review map
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PR_HEAD"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$PR_HEAD"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+          cat > "$RUNNER_TEMP/allowed-files.txt" <<'EOF'
+          .github/workflows/surface-parity-contract.yml
+          docs/SURFACE_PARITY_CONTRACT.md
+          tests/test_service_serialization.py
+          tests/test_service_source_identity.py
+          tests/test_surface_parity.py
+          transcription/api.py
+          transcription/service_runtime_transcribe.py
+          transcription/service_serialization.py
+          transcription/source_identity.py
+          transcription/transcription_orchestrator.py
+          EOF
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
+            --jq '.[].filename' \
+            | sort -u > "$RUNNER_TEMP/changed-files.txt"
+          sort -u "$RUNNER_TEMP/allowed-files.txt" -o "$RUNNER_TEMP/allowed-files.txt"
+          unexpected=$(comm -23 "$RUNNER_TEMP/changed-files.txt" "$RUNNER_TEMP/allowed-files.txt")
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected changed files:"
+            echo "$unexpected"
+            exit 1
+          fi
+          missing=$(comm -13 "$RUNNER_TEMP/changed-files.txt" "$RUNNER_TEMP/allowed-files.txt")
+          if [ -n "$missing" ]; then
+            echo "Expected review-map files missing:"
+            echo "$missing"
+            exit 1
+          fi
+          ! grep -Eq '/(diagnose|show)-surface-parity' "$RUNNER_TEMP/changed-files.txt"
+          git diff --check origin/main...HEAD
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python 3.12 and 3.13
+        run: uv python install 3.12 3.13
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install locked Python 3.12 environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Verify static contract and focused behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            transcription/api.py
+            transcription/service_runtime_transcribe.py
+            transcription/service_serialization.py
+            transcription/source_identity.py
+            transcription/transcription_orchestrator.py
+            tests/test_service_serialization.py
+            tests/test_service_source_identity.py
+            tests/test_surface_parity.py
+          )
+          uv run ruff check "${files[@]}"
+          uv run ruff format --check "${files[@]}"
+          uv run pytest -q \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py \
+            tests/test_api.py \
+            tests/test_service_runtime_transcribe.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+
+      - name: Verify full non-heavy repository suite
+        run: |
+          uv run pytest -q \
+            -m "not slow and not heavy and not requires_gpu" \
+            --no-cov
+
+      - name: Verify focused source transaction on Python 3.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          VENV="$RUNNER_TEMP/source-313"
+          UV_PROJECT_ENVIRONMENT="$VENV" uv sync \
+            --frozen \
+            --python 3.13 \
+            --extra dev \
+            --extra api
+          "$VENV/bin/python" -m pytest -q \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py \
+            tests/test_api.py \
+            tests/test_service_runtime_transcribe.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py
+
+      - name: Verify installed API wheel on Python 3.12 and 3.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          WHEEL=$(realpath "$(find dist -maxdepth 1 -name '*.whl' -print -quit)")
+          test -n "$WHEEL"
+          TEST_ROOT="$RUNNER_TEMP/installed-tests"
+          mkdir -p "$TEST_ROOT"
+          cp \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py \
+            "$TEST_ROOT/"
+          for version in 3.12 3.13; do
+            VENV="$RUNNER_TEMP/wheel-$version"
+            uv venv "$VENV" --python "$version"
+            uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
+            uv pip install --python "$VENV/bin/python" \
+              pytest==9.0.2 \
+              jsonschema==4.26.0 \
+              httpx==0.28.1
+            uv pip check --python "$VENV/bin/python"
+            (
+              cd "$TEST_ROOT"
+              unset PYTHONPATH
+              "$VENV/bin/python" -m pytest -q \
+                test_service_serialization.py \
+                test_service_source_identity.py \
+                test_surface_parity.py
+            )
+          done
+
+      - name: Mark the exact candidate ready
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$PR_HEAD"
+          gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" || true
+
+      - name: Require exact-head checks and reviews
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 7200))
+          required=(
+            "surface-parity-source (Python 3.12)"
+            "surface-parity-source (Python 3.13)"
+            "surface-parity-full-suite (Python 3.12)"
+            "surface-parity-installed (Python 3.12)"
+            "surface-parity-installed (Python 3.13)"
+          )
+          while true; do
+            pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+            test "$(jq -r .head.sha <<<"$pr")" = "$PR_HEAD"
+            test "$(jq -r .state <<<"$pr")" = "open"
+
+            checks=$(gh api -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD}/check-runs?per_page=100")
+            latest=$(jq '
+              .check_runs
+              | sort_by(.name)
+              | group_by(.name)
+              | map(max_by(.id))
+            ' <<<"$checks")
+
+            all_required=true
+            for name in "${required[@]}"; do
+              jq -e --arg name "$name" '
+                .[]
+                | select(.name == $name)
+                | select(.status == "completed")
+                | select(.conclusion == "success")
+              ' <<<"$latest" >/dev/null || all_required=false
+            done
+
+            failed=$(jq -r '[.[]
+              | select((.name | ascii_downcase | contains("gitleaks")) | not)
+              | select(.status == "completed")
+              | select((.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") | not)]
+              | length' <<<"$latest")
+            test "$failed" -eq 0
+
+            pending=$(jq -r '[.[]
+              | select((.name | ascii_downcase | contains("gitleaks")) | not)
+              | select(.status != "completed")]
+              | length' <<<"$latest")
+
+            status=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD}/status")
+            combined=$(jq -r .state <<<"$status")
+            test "$combined" != "failure"
+            test "$combined" != "error"
+
+            threads=$(gh api graphql \
+              -f owner='EffortlessMetrics' \
+              -f name='slower-whisper' \
+              -F number="$PR_NUMBER" \
+              -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewDecision reviewThreads(first:100){nodes{isResolved}}}}}')
+            unresolved=$(jq -r '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' <<<"$threads")
+            test "$unresolved" -eq 0
+            decision=$(jq -r '.data.repository.pullRequest.reviewDecision // "NONE"' <<<"$threads")
+            test "$decision" != "CHANGES_REQUESTED"
+
+            if [ "$all_required" = true ] \
+              && [ "$pending" -eq 0 ] \
+              && [ "$combined" != "pending" ]; then
+              break
+            fi
+            test "$SECONDS" -lt "$deadline"
+            sleep 25
+          done
+
+      - name: Record the accepted head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$PR_HEAD"
+          gh pr comment "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Accepted head: \`${PR_HEAD}\`. Independent source 3.12/3.13, full non-heavy, installed-wheel 3.12/3.13, durable PR-head checks, actual diff hygiene, and all review threads passed. The standalone Gitleaks license abort remains separately isolated and was not treated as code evidence."
+
+      - name: Squash-merge the exact accepted head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$PR_HEAD"
+          gh pr merge "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch \
+            --match-head-commit "$PR_HEAD" \
+            --subject "runtime: align file, bytes, and REST transcript identity (#634)" \
+            --body "Checkpoint A for #633 and #620: file, bytes, and batch REST now preserve safe source identity, semantically equivalent schema-valid transcript content, selected fallback evidence, stable receipts, and correct engine lifecycle across source and installed artifacts. Directory/batch and CLI remain a separate checkpoint."
+
+      - name: Record checkpoint A and create checkpoint-B branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+          test "$(jq -r .merged <<<"$pr")" = "true"
+          merge_sha=$(jq -r .merge_commit_sha <<<"$pr")
+          gh issue comment 633 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Checkpoint A merged via #634 at \`${merge_sha}\`: direct file, bytes, and batch REST now preserve the same safe source identity, schema-valid transcript/word state, selected runtime and fallback attempts, stable receipt projection, and lifecycle ownership. #633 remains open for actual directory/batch and CLI execution."
+          gh issue comment 620 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Non-streaming parity checkpoint A merged via #634 at \`${merge_sha}\`. The next lane must execute directory/batch and CLI end to end against the same semantic and stable-receipt projection; no parity claim is inferred from shared call graphs."
+
+          main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feature/directory-cli-parity-620" >/dev/null 2>&1; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref='refs/heads/feature/directory-cli-parity-620' \
+              -f sha="$main_sha" >/dev/null
+          fi
+
+      - name: Delete disposable automation branch
+        if: success()
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/merge-surface-parity-634-v3" || true
