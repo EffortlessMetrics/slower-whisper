@@ -1,0 +1,195 @@
+name: Merge Directory CLI Discovery 620 2
+
+on:
+  push:
+    branches: [automation/merge-directory-cli-discovery-620-2]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: merge-directory-cli-discovery-620-2
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DISCOVERY_BRANCH: fix/directory-cli-parity-620-2
+
+    steps:
+      - name: Wait for the canonical discovery head
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 7200))
+          while true; do
+            pr_number=$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --head "$DISCOVERY_BRANCH" \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty')
+            ready=true
+            if [ -z "$pr_number" ]; then
+              ready=false
+            else
+              git fetch origin main "$DISCOVERY_BRANCH" --prune
+              head_sha=$(git rev-parse "origin/$DISCOVERY_BRANCH")
+              for path in \
+                contracts/surface_parity_entrypoints.json \
+                docs/SURFACE_PARITY_DISCOVERY.md \
+                tests/test_surface_parity_entrypoints.py; do
+                git cat-file -e "$head_sha:$path" 2>/dev/null || ready=false
+              done
+              temporary=$(git ls-tree -r --name-only "$head_sha" \
+                | grep -E '^\.github/workflows/discover-directory-cli-parity-620' \
+                || true)
+              [ -z "$temporary" ] || ready=false
+              git show "$head_sha:contracts/surface_parity_entrypoints.json" \
+                | jq -e '.contract_version == 2' >/dev/null || ready=false
+              git cat-file -e origin/main:transcription/generation_receipt.py 2>/dev/null || ready=false
+              git show origin/main:transcription/writers.py \
+                | grep -Fq 'ensure_generation_receipt' || ready=false
+              git merge-base --is-ancestor origin/main "$head_sha" || ready=false
+            fi
+
+            if [ "$ready" = true ]; then
+              echo "PR_NUMBER=$pr_number" >> "$GITHUB_ENV"
+              echo "TESTED_HEAD=$head_sha" >> "$GITHUB_ENV"
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Canonical directory/CLI discovery did not settle"
+              exit 1
+            fi
+            sleep 30
+          done
+
+      - name: Checkout exact discovery head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: fix/directory-cli-parity-620-2
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify PR identity and bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$TESTED_HEAD"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$TESTED_HEAD"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .base.ref)" = main
+          git merge-base --is-ancestor origin/main HEAD
+          git diff --check origin/main...HEAD
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python 3.12 and 3.13
+        run: uv python install 3.12 3.13
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install locked source environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Verify generated ownership evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check tests/test_surface_parity_entrypoints.py
+          uv run ruff format --check tests/test_surface_parity_entrypoints.py
+          uv run pytest -q tests/test_surface_parity_entrypoints.py
+          uv run slower-whisper --help >/dev/null
+          uv run slower-whisper transcribe --help >/dev/null
+          jq -e '.batch_candidates | length > 0' contracts/surface_parity_entrypoints.json >/dev/null
+          jq -e '.cli_candidates | length > 0' contracts/surface_parity_entrypoints.json >/dev/null
+          grep -Fq 'does **not** claim behavioral parity' docs/SURFACE_PARITY_DISCOVERY.md
+          git diff --check
+
+      - name: Verify existing CLI tests and full non-heavy suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t cli_tests < <(find tests -maxdepth 1 -type f -name 'test_cli*.py' -print | sort)
+          if [ "${#cli_tests[@]}" -gt 0 ]; then
+            uv run pytest -q "${cli_tests[@]}"
+          fi
+          uv run pytest -q \
+            -m "not slow and not heavy and not requires_gpu" \
+            --no-cov
+
+      - name: Verify installed console surfaces on Python 3.12 and 3.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          wheel=$(realpath "$(find dist -maxdepth 1 -name '*.whl' -print -quit)")
+          test -n "$wheel"
+          for version in 3.12 3.13; do
+            venv="$RUNNER_TEMP/directory-cli-discovery-$version"
+            uv venv "$venv" --python "$version"
+            uv pip install --python "$venv/bin/python" "${wheel}[api]"
+            uv pip check --python "$venv/bin/python"
+            (
+              cd "$RUNNER_TEMP"
+              unset PYTHONPATH
+              "$venv/bin/slower-whisper" --help >/dev/null
+              "$venv/bin/slower-whisper" transcribe --help >/dev/null
+              "$venv/bin/python" - <<'PY'
+          from pathlib import Path
+          import transcription
+          assert "site-packages" in Path(transcription.__file__).resolve().parts
+          PY
+            )
+          done
+
+      - name: Merge discovery checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)" = "$TESTED_HEAD"
+          gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" || true
+          gh pr merge "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch \
+            --subject "test: expose directory and CLI parity ownership (#${PR_NUMBER})" \
+            --body "Advances #620. Installed console entrypoints, directory/batch and CLI owners, engine construction, canonical metadata calls, writer calls, signatures, and existing tests are now explicit. Behavioral parity remains unclaimed."
+
+      - name: Record checkpoint and create behavioral branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+          test "$(jq -r .merged <<<"$pr")" = true
+          merge_sha=$(jq -r .merge_commit_sha <<<"$pr")
+          gh issue comment 620 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Directory/CLI ownership discovery merged via #${PR_NUMBER} at \`${merge_sha}\`. The next branch must execute the deterministic parity fixture through those owners; this merge makes no semantic transcript or stable-receipt equivalence claim."
+          main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          branch=fix/directory-cli-parity-behavior-620
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" >/dev/null 2>&1; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/heads/${branch}" \
+              -f sha="$main_sha" >/dev/null
+          fi
+
+      - name: Delete disposable automation branch
+        if: success()
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/merge-directory-cli-discovery-620-2" || true
