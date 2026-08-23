@@ -57,19 +57,44 @@ Expected lifecycle differences remain explicit:
 - direct file calls do not close an injected engine;
 - direct file and bytes operations close their operation-owned engines;
 - service requests reuse and close one process runtime;
-- later directory work may reuse one operation-owned engine across files but
-  must not create an engine per output format.
+- directory work reuses one operation-owned engine across the batch and closes
+  it on success, inference failure, and writer failure;
+- no surface constructs one engine per output format.
 
-## Checkpoint B: directory and CLI
+## Checkpoint B1: directory operation
 
-The same fixture and semantic projection must be extended to the supported
-batch and CLI entrypoints. When one diverges, repair the owning orchestration
-path so it exits through the canonical metadata, receipt, and writer seams.
-Do not normalize a divergent document only inside the test.
+The directory operation runs the checkpoint-A deterministic fixture through
+`run_pipeline()` and compares the resulting JSON with the canonical direct-file
+document. The batch must preserve:
 
-Call-graph discovery is not behavioral parity. Checkpoint B is earned only by
-executing the directory operation, source CLI dispatch, and wheel-installed
-console entrypoint against the complete schema and stable receipt projection.
+- the original raw source filename rather than the normalized WAV name;
+- the selected runtime and ordered fallback evidence;
+- timed segment and word state;
+- the complete stable receipt projection;
+- one operation-owned engine across the batch.
+
+Raw files whose names differ only by extension or case can map to the same
+normalized WAV. The pipeline rejects those collisions before ffmpeg or model
+construction. It does not allow concurrent normalization to overwrite one
+source with another and attempt to reconstruct identity afterward.
+
+The operation constructs no engine when there is no normalized work. Once an
+engine is constructed, terminal cleanup runs after successful processing,
+per-file inference failure, and output-writer failure. Cleanup failure is logged
+locally and does not replace the operation's primary result or exception.
+
+## Checkpoint B2: CLI
+
+The same fixture and semantic projection still need to execute through:
+
+1. `transcription.cli.main()` with the actual argparse `transcribe` command;
+2. the wheel-installed `slower-whisper` executable from an unrelated working
+   directory.
+
+Call-graph discovery is not behavioral parity. CLI parity is earned only by
+executing those entrypoints against the complete bundled schemas and stable
+receipt projection. When the CLI diverges, repair its owning orchestration path;
+do not normalize a divergent document inside the test.
 
 ## Failure truth
 
@@ -79,7 +104,8 @@ Parity includes failure behavior, not only successful JSON:
 - runtime/model unavailability is not silence;
 - inference and invalid-output failures retain stable reason codes;
 - provider paths and raw exception text remain local;
-- profile mismatch is rejected before upload or model work in service mode.
+- profile mismatch is rejected before upload or model work in service mode;
+- ambiguous raw-to-normalized identity fails before normalization and inference.
 
 ## Artifact acceptance
 
@@ -87,6 +113,10 @@ The installed-wheel lanes run from outside the checkout and load schemas
 through `importlib.resources`. This proves the comparison uses the packaged
 public API, packaged schemas, and packaged provenance implementation rather
 than source-tree-relative files.
+
+The batch lane copies its executable parity test outside the checkout and runs
+`run_pipeline()` from the installed wheel on Python 3.12 and 3.13. The later CLI
+lane must separately invoke the installed console script itself.
 
 ## Deliberate boundary
 
