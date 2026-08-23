@@ -226,16 +226,12 @@ def test_batch_matches_canonical_file_and_closes_one_engine(
         _engine=ParityEngine(asr_config()),
     )
     baseline = json.loads(
-        (Paths(root=baseline_root).json_dir / "surface.json").read_text(
-            encoding="utf-8"
-        )
+        (Paths(root=baseline_root).json_dir / "surface.json").read_text(encoding="utf-8")
     )
 
     batch_paths = prepare_project(tmp_path / "batch", source_name)
     result = run_pipeline(app_config(batch_paths), diarization_config=None)
-    batch = json.loads(
-        (batch_paths.json_dir / "surface.json").read_text(encoding="utf-8")
-    )
+    batch = json.loads((batch_paths.json_dir / "surface.json").read_text(encoding="utf-8"))
 
     validate_document(baseline)
     validate_document(batch)
