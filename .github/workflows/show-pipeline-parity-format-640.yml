@@ -1,0 +1,33 @@
+name: Show Pipeline Parity Format 640
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - transcription/pipeline.py
+      - tests/test_pipeline_surface_parity.py
+      - .github/workflows/show-pipeline-parity-format-640.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: show-pipeline-parity-format-640-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  show-format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - name: Print exact Ruff diff
+        run: |
+          uvx ruff@0.14.14 format --diff \
+            transcription/pipeline.py \
+            tests/test_pipeline_surface_parity.py
