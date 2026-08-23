@@ -112,7 +112,7 @@ def transcribe_bytes(
     if config is None:
         config = TranscriptionConfig.from_sources()
 
-    source_name = safe_source_name(file_name, fallback_suffix=".wav")
+    source_name = safe_source_name(file_name)
     suffix = Path(source_name).suffix
     format_hint = suffix.lstrip(".").lower() if suffix else "wav"
 
