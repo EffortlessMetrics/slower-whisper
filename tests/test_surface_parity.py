@@ -218,9 +218,7 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
         _engine=file_engine,
     )
     file_document = json.loads(
-        (Paths(root=file_root).json_dir / "surface.json").read_text(
-            encoding="utf-8"
-        )
+        (Paths(root=file_root).json_dir / "surface.json").read_text(encoding="utf-8")
     )
 
     monkeypatch.setattr("transcription.asr_engine.TranscriptionEngine", ParityEngine)
