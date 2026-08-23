@@ -1,0 +1,379 @@
+{
+  "batch_candidates": [
+    {
+      "async": false,
+      "calls": [
+        "_transcribe_directory_impl"
+      ],
+      "canonical_calls": [],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 57,
+      "module": "transcription.api",
+      "path": "transcription/api.py",
+      "symbol": "transcribe_directory",
+      "writer_calls": []
+    },
+    {
+      "async": false,
+      "calls": [
+        "api_module.transcribe_directory"
+      ],
+      "canonical_calls": [],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 59,
+      "module": "transcription.cli",
+      "path": "transcription/cli.py",
+      "symbol": "transcribe_directory",
+      "writer_calls": []
+    },
+    {
+      "async": false,
+      "calls": [
+        "build_generation_metadata"
+      ],
+      "canonical_calls": [
+        "build_generation_metadata"
+      ],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 88,
+      "module": "transcription.pipeline",
+      "path": "transcription/pipeline.py",
+      "symbol": "_build_meta",
+      "writer_calls": []
+    },
+    {
+      "async": false,
+      "calls": [
+        "Path",
+        "PipelineBatchResult",
+        "PipelineFileResult",
+        "TranscriptionEngine",
+        "_build_meta",
+        "_get_duration_seconds",
+        "_maybe_build_chunks",
+        "_maybe_run_diarization",
+        "audio_io.ensure_dirs",
+        "audio_io.normalize_all",
+        "diar_meta.get",
+        "engine.transcribe_file",
+        "enumerate",
+        "file_results.append",
+        "get",
+        "getattr",
+        "json_path.exists",
+        "len",
+        "logger.debug",
+        "logger.error",
+        "logger.info",
+        "logger.warning",
+        "paths.norm_dir.glob",
+        "sorted",
+        "time.time",
+        "writers.load_transcript_from_json",
+        "writers.write_json",
+        "writers.write_srt",
+        "writers.write_txt"
+      ],
+      "canonical_calls": [
+        "transcribe_file"
+      ],
+      "constructs_engine": true,
+      "decorators": [],
+      "line": 109,
+      "module": "transcription.pipeline",
+      "path": "transcription/pipeline.py",
+      "symbol": "run_pipeline",
+      "writer_calls": [
+        "write_json",
+        "write_srt"
+      ]
+    },
+    {
+      "async": false,
+      "calls": [
+        "AsrConfig",
+        "Path",
+        "Paths",
+        "TranscriptionEngine",
+        "TranscriptionError",
+        "audio_path.exists",
+        "audio_path.is_file",
+        "audio_path.resolve",
+        "build_generation_metadata",
+        "engine.transcribe_file",
+        "ensure_dirs",
+        "ensure_within_dir",
+        "get_wav_duration_seconds",
+        "getattr",
+        "maybe_build_chunks",
+        "maybe_run_diarization",
+        "norm_wav.exists",
+        "normalize_all",
+        "raw_dest.parent.mkdir",
+        "raw_dest.resolve",
+        "sanitize_filename",
+        "shutil.copy2",
+        "str",
+        "validate_diarization_settings",
+        "writers.write_json",
+        "writers.write_srt",
+        "writers.write_txt"
+      ],
+      "canonical_calls": [
+        "build_generation_metadata",
+        "transcribe_file"
+      ],
+      "constructs_engine": true,
+      "decorators": [],
+      "line": 93,
+      "module": "transcription.transcription_orchestrator",
+      "path": "transcription/transcription_orchestrator.py",
+      "symbol": "_transcribe_file_impl",
+      "writer_calls": [
+        "write_json",
+        "write_srt"
+      ]
+    }
+  ],
+  "cli_candidates": [
+    {
+      "async": false,
+      "calls": [
+        "api_module.transcribe_directory"
+      ],
+      "canonical_calls": [],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 59,
+      "module": "transcription.cli",
+      "path": "transcription/cli.py",
+      "symbol": "transcribe_directory",
+      "writer_calls": []
+    },
+    {
+      "async": false,
+      "calls": [
+        "AppConfig",
+        "AsrConfig",
+        "Colors.bold",
+        "Colors.cyan",
+        "Colors.green",
+        "Colors.red",
+        "Colors.yellow",
+        "ConfigurationError",
+        "Path",
+        "Paths",
+        "_config_from_transcribe_args",
+        "_setup_progress_logging",
+        "failed_color",
+        "format_preflight_banner",
+        "len",
+        "print",
+        "resolve_device",
+        "run_pipeline",
+        "str"
+      ],
+      "canonical_calls": [],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 937,
+      "module": "transcription.cli",
+      "path": "transcription/cli.py",
+      "symbol": "_handle_transcribe_command",
+      "writer_calls": []
+    },
+    {
+      "async": false,
+      "calls": [
+        "Colors.bold",
+        "Colors.cyan",
+        "Colors.green",
+        "Colors.red",
+        "Colors.yellow",
+        "ConfigurationError",
+        "EnrichmentError",
+        "Path",
+        "Path.cwd",
+        "Paths",
+        "_config_from_enrich_args",
+        "_setup_progress_logging",
+        "all",
+        "api_module.enrich_transcript",
+        "bool",
+        "enumerate",
+        "failed_color",
+        "failures.append",
+        "json_dir.exists",
+        "json_dir.glob",
+        "len",
+        "load_transcript_from_json",
+        "logger.info",
+        "logger.warning",
+        "print",
+        "resolve_device",
+        "resolved.device.upper",
+        "sorted",
+        "str",
+        "target.relative_to",
+        "wav_path.exists",
+        "write_json"
+      ],
+      "canonical_calls": [],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 1039,
+      "module": "transcription.cli",
+      "path": "transcription/cli.py",
+      "symbol": "_handle_enrich_command",
+      "writer_calls": [
+        "write_json"
+      ]
+    },
+    {
+      "async": false,
+      "calls": [
+        "OutcomeProcessor",
+        "Path",
+        "create_adapter",
+        "format_outcomes_json",
+        "format_outcomes_pretty",
+        "len",
+        "output_path.write_text",
+        "print",
+        "processor.extract"
+      ],
+      "canonical_calls": [],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 1219,
+      "module": "transcription.cli",
+      "path": "transcription/cli.py",
+      "symbol": "_handle_outcomes_extract",
+      "writer_calls": [
+        "write_text"
+      ]
+    },
+    {
+      "async": false,
+      "calls": [
+        "_handle_cache_command",
+        "_handle_doctor_command",
+        "_handle_enrich_command",
+        "_handle_export_command",
+        "_handle_outcomes_command",
+        "_handle_samples_command",
+        "_handle_transcribe_command",
+        "_handle_validate_command",
+        "build_parser",
+        "handle_benchmark_command",
+        "handle_integrations_command",
+        "handle_privacy_command",
+        "handle_speakers_command",
+        "handle_store_command",
+        "parser.error",
+        "parser.parse_args",
+        "print"
+      ],
+      "canonical_calls": [],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 1293,
+      "module": "transcription.cli",
+      "path": "transcription/cli.py",
+      "symbol": "main",
+      "writer_calls": []
+    },
+    {
+      "async": false,
+      "calls": [
+        "AppConfig",
+        "AsrConfig",
+        "Paths",
+        "build_parser",
+        "parser.parse_args",
+        "print",
+        "run_pipeline"
+      ],
+      "canonical_calls": [],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 75,
+      "module": "transcription.cli_legacy_transcribe",
+      "path": "transcription/cli_legacy_transcribe.py",
+      "symbol": "main",
+      "writer_calls": []
+    },
+    {
+      "async": false,
+      "calls": [
+        "QueryFilter",
+        "StoreQuery",
+        "TextQuery",
+        "_export_csv",
+        "_export_jsonl",
+        "args.output.write_text",
+        "isinstance",
+        "len",
+        "print",
+        "store.export",
+        "store.export_parquet",
+        "str"
+      ],
+      "canonical_calls": [],
+      "constructs_engine": false,
+      "decorators": [],
+      "line": 550,
+      "module": "transcription.store.cli",
+      "path": "transcription/store/cli.py",
+      "symbol": "_handle_export",
+      "writer_calls": [
+        "write_text"
+      ]
+    }
+  ],
+  "contract_version": 1,
+  "existing_tests": [
+    "tests/test_api.py",
+    "tests/test_api_integration.py",
+    "tests/test_api_service.py",
+    "tests/test_cli.py",
+    "tests/test_cli_device.py",
+    "tests/test_cli_integration.py",
+    "tests/test_compat_shim.py",
+    "tests/test_config_merge_bug.py",
+    "tests/test_config_sources.py",
+    "tests/test_conversation_store.py",
+    "tests/test_diarization_skeleton.py",
+    "tests/test_error_handling.py",
+    "tests/test_integrations_adapters.py",
+    "tests/test_pipeline.py",
+    "tests/test_service_health.py",
+    "tests/test_smoke_pipeline.py",
+    "tests/test_streaming_client.py",
+    "tests/test_versioning.py"
+  ],
+  "project_scripts": {
+    "slower-whisper": "transcription.cli:main",
+    "slower-whisper-dogfood": "transcription.dogfood:main"
+  },
+  "root_help": {
+    "args": [
+      "--help"
+    ],
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "usage: slower-whisper [-h] [--version]\n                      {transcribe,enrich,cache,samples,export,validate,benchmark,store,outcomes,doctor,privacy,speakers,rag,webhook}\n                      ...\n\nLocal transcription and audio enrichment pipeline.\n\npositional arguments:\n  {transcribe,enrich,cache,samples,export,validate,benchmark,store,outcomes,doctor,privacy,speakers,rag,webhook}\n    transcribe          Transcribe audio under a project root (Stage 1).\n    enrich              Enrich existing transcripts with audio-derived\n                        features (Stage 2).\n    cache               Inspect or clear model caches.\n    samples             Manage sample datasets for testing and evaluation.\n    export              Export a transcript JSON into CSV/HTML/VTT/TextGrid.\n    validate            Validate transcript JSON against the v2 schema.\n    benchmark           Run quality benchmarks against standard datasets.\n    store               Manage the conversation store (ingest, query, export).\n    outcomes            Extract decisions, action items, risks from\n                        transcripts.\n    doctor              Run system diagnostics and check environment.\n    privacy             Privacy tools for PII detection, redaction, and safe\n                        exports.\n    speakers            Manage speaker identities for cross-session\n                        recognition.\n    rag                 Export transcript to RAG bundle for vector database\n                        ingestion.\n    webhook             Webhook integration utilities.\n\noptions:\n  -h, --help            show this help message and exit\n  --version             show program's version number and exit\n"
+  },
+  "transcribe_help": {
+    "args": [
+      "transcribe",
+      "--help"
+    ],
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "usage: slower-whisper transcribe [-h] [--root ROOT] [--config CONFIG]\n                                 [--model MODEL] [--device {auto,cuda,cpu}]\n                                 [--compute-type COMPUTE_TYPE]\n                                 [--language LANGUAGE]\n                                 [--task {transcribe,translate}]\n                                 [--vad-min-silence-ms VAD_MIN_SILENCE_MS]\n                                 [--beam-size BEAM_SIZE]\n                                 [--word-timestamps | --no-word-timestamps]\n                                 [--skip-existing-json | --no-skip-existing-json | --skip-existing | --no-skip-existing]\n                                 [--progress]\n                                 [--enable-chunking | --no-enable-chunking]\n                                 [--chunk-target-duration-s CHUNK_TARGET_DURATION_S]\n                                 [--chunk-max-duration-s CHUNK_MAX_DURATION_S]\n                                 [--chunk-target-tokens CHUNK_TARGET_TOKENS]\n                                 [--chunk-pause-split-threshold-s CHUNK_PAUSE_SPLIT_THRESHOLD_S]\n                                 [--enable-diarization | --no-enable-diarization]\n                                 [--diarization-device {auto,cuda,cpu}]\n                                 [--min-speakers MIN_SPEAKERS]\n                                 [--max-speakers MAX_SPEAKERS]\n                                 [--overlap-threshold OVERLAP_THRESHOLD]\n                                 [--telemetry]\n\noptions:\n  -h, --help            show this help message and exit\n  --root ROOT           Project root (contains raw_audio/, input_audio/,\n                        whisper_json/, transcripts/).\n  --config CONFIG       Path to TranscriptionConfig JSON file. Precedence: CLI\n                        flags > config file > env vars > defaults.\n  --model MODEL         Whisper model name (default: large-v3).\n  --device {auto,cuda,cpu}\n                        Device for ASR (Whisper) inference. 'auto' detects\n                        CUDA availability (default: auto).\n  --compute-type COMPUTE_TYPE\n                        faster-whisper compute type: float16, float32, int8,\n                        int8_float16, etc. (default: auto-selected based on\n                        device).\n  --language LANGUAGE   Force language (e.g. en). Leave empty for auto-detect.\n  --task {transcribe,translate}\n                        Whisper task (default: transcribe).\n  --vad-min-silence-ms VAD_MIN_SILENCE_MS\n                        Minimum silence duration in ms to split segments\n                        (default: 500).\n  --beam-size BEAM_SIZE\n                        Beam size for decoding (default: 5).\n  --word-timestamps, --no-word-timestamps\n                        Extract word-level timestamps (v1.8+, default: False).\n  --skip-existing-json, --no-skip-existing-json\n                        Skip files with existing JSON in whisper_json/\n                        (default: True).\n  --skip-existing, --no-skip-existing\n                        Alias for --skip-existing-json (for consistency with\n                        enrich command).\n  --progress            Show progress indicator during transcription (file\n                        counter).\n  --enable-chunking, --no-enable-chunking\n                        Emit turn-aware chunks for RAG/export (default:\n                        False).\n  --chunk-target-duration-s CHUNK_TARGET_DURATION_S\n                        Soft target chunk duration in seconds (default: 30).\n  --chunk-max-duration-s CHUNK_MAX_DURATION_S\n                        Hard max chunk duration in seconds (default: 45).\n  --chunk-target-tokens CHUNK_TARGET_TOKENS\n                        Approximate max tokens per chunk before splitting\n                        (default: 400).\n  --chunk-pause-split-threshold-s CHUNK_PAUSE_SPLIT_THRESHOLD_S\n                        Split on pauses >= this length when near target size\n                        (default: 1.5).\n  --enable-diarization, --no-enable-diarization\n                        Enable speaker diarization (experimental, default:\n                        False). See docs/SPEAKER_DIARIZATION.md for setup.\n  --diarization-device {auto,cuda,cpu}\n                        Device for diarization. 'auto' selects cuda if\n                        available, else cpu (default: auto).\n  --min-speakers MIN_SPEAKERS\n                        Minimum number of speakers expected (diarization hint,\n                        optional).\n  --max-speakers MAX_SPEAKERS\n                        Maximum number of speakers expected (diarization hint,\n                        optional).\n  --overlap-threshold OVERLAP_THRESHOLD\n                        Minimum overlap ratio (0.0-1.0) required to assign a\n                        speaker to a segment (default: 0.3).\n  --telemetry           Include timing telemetry in output summary.\n"
+  }
+}
