@@ -1,0 +1,153 @@
+name: Directory CLI Parity Contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  directory-cli-parity-source:
+    name: directory-cli-parity-source (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install locked test environment
+        run: uv sync --frozen --python ${{ matrix.python-version }} --extra dev --extra api
+
+      - name: Verify static parity contract
+        run: |
+          uv run ruff check tests/test_directory_cli_surface_parity.py
+          uv run ruff format --check tests/test_directory_cli_surface_parity.py
+          git diff --check origin/${{ github.base_ref || 'main' }}...HEAD
+
+      - name: Execute directory and console dispatch parity
+        run: |
+          uv run pytest -q \
+            tests/test_directory_cli_surface_parity.py \
+            tests/test_surface_parity.py \
+            tests/test_cli.py
+
+  directory-cli-parity-full-suite:
+    name: directory-cli-parity-full-suite (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install full repository environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Verify full non-heavy repository suite
+        run: |
+          uv run pytest -q \
+            -m "not slow and not heavy and not requires_gpu" \
+            --no-cov
+
+  directory-cli-parity-installed:
+    name: directory-cli-parity-installed (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Build and install wheel with console entrypoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          VENV="$RUNNER_TEMP/directory-cli-parity-${{ matrix.python-version }}"
+          uv venv "$VENV" --python ${{ matrix.python-version }}
+          WHEEL=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$WHEEL"
+          uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
+          uv pip install --python "$VENV/bin/python" \
+            pytest==9.0.2 \
+            jsonschema==4.26.0 \
+            click
+          uv pip check --python "$VENV/bin/python"
+          test -x "$VENV/bin/slower-whisper"
+          echo "DIRECTORY_CLI_VENV=$VENV" >> "$GITHUB_ENV"
+
+      - name: Execute the installed console transaction outside checkout
+        shell: bash
+        env:
+          SLOWER_WHISPER_INSTALLED_CLI_PARITY: '1'
+        run: |
+          set -euo pipefail
+          TEST_ROOT="$RUNNER_TEMP/directory-cli-parity-test"
+          mkdir -p "$TEST_ROOT"
+          cp tests/test_directory_cli_surface_parity.py "$TEST_ROOT/"
+          cd "$TEST_ROOT"
+          unset PYTHONPATH
+          export PATH="$DIRECTORY_CLI_VENV/bin:$PATH"
+          "$DIRECTORY_CLI_VENV/bin/python" -m pytest -q \
+            test_directory_cli_surface_parity.py \
+            -k installed_console_script_matches_the_canonical_surface
+          "$DIRECTORY_CLI_VENV/bin/slower-whisper" --help >/dev/null
+          "$DIRECTORY_CLI_VENV/bin/slower-whisper" transcribe --help >/dev/null
