@@ -70,9 +70,9 @@ class ParityEngine:
                             start=0.0,
                             end=0.01,
                             probability=0.99,
-                        )
+                        ),
                     ],
-                )
+                ),
             ],
             meta={
                 "asr_backend": "faster-whisper",
@@ -269,9 +269,9 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
                         "start": 0.0,
                         "end": 0.01,
                         "probability": 0.99,
-                    }
+                    },
                 ],
-            }
+            },
         ]
 
     assert "file_name" not in file_document
