@@ -82,17 +82,24 @@ jobs:
 
       - name: Verify event diff hygiene
         shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git fetch --no-tags origin "${{ github.base_ref }}"
-            git diff --check "origin/${{ github.base_ref }}...HEAD"
+            git fetch --no-tags origin "$BASE_REF"
+            git diff --check "origin/$BASE_REF...HEAD"
           else
-            before="${{ github.event.before }}"
+            before="$EVENT_BEFORE"
             if [[ "$before" =~ ^0+$ ]] || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
-              before="$(git rev-parse HEAD^)"
+              if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+                before="$(git rev-parse HEAD^)"
+              else
+                before="$(git hash-object -t tree /dev/null)"
+              fi
             fi
-            git diff --check "${before}..HEAD"
+            git diff --check "$before" HEAD
           fi
 
       - name: Verify receipt and public-surface parity
@@ -207,6 +214,7 @@ jobs:
             "$test_root/"
           cd "$test_root"
           unset PYTHONPATH
+          "$SURFACE_PARITY_VENV/bin/python" -c 'import fastapi, uvicorn'
           "$SURFACE_PARITY_VENV/bin/python" -m pytest -q \
             test_service_serialization.py \
             test_service_source_identity.py \
