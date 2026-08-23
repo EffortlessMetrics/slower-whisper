@@ -195,9 +195,18 @@ def semantic_projection(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@pytest.mark.parametrize(
+    ("source_name", "content_type"),
+    [
+        ("surface.mp3", "audio/mpeg"),
+        ("surface", "application/octet-stream"),
+    ],
+)
 def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    source_name: str,
+    content_type: str,
 ) -> None:
     ParityEngine.instances = 0
     ParityEngine.closes = 0
@@ -205,7 +214,6 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     monkeypatch.setattr(_build_info, "BUILD_ID", "surface-parity-1")
     install_fake_audio_boundary(monkeypatch)
 
-    source_name = "surface.mp3"
     audio_path = tmp_path / source_name
     audio_path.write_bytes(wav_bytes())
 
@@ -239,7 +247,7 @@ def test_file_bytes_and_rest_have_equivalent_transcript_truth(
     with TestClient(app) as client:
         response = client.post(
             "/transcribe",
-            files={"audio": (source_name, wav_bytes(), "audio/mpeg")},
+            files={"audio": (source_name, wav_bytes(), content_type)},
         )
     assert response.status_code == 200, response.text
     rest_document = response.json()
