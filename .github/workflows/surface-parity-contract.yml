@@ -18,7 +18,7 @@ jobs:
   surface-parity-contract:
     name: surface-parity-contract (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
@@ -50,30 +50,35 @@ jobs:
           uv run ruff check \
             transcription/api.py \
             transcription/generation_receipt.py \
+            transcription/pipeline.py \
             transcription/service_runtime_transcribe.py \
             transcription/service_serialization.py \
             transcription/source_identity.py \
             transcription/transcription_orchestrator.py \
             transcription/writers.py \
             tests/test_generation_receipt.py \
+            tests/test_pipeline_surface_parity.py \
             tests/test_service_serialization.py \
             tests/test_service_source_identity.py \
             tests/test_surface_parity.py
           uv run ruff format --check \
             transcription/api.py \
             transcription/generation_receipt.py \
+            transcription/pipeline.py \
             transcription/service_runtime_transcribe.py \
             transcription/service_serialization.py \
             transcription/source_identity.py \
             transcription/transcription_orchestrator.py \
             transcription/writers.py \
             tests/test_generation_receipt.py \
+            tests/test_pipeline_surface_parity.py \
             tests/test_service_serialization.py \
             tests/test_service_source_identity.py \
             tests/test_surface_parity.py
           uv run mypy \
             transcription/api.py \
             transcription/generation_receipt.py \
+            transcription/pipeline.py \
             transcription/service_runtime_transcribe.py \
             transcription/service_serialization.py \
             transcription/source_identity.py \
@@ -106,6 +111,8 @@ jobs:
         run: |
           uv run pytest -q \
             tests/test_generation_receipt.py \
+            tests/test_pipeline_surface_parity.py \
+            tests/test_pipeline.py \
             tests/test_service_serialization.py \
             tests/test_service_source_identity.py \
             tests/test_surface_parity.py \
@@ -122,6 +129,8 @@ jobs:
           grep -Fq 'temporary filenames are not a valid substitute' \
             docs/SURFACE_PARITY_CONTRACT.md
           grep -Fq 'direct file and bytes operations close their operation-owned engines' \
+            docs/SURFACE_PARITY_CONTRACT.md
+          grep -Fq 'one operation-owned engine across the batch' \
             docs/SURFACE_PARITY_CONTRACT.md
           grep -Fq 'Call-graph discovery is not behavioral parity' \
             docs/SURFACE_PARITY_CONTRACT.md
@@ -160,7 +169,7 @@ jobs:
   surface-parity-installed:
     name: surface-parity-installed (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -208,6 +217,7 @@ jobs:
           test_root="$RUNNER_TEMP/surface-parity-test"
           mkdir -p "$test_root"
           cp \
+            tests/test_pipeline_surface_parity.py \
             tests/test_service_serialization.py \
             tests/test_service_source_identity.py \
             tests/test_surface_parity.py \
@@ -216,6 +226,7 @@ jobs:
           unset PYTHONPATH
           "$SURFACE_PARITY_VENV/bin/python" -c 'import fastapi, uvicorn'
           "$SURFACE_PARITY_VENV/bin/python" -m pytest -q \
+            test_pipeline_surface_parity.py \
             test_service_serialization.py \
             test_service_source_identity.py \
             test_surface_parity.py
