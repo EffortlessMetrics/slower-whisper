@@ -1,0 +1,337 @@
+name: Discover Directory CLI Parity 620 v2
+
+on:
+  push:
+    branches: [fix/directory-cli-parity-620-2]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: discover-directory-cli-parity-620-2
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout discovery branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: fix/directory-cli-parity-620-2
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reset discovery to the first canonical receipt main
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 7200))
+          while true; do
+            git fetch origin main --prune
+            ready=true
+            git cat-file -e origin/main:transcription/generation_receipt.py 2>/dev/null || ready=false
+            git show origin/main:transcription/writers.py \
+              | grep -Fq 'ensure_generation_receipt' || ready=false
+            if [ "$ready" = true ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Canonical receipt seam did not reach main"
+              exit 1
+            fi
+            sleep 30
+          done
+          git reset --hard origin/main
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install locked environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Generate executable ownership inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p contracts docs
+          python - <<'PY'
+          from __future__ import annotations
+
+          import ast
+          import inspect
+          import json
+          import subprocess
+          import tomllib
+          from importlib import import_module
+          from pathlib import Path
+          from typing import Any
+
+          root = Path.cwd()
+          leaf_interest = {
+              "TranscriptionEngine",
+              "build_generation_metadata",
+              "ensure_generation_receipt",
+              "normalize_all",
+              "run_pipeline",
+              "transcribe_bytes",
+              "transcribe_file",
+              "write_json",
+              "write_srt",
+              "write_text",
+              "write_vtt",
+          }
+
+          def dotted(node: ast.AST) -> str | None:
+              if isinstance(node, ast.Name):
+                  return node.id
+              if isinstance(node, ast.Attribute):
+                  parent = dotted(node.value)
+                  return f"{parent}.{node.attr}" if parent else node.attr
+              return None
+
+          records: list[dict[str, Any]] = []
+          for path in sorted((root / "transcription").rglob("*.py")):
+              try:
+                  tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              except (OSError, SyntaxError, UnicodeDecodeError):
+                  continue
+              module = path.relative_to(root).with_suffix("").as_posix().replace("/", ".")
+              owners: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]] = []
+              for node in tree.body:
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                      owners.append((node.name, node))
+                  elif isinstance(node, ast.ClassDef):
+                      owners.extend(
+                          (f"{node.name}.{member.name}", member)
+                          for member in node.body
+                          if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                      )
+              for symbol, node in owners:
+                  calls = sorted(
+                      {
+                          name
+                          for child in ast.walk(node)
+                          if isinstance(child, ast.Call)
+                          for name in [dotted(child.func)]
+                          if name is not None
+                      }
+                  )
+                  leaves = {call.rsplit(".", 1)[-1] for call in calls}
+                  decorators = sorted(
+                      name
+                      for decorator in node.decorator_list
+                      for name in [dotted(decorator.func if isinstance(decorator, ast.Call) else decorator)]
+                      if name is not None
+                  )
+                  if not (
+                      symbol.rsplit(".", 1)[-1]
+                      in {"main", "run_pipeline", "transcribe", "transcribe_command", "transcribe_directory"}
+                      or bool(leaf_interest.intersection(leaves))
+                      or any(value.endswith(".command") or value.endswith(".callback") for value in decorators)
+                  ):
+                      continue
+                  record: dict[str, Any] = {
+                      "module": module,
+                      "path": path.relative_to(root).as_posix(),
+                      "symbol": symbol,
+                      "line": node.lineno,
+                      "async": isinstance(node, ast.AsyncFunctionDef),
+                      "calls": calls,
+                      "decorators": decorators,
+                      "constructs_engine": "TranscriptionEngine" in leaves,
+                      "canonical_calls": sorted(
+                          {"build_generation_metadata", "ensure_generation_receipt", "transcribe_bytes", "transcribe_file"}.intersection(leaves)
+                      ),
+                      "writer_calls": sorted(
+                          {"write_json", "write_srt", "write_text", "write_vtt"}.intersection(leaves)
+                      ),
+                  }
+                  try:
+                      owner: Any = import_module(module)
+                      for part in symbol.split("."):
+                          owner = getattr(owner, part)
+                      record["signature"] = str(inspect.signature(owner))
+                  except Exception as error:
+                      record["signature_error"] = type(error).__name__
+                  records.append(record)
+
+          pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+          scripts = dict(sorted(pyproject.get("project", {}).get("scripts", {}).items()))
+
+          def help_result(*args: str) -> dict[str, Any]:
+              result = subprocess.run(
+                  ["uv", "run", "slower-whisper", *args],
+                  text=True,
+                  capture_output=True,
+                  check=False,
+                  timeout=30,
+              )
+              return {"args": list(args), "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
+
+          cli = [
+              record
+              for record in records
+              if ".cli" in record["module"]
+              or "cli_" in record["module"]
+              or any(value.endswith(".command") or value.endswith(".callback") for value in record["decorators"])
+          ]
+          batch = [
+              record
+              for record in records
+              if "pipeline" in record["module"]
+              or record["symbol"].rsplit(".", 1)[-1] in {"run_pipeline", "transcribe_directory"}
+              or any(call.endswith("normalize_all") for call in record["calls"])
+          ]
+          test_references = []
+          for path in sorted((root / "tests").glob("test*.py")):
+              source = path.read_text(encoding="utf-8")
+              if any(token in source for token in ("run_pipeline", "slower-whisper", "CliRunner", "transcribe_directory")):
+                  test_references.append(path.relative_to(root).as_posix())
+
+          contract = {
+              "contract_version": 2,
+              "base_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "project_scripts": scripts,
+              "root_help": help_result("--help"),
+              "transcribe_help": help_result("transcribe", "--help"),
+              "batch_candidates": batch,
+              "cli_candidates": cli,
+              "existing_tests": test_references,
+          }
+          (root / "contracts" / "surface_parity_entrypoints.json").write_text(
+              json.dumps(contract, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          lines = [
+              "# Directory and CLI surface-parity discovery",
+              "",
+              "This generated report describes the merged receipt-aware source tree. It does **not** claim behavioral parity.",
+              "",
+              f"Base commit: `{contract['base_commit']}`",
+              "",
+              "## Installed console scripts",
+              "",
+              *[f"- `{name}` → `{target}`" for name, target in scripts.items()],
+              "",
+              "## Directory and batch candidates",
+              "",
+          ]
+          lines.extend(
+              f"- `{record['module']}::{record['symbol']}{record.get('signature', '')}` — engine={record['constructs_engine']}; canonical={record['canonical_calls']}; writers={record['writer_calls']}"
+              for record in batch
+          )
+          lines.extend(["", "## CLI candidates", ""])
+          lines.extend(
+              f"- `{record['module']}::{record['symbol']}{record.get('signature', '')}` — engine={record['constructs_engine']}; canonical={record['canonical_calls']}; writers={record['writer_calls']}"
+              for record in cli
+          )
+          lines.extend(["", "## Existing surface tests", ""])
+          lines.extend(f"- `{path}`" for path in test_references)
+          lines.extend(
+              [
+                  "",
+                  "## `slower-whisper transcribe --help`",
+                  "",
+                  "```text",
+                  contract["transcribe_help"]["stdout"].rstrip(),
+                  contract["transcribe_help"]["stderr"].rstrip(),
+                  "```",
+                  "",
+                  "## Next falsification",
+                  "",
+                  "Execute the checkpoint-A deterministic audio/runtime fixture through the actual owners above. Validate complete documents against bundled schemas and compare semantic transcript state plus `receipt_stable_projection()` after removing only declared volatile fields. Repair the owner; do not post-normalize a divergent document in the test.",
+                  "",
+              ]
+          )
+          (root / "docs" / "SURFACE_PARITY_DISCOVERY.md").write_text("\n".join(lines), encoding="utf-8")
+          PY
+
+      - name: Add live-source discovery tests
+        run: |
+          cat > tests/test_surface_parity_entrypoints.py <<'PY'
+          """Directory and CLI parity owners must remain explicit and executable."""
+
+          from __future__ import annotations
+
+          import ast
+          import json
+          from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parents[1]
+          CONTRACT = ROOT / "contracts" / "surface_parity_entrypoints.json"
+
+
+          def contract() -> dict:
+              return json.loads(CONTRACT.read_text(encoding="utf-8"))
+
+
+          def symbols(path: Path) -> set[str]:
+              tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              result: set[str] = set()
+              for node in tree.body:
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                      result.add(node.name)
+                  elif isinstance(node, ast.ClassDef):
+                      result.update(
+                          f"{node.name}.{member.name}"
+                          for member in node.body
+                          if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                      )
+              return result
+
+
+          def test_console_help_and_owner_sets_are_executable() -> None:
+              data = contract()
+              assert data["contract_version"] == 2
+              assert "slower-whisper" in data["project_scripts"]
+              assert data["root_help"]["returncode"] == 0
+              assert data["transcribe_help"]["returncode"] == 0
+              assert data["batch_candidates"]
+              assert data["cli_candidates"]
+
+
+          def test_discovered_owners_resolve_in_live_source() -> None:
+              data = contract()
+              for record in [*data["batch_candidates"], *data["cli_candidates"]]:
+                  path = ROOT / record["path"]
+                  assert path.is_file(), record
+                  assert record["symbol"] in symbols(path), record
+                  assert isinstance(record["constructs_engine"], bool)
+                  assert isinstance(record["canonical_calls"], list)
+                  assert isinstance(record["writer_calls"], list)
+                  assert "signature" in record or "signature_error" in record
+          PY
+          uv run ruff check --fix tests/test_surface_parity_entrypoints.py
+          uv run ruff format tests/test_surface_parity_entrypoints.py
+          uv run ruff check tests/test_surface_parity_entrypoints.py
+          uv run ruff format --check tests/test_surface_parity_entrypoints.py
+          uv run pytest -q tests/test_surface_parity_entrypoints.py
+          git diff --check
+
+      - name: Remove discovery workflows and commit the canonical report
+        run: |
+          rm -f \
+            .github/workflows/discover-directory-cli-parity-620.yml \
+            .github/workflows/discover-directory-cli-parity-620-v2.yml
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -A
+          git commit -m "test: expose directory and CLI parity ownership"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin HEAD:fix/directory-cli-parity-620-2
