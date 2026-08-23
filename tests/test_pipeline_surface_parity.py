@@ -16,6 +16,7 @@ from jsonschema import Draft7Validator, FormatChecker
 from transcription import _build_info
 from transcription.api import transcribe_file
 from transcription.config import AppConfig, AsrConfig, Paths, TranscriptionConfig
+from transcription.exceptions import TranscriptionError
 from transcription.models import Segment, Transcript, Word
 from transcription.pipeline import run_pipeline
 from transcription.receipt import receipt_stable_projection
@@ -52,7 +53,7 @@ class ParityEngine:
     def transcribe_file(self, audio_path: Path) -> Transcript:
         type(self).calls += 1
         if type(self).fail_inference:
-            raise RuntimeError("private provider path /srv/models/tiny")
+            raise RuntimeError("backend failed")
         return Transcript(
             file_name=audio_path.name,
             language="en",
@@ -68,9 +69,9 @@ class ParityEngine:
                             start=0.0,
                             end=0.01,
                             probability=0.99,
-                        )
+                        ),
                     ],
-                )
+                ),
             ],
             meta={
                 "asr_backend": "faster-whisper",
@@ -247,24 +248,31 @@ def test_batch_matches_canonical_file_and_closes_one_engine(
     assert ParityEngine.closes == 1
 
 
-def test_batch_rejects_ambiguous_raw_source_identity_before_inference(
+def test_batch_rejects_ambiguous_raw_source_identity_before_normalization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     reset_engine()
     install_runtime_patches(monkeypatch)
-    paths = prepare_project(tmp_path, "surface.mp3", "surface.flac")
+    paths = prepare_project(tmp_path, "surface.mp3", "Surface.flac")
 
-    result = run_pipeline(app_config(paths), diarization_config=None)
+    def unexpected_normalization(_paths: Paths) -> None:
+        pytest.fail("ambiguous raw sources reached normalization")
 
-    assert result.processed == 0
-    assert result.failed == 1
-    assert "Ambiguous raw source identity" in (
-        result.file_results[0].error_message or ""
+    monkeypatch.setattr(
+        "transcription.audio_io.normalize_all",
+        unexpected_normalization,
     )
-    assert ParityEngine.instances == 1
+
+    with pytest.raises(
+        TranscriptionError,
+        match="would overwrite the same normalized WAV",
+    ):
+        run_pipeline(app_config(paths), diarization_config=None)
+
+    assert ParityEngine.instances == 0
     assert ParityEngine.calls == 0
-    assert ParityEngine.closes == 1
+    assert ParityEngine.closes == 0
 
 
 def test_batch_closes_engine_after_inference_failure(
@@ -280,7 +288,8 @@ def test_batch_closes_engine_after_inference_failure(
 
     assert result.processed == 0
     assert result.failed == 1
-    assert "private provider path" in (result.file_results[0].error_message or "")
+    assert result.file_results[0].status == "error"
+    assert result.file_results[0].error_message is not None
     assert ParityEngine.instances == 1
     assert ParityEngine.calls == 1
     assert ParityEngine.closes == 1
