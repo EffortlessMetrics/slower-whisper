@@ -23,6 +23,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .generation_receipt import ensure_generation_receipt
 from .models import SCHEMA_VERSION, Chunk, Segment, Transcript, Word
 
 if TYPE_CHECKING:
@@ -67,6 +68,7 @@ def write_json(transcript: Transcript, out_path: Path) -> None:
     - audio_state field for segments (v1.0+)
     - speakers and turns arrays (v1.1+, optional)
     """
+    transcript.meta = ensure_generation_receipt(transcript.meta)
 
     raw_meta: Any = transcript.meta
     if raw_meta is None:
