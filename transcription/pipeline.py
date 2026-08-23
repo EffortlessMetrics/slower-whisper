@@ -90,19 +90,14 @@ def _raw_sources_by_stem(paths: Paths) -> dict[str, Path]:
         if candidate.is_file():
             grouped.setdefault(candidate.stem.casefold(), []).append(candidate)
 
-    collisions = {
-        stem: candidates
-        for stem, candidates in grouped.items()
-        if len(candidates) > 1
-    }
+    collisions = {stem: candidates for stem, candidates in grouped.items() if len(candidates) > 1}
     if collisions:
         details = "; ".join(
             f"{stem}: {', '.join(candidate.name for candidate in candidates)}"
             for stem, candidates in sorted(collisions.items())
         )
         raise TranscriptionError(
-            "Raw audio files would overwrite the same normalized WAV: "
-            f"{details}"
+            f"Raw audio files would overwrite the same normalized WAV: {details}"
         )
 
     return {stem: candidates[0] for stem, candidates in grouped.items()}
@@ -261,8 +256,7 @@ def _run_normalized_files(
                 diar_meta = (transcript.meta or {}).get("diarization", {})
                 if diar_meta.get("status") in {"success", "ok"}:
                     logger.debug(
-                        "[skip-transcribe] %s because %s already exists "
-                        "(diarization present)",
+                        "[skip-transcribe] %s because %s already exists (diarization present)",
                         wav.name,
                         json_path.name,
                     )
