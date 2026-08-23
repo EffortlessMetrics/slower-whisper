@@ -20,7 +20,8 @@ from typing import Any
 from . import __version__ as PIPELINE_VERSION
 from . import audio_io, writers
 from .asr_engine import TranscriptionEngine
-from .config import AppConfig, TranscriptionConfig
+from .config import AppConfig, Paths, TranscriptionConfig
+from .exceptions import TranscriptionError
 from .meta_utils import build_generation_metadata
 from .models import Transcript
 from .source_identity import safe_source_name
@@ -45,12 +46,7 @@ class PipelineFileResult:
 class PipelineBatchResult:
     """Result of batch pipeline processing in run_pipeline().
 
-    Tracks success/failure statistics, timing metrics, and per-file results
-    for structured error reporting and performance monitoring.
-
-    This is distinct from BatchProcessingResult (used by the public API layer)
-    as it includes pipeline-specific metrics like diarized_only count and
-    real-time factor calculations.
+    Tracks success/failure statistics, timing metrics, and per-file results.
     """
 
     total_files: int
@@ -73,37 +69,62 @@ class PipelineBatchResult:
 def _get_duration_seconds(path: Path) -> float:
     """Return the duration of a WAV file in seconds."""
     try:
-        with wave.open(str(path), "rb") as w:
-            frames = w.getnframes()
-            rate = w.getframerate()
+        with wave.open(str(path), "rb") as wav_file:
+            frames = wav_file.getnframes()
+            rate = wav_file.getframerate()
         return frames / float(rate) if rate else 0.0
-    except Exception as e:
-        logger.warning("Could not read duration for %s: %s", path.name, e, exc_info=True)
+    except Exception as exc:
+        logger.warning(
+            "Could not read duration for %s: %s",
+            path.name,
+            exc,
+            exc_info=True,
+        )
         return 0.0
 
 
-def _source_name_for_normalized(paths: Any, wav: Path) -> str:
-    """Resolve one normalized WAV to its unambiguous raw source identity."""
-    matches = sorted(
-        candidate
-        for candidate in paths.raw_dir.iterdir()
-        if candidate.is_file() and candidate.stem == wav.stem
-    )
-    if len(matches) == 1:
-        return safe_source_name(matches[0].name)
-    if not matches:
-        return safe_source_name(wav.name)
+def _raw_sources_by_stem(paths: Paths) -> dict[str, Path]:
+    """Index raw files by normalized output stem and reject collisions early."""
+    grouped: dict[str, list[Path]] = {}
+    for candidate in sorted(paths.raw_dir.iterdir()):
+        if candidate.is_file():
+            grouped.setdefault(candidate.stem.casefold(), []).append(candidate)
 
-    names = ", ".join(candidate.name for candidate in matches)
-    raise ValueError(
-        f"Ambiguous raw source identity for {wav.name}: {names}"
-    )
+    collisions = {
+        stem: candidates
+        for stem, candidates in grouped.items()
+        if len(candidates) > 1
+    }
+    if collisions:
+        details = "; ".join(
+            f"{stem}: {', '.join(candidate.name for candidate in candidates)}"
+            for stem, candidates in sorted(collisions.items())
+        )
+        raise TranscriptionError(
+            "Raw audio files would overwrite the same normalized WAV: "
+            f"{details}"
+        )
+
+    return {stem: candidates[0] for stem, candidates in grouped.items()}
+
+
+def _source_name_for_normalized(
+    raw_sources: dict[str, Path],
+    wav: Path,
+) -> str:
+    """Resolve one normalized WAV to its caller-facing source identity."""
+    source = raw_sources.get(wav.stem.casefold())
+    return safe_source_name(source.name if source is not None else wav.name)
 
 
 def _build_meta(
-    cfg: AppConfig, transcript: Transcript, audio_path: Path, duration_sec: float
+    cfg: AppConfig,
+    transcript: Transcript,
+    audio_path: Path,
+    duration_sec: float,
 ) -> dict[str, Any]:
     """Build a metadata dictionary describing this transcript generation run."""
+    del audio_path
     return build_generation_metadata(
         transcript,
         duration_sec=duration_sec,
@@ -127,16 +148,22 @@ def _close_operation_engine(engine: object) -> None:
     try:
         close()
     except Exception as exc:
-        logger.warning("Failed to close transcription engine: %s", exc, exc_info=True)
+        logger.warning(
+            "Failed to close transcription engine: %s",
+            exc,
+            exc_info=True,
+        )
 
 
 def run_pipeline(
-    cfg: AppConfig, diarization_config: TranscriptionConfig | None = None
+    cfg: AppConfig,
+    diarization_config: TranscriptionConfig | None = None,
 ) -> PipelineBatchResult:
     """Normalize, transcribe, enrich, and write one project operation."""
     paths = cfg.paths
 
     audio_io.ensure_dirs(paths)
+    raw_sources = _raw_sources_by_stem(paths)
     audio_io.normalize_all(paths)
 
     norm_files = sorted(paths.norm_dir.glob("*.wav"))
@@ -158,6 +185,7 @@ def run_pipeline(
             cfg,
             diarization_config,
             norm_files,
+            raw_sources,
             engine,
         )
     finally:
@@ -168,6 +196,7 @@ def _run_normalized_files(
     cfg: AppConfig,
     diarization_config: TranscriptionConfig | None,
     norm_files: list[Path],
+    raw_sources: dict[str, Path],
     engine: TranscriptionEngine,
 ) -> PipelineBatchResult:
     """Process already-normalized files through one operation-owned engine."""
@@ -183,13 +212,18 @@ def _run_normalized_files(
 
     for idx, wav in enumerate(norm_files, start=1):
         logger.info("[%d/%d] %s", idx, total, wav.name)
-        stem = Path(wav.name).stem
+        stem = wav.stem
+        source_name = _source_name_for_normalized(raw_sources, wav)
         json_path = paths.json_dir / f"{stem}.json"
         txt_path = paths.transcripts_dir / f"{stem}.txt"
         srt_path = paths.transcripts_dir / f"{stem}.srt"
 
         if cfg.skip_existing_json and json_path.exists():
-            if diarization_config and getattr(diarization_config, "enable_chunking", False):
+            if diarization_config and getattr(
+                diarization_config,
+                "enable_chunking",
+                False,
+            ):
                 try:
                     transcript = writers.load_transcript_from_json(json_path)
                     from .transcription_helpers import _maybe_build_chunks
@@ -208,11 +242,16 @@ def _run_normalized_files(
                 try:
                     transcript = writers.load_transcript_from_json(json_path)
                 except Exception as exc:
-                    logger.error("Failed to load %s: %s", json_path.name, exc, exc_info=True)
+                    logger.error(
+                        "Failed to load %s: %s",
+                        json_path.name,
+                        exc,
+                        exc_info=True,
+                    )
                     failed += 1
                     file_results.append(
                         PipelineFileResult(
-                            file_name=wav.name,
+                            file_name=source_name,
                             status="error",
                             error_message=f"Load failed: {exc}",
                         )
@@ -222,15 +261,24 @@ def _run_normalized_files(
                 diar_meta = (transcript.meta or {}).get("diarization", {})
                 if diar_meta.get("status") in {"success", "ok"}:
                     logger.debug(
-                        "[skip-transcribe] %s because %s already exists (diarization present)",
+                        "[skip-transcribe] %s because %s already exists "
+                        "(diarization present)",
                         wav.name,
                         json_path.name,
                     )
                     skipped += 1
-                    file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
+                    file_results.append(
+                        PipelineFileResult(
+                            file_name=source_name,
+                            status="skipped",
+                        )
+                    )
                     continue
 
-                logger.info("[diarize-existing] %s (reusing existing transcript)", wav.name)
+                logger.info(
+                    "[diarize-existing] %s (reusing existing transcript)",
+                    wav.name,
+                )
                 try:
                     from .diarization_orchestrator import _maybe_run_diarization
 
@@ -249,7 +297,7 @@ def _run_normalized_files(
                     failed += 1
                     file_results.append(
                         PipelineFileResult(
-                            file_name=wav.name,
+                            file_name=source_name,
                             status="error",
                             error_message=f"Diarization failed: {exc}",
                         )
@@ -264,7 +312,12 @@ def _run_normalized_files(
                 logger.info("  → [diarization-only] %s", json_path)
                 logger.info("  → [diarization-only] %s", txt_path)
                 logger.info("  → [diarization-only] %s", srt_path)
-                file_results.append(PipelineFileResult(file_name=wav.name, status="diarized_only"))
+                file_results.append(
+                    PipelineFileResult(
+                        file_name=source_name,
+                        status="diarized_only",
+                    )
+                )
             else:
                 logger.debug(
                     "[skip-transcribe] %s because %s already exists",
@@ -272,21 +325,12 @@ def _run_normalized_files(
                     json_path.name,
                 )
                 skipped += 1
-                file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
-            continue
-
-        try:
-            source_name = _source_name_for_normalized(paths, wav)
-        except ValueError as exc:
-            logger.error("Failed to identify source for %s: %s", wav.name, exc)
-            failed += 1
-            file_results.append(
-                PipelineFileResult(
-                    file_name=wav.name,
-                    status="error",
-                    error_message=f"Source identity failed: {exc}",
+                file_results.append(
+                    PipelineFileResult(
+                        file_name=source_name,
+                        status="skipped",
+                    )
                 )
-            )
             continue
 
         duration = _get_duration_seconds(wav)
@@ -295,14 +339,19 @@ def _run_normalized_files(
         start = time.time()
         try:
             transcript = engine.transcribe_file(wav)
-        except Exception as e:
-            logger.error("Failed to transcribe %s: %s", wav.name, e, exc_info=True)
+        except Exception as exc:
+            logger.error(
+                "Failed to transcribe %s: %s",
+                wav.name,
+                exc,
+                exc_info=True,
+            )
             failed += 1
             file_results.append(
                 PipelineFileResult(
-                    file_name=wav.name,
+                    file_name=source_name,
                     status="error",
-                    error_message=f"Transcription failed: {e}",
+                    error_message=f"Transcription failed: {exc}",
                 )
             )
             continue
@@ -342,7 +391,12 @@ def _run_normalized_files(
         logger.info("  → SRT:  %s", srt_path)
 
         processed += 1
-        file_results.append(PipelineFileResult(file_name=source_name, status="success"))
+        file_results.append(
+            PipelineFileResult(
+                file_name=source_name,
+                status="success",
+            )
+        )
 
     logger.info("=== Summary ===")
     logger.info(
