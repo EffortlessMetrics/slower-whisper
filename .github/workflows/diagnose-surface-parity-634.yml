@@ -109,7 +109,6 @@ jobs:
             tests/test_provenance_schema.py \
             tests/test_provenance_surfaces.py \
             tests/test_receipt.py \
-            tests/test_runtime_lifecycle.py \
             tests/test_incremental_asr.py
 
   full-non-heavy:
@@ -125,7 +124,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg libsndfile1
       - run: uv sync --frozen --python 3.12 --extra dev --extra api
-      - run: |
+      - name: Run full non-heavy suite and print only the decisive tail
+        shell: bash
+        run: |
+          set +e
           uv run pytest -q --maxfail=1 --tb=short \
             -m "not slow and not heavy and not requires_gpu" \
-            --no-cov
+            --no-cov \
+            > "$RUNNER_TEMP/full-non-heavy.log" 2>&1
+          status=$?
+          tail -n 300 "$RUNNER_TEMP/full-non-heavy.log"
+          exit "$status"
