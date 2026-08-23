@@ -31,6 +31,7 @@ from .exceptions import (
 from .service_errors import create_error_response
 from .service_serialization import _transcript_to_dict
 from .service_settings import HTTP_413_TOO_LARGE, MAX_AUDIO_SIZE_MB
+from .source_identity import safe_source_name
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -102,7 +103,8 @@ def _typed_error_response(request: Request, error: TranscriptionError) -> JSONRe
 def _safe_audio_suffix(filename: str | None) -> str:
     if not filename:
         return ""
-    suffix = Path(filename).suffix.lower()
+    safe_name = safe_source_name(filename)
+    suffix = Path(safe_name).suffix.lower()
     return suffix if suffix in _ALLOWED_AUDIO_SUFFIXES else ""
 
 
@@ -215,11 +217,12 @@ async def transcribe_audio(
             detail="Invalid transcription configuration. Check parameter values.",
         ) from error
 
+    source_name = safe_source_name(audio.filename)
+    audio_suffix = _safe_audio_suffix(source_name)
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
-        audio_path = tmpdir_path / (
-            f"audio_{secrets.token_hex(16)}{_safe_audio_suffix(audio.filename)}"
-        )
+        audio_path = tmpdir_path / f"audio_{secrets.token_hex(16)}{audio_suffix}"
         try:
             await _legacy_transcribe.save_upload_file_streaming(
                 audio,
@@ -259,6 +262,10 @@ async def transcribe_audio(
                 status_code=500,
                 detail="Unexpected error during transcription",
             ) from error
+
+        transcript.file_name = source_name
+        transcript.meta = dict(transcript.meta or {})
+        transcript.meta["audio_file"] = source_name
 
         return JSONResponse(
             content=_transcript_to_dict(

@@ -28,6 +28,7 @@ from .enrichment_orchestrator import (
     _run_speaker_analytics,
 )
 from .models import Transcript
+from .source_identity import safe_source_name
 from .transcript_io import load_transcript, save_transcript
 from .transcription_helpers import (
     _get_wav_duration_seconds,
@@ -96,9 +97,10 @@ def transcribe_bytes(
         audio_bytes: Raw audio bytes (any ffmpeg-supported format)
         config: Transcription configuration. If None, uses defaults from env
             via TranscriptionConfig.from_sources().
-        file_name: Filename to use in the transcript metadata. The extension
-            is used to hint at the audio format (e.g., "audio.mp3", "clip.wav").
-            Defaults to "audio.wav".
+        file_name: Caller-facing source filename. Path components and unsafe
+            characters are removed before it enters transcript metadata. The
+            extension is used to hint at the audio format. Defaults to
+            ``audio.wav``.
 
     Returns:
         Transcript object with transcription results
@@ -110,7 +112,8 @@ def transcribe_bytes(
     if config is None:
         config = TranscriptionConfig.from_sources()
 
-    suffix = Path(file_name).suffix
+    source_name = safe_source_name(file_name)
+    suffix = Path(source_name).suffix
     format_hint = suffix.lstrip(".").lower() if suffix else "wav"
 
     transcript = _transcribe_bytes_impl(
@@ -121,7 +124,9 @@ def transcribe_bytes(
         maybe_run_diarization=_maybe_run_diarization,
         maybe_build_chunks=_maybe_build_chunks,
     )
-    transcript.file_name = file_name
+    transcript.file_name = source_name
+    transcript.meta = dict(transcript.meta or {})
+    transcript.meta["audio_file"] = source_name
     return transcript
 
 

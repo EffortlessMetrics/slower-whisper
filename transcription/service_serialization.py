@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .models import SCHEMA_VERSION, Transcript
+from .writers import _to_dict
 
 
 def _word_to_dict(word: Any) -> dict[str, Any]:
@@ -21,23 +22,19 @@ def _word_to_dict(word: Any) -> dict[str, Any]:
     Returns:
         Dictionary with word, start, end, probability, and optional speaker
     """
-    # Use canonical to_dict() if available
     if hasattr(word, "to_dict"):
         result: dict[str, Any] = word.to_dict()
         return result
 
-    # Handle dict representation directly
     if isinstance(word, dict):
         return word
 
-    # Manual extraction for other object types
     out: dict[str, Any] = {}
     for key in ("word", "start", "end", "probability", "speaker"):
         val = getattr(word, key, None)
         if val is not None:
             out[key] = val
 
-    # Some models use 'text' instead of 'word'
     if "word" not in out and hasattr(word, "text"):
         out["word"] = word.text
 
@@ -65,7 +62,6 @@ def _segment_to_dict(seg: Any, *, include_words: bool) -> dict[str, Any]:
         "audio_state": seg.audio_state,
     }
 
-    # Include words only when requested and present
     if include_words and getattr(seg, "words", None):
         d["words"] = [_word_to_dict(w) for w in seg.words]
 
@@ -77,18 +73,14 @@ def _transcript_to_dict(
     *,
     include_words: bool = False,
 ) -> dict[str, Any]:
-    """
-    Convert a Transcript dataclass to a JSON-serializable dictionary.
+    """Convert a transcript to the canonical v2 JSON response shape.
 
-    Args:
-        transcript: Transcript object to serialize
-        include_words: If True, include word-level timestamps in segments
-
-    Returns:
-        Dictionary representation suitable for JSON response
+    ``file`` is the schema-authoritative key. ``file_name`` remains as a
+    compatibility alias for existing REST clients and must equal ``file``.
     """
     data: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
+        "file": transcript.file_name,
         "file_name": transcript.file_name,
         "language": transcript.language,
         "meta": transcript.meta or {},
@@ -97,10 +89,15 @@ def _transcript_to_dict(
         ],
     }
 
-    # Include optional diarization fields when present (v1.1+)
+    if transcript.annotations is not None:
+        data["annotations"] = transcript.annotations
     if transcript.speakers is not None:
         data["speakers"] = transcript.speakers
     if transcript.turns is not None:
-        data["turns"] = transcript.turns
+        data["turns"] = [_to_dict(turn) for turn in transcript.turns]
+    if transcript.speaker_stats is not None:
+        data["speaker_stats"] = [_to_dict(stats) for stats in transcript.speaker_stats]
+    if transcript.chunks is not None:
+        data["chunks"] = [_to_dict(chunk) for chunk in transcript.chunks]
 
     return data
