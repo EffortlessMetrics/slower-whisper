@@ -1,0 +1,252 @@
+name: Finalize Directory CLI Parity 620 v3
+
+on:
+  push:
+    branches: [feature/directory-cli-parity-620-v2]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-directory-cli-parity-620
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout exact parity branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: feature/directory-cli-parity-620-v2
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Harden command discovery and deterministic options
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_directory_cli_surface_parity.py")
+          source = path.read_text(encoding="utf-8")
+
+          start = source.index("def parameter_value(")
+          end = source.index("\n\ndef canonical_file_document(", start)
+          replacement = '''def parameter_value(
+    parameter: click.Parameter,
+    *,
+    root: Path,
+    source: Path,
+) -> str:
+    name = (parameter.name or "").lower()
+    normalized = name.replace("-", "_")
+    if any(word in normalized for word in ("root", "project", "workspace", "directory")):
+        return str(root)
+    if any(word in normalized for word in ("input", "audio", "file", "source")):
+        return str(source)
+    if "output" in normalized and "format" not in normalized:
+        return str(root)
+
+    deterministic = {
+        "model": "tiny",
+        "model_name": "tiny",
+        "device": "cuda",
+        "compute": "float16",
+        "compute_type": "float16",
+        "language": "en",
+        "lang": "en",
+        "task": "transcribe",
+        "beam": "3",
+        "beam_size": "3",
+        "vad_min_silence_ms": "400",
+        "vad_min_silence": "400",
+        "min_silence_ms": "400",
+        "output_format": "json",
+        "output_formats": "json",
+        "formats": "json",
+    }
+    if normalized in deterministic:
+        return deterministic[normalized]
+    if isinstance(getattr(parameter, "type", None), click.Path):
+        return str(root)
+    raise AssertionError(f"Unsupported required CLI parameter: {name}")
+
+
+def append_command_parameters(
+    arguments: list[str],
+    command: click.Command,
+    *,
+    root: Path,
+    source: Path,
+) -> None:
+    deterministic_names = {
+        "model",
+        "model_name",
+        "device",
+        "compute",
+        "compute_type",
+        "language",
+        "lang",
+        "task",
+        "beam",
+        "beam_size",
+        "vad_min_silence_ms",
+        "vad_min_silence",
+        "min_silence_ms",
+        "output_format",
+        "output_formats",
+        "formats",
+    }
+    path_names = {
+        "root",
+        "project_root",
+        "workspace",
+        "directory",
+        "input",
+        "input_dir",
+        "audio",
+        "audio_file",
+        "source",
+        "output",
+        "output_dir",
+    }
+    for parameter in command.params:
+        name = (parameter.name or "").lower().replace("-", "_")
+        if isinstance(parameter, click.Argument):
+            if parameter.required:
+                arguments.append(
+                    parameter_value(parameter, root=root, source=source)
+                )
+            continue
+        if not isinstance(parameter, click.Option):
+            continue
+        if name == "word_timestamps" and parameter.is_flag:
+            if not parameter.default:
+                arguments.append(option_token(parameter))
+            continue
+        if name in deterministic_names or name in path_names or parameter.required:
+            value = parameter_value(parameter, root=root, source=source)
+            arguments.extend([option_token(parameter), value])
+
+
+def cli_arguments(command: click.Command, *, root: Path, source: Path) -> list[str]:
+    arguments: list[str] = []
+    selected = command
+    if isinstance(command, click.Group):
+        append_command_parameters(arguments, command, root=root, source=source)
+        matches = [
+            (name, candidate)
+            for name, candidate in command.commands.items()
+            if "transcrib" in name.lower().replace("-", "_")
+        ]
+        assert len(matches) == 1, sorted(command.commands)
+        name, selected = matches[0]
+        arguments.append(name)
+    append_command_parameters(arguments, selected, root=root, source=source)
+    return arguments
+'''
+          source = source[:start] + replacement + source[end:]
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python 3.12 and 3.13
+        run: uv python install 3.12 3.13
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install locked source environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Canonicalize and execute source parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check --fix tests/test_directory_cli_surface_parity.py
+          uv run ruff format tests/test_directory_cli_surface_parity.py
+          uv run ruff check tests/test_directory_cli_surface_parity.py
+          uv run ruff format --check tests/test_directory_cli_surface_parity.py
+          uv run pytest -q --tb=short \
+            tests/test_directory_cli_surface_parity.py \
+            tests/test_surface_parity.py
+          git diff --check
+
+      - name: Execute source parity on Python 3.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          VENV="$RUNNER_TEMP/source-313"
+          UV_PROJECT_ENVIRONMENT="$VENV" uv sync \
+            --frozen \
+            --python 3.13 \
+            --extra dev \
+            --extra api
+          "$VENV/bin/python" -m pytest -q --tb=short \
+            tests/test_directory_cli_surface_parity.py \
+            tests/test_surface_parity.py
+
+      - name: Execute installed console parity on Python 3.12 and 3.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          WHEEL=$(realpath "$(find dist -maxdepth 1 -name '*.whl' -print -quit)")
+          test -n "$WHEEL"
+          TEST_ROOT="$RUNNER_TEMP/installed-parity-test"
+          mkdir -p "$TEST_ROOT"
+          cp tests/test_directory_cli_surface_parity.py "$TEST_ROOT/"
+          for version in 3.12 3.13; do
+            VENV="$RUNNER_TEMP/installed-$version"
+            uv venv "$VENV" --python "$version"
+            uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
+            uv pip install --python "$VENV/bin/python" \
+              pytest==9.0.2 \
+              jsonschema==4.25.1 \
+              click
+            uv pip check --python "$VENV/bin/python"
+            test -x "$VENV/bin/slower-whisper"
+            (
+              cd "$TEST_ROOT"
+              unset PYTHONPATH
+              export PATH="$VENV/bin:$PATH"
+              export SLOWER_WHISPER_INSTALLED_CLI_PARITY=1
+              "$VENV/bin/python" -m pytest -q --tb=short \
+                test_directory_cli_surface_parity.py \
+                -k installed_console_script_matches_the_canonical_surface
+              "$VENV/bin/slower-whisper" --help >/dev/null
+              "$VENV/bin/slower-whisper" transcribe --help >/dev/null
+            )
+          done
+
+      - name: Verify full non-heavy repository suite
+        run: |
+          uv run pytest -q \
+            -m "not slow and not heavy and not requires_gpu" \
+            --no-cov
+
+      - name: Remove one-shot workflows and commit accepted candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/finalize-directory-cli-parity-620.yml \
+            .github/workflows/finalize-directory-cli-parity-620-v2.yml \
+            .github/workflows/finalize-directory-cli-parity-620-v3.yml
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -A
+          git commit -m "test: prove directory and CLI transcript parity"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:feature/directory-cli-parity-620-v2
