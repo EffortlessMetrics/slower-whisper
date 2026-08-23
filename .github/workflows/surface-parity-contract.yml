@@ -18,7 +18,7 @@ jobs:
   surface-parity-contract:
     name: surface-parity-contract (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -29,6 +29,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
@@ -44,35 +45,84 @@ jobs:
       - name: Install locked test environment
         run: uv sync --frozen --python ${{ matrix.python-version }} --extra dev --extra api
 
-      - name: Verify static serialization contract
+      - name: Verify static surface contract
         run: |
           uv run ruff check \
+            transcription/api.py \
             transcription/generation_receipt.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/service_serialization.py \
+            transcription/source_identity.py \
+            transcription/transcription_orchestrator.py \
             transcription/writers.py \
-            tests/test_generation_receipt.py
+            tests/test_generation_receipt.py \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py
           uv run ruff format --check \
+            transcription/api.py \
             transcription/generation_receipt.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/service_serialization.py \
+            transcription/source_identity.py \
+            transcription/transcription_orchestrator.py \
             transcription/writers.py \
-            tests/test_generation_receipt.py
+            tests/test_generation_receipt.py \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py
           uv run mypy \
+            transcription/api.py \
             transcription/generation_receipt.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/service_serialization.py \
+            transcription/source_identity.py \
+            transcription/transcription_orchestrator.py \
             transcription/writers.py
-          git diff --check
 
-      - name: Verify canonical parity and existing provenance contracts
+      - name: Verify event diff hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            git diff --check "origin/${{ github.base_ref }}...HEAD"
+          else
+            before="${{ github.event.before }}"
+            if [[ "$before" =~ ^0+$ ]] || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+              before="$(git rev-parse HEAD^)"
+            fi
+            git diff --check "${before}..HEAD"
+          fi
+
+      - name: Verify receipt and public-surface parity
         run: |
           uv run pytest -q \
             tests/test_generation_receipt.py \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py \
+            tests/test_api.py \
+            tests/test_service_runtime_transcribe.py \
             tests/test_meta_utils.py \
             tests/test_provenance_schema.py \
             tests/test_provenance_surfaces.py \
             tests/test_receipt.py \
             tests/test_writers.py
 
+      - name: Verify public documentation
+        run: |
+          grep -Fq 'temporary filenames are not a valid substitute' \
+            docs/SURFACE_PARITY_CONTRACT.md
+          grep -Fq 'direct file and bytes operations close their operation-owned engines' \
+            docs/SURFACE_PARITY_CONTRACT.md
+          grep -Fq 'Call-graph discovery is not behavioral parity' \
+            docs/SURFACE_PARITY_CONTRACT.md
+
   surface-parity-full-suite:
     name: surface-parity-full-suite (Python 3.12)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
 
     steps:
       - name: Checkout repository
@@ -103,7 +153,7 @@ jobs:
   surface-parity-installed:
     name: surface-parity-installed (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
@@ -121,22 +171,48 @@ jobs:
       - name: Install Python
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Build and install wheel
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Build and install API wheel
         shell: bash
         run: |
           set -euo pipefail
           rm -rf dist
           uv build --wheel
-          WHEEL=$(realpath "$(find dist -maxdepth 1 -name '*.whl' -print -quit)")
-          test -n "$WHEEL"
-          VENV="$RUNNER_TEMP/surface-parity-${{ matrix.python-version }}"
-          uv venv "$VENV" --python ${{ matrix.python-version }}
-          uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
-          uv pip install --python "$VENV/bin/python" jsonschema
-          uv pip check --python "$VENV/bin/python"
-          echo "SURFACE_PARITY_VENV=$VENV" >> "$GITHUB_ENV"
+          wheel=$(realpath "$(find dist -maxdepth 1 -name '*.whl' -print -quit)")
+          test -n "$wheel"
+          venv="$RUNNER_TEMP/surface-parity-${{ matrix.python-version }}"
+          uv venv "$venv" --python ${{ matrix.python-version }}
+          uv pip install --python "$venv/bin/python" "${wheel}[api]"
+          uv pip install --python "$venv/bin/python" \
+            pytest==9.0.2 \
+            jsonschema==4.26.0 \
+            httpx==0.28.1
+          uv pip check --python "$venv/bin/python"
+          echo "SURFACE_PARITY_VENV=$venv" >> "$GITHUB_ENV"
 
-      - name: Exercise installed writer outside checkout
+      - name: Exercise installed public surfaces outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_root="$RUNNER_TEMP/surface-parity-test"
+          mkdir -p "$test_root"
+          cp \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py \
+            "$test_root/"
+          cd "$test_root"
+          unset PYTHONPATH
+          "$SURFACE_PARITY_VENV/bin/python" -m pytest -q \
+            test_service_serialization.py \
+            test_service_source_identity.py \
+            test_surface_parity.py
+
+      - name: Exercise installed receipt completion outside checkout
         shell: bash
         run: |
           set -euo pipefail
