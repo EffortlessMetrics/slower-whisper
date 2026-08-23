@@ -166,12 +166,31 @@ def _transcribe_file_impl(
 
     duration_sec = get_wav_duration_seconds(norm_wav)
 
+    owns_engine = engine is None
     if engine is None:
         from .asr_engine import TranscriptionEngine
 
         engine = TranscriptionEngine(asr_cfg)
-    transcript = engine.transcribe_file(norm_wav)
 
+    engine_cfg = getattr(engine, "cfg", None)
+    engine_device = getattr(engine_cfg, "device", None) if engine_cfg else None
+    engine_compute_type = getattr(engine_cfg, "compute_type", None) if engine_cfg else None
+
+    try:
+        transcript = engine.transcribe_file(norm_wav)
+    finally:
+        if owns_engine:
+            close = getattr(engine, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as cleanup_exc:
+                    logger.debug(
+                        "Failed to close file transcription engine: %s",
+                        cleanup_exc,
+                    )
+
+    transcript.file_name = raw_dest.name
     transcript = maybe_run_diarization(
         transcript,
         norm_wav,
@@ -184,10 +203,6 @@ def _transcribe_file_impl(
     json_path = paths.json_dir / f"{stem}.json"
     txt_path = paths.transcripts_dir / f"{stem}.txt"
     srt_path = paths.transcripts_dir / f"{stem}.srt"
-
-    engine_cfg = getattr(engine, "cfg", None)
-    engine_device = getattr(engine_cfg, "device", None) if engine_cfg else None
-    engine_compute_type = getattr(engine_cfg, "compute_type", None) if engine_cfg else None
 
     transcript.meta = build_generation_metadata(
         transcript,
@@ -257,6 +272,7 @@ def _transcribe_bytes_impl(
 
     temp_file = None
     norm_temp = None
+    engine: TranscriptionEngine | None = None
     try:
         temp_file = tempfile.NamedTemporaryFile(
             suffix=f".{format_lower}",
@@ -327,6 +343,16 @@ def _transcribe_bytes_impl(
         return transcript
 
     finally:
+        if engine is not None:
+            close = getattr(engine, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as cleanup_exc:
+                    logger.debug(
+                        "Failed to close bytes transcription engine: %s",
+                        cleanup_exc,
+                    )
         if temp_file is not None:
             try:
                 Path(temp_file.name).unlink(missing_ok=True)
