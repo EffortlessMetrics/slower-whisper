@@ -23,6 +23,7 @@ from .asr_engine import TranscriptionEngine
 from .config import AppConfig, TranscriptionConfig
 from .meta_utils import build_generation_metadata
 from .models import Transcript
+from .source_identity import safe_source_name
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +71,7 @@ class PipelineBatchResult:
 
 
 def _get_duration_seconds(path: Path) -> float:
-    """
-    Return the duration of a WAV file in seconds.
-
-    Assumes path points to a valid WAV file.
-    """
+    """Return the duration of a WAV file in seconds."""
     try:
         with wave.open(str(path), "rb") as w:
             frames = w.getnframes()
@@ -85,12 +82,28 @@ def _get_duration_seconds(path: Path) -> float:
         return 0.0
 
 
+def _source_name_for_normalized(paths: Any, wav: Path) -> str:
+    """Resolve one normalized WAV to its unambiguous raw source identity."""
+    matches = sorted(
+        candidate
+        for candidate in paths.raw_dir.iterdir()
+        if candidate.is_file() and candidate.stem == wav.stem
+    )
+    if len(matches) == 1:
+        return safe_source_name(matches[0].name)
+    if not matches:
+        return safe_source_name(wav.name)
+
+    names = ", ".join(candidate.name for candidate in matches)
+    raise ValueError(
+        f"Ambiguous raw source identity for {wav.name}: {names}"
+    )
+
+
 def _build_meta(
     cfg: AppConfig, transcript: Transcript, audio_path: Path, duration_sec: float
 ) -> dict[str, Any]:
-    """
-    Build a metadata dictionary describing this transcript generation run.
-    """
+    """Build a metadata dictionary describing this transcript generation run."""
     return build_generation_metadata(
         transcript,
         duration_sec=duration_sec,
@@ -106,29 +119,21 @@ def _build_meta(
     )
 
 
+def _close_operation_engine(engine: object) -> None:
+    """Close one operation-owned engine without masking pipeline results."""
+    close = getattr(engine, "close", None)
+    if not callable(close):
+        return
+    try:
+        close()
+    except Exception as exc:
+        logger.warning("Failed to close transcription engine: %s", exc, exc_info=True)
+
+
 def run_pipeline(
     cfg: AppConfig, diarization_config: TranscriptionConfig | None = None
 ) -> PipelineBatchResult:
-    """
-    Orchestrate the full pipeline:
-    1) Ensure directories.
-    2) Normalize raw audio to 16 kHz mono WAV.
-    3) Transcribe normalized audio with Whisper.
-    4) (v1.1) Optionally run diarization if diarization_config.enable_diarization=True.
-    5) Write JSON, TXT, and SRT outputs per file.
-
-    If cfg.skip_existing_json is True, files that already have a JSON
-    output will be skipped at the transcription step.
-
-    Args:
-        cfg: AppConfig (internal pipeline config).
-        diarization_config: Optional TranscriptionConfig with diarization settings.
-                           If provided and enable_diarization=True, diarization
-                           will run on each transcript before writing outputs.
-
-    Returns:
-        PipelineBatchResult with success/failure statistics and per-file results.
-    """
+    """Normalize, transcribe, enrich, and write one project operation."""
     paths = cfg.paths
 
     audio_io.ensure_dirs(paths)
@@ -148,6 +153,25 @@ def run_pipeline(
         )
 
     engine = TranscriptionEngine(cfg.asr)
+    try:
+        return _run_normalized_files(
+            cfg,
+            diarization_config,
+            norm_files,
+            engine,
+        )
+    finally:
+        _close_operation_engine(engine)
+
+
+def _run_normalized_files(
+    cfg: AppConfig,
+    diarization_config: TranscriptionConfig | None,
+    norm_files: list[Path],
+    engine: TranscriptionEngine,
+) -> PipelineBatchResult:
+    """Process already-normalized files through one operation-owned engine."""
+    paths = cfg.paths
 
     logger.info("=== Step 3: Transcribing normalized audio ===")
     total = len(norm_files)
@@ -181,7 +205,6 @@ def run_pipeline(
                     )
 
             if diarization_config and diarization_config.enable_diarization:
-                # Upgrade existing transcript with diarization without re-transcribing
                 try:
                     transcript = writers.load_transcript_from_json(json_path)
                 except Exception as exc:
@@ -252,6 +275,20 @@ def run_pipeline(
                 file_results.append(PipelineFileResult(file_name=wav.name, status="skipped"))
             continue
 
+        try:
+            source_name = _source_name_for_normalized(paths, wav)
+        except ValueError as exc:
+            logger.error("Failed to identify source for %s: %s", wav.name, exc)
+            failed += 1
+            file_results.append(
+                PipelineFileResult(
+                    file_name=wav.name,
+                    status="error",
+                    error_message=f"Source identity failed: {exc}",
+                )
+            )
+            continue
+
         duration = _get_duration_seconds(wav)
         total_audio += duration
 
@@ -280,10 +317,9 @@ def run_pipeline(
             rtf,
         )
 
-        # Attach metadata to transcript before writing JSON.
+        transcript.file_name = source_name
         transcript.meta = _build_meta(cfg, transcript, wav, duration)
 
-        # v1.1+: Run diarization (or record disabled state) if config provided
         if diarization_config:
             from .diarization_orchestrator import _maybe_run_diarization
 
@@ -306,7 +342,7 @@ def run_pipeline(
         logger.info("  → SRT:  %s", srt_path)
 
         processed += 1
-        file_results.append(PipelineFileResult(file_name=wav.name, status="success"))
+        file_results.append(PipelineFileResult(file_name=source_name, status="success"))
 
     logger.info("=== Summary ===")
     logger.info(
