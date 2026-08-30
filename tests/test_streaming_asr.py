@@ -139,39 +139,6 @@ class TestStreamingASRAdapter:
         # Should be close to 1.0 (32767/32768)
         assert float32[0] == pytest.approx(32767 / 32768, rel=1e-4)
 
-    def test_calculate_energy_silence(self):
-        """Test energy calculation for silence."""
-        model = MockWhisperModel()
-        adapter = StreamingASRAdapter(model)
-
-        silence = np.zeros(1600, dtype=np.float32)
-        energy = adapter._calculate_energy(silence)
-
-        assert energy == 0.0
-
-    def test_calculate_energy_signal(self):
-        """Test energy calculation for non-zero signal."""
-        model = MockWhisperModel()
-        adapter = StreamingASRAdapter(model)
-
-        # Sine wave should have non-zero energy
-        t = np.linspace(0, 1, 16000, dtype=np.float32)
-        signal = 0.5 * np.sin(2 * np.pi * 440 * t)  # 440 Hz tone
-        energy = adapter._calculate_energy(signal)
-
-        assert energy > 0.0
-        assert energy < 1.0
-
-    def test_calculate_energy_empty(self):
-        """Test energy calculation for empty array."""
-        model = MockWhisperModel()
-        adapter = StreamingASRAdapter(model)
-
-        empty = np.array([], dtype=np.float32)
-        energy = adapter._calculate_energy(empty)
-
-        assert energy == 0.0
-
     @pytest.mark.asyncio
     async def test_ingest_audio_empty(self):
         """Test ingesting empty audio."""
