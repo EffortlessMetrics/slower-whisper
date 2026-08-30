@@ -401,6 +401,16 @@ class TestIngestion:
 class TestFullTextSearch:
     """Tests for FTS5 full-text search."""
 
+    def test_search_sql_injection_prevention(self, store: ConversationStore) -> None:
+        """Test that SQL injection via order_by is prevented."""
+        import pytest
+
+        from transcription.store.types import QueryError
+
+        query = StoreQuery(order_by="start_time; DROP TABLE users;")
+        with pytest.raises(QueryError, match="Invalid order_by column"):
+            store.search(query)
+
     def test_search_text_phrase(
         self, store: ConversationStore, sample_transcript_json: Path
     ) -> None:
