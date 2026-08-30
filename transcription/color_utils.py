@@ -92,3 +92,38 @@ class Colors:
     @classmethod
     def dim(cls, text: str) -> str:
         return cls.colorize(text, cls.DIM)
+
+
+class Symbols:
+    """Unicode symbols with ASCII fallbacks."""
+
+    CHECK = "✔"
+    CROSS = "✘"
+    WARN = "⚠"
+    INFO = "ℹ"
+    ARROW = "➜"
+    DOT = "•"
+
+    @classmethod
+    def check(cls) -> str:
+        return cls.CHECK if Colors._should_use_color() else "[v]"
+
+    @classmethod
+    def cross(cls) -> str:
+        return cls.CROSS if Colors._should_use_color() else "[x]"
+
+    @classmethod
+    def warn(cls) -> str:
+        return cls.WARN if Colors._should_use_color() else "[!]"
+
+    @classmethod
+    def info(cls) -> str:
+        return cls.INFO if Colors._should_use_color() else "[i]"
+
+    @classmethod
+    def arrow(cls) -> str:
+        return cls.ARROW if Colors._should_use_color() else "->"
+
+    @classmethod
+    def dot(cls) -> str:
+        return cls.DOT if Colors._should_use_color() else "*"

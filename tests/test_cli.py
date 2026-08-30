@@ -767,7 +767,8 @@ class TestDoctorCommand:
         captured = capsys.readouterr()
         # Should contain formatted output markers
         assert "slower-whisper doctor" in captured.out
-        assert "Pass:" in captured.out or "[PASS]" in captured.out
+        # Check for summary stats ("Pass: X") or symbol
+        assert "Pass:" in captured.out or "[v]" in captured.out or "✔" in captured.out
 
 
 # ============================================================================
