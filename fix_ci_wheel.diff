@@ -1,0 +1,11 @@
+--- .github/workflows/ci.yml
++++ .github/workflows/ci.yml
+@@ -182,7 +182,7 @@
+       - name: Install wheel in clean environment
+         run: |
+           uv venv .venv-smoke
+-          .venv-smoke/bin/pip install dist/*.whl
++          uv pip install --python .venv-smoke dist/*.whl
+
+       - name: Verify slower_whisper import (installed wheel)
+         run: |
