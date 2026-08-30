@@ -35,6 +35,9 @@ include transcription/py.typed
 include slower_whisper/py.typed
 recursive-include transcription/schemas *.json *.md
 
+# Slower Whisper package explicitly included
+recursive-include slower_whisper *.py
+
 # Exclude compiled/temporary artifacts
 global-exclude __pycache__
 global-exclude *.py[cod]
