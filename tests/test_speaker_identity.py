@@ -24,6 +24,7 @@ from transcription.speaker_identity import (
     SpeakerEmbedder,
     SpeakerMatch,
     SpeakerRegistry,
+    _handle_delete,
     apply_identity_mapping,
     get_available_backend,
     map_diarization_to_identity,
@@ -675,3 +676,78 @@ class TestSpeakerIdentityIntegration:
 
         finally:
             registry.close()
+
+
+class TestCliHandlers:
+    """Test CLI handler functions."""
+
+    def test_handle_delete_force(self, registry: SpeakerRegistry, sample_embedding: np.ndarray):
+        """Test deleting a speaker with --force."""
+
+        class Args:
+            speaker_id = registry.register_speaker("TestSpeaker", sample_embedding)
+            force = True
+
+        result = _handle_delete(registry, Args())
+        assert result == 0
+        assert registry.get_speaker(Args.speaker_id) is None
+
+    def test_handle_delete_interactive_confirm(
+        self, registry: SpeakerRegistry, sample_embedding: np.ndarray
+    ):
+        """Test deleting a speaker interactively with confirmation."""
+        from unittest.mock import patch
+
+        class Args:
+            speaker_id = registry.register_speaker("TestSpeaker", sample_embedding)
+            force = False
+
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", return_value="y"):
+                result = _handle_delete(registry, Args())
+
+        assert result == 0
+        assert registry.get_speaker(Args.speaker_id) is None
+
+    def test_handle_delete_interactive_abort(
+        self, registry: SpeakerRegistry, sample_embedding: np.ndarray
+    ):
+        """Test deleting a speaker interactively with abort."""
+        from unittest.mock import patch
+
+        class Args:
+            speaker_id = registry.register_speaker("TestSpeaker", sample_embedding)
+            force = False
+
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", return_value="n"):
+                result = _handle_delete(registry, Args())
+
+        assert result == 0
+        assert registry.get_speaker(Args.speaker_id) is not None
+
+    def test_handle_delete_non_interactive_no_force(
+        self, registry: SpeakerRegistry, sample_embedding: np.ndarray
+    ):
+        """Test deleting a speaker non-interactively without --force."""
+        from unittest.mock import patch
+
+        class Args:
+            speaker_id = registry.register_speaker("TestSpeaker", sample_embedding)
+            force = False
+
+        with patch("sys.stdin.isatty", return_value=False):
+            result = _handle_delete(registry, Args())
+
+        assert result == 1
+        assert registry.get_speaker(Args.speaker_id) is not None
+
+    def test_handle_delete_not_found(self, registry: SpeakerRegistry):
+        """Test deleting a speaker that does not exist."""
+
+        class Args:
+            speaker_id = "nonexistent"
+            force = True
+
+        result = _handle_delete(registry, Args())
+        assert result == 1
