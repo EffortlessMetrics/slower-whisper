@@ -115,6 +115,34 @@ class TestCacheSubcommand:
         with pytest.raises(SystemExit):
             parser.parse_args(["cache", "--show", "--clear", "all"])
 
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt())
+    def test_cache_clear_keyboard_interrupt(
+        self, mock_input: MagicMock, mock_isatty: MagicMock, tmp_path: Path
+    ) -> None:
+        """Cache --clear aborts gracefully on KeyboardInterrupt."""
+        # Set up mock paths
+        mock_paths = MagicMock()
+        mock_paths.root = tmp_path / "cache"
+        mock_paths.hf_home = tmp_path / "hf"
+        mock_paths.torch_home = tmp_path / "torch"
+        mock_paths.whisper_root = tmp_path / "whisper"
+        mock_paths.emotion_root = tmp_path / "emotion"
+        mock_paths.diarization_root = tmp_path / "diarization"
+        mock_paths.ensure_dirs.return_value = mock_paths
+
+        # Create some test directories with files
+        (tmp_path / "hf").mkdir()
+        (tmp_path / "hf" / "test.bin").write_bytes(b"x" * 1024)
+
+        with (
+            patch("transcription.cache.CachePaths.from_env", return_value=mock_paths),
+            patch("transcription.samples.get_samples_cache_dir", return_value=tmp_path / "samples"),
+        ):
+            exit_code = main(["cache", "--clear", "hf"])
+
+        assert exit_code == 130
+
     def test_cache_show_displays_info(
         self,
         capsys: pytest.CaptureFixture[str],
@@ -205,6 +233,22 @@ class TestSamplesSubcommand:
         args = parser.parse_args(["samples", "copy", "mini_diarization", "--root", str(tmp_path)])
 
         assert args.root == tmp_path
+
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt())
+    def test_samples_copy_keyboard_interrupt(
+        self, mock_input: MagicMock, mock_isatty: MagicMock, tmp_path: Path
+    ) -> None:
+        """Samples copy handles KeyboardInterrupt gracefully."""
+        from transcription.exceptions import SampleExistsError
+
+        with patch("transcription.samples.copy_sample_to_project") as mock_copy:
+            mock_copy.side_effect = SampleExistsError(
+                "test", existing_files=[tmp_path / "test.wav"]
+            )
+
+            exit_code = main(["samples", "copy", "test_dataset", "--root", str(tmp_path)])
+            assert exit_code == 130
 
     def test_samples_generate_parsing(self) -> None:
         """Samples generate action is parsed correctly."""
