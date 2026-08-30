@@ -79,9 +79,11 @@ class KeywordSemanticAnnotator:
             r"\bi['’]?ll follow up\b",
         )
     )
-    _escalation_patterns: tuple[tuple[str, re.Pattern[str]], ...] = field(init=False, repr=False)
-    _churn_patterns: tuple[tuple[str, re.Pattern[str]], ...] = field(init=False, repr=False)
-    _pricing_patterns: tuple[tuple[str, re.Pattern[str]], ...] = field(init=False, repr=False)
+    _escalation_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(
+        init=False, repr=False
+    )
+    _churn_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
+    _pricing_patterns: tuple[tuple[str, str, re.Pattern[str]], ...] = field(init=False, repr=False)
     _action_regexes: tuple[re.Pattern[str], ...] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -90,7 +92,7 @@ class KeywordSemanticAnnotator:
             self,
             "_escalation_patterns",
             tuple(
-                (kw, re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
+                (kw, kw.lower(), re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
                 for kw in self.escalation_keywords
             ),
         )
@@ -98,7 +100,7 @@ class KeywordSemanticAnnotator:
             self,
             "_churn_patterns",
             tuple(
-                (kw, re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
+                (kw, kw.lower(), re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
                 for kw in self.churn_keywords
             ),
         )
@@ -106,7 +108,7 @@ class KeywordSemanticAnnotator:
             self,
             "_pricing_patterns",
             tuple(
-                (kw, re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
+                (kw, kw.lower(), re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE))
                 for kw in self.pricing_keywords
             ),
         )
@@ -158,20 +160,22 @@ class KeywordSemanticAnnotator:
             segment_id = getattr(segment, "id", None)
             segment_ids = [segment_id] if segment_id is not None else []
 
-            for keyword, pattern in self._escalation_patterns:
-                if pattern.search(text_lower):
+            # Fast-path literal string checks are safe here because the regexes
+            # strictly require the exact keyword to be present (bounded by \b).
+            for keyword, kw_lower, pattern in self._escalation_patterns:
+                if kw_lower in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("escalation")
                     record_match("escalation", keyword, segment_id)
 
-            for keyword, pattern in self._churn_patterns:
-                if pattern.search(text_lower):
+            for keyword, kw_lower, pattern in self._churn_patterns:
+                if kw_lower in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("churn_risk")
                     record_match("churn_risk", keyword, segment_id)
 
-            for keyword, pattern in self._pricing_patterns:
-                if pattern.search(text_lower):
+            for keyword, kw_lower, pattern in self._pricing_patterns:
+                if kw_lower in text_lower and pattern.search(text_lower):
                     keywords.add(keyword)
                     risk_tags.add("pricing")
                     record_match("pricing", keyword, segment_id)
