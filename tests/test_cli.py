@@ -206,6 +206,32 @@ class TestSamplesSubcommand:
 
         assert args.root == tmp_path
 
+    def test_samples_copy_keyboard_interrupt_aborts(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Ctrl+C during sample overwrite prompt gracefully aborts with code 130."""
+        from unittest.mock import patch
+
+        from transcription.cli import main
+        from transcription.exceptions import SampleExistsError
+
+        with (
+            patch(
+                "transcription.samples.copy_sample_to_project",
+                side_effect=[
+                    SampleExistsError("Conflict", existing_files=[tmp_path / "conflict.wav"])
+                ],
+            ),
+            patch("builtins.input", side_effect=KeyboardInterrupt()) as mock_input,
+            patch("sys.stdin.isatty", return_value=True),
+        ):
+            exit_code = main(["samples", "copy", "mini_diarization", "--root", str(tmp_path)])
+
+            assert exit_code == 130
+            assert mock_input.called
+            captured = capsys.readouterr()
+            assert "Aborted" in captured.out
+
     def test_samples_generate_parsing(self) -> None:
         """Samples generate action is parsed correctly."""
         parser = build_parser()
