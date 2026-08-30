@@ -32,6 +32,7 @@ include requirements-dev.txt
 
 # Runtime package data
 include transcription/py.typed
+recursive-include slower_whisper *.py
 include slower_whisper/py.typed
 recursive-include transcription/schemas *.json *.md
 
