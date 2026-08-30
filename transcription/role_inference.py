@@ -283,8 +283,8 @@ class RoleInferrer:
                 scores.first_turn_index = turn_idx
 
             # Count questions
-            if self._count_questions(text) > 0:
-                scores.questions_asked += self._count_questions(text)
+            if questions := self._count_questions(text):
+                scores.questions_asked += questions
 
             # Apply phrase triggers
             self._apply_triggers(text, scores)
