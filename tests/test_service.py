@@ -1040,6 +1040,30 @@ class TestAudioValidationEdgeCases:
 
 
 # =============================================================================
+# Test Audio Validation Security
+# =============================================================================
+
+
+class TestAudioValidationSecurity:
+    """Security validation tests for audio validation."""
+
+    def test_audio_validation_option_injection(self) -> None:
+        """Test that paths starting with a hyphen (option injection) are rejected."""
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        # Instantiate the Path directly, as using tmp_path prepends absolute directory
+        unsafe_path = Path("-filename.wav")
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+
+        assert exc_info.value.status_code == 400
+        assert "unsafe characters detected" in str(exc_info.value.detail)
+
+
+# =============================================================================
 # Test Query Parameter Validation
 # =============================================================================
 
