@@ -1,0 +1,3 @@
+## 2026-03-19 - Fast-path literal string check before regex
+**Learning:** For regex-based annotators, executing regex searches on long text strings is computationally expensive, especially when the pattern requires literal keywords. In the `KeywordSemanticAnnotator`, simple fuzzy-less string matching (`kw_lower in text_lower`) can rapidly eliminate non-matching text paths.
+**Action:** Use fast-path string inclusion checks before invoking regex searches when the regex strictly requires a specific literal keyword string. Ensure the original keyword casing is preserved for reporting by storing a tuple like `(kw, kw_lower, pattern)`.
