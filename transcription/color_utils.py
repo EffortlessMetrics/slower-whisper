@@ -38,7 +38,7 @@ class Colors:
     BRIGHT_WHITE: ClassVar[str] = "\033[97m"
 
     @classmethod
-    def _should_use_color(cls) -> bool:
+    def should_use_color(cls) -> bool:
         """
         Determine if colors should be used.
         Returns False if NO_COLOR is set, TERM is dumb, or stdout is not a TTY.
@@ -54,10 +54,13 @@ class Colors:
             return True
         return sys.stdout.isatty()
 
+    # Alias for backward compatibility
+    _should_use_color = should_use_color
+
     @classmethod
     def colorize(cls, text: str, color: str) -> str:
         """Apply color to text if colors are enabled."""
-        if not cls._should_use_color():
+        if not cls.should_use_color():
             return text
         return f"{color}{text}{cls.RESET}"
 
@@ -92,3 +95,21 @@ class Colors:
     @classmethod
     def dim(cls, text: str) -> str:
         return cls.colorize(text, cls.DIM)
+
+
+class Symbols:
+    """Unicode symbols for CLI output with ASCII fallbacks."""
+
+    CHECK: ClassVar[str] = "✔"
+    CROSS: ClassVar[str] = "✖"
+    WARN: ClassVar[str] = "⚠"
+    INFO: ClassVar[str] = "ℹ"
+    SKIP: ClassVar[str] = "➡"
+
+    # ASCII fallbacks
+    CHECK_ASCII: ClassVar[str] = "[OK]"
+    PASS_ASCII: ClassVar[str] = "[PASS]"
+    CROSS_ASCII: ClassVar[str] = "[FAIL]"
+    WARN_ASCII: ClassVar[str] = "[WARN]"
+    INFO_ASCII: ClassVar[str] = "[INFO]"
+    SKIP_ASCII: ClassVar[str] = "[SKIP]"

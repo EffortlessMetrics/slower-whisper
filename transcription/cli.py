@@ -26,7 +26,7 @@ from .cli_commands.shared import (
     get_cache_size,
     setup_progress_logging,
 )
-from .color_utils import Colors
+from .color_utils import Colors, Symbols
 from .config import (
     EnrichmentConfig,
     Paths,
@@ -1168,7 +1168,8 @@ def _handle_validate_command(args: argparse.Namespace) -> int:
             print(f"- {err}")
         return 1
 
-    print(f"[ok] {len(args.transcripts)} transcript(s) valid against {schema_path}")
+    symbol = Colors.green(Symbols.CHECK) if Colors.should_use_color() else Symbols.CHECK_ASCII
+    print(f"{symbol} {len(args.transcripts)} transcript(s) valid against {schema_path}")
     return 0
 
 
