@@ -187,7 +187,7 @@ jobs:
       - name: Verify slower_whisper import (installed wheel)
         run: |
           cd /tmp
-          "$GITHUB_WORKSPACE/.venv-smoke/bin/python" - <<'PY'
+          uv run --python "$GITHUB_WORKSPACE/.venv-smoke" python - <<'PY'
           import slower_whisper
           p = slower_whisper.__file__
           print("slower_whisper.__file__ =", p)

@@ -129,6 +129,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --chown=appuser:appuser transcription/ /app/transcription/
 COPY --chown=appuser:appuser scripts/ /app/scripts/
 COPY --chown=appuser:appuser integrations/ /app/integrations/
+COPY --chown=appuser:appuser slower_whisper/ /app/slower_whisper/
 COPY --chown=appuser:appuser pyproject.toml /app/
 
 # Create data directories
