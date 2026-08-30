@@ -27,6 +27,7 @@ from transcription.store import (
     ExportFormat,
     ExportOptions,
     IngestOptions,
+    QueryError,
     QueryFilter,
     SpeakerQuery,
     StoreError,
@@ -463,6 +464,15 @@ class TestFullTextSearch:
         results = store.search(query)
 
         assert len(results) == 0
+
+    def test_search_sql_injection_order_by(
+        self, store: ConversationStore, sample_transcript_json: Path
+    ) -> None:
+        """Test that invalid order_by columns raise QueryError."""
+        store.ingest(sample_transcript_json)
+
+        with pytest.raises(QueryError, match="Invalid order_by column"):
+            store.search(StoreQuery(order_by="start_time; DROP TABLE segments;"))
 
     def test_search_with_snippet_highlighting(
         self, store: ConversationStore, sample_transcript_json: Path
