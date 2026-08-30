@@ -1048,3 +1048,23 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_sql_injection_prevented_in_order_by(tmp_db: Path) -> None:
+    from transcription.store.store import ConversationStore
+    from transcription.store.types import StoreQuery
+
+    store = ConversationStore(tmp_db)
+
+    # Invalid order_by value should fallback to 'start_time' and not fail
+    query = StoreQuery(order_by="start_time; DROP TABLE segments; --")
+    try:
+        results = store.search(query)
+        # The test passes if search does not raise a query error due to bad SQL syntax.
+    except Exception as e:
+        import pytest
+
+        pytest.fail(
+            f"Search raised an error, indicating the order_by parameter was incorrectly evaluated: {e}"
+        )
+    store.close()
