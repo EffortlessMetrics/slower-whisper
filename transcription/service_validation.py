@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
 
+from .audio_io import validate_path_safety
 from .service_settings import HTTP_413_TOO_LARGE, STREAMING_CHUNK_SIZE
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,15 @@ def validate_audio_format(audio_path: Path) -> None:
     import subprocess
 
     try:
+        validate_path_safety(audio_path)
+    except ValueError as e:
+        logger.warning("Invalid audio path: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid audio file path.",
+        ) from e
+
+    try:
         # Use ffprobe to check if file is valid audio
         # -v error: only show errors
         # -show_entries format=format_name: show format info
@@ -220,7 +230,7 @@ def _validate_audio_format_python(audio_path: Path) -> None:
 
         # Basic header validation for common formats
         with open(audio_path, "rb") as f:
-            header = f.read(12)  # Read first 12 bytes for header check
+            header = f.read(16)  # Read first 16 bytes for header check (needed for WMA)
 
             # WAV files start with "RIFF" and have "WAVE" at bytes 8-11
             if audio_path.suffix.lower() == ".wav":
@@ -228,6 +238,32 @@ def _validate_audio_format_python(audio_path: Path) -> None:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Invalid WAV file: incorrect header format.",
+                    )
+
+            # FLAC files start with "fLaC"
+            elif audio_path.suffix.lower() == ".flac":
+                if len(header) < 4 or header[:4] != b"fLaC":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid FLAC file: incorrect header format.",
+                    )
+
+            # OGG files start with "OggS"
+            elif audio_path.suffix.lower() == ".ogg":
+                if len(header) < 4 or header[:4] != b"OggS":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid OGG file: incorrect header format.",
+                    )
+
+            # WMA files (ASF container) start with specific GUID
+            elif audio_path.suffix.lower() == ".wma":
+                # ASF GUID: 30 26 B2 75 8E 66 CF 11 A6 D9 00 AA 00 62 CE 6C
+                asf_guid = b"\x30\x26\xb2\x75\x8e\x66\xcf\x11\xa6\xd9\x00\xaa\x00\x62\xce\x6c"
+                if len(header) < 16 or header[:16] != asf_guid:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid WMA file: incorrect header format.",
                     )
 
             # MP3 files typically start with ID3 tag or MPEG frame sync

@@ -348,7 +348,7 @@ def _indent_stderr(stderr: str, indent: str = "    ") -> str:
     return "\n".join(f"{indent}{line}" for line in lines)
 
 
-def _validate_path_safety(path: Path | str) -> None:
+def validate_path_safety(path: Path | str) -> None:
     """
     Validate that a path is safe for subprocess arguments.
 
@@ -421,8 +421,8 @@ def _normalize_one_file(
     logger.info("Normalizing audio file", extra={"file": src.name, "output": dst.name})
 
     try:
-        _validate_path_safety(src)
-        _validate_path_safety(dst)
+        validate_path_safety(src)
+        validate_path_safety(dst)
         _ = _check_within_resolved_base(src, raw_dir_resolved)
         _ = _check_within_resolved_base(dst, norm_dir_resolved)
 
@@ -495,8 +495,8 @@ def normalize_single(src: Path, dst: Path) -> None:
         ValueError: If paths contain unsafe characters.
     """
     # Security fix: Validate paths first
-    _validate_path_safety(src)
-    _validate_path_safety(dst)
+    validate_path_safety(src)
+    validate_path_safety(dst)
 
     if not src.exists():
         raise FileNotFoundError(f"Source audio file not found: {src}")
