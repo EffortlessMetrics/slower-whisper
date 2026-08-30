@@ -131,7 +131,7 @@ def validate_audio_format(audio_path: Path) -> None:
                 "format=format_name,duration",
                 "-of",
                 "default=noprint_wrappers=1:nokey=1",
-                str(audio_path),
+                str(audio_path.resolve()),
             ],
             capture_output=True,
             text=True,
