@@ -67,6 +67,7 @@ RUN pip install --no-cache-dir uv==${UV_VERSION}
 # Copy dependency files and application code
 # Using layer caching optimization: copy dependency files first
 COPY pyproject.toml uv.lock README.md ./
+COPY slower_whisper/ ./slower_whisper/
 COPY transcription/ ./transcription/
 COPY scripts/ ./scripts/
 COPY integrations/ ./integrations/
@@ -126,6 +127,7 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
+COPY --chown=appuser:appuser slower_whisper/ /app/slower_whisper/
 COPY --chown=appuser:appuser transcription/ /app/transcription/
 COPY --chown=appuser:appuser scripts/ /app/scripts/
 COPY --chown=appuser:appuser integrations/ /app/integrations/
