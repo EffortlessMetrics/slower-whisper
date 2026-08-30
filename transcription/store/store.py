@@ -919,7 +919,11 @@ class SQLiteConversationStore:
                 params.append(query.date_range.before)
 
         # Order by
+        # Sentinel: SQL Injection fix via explicit allowlist
         order_col = "rank" if query.text else query.order_by
+        allowed_columns = {"rank", "start_time", "end_time", "speaker_confidence", "segment_index"}
+        if order_col not in allowed_columns:
+            order_col = "start_time"
         order_dir = "DESC" if query.order_desc else "ASC"
         sql_parts.append(f"ORDER BY {order_col} {order_dir}")
 
