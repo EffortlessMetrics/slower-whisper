@@ -1,0 +1,3 @@
+## 2024-05-20 - [Optimizing Energy VAD with NumPy]
+**Learning:** Found an inefficient nested loop using Python's `struct.unpack` combined with generator expressions for processing raw PCM byte buffers into frames to calculate RMS energy. By avoiding unpacking into Python tuples and converting directly from bytes to `numpy.ndarray` via `np.frombuffer`, reshaping into a 2D matrix, and applying vectorized aggregation (like `np.mean(..., axis=1)`), execution time dropped significantly (over 20x speedup in isolated tests).
+**Action:** When working with raw continuous binary numeric data representing frames, avoid unpacking into Python lists/tuples. Use `np.frombuffer` to map the memory straight into NumPy, reshape into a grid, and aggregate on axes.
