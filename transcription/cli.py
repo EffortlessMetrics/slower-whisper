@@ -872,7 +872,8 @@ def _handle_samples_command(args: argparse.Namespace) -> int:
                 for f in e.existing_files:
                     print(f"  {f}")
 
-                confirm = input(f"{Colors.red('Overwrite?')} [y/N] ")
+                warning = Colors.red("This cannot be undone.")
+                confirm = input(f"{Colors.red('Overwrite?')} {warning} [y/N] ")
                 if confirm.lower() not in ("y", "yes"):
                     print("Aborted.")
                     return 0
