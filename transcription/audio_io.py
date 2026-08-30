@@ -7,6 +7,7 @@ management. All audio is normalized to 16kHz mono WAV format for ASR processing.
 from __future__ import annotations
 
 import concurrent.futures
+import functools
 import logging
 import os
 import platform
@@ -224,6 +225,7 @@ def ensure_dirs(paths: Paths) -> None:
         d.mkdir(parents=True, exist_ok=True)
 
 
+@functools.lru_cache(maxsize=1)
 def ffmpeg_available() -> bool:
     """
     Return True if ffmpeg is available on PATH.
@@ -231,6 +233,7 @@ def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+@functools.lru_cache(maxsize=1)
 def get_ffmpeg_version() -> str | None:
     """
     Get ffmpeg version string if available.

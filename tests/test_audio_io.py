@@ -9,6 +9,13 @@ from transcription import audio_io
 from transcription.config import Paths
 
 
+@pytest.fixture(autouse=True)
+def clear_audio_io_cache():
+    """Clear lru_cache for ffmpeg checks to ensure clean state for tests."""
+    audio_io.ffmpeg_available.cache_clear()
+    audio_io.get_ffmpeg_version.cache_clear()
+
+
 def test_normalize_all_refreshes_when_source_is_newer(tmp_path, monkeypatch):
     """normalize_all should rerun ffmpeg when the source file is newer than the output."""
     paths = Paths(root=tmp_path)
