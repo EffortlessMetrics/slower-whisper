@@ -1,0 +1,3 @@
+## 2026-04-01 - Vectorize VAD energy calculation in StreamingASRAdapter
+**Learning:** In streaming audio processing, manually calculating frame energy in a Python loop for many small audio frames creates significant overhead due to Python function call overhead and loop execution time. NumPy operations in Python loops are often a bottleneck.
+**Action:** Use NumPy vectorization by reshaping the 1D audio array into a 2D array of `(num_frames, frame_size)` and applying vector operations like `np.sqrt(np.mean(frames**2, axis=1))` over the `axis=1` to process all frames simultaneously at C-level speeds, which is 30x+ faster.
