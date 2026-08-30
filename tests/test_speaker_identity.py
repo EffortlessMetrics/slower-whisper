@@ -160,6 +160,35 @@ class TestSpeakerRegistry:
         finally:
             registry.close()
 
+
+class TestSpeakerCLI:
+    """Tests for speaker CLI command handlers."""
+
+    def test_handle_delete_interactive_prompt_abort(self):
+        """Tests that answering no or Ctrl+C aborts the deletion safely."""
+        from transcription.speaker_identity import _handle_delete
+
+        registry = MagicMock()
+        speaker = MagicMock()
+        speaker.name = "TestUser"
+        speaker.id = "123"
+        registry.get_speaker.return_value = speaker
+
+        args = MagicMock()
+        args.speaker_id = "123"
+        args.force = False
+
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", return_value="n"):
+                exit_code = _handle_delete(registry, args)
+                assert exit_code == 0
+                assert not registry.delete_speaker.called
+
+            with patch("builtins.input", side_effect=KeyboardInterrupt()):
+                exit_code = _handle_delete(registry, args)
+                assert exit_code == 130
+                assert not registry.delete_speaker.called
+
     def test_registry_creates_schema(self, temp_db: Path):
         """Registry should create required tables."""
         registry = SpeakerRegistry(temp_db)
