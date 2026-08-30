@@ -228,7 +228,8 @@ def extract_energy_features(audio: np.ndarray, sr: int) -> dict[str, Any]:
         logger.warning("Librosa not available, using numpy for energy extraction")
         # Fallback to simple RMS calculation
         try:
-            rms = np.sqrt(np.mean(audio**2))
+            # Optimized with np.vdot to avoid temp arrays and improve speed
+            rms = np.sqrt(np.vdot(audio, audio) / audio.size)
             db_rms = 20 * np.log10(rms + 1e-10) if rms > 0 else -100
             return {"rms_mean": float(rms), "rms_std": 0.0, "db_rms": float(db_rms)}
         except Exception:
@@ -330,7 +331,8 @@ def detect_pauses(
                 start = i * hop_length
                 end = start + frame_length
                 frame = audio[start:end]
-                rms[i] = np.sqrt(np.mean(frame**2))
+                # Optimized with np.vdot to avoid temp arrays and improve speed
+                rms[i] = np.sqrt(np.vdot(frame, frame) / frame.size)
 
         # Convert to dB
         db = 20 * np.log10(rms + 1e-10)
