@@ -1048,3 +1048,19 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_search_sqli_order_by(store: ConversationStore) -> None:
+    """Test that invalid order_by column raises QueryError."""
+    from transcription.store.types import QueryError, StoreQuery
+    import pytest
+
+    # Basic SQL injection attempt
+    query1 = StoreQuery(order_by="start_time; DROP TABLE transcripts; --")
+    with pytest.raises(QueryError, match="Invalid order_by column"):
+        store.search(query1)
+
+    # Bypass attempt exploiting split('.') logic
+    query2 = StoreQuery(order_by="(CASE WHEN 1=1 THEN s.id ELSE s.start_time END) /*.id")
+    with pytest.raises(QueryError, match="Invalid order_by column"):
+        store.search(query2)

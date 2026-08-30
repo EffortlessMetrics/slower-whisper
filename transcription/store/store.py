@@ -920,6 +920,18 @@ class SQLiteConversationStore:
 
         # Order by
         order_col = "rank" if query.text else query.order_by
+
+        # Define exact string matches for allowed columns including known aliases
+        allowed_exact_matches = {
+            "rank", "start_time", "end_time", "segment_index",
+            "speaker_confidence", "id", "segment_id", "transcript_id",
+            "ingested_at", "s.start_time", "s.end_time", "s.segment_index",
+            "s.speaker_confidence", "s.id", "s.transcript_id", "t.ingested_at"
+        }
+
+        if order_col not in allowed_exact_matches:
+            raise QueryError(f"Invalid order_by column: {order_col}")
+
         order_dir = "DESC" if query.order_desc else "ASC"
         sql_parts.append(f"ORDER BY {order_col} {order_dir}")
 
