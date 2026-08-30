@@ -1015,6 +1015,17 @@ class TestNotFoundResponses:
 class TestAudioValidationEdgeCases:
     """Tests for audio validation edge cases."""
 
+    def test_audio_format_validation_unsafe_path(self):
+        from transcription.service_validation import validate_audio_format
+
+        unsafe_path = Path("-unsafe_file.wav")
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+
+        assert exc_info.value.status_code == 400
+        assert "Invalid audio file path" in str(exc_info.value.detail)
+
     def test_empty_audio_file(self, client: TestClient) -> None:
         """Test that empty audio file is rejected."""
         response = client.post(
