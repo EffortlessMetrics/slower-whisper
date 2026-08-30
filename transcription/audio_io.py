@@ -395,29 +395,6 @@ def _normalize_one_file(
     Returns a result indicating success, skip, or error status.
     Sets abort=True for FFmpegNotFoundError to signal run termination.
     """
-    # Check if already up-to-date
-    if dst.exists():
-        try:
-            src_mtime = src.stat().st_mtime
-            dst_mtime = dst.stat().st_mtime
-            if dst_mtime >= src_mtime:
-                logger.info(
-                    "Skipping already normalized file (up to date)",
-                    extra={"file": src.name, "output": dst.name},
-                )
-                return _NormalizeResult(src=src, success=True, skipped=True)
-            logger.info(
-                "Re-normalizing file (source is newer)",
-                extra={"file": src.name, "output": dst.name},
-            )
-        except OSError as stat_err:
-            logger.warning(
-                "Could not compare timestamps for %s: %s; re-normalizing",
-                src.name,
-                stat_err,
-                extra={"file": src.name},
-            )
-
     logger.info("Normalizing audio file", extra={"file": src.name, "output": dst.name})
 
     try:
@@ -565,13 +542,35 @@ def normalize_all(paths: Paths) -> None:
 
     # Collect files to process
     files_to_process: list[tuple[Path, Path]] = []
+    skipped_count = 0
+
     for src in sorted(paths.raw_dir.iterdir()):
         if src.is_file():
             dst = paths.norm_dir / f"{src.stem}.wav"
+
+            # Check if already up-to-date
+            # We do this in the main thread to avoid spawning threads for skipped files
+            try:
+                if dst.exists():
+                    src_mtime = src.stat().st_mtime
+                    dst_mtime = dst.stat().st_mtime
+                    if dst_mtime >= src_mtime:
+                        skipped_count += 1
+                        continue
+            except OSError:
+                # If stat fails, we assume we need to process it (safe fallback)
+                logger.warning(
+                    "Could not compare timestamps for %s; re-normalizing", src.name
+                )
+
             files_to_process.append((src, dst))
 
+    if skipped_count > 0:
+        logger.info("Skipped %d already normalized files.", skipped_count)
+
     if not files_to_process:
-        logger.info("No files found in raw_audio/ directory")
+        if skipped_count == 0:
+            logger.info("No files found in raw_audio/ directory")
         return
 
     # Process files in parallel using ThreadPoolExecutor
