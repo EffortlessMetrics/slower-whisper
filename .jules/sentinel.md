@@ -1,4 +1,4 @@
-## 2026-01-28 - FastAPI Security Headers & CSP
-**Vulnerability:** Missing security headers (X-Content-Type-Options, X-Frame-Options, CSP) in FastAPI service.
-**Learning:** Default strict CSP (`default-src 'self'`) breaks FastAPI's auto-generated docs (Swagger UI/Redoc) which rely on `cdn.jsdelivr.net` and `unsafe-inline` styles/scripts.
-**Prevention:** Use a middleware to add security headers, but ensure CSP explicitly allows `cdn.jsdelivr.net` and `fastapi.tiangolo.com` if API docs are enabled.
+## 2024-05-18 - [Fix Command Injection Vulnerability in ffprobe Call]
+**Vulnerability:** Found a command injection vulnerability where unsanitized user inputs were passed to `subprocess.run` inside `validate_audio_format`. Although `shell=True` was not used, this could lead to option injection or other unintended side effects.
+**Learning:** The codebase has a dedicated function `validate_path_safety` inside `transcription/audio_io.py` meant for validating path safety before running shell commands. It was marked internal as `_validate_path_safety` and was missing from the `ffprobe` call.
+**Prevention:** Always validate and sanitize user-provided file paths before passing them to subprocesses. In this repository, `transcription.audio_io.validate_path_safety` must be imported and called. Catch `ValueError` to handle unsafe inputs securely.
