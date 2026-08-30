@@ -42,6 +42,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from .streaming_ws import SpeakerAssignment
 
 if TYPE_CHECKING:
@@ -433,29 +435,29 @@ class EnergyVADDiarizer:
         Returns:
             List of SpeakerAssignment objects for speech regions.
         """
-        import struct
-
-        # Convert bytes to samples
-        num_samples = len(audio_buffer) // 2
-        samples = struct.unpack(f"<{num_samples}h", audio_buffer)
+        # Convert bytes to samples and reshape into frames
+        # Optimized with np.frombuffer and np.einsum instead of struct.unpack and python loop
+        samples = np.frombuffer(audio_buffer, dtype="<h")
 
         # Calculate frame parameters
         frame_samples = int(sample_rate * self.config.frame_duration_ms / 1000)
-        num_frames = num_samples // frame_samples
+        num_frames = len(samples) // frame_samples
 
         if num_frames == 0:
             return []
 
-        # Calculate RMS energy per frame
-        frame_energies = []
-        for i in range(num_frames):
-            start = i * frame_samples
-            end = start + frame_samples
-            frame = samples[start:end]
-            rms = (sum(s * s for s in frame) / len(frame)) ** 0.5
-            # Normalize to 0-1 range (assuming 16-bit audio)
-            normalized_rms = rms / 32768.0
-            frame_energies.append(normalized_rms)
+        # Truncate samples to whole frames
+        samples = samples[: num_frames * frame_samples]
+
+        # Reshape to (num_frames, frame_samples) and cast to float to prevent overflow
+        frames = samples.reshape((num_frames, frame_samples)).astype(np.float32)
+
+        # Calculate RMS energy per frame using vectorized operations
+        rms = np.sqrt(np.einsum("ij,ij->i", frames, frames) / frame_samples)
+
+        # Normalize to 0-1 range (assuming 16-bit audio)
+        normalized_rms = rms / 32768.0
+        frame_energies = normalized_rms.tolist()
 
         # Find speech regions
         is_speech = [e > self.config.energy_threshold for e in frame_energies]
