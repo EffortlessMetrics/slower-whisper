@@ -34,6 +34,7 @@ class TestCacheClearConfirmation:
             patch("shutil.rmtree") as mock_rmtree,
             patch("builtins.input", return_value="y") as mock_input,
             patch("sys.stdin.isatty", return_value=True),
+            patch("transcription.cli._get_cache_size", return_value=100),
         ):
             exit_code = main(["cache", "--clear", "whisper"])
 
@@ -49,6 +50,7 @@ class TestCacheClearConfirmation:
             patch("shutil.rmtree") as mock_rmtree,
             patch("builtins.input", return_value="n") as mock_input,
             patch("sys.stdin.isatty", return_value=True),
+            patch("transcription.cli._get_cache_size", return_value=100),
         ):
             exit_code = main(["cache", "--clear", "whisper"])
 
