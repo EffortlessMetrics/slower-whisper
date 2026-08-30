@@ -1026,6 +1026,41 @@ class TestAudioValidationEdgeCases:
         # Should fail validation
         assert response.status_code == 400
 
+    @patch("subprocess.run")
+    def test_audio_validation_fallback_python(
+        self, mock_subprocess_run: MagicMock, client: TestClient
+    ) -> None:
+        """Test that python-based fallback validation rejects mismatched headers."""
+        # Simulate ffprobe not found
+        mock_subprocess_run.side_effect = FileNotFoundError()
+
+        # FLAC file with bad header
+        response = client.post(
+            "/transcribe",
+            files={"audio": ("test.flac", b"bad-header-data1234", "audio/flac")},
+            params={"device": "cpu"},
+        )
+        assert response.status_code == 400
+        assert "Invalid FLAC file" in response.json()["error"]["message"]
+
+        # OGG file with bad header
+        response = client.post(
+            "/transcribe",
+            files={"audio": ("test.ogg", b"bad-header-data1234", "audio/ogg")},
+            params={"device": "cpu"},
+        )
+        assert response.status_code == 400
+        assert "Invalid OGG file" in response.json()["error"]["message"]
+
+        # WMA file with bad header
+        response = client.post(
+            "/transcribe",
+            files={"audio": ("test.wma", b"bad-header-data1234", "audio/x-ms-wma")},
+            params={"device": "cpu"},
+        )
+        assert response.status_code == 400
+        assert "Invalid WMA file" in response.json()["error"]["message"]
+
     def test_non_audio_file_rejected(self, client: TestClient) -> None:
         """Test that non-audio files are rejected."""
         # Try to upload a text file as audio
