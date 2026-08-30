@@ -12,8 +12,6 @@ Tests cover:
 - Error handling
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import Any
@@ -35,6 +33,7 @@ from transcription.store import (
     TimeRangeQuery,
     TranscriptQuery,
 )
+from transcription.store.types import QueryError
 
 # =============================================================================
 # Fixtures
@@ -1048,3 +1047,18 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_search_sql_injection_order_by_allowlist():
+    """Test that order_by is validated against an allowlist."""
+    store = ConversationStore(":memory:")
+
+    # Init schema
+    store._init_schema()
+
+    query = StoreQuery(order_by="start_time DESC LIMIT 1 OFFSET 0 --")
+
+    with pytest.raises(QueryError) as exc:
+        store.search(query)
+
+    assert "Invalid order_by column" in str(exc.value)
