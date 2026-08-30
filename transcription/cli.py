@@ -12,6 +12,7 @@ with a more coherent interface.
 from __future__ import annotations
 
 import argparse
+import difflib
 import logging
 import sys
 from collections.abc import Sequence
@@ -77,9 +78,48 @@ def _setup_progress_logging(show_progress: bool) -> None:
     setup_progress_logging(show_progress)
 
 
+class SuggestiveArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser that suggests corrections for invalid commands."""
+
+    def error(self, message: str) -> None:
+        """Override error to provide suggestions for invalid commands."""
+        # Check for invalid choice error specifically for the 'command' argument
+        # "argument command: invalid choice: 'foo' (choose from ...)"
+        if "argument command: invalid choice" in message:
+            import re
+
+            match = re.search(r"invalid choice: '([^']+)'", message)
+            if match:
+                invalid_cmd = match.group(1)
+
+                # Extract valid commands from the message itself
+                # Message format: "... (choose from cmd1, cmd2, ...)"
+                valid_commands = []
+                choices_match = re.search(r"\(choose from (.+)\)", message)
+                if choices_match:
+                    # choices are comma-separated and might be quoted
+                    choices_str = choices_match.group(1)
+                    valid_commands = [c.strip("' ") for c in choices_str.split(",")]
+
+                suggestions = difflib.get_close_matches(
+                    invalid_cmd, valid_commands, n=1, cutoff=0.5
+                )
+                if suggestions:
+                    self.print_usage(sys.stderr)
+                    print(f"{self.prog}: error: {message}", file=sys.stderr)
+                    suggestion = suggestions[0]
+                    print(
+                        f"\nDid you mean {Colors.cyan(suggestion)}?",
+                        file=sys.stderr,
+                    )
+                    self.exit(2)
+
+        super().error(message)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser with subcommands."""
-    parser = argparse.ArgumentParser(
+    parser = SuggestiveArgumentParser(
         prog="slower-whisper",
         description="Local transcription and audio enrichment pipeline.",
     )
