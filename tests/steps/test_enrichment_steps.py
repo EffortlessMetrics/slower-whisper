@@ -7,7 +7,6 @@ using pytest-bdd. Steps use the public API from transcription.api.
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -24,15 +23,6 @@ from transcription import (
     EnrichmentError,
     enrich_directory,
     enrich_transcript,
-)
-
-# Check if ffmpeg is available
-FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
-
-# Load all scenarios from the feature file
-# Mark all scenarios as xfail if ffmpeg is not available since they require transcription
-pytestmark = pytest.mark.xfail(
-    not FFMPEG_AVAILABLE, reason="Requires ffmpeg for audio normalization", strict=False
 )
 
 scenarios("../features/enrichment.feature")

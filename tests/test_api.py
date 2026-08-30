@@ -15,6 +15,7 @@ Test coverage targets:
 from __future__ import annotations
 
 import json
+import os
 import struct
 import wave
 from pathlib import Path
@@ -802,6 +803,7 @@ class TestSaveTranscript:
         assert "old" not in data
         assert data["file"] == "test.wav"
 
+    @pytest.mark.skipif(os.getuid() == 0, reason="Permission tests don't work as root")
     def test_save_permission_error(self, simple_transcript: Transcript, tmp_path: Path) -> None:
         """Test save_transcript handles permission errors."""
         # Create read-only directory
