@@ -1012,6 +1012,45 @@ class TestNotFoundResponses:
 # =============================================================================
 
 
+class TestAudioValidationSecurity:
+    """Test security aspects of audio validation."""
+
+    def test_validate_audio_format_option_injection(self):
+        """Test that paths starting with hyphens are rejected by validate_audio_format."""
+        from pathlib import Path
+
+        import pytest
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        # When testing option injection (starting with '-'), we instantiate
+        # Path directly rather than using tmp_path which prepends an absolute dir.
+        unsafe_path = Path("-malicious.wav")
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+
+        assert exc_info.value.status_code == 400
+        assert "unsafe characters" in exc_info.value.detail.lower()
+
+    def test_validate_audio_format_shell_injection(self, tmp_path: Path):
+        """Test that paths with shell metacharacters are rejected."""
+
+        import pytest
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        unsafe_path = tmp_path / "test;echo.wav"
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+
+        assert exc_info.value.status_code == 400
+        assert "unsafe characters" in exc_info.value.detail.lower()
+
+
 class TestAudioValidationEdgeCases:
     """Tests for audio validation edge cases."""
 
