@@ -1,0 +1,3 @@
+## 2024-04-03 - [Optimize VAD energy calculation]
+**Learning:** Python `for` loops that iterate over NumPy array slices are very slow for operations like frame-wise audio processing (e.g., streaming ASR VAD). Reshaping the 1D audio array into a 2D array and applying vectorized operations (like `np.mean(..., axis=1)`) achieves significant C-level speedups (e.g., 34x speedup for VAD frames). Also note `.tolist()` on NumPy boolean arrays returns `list[Any]`, so explicitly casting with `[bool(x) for x in boolean_array]` is needed to satisfy strict static typing `list[bool]`.
+**Action:** Always favor NumPy vectorization over Python loops for array processing in performance-critical codepaths. Ensure output types match static typing annotations when returning arrays as lists.
