@@ -117,6 +117,19 @@ def validate_audio_format(audio_path: Path) -> None:
     """
     import subprocess
 
+    # Security fix: Validate user-provided path to prevent shell/option injection
+    # before passing it to subprocess.run
+    try:
+        from .audio_io import _validate_path_safety
+
+        _validate_path_safety(audio_path)
+    except ValueError as e:
+        logger.warning("Unsafe audio file path detected: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid audio file path: path contains unsafe characters.",
+        ) from e
+
     try:
         # Use ffprobe to check if file is valid audio
         # -v error: only show errors
