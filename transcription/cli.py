@@ -1163,12 +1163,14 @@ def _handle_validate_command(args: argparse.Namespace) -> int:
     schema_path = args.schema or DEFAULT_SCHEMA_PATH
     failures = validate_many(args.transcripts, schema_path=schema_path)
     if failures:
-        print("Validation failed:")
+        print(Colors.red("Validation failed:"))
         for err in failures:
-            print(f"- {err}")
+            print(f"- {Colors.red(err)}")
         return 1
 
-    print(f"[ok] {len(args.transcripts)} transcript(s) valid against {schema_path}")
+    print(
+        f"[{Colors.green('ok')}] {len(args.transcripts)} transcript(s) valid against {schema_path}"
+    )
     return 0
 
 
