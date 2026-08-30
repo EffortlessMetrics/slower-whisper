@@ -236,12 +236,18 @@ def _validate_audio_format_python(audio_path: Path) -> None:
                     header.startswith(b"ID3") or header.startswith(b"\xff\xfb")
                 ):
                     # Not a definitive check, but catches obvious non-MP3 files
-                    logger.warning("Possible invalid MP3 file: missing ID3 tag or MPEG sync")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid MP3 file: missing ID3 tag or MPEG sync.",
+                    )
 
             # M4A/AAC files start with "ftyp" box
             elif audio_path.suffix.lower() in (".m4a", ".aac"):
                 if len(header) < 8 or header[4:8] != b"ftyp":
-                    logger.warning("Possible invalid M4A/AAC file: missing ftyp box")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid M4A/AAC file: missing ftyp box.",
+                    )
 
         # If we get here, basic checks passed
         logger.info("Basic validation passed for %s (ffprobe unavailable)", audio_path.name)
