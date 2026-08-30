@@ -486,6 +486,20 @@ class TestFullTextSearch:
 class TestQueryFilters:
     """Tests for query filters."""
 
+    def test_search_invalid_order_by(
+        self, store: ConversationStore, sample_transcript_json: Path
+    ) -> None:
+        """Test that invalid order_by columns raise QueryError."""
+        import pytest
+
+        from transcription.store.types import QueryError
+
+        store.ingest(sample_transcript_json)
+
+        query = StoreQuery(order_by="DROP TABLE segments;")
+        with pytest.raises(QueryError, match="Invalid order_by column"):
+            store.search(query)
+
     def test_filter_by_speaker(
         self, store: ConversationStore, sample_transcript_json: Path
     ) -> None:
