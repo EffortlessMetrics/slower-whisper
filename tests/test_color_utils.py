@@ -1,4 +1,4 @@
-from transcription.color_utils import Colors
+from transcription.color_utils import Colors, Symbols
 
 
 def test_colors_enabled_forced(monkeypatch):
@@ -6,6 +6,8 @@ def test_colors_enabled_forced(monkeypatch):
     monkeypatch.setenv("FORCE_COLOR", "1")
     monkeypatch.delenv("NO_COLOR", raising=False)
 
+    assert Colors.should_use_color() is True
+    # Verify alias works
     assert Colors._should_use_color() is True
     assert Colors.red("test") == "\033[31mtest\033[0m"
 
@@ -15,7 +17,7 @@ def test_colors_disabled_no_color(monkeypatch):
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.delenv("FORCE_COLOR", raising=False)
 
-    assert Colors._should_use_color() is False
+    assert Colors.should_use_color() is False
     assert Colors.red("test") == "test"
 
 
@@ -25,7 +27,7 @@ def test_colors_disabled_dumb_term(monkeypatch):
     monkeypatch.delenv("FORCE_COLOR", raising=False)
     monkeypatch.setenv("TERM", "dumb")
 
-    assert Colors._should_use_color() is False
+    assert Colors.should_use_color() is False
     assert Colors.red("test") == "test"
 
 
@@ -41,3 +43,29 @@ def test_colors_methods(monkeypatch):
     assert Colors.magenta("test") == "\033[35mtest\033[0m"
     assert Colors.bold("test") == "\033[1mtest\033[0m"
     assert Colors.dim("test") == "\033[2mtest\033[0m"
+
+
+def test_symbols_unicode(monkeypatch):
+    """Test that Symbols return unicode when colors are enabled."""
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+
+    assert Symbols.check() == "✔"
+    assert Symbols.cross() == "✘"
+    assert Symbols.warn() == "⚠"
+    assert Symbols.info() == "ℹ"
+    assert Symbols.arrow() == "➜"
+    assert Symbols.bullet() == "•"
+
+
+def test_symbols_ascii(monkeypatch):
+    """Test that Symbols return ASCII fallbacks when colors are disabled."""
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+
+    assert Symbols.check() == "[OK]"
+    assert Symbols.cross() == "[FAIL]"
+    assert Symbols.warn() == "[!]"
+    assert Symbols.info() == "[i]"
+    assert Symbols.arrow() == "->"
+    assert Symbols.bullet() == "-"
