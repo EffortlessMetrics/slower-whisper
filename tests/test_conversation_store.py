@@ -1048,3 +1048,13 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+def test_search_sql_injection_protection() -> None:
+    """Test that SQL injection via order_by is prevented."""
+    from transcription.store.store import ConversationStore
+    from transcription.store.types import StoreQuery
+    store = ConversationStore(":memory:")
+    # This query should not raise a sqlite3.Error and should fallback to start_time
+    query = StoreQuery(order_by="start_time DESC; DROP TABLE segments;--")
+    results = store.search(query)
+    assert isinstance(results, list)
