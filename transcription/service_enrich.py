@@ -18,7 +18,6 @@ from .service_settings import MAX_AUDIO_SIZE_MB, MAX_TRANSCRIPT_SIZE_MB
 from .service_validation import (
     save_upload_file_streaming,
     validate_audio_format,
-    validate_file_size,
     validate_transcript_json,
 )
 
@@ -106,34 +105,29 @@ async def enrich_audio(
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
 
-        # Read and validate uploaded transcript
+        # Security fix: Stream transcript to disk to prevent DoS (memory exhaustion)
+        # We save it first, checking size limit during streaming, then read back for validation.
+        transcript_path = tmpdir_path / "transcript.json"
+
+        await save_upload_file_streaming(
+            transcript,
+            transcript_path,
+            max_bytes=MAX_TRANSCRIPT_SIZE_MB * 1024 * 1024,
+            file_type="transcript",
+        )
+
+        # Read back from disk for validation (bounded by MAX_TRANSCRIPT_SIZE_MB)
         try:
-            transcript_content = await transcript.read()
+            transcript_content = transcript_path.read_bytes()
         except Exception as e:
-            logger.error("Failed to read transcript file", exc_info=e)
-            # Security fix: Do not leak exception details to client
+            logger.error("Failed to read saved transcript file", exc_info=e)
             raise HTTPException(
                 status_code=500,
-                detail="Failed to read transcript file",
+                detail="Failed to read saved transcript file",
             ) from e
-
-        # Validate transcript file size
-        validate_file_size(transcript_content, MAX_TRANSCRIPT_SIZE_MB, file_type="transcript")
 
         # Validate transcript JSON structure
         validate_transcript_json(transcript_content)
-
-        # Save uploaded transcript
-        transcript_path = tmpdir_path / "transcript.json"
-        try:
-            transcript_path.write_bytes(transcript_content)
-        except Exception as e:
-            logger.error("Failed to save transcript file", exc_info=e)
-            # Security fix: Do not leak exception details to client
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to save transcript file",
-            ) from e
 
         # Security fix: Generate random filename to prevent directory traversal
         # Only preserve the file extension from the original filename
