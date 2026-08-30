@@ -1262,9 +1262,9 @@ librt==0.7.8 ; platform_python_implementation != 'PyPy' \
     --hash=sha256:fdec6e2368ae4f796fc72fad7fd4bd1753715187e6d870932b0904609e7c878e \
     --hash=sha256:ff3e9c11aa260c31493d4b3197d1e28dd07768594a4f92bec4506849d736248f \
     --hash=sha256:ff71447cb778a4f772ddc4ce360e6ba9c95527ed84a52096bd1bbf9fee2ec7c0
-lightning==2.6.0 \
-    --hash=sha256:881841716b59c1837ae0c562c2e64fea9bcf49ef9de3867bd1f868557ec23d04 \
-    --hash=sha256:f1a13a48909960a3454518486f113fae4fadb2db0e28e9c50d8d38d46c9dc3d6
+lightning==2.6.1 \
+    --hash=sha256:30e1adac23004c713663928541bd72ecb1371b7abc9aff9f46b7fd2644988d30 \
+    --hash=sha256:859104b98c61add6fe60d0c623abf749baf25f2950a66ebdfb4bd18aa7decba9
 lightning-utilities==0.15.2 \
     --hash=sha256:cdf12f530214a63dacefd713f180d1ecf5d165338101617b4742e8f22c032e24 \
     --hash=sha256:ad3ab1703775044bbf880dbf7ddaaac899396c96315f3aa1779cec9d618a9841

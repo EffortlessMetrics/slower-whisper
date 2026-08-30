@@ -871,9 +871,9 @@ lazy-loader==0.4 \
 librosa==0.11.0 \
     --hash=sha256:f5ed951ca189b375bbe2e33b2abd7e040ceeee302b9bbaeeffdfddb8d0ace908 \
     --hash=sha256:0b6415c4fd68bff4c29288abe67c6d80b587e0e1e2cfb0aad23e4559504a7fa1
-lightning==2.6.0 \
-    --hash=sha256:881841716b59c1837ae0c562c2e64fea9bcf49ef9de3867bd1f868557ec23d04 \
-    --hash=sha256:f1a13a48909960a3454518486f113fae4fadb2db0e28e9c50d8d38d46c9dc3d6
+lightning==2.6.1 \
+    --hash=sha256:30e1adac23004c713663928541bd72ecb1371b7abc9aff9f46b7fd2644988d30 \
+    --hash=sha256:859104b98c61add6fe60d0c623abf749baf25f2950a66ebdfb4bd18aa7decba9
 lightning-utilities==0.15.2 \
     --hash=sha256:cdf12f530214a63dacefd713f180d1ecf5d165338101617b4742e8f22c032e24 \
     --hash=sha256:ad3ab1703775044bbf880dbf7ddaaac899396c96315f3aa1779cec9d618a9841
