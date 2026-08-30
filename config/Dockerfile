@@ -68,6 +68,7 @@ RUN pip install --no-cache-dir uv==${UV_VERSION}
 # Using layer caching optimization: copy dependency files first
 COPY pyproject.toml uv.lock README.md ./
 COPY transcription/ ./transcription/
+COPY slower_whisper/ ./slower_whisper/
 COPY scripts/ ./scripts/
 COPY integrations/ ./integrations/
 COPY slower_whisper/ ./slower_whisper/
