@@ -1048,3 +1048,22 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+def test_search_order_by_sql_injection() -> None:
+    """Test that order_by is validated and prevents SQL injection."""
+    from transcription.store.store import ConversationStore
+    from transcription.store.types import StoreQuery
+
+    store = ConversationStore(":memory:")
+
+    # Attempt SQL injection
+    malicious_order_by = "start_time; DROP TABLE segments; --"
+    query = StoreQuery(order_by=malicious_order_by)
+
+    # Should not raise SQL error, but fallback to start_time
+    results = store.search(query)
+    assert isinstance(results, list)
+
+    # Check that table still exists
+    cursor = store._conn.execute("SELECT count(*) FROM segments")
+    assert cursor.fetchone()[0] == 0
