@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
 
+from .audio_io import validate_path_safety
 from .service_settings import HTTP_413_TOO_LARGE, STREAMING_CHUNK_SIZE
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,9 @@ def validate_audio_format(audio_path: Path) -> None:
     import subprocess
 
     try:
+        # Security fix: Validate path safety first
+        validate_path_safety(audio_path)
+
         # Use ffprobe to check if file is valid audio
         # -v error: only show errors
         # -show_entries format=format_name: show format info
@@ -235,13 +239,19 @@ def _validate_audio_format_python(audio_path: Path) -> None:
                 if len(header) < 3 or not (
                     header.startswith(b"ID3") or header.startswith(b"\xff\xfb")
                 ):
-                    # Not a definitive check, but catches obvious non-MP3 files
-                    logger.warning("Possible invalid MP3 file: missing ID3 tag or MPEG sync")
+                    # Fail securely on invalid header
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid MP3 file: missing ID3 tag or MPEG sync header.",
+                    )
 
             # M4A/AAC files start with "ftyp" box
             elif audio_path.suffix.lower() in (".m4a", ".aac"):
                 if len(header) < 8 or header[4:8] != b"ftyp":
-                    logger.warning("Possible invalid M4A/AAC file: missing ftyp box")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid M4A/AAC file: missing ftyp box header.",
+                    )
 
         # If we get here, basic checks passed
         logger.info("Basic validation passed for %s (ffprobe unavailable)", audio_path.name)
