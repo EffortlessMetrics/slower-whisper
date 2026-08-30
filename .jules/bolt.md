@@ -1,0 +1,3 @@
+## 2024-03-22 - Fast path checking for regex keyword matching
+**Learning:** For regex-based keyword annotators (like transcription.semantic.KeywordSemanticAnnotator), performance can be significantly improved by pre-computing lowercase keywords in `__post_init__` and utilizing fast-path string inclusion checks (`kw_lower in text_lower`) before executing slower regex operations.
+**Action:** Always verify if a fast-path string inclusion check (`kw_lower in text_lower`) can skip unnecessary regex evaluations (`pattern.search(text)`) for rule-based text annotators. Retain original casing in the object's memory (`kw`) to preserve final reporting.
