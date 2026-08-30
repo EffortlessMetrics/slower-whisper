@@ -282,6 +282,37 @@ class TestSpeakerRegistry:
         assert result is True
         assert registry.get_speaker(speaker_id) is None
 
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    def test_delete_speaker_cli_keyboard_interrupt(
+        self,
+        mock_input: MagicMock,
+        mock_isatty: MagicMock,
+        registry: SpeakerRegistry,
+        sample_embedding: np.ndarray,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        """Test that speaker delete gracefully handles KeyboardInterrupt on confirmation prompt."""
+        import argparse
+
+        from transcription.speaker_identity import handle_speakers_command
+
+        speaker_id = registry.register_speaker("Jack", sample_embedding)
+        args = argparse.Namespace(
+            registry=registry._path,
+            speakers_action="delete",
+            speaker_id=speaker_id,
+            force=False,
+        )
+
+        exit_code = handle_speakers_command(args)
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
+        # Ensure the speaker was not actually deleted
+        assert registry.get_speaker(speaker_id) is not None
+
     def test_delete_nonexistent_speaker(self, registry: SpeakerRegistry):
         """Should return False when deleting nonexistent speaker."""
         result = registry.delete_speaker("nonexistent-id")

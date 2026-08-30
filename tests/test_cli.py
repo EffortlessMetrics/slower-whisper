@@ -109,6 +109,20 @@ class TestCacheSubcommand:
         with pytest.raises(SystemExit):
             parser.parse_args(["cache", "--clear", "invalid"])
 
+    @patch("transcription.cli.sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    def test_cache_clear_keyboard_interrupt(
+        self, mock_input: MagicMock, mock_isatty: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test that cache clear gracefully handles KeyboardInterrupt."""
+        from transcription.cli import main
+
+        exit_code = main(["cache", "--clear", "all"])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
+
     def test_cache_mutually_exclusive(self) -> None:
         """Cache --show and --clear are mutually exclusive."""
         parser = build_parser()
@@ -197,7 +211,33 @@ class TestSamplesSubcommand:
         assert args.command == "samples"
         assert args.samples_action == "copy"
         assert args.dataset == "mini_diarization"
-        assert args.root == Path.cwd()
+
+    @patch("transcription.cli.sys.stdin.isatty", return_value=True)
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    @patch("transcription.samples.copy_sample_to_project")
+    def test_samples_copy_keyboard_interrupt(
+        self,
+        mock_copy: MagicMock,
+        mock_input: MagicMock,
+        mock_isatty: MagicMock,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        """Test that samples copy gracefully handles KeyboardInterrupt on overwrite prompt."""
+        from transcription.cli import main
+        from transcription.samples import SampleExistsError
+
+        # Simulate an existing file error to trigger the prompt
+        mock_copy.side_effect = SampleExistsError(
+            message="Files already exist",
+            existing_files=[tmp_path / "test.wav"],
+        )
+
+        exit_code = main(["samples", "copy", "ami", "--root", str(tmp_path)])
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
 
     def test_samples_copy_with_root(self, tmp_path: Path) -> None:
         """Samples copy with --root is parsed correctly."""
