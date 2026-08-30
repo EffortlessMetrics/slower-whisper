@@ -158,8 +158,9 @@ def _compute_snr_proxy(samples: np.ndarray) -> float:
     energy = samples**2
 
     # Get percentiles
-    high_energy = np.percentile(energy, _SNR_PERCENTILE_HIGH)
-    low_energy = np.percentile(energy, _SNR_PERCENTILE_LOW)
+    # Performance Optimization: Batch np.percentile calls to compute multiple percentiles
+    # in a single pass over the array, avoiding repeated O(n) traversal overhead.
+    low_energy, high_energy = np.percentile(energy, [_SNR_PERCENTILE_LOW, _SNR_PERCENTILE_HIGH])
 
     # Avoid division by zero and log of zero
     if low_energy < 1e-10:
