@@ -130,6 +130,7 @@ COPY --chown=appuser:appuser transcription/ /app/transcription/
 COPY --chown=appuser:appuser scripts/ /app/scripts/
 COPY --chown=appuser:appuser integrations/ /app/integrations/
 COPY --chown=appuser:appuser pyproject.toml /app/
+COPY --chown=appuser:appuser slower_whisper/ /app/slower_whisper/
 
 # Create data directories
 # These will typically be mounted as volumes
