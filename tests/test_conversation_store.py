@@ -1048,3 +1048,12 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_search_sql_injection_order_by() -> None:
+    store = ConversationStore(":memory:")
+    query = StoreQuery(order_by="start_time; DROP TABLE segments; --")
+    from transcription.store import QueryError
+
+    with pytest.raises(QueryError, match="Invalid order_by column"):
+        store.search(query)
