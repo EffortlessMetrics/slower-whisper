@@ -81,11 +81,17 @@ async def add_security_headers(request: Request, call_next):
     - X-Content-Type-Options: nosniff
     - X-Frame-Options: DENY
     - Content-Security-Policy: default-src 'self'
+    - Strict-Transport-Security: max-age=31536000; includeSubDomains
+    - Referrer-Policy: strict-origin-when-cross-origin
+    - Permissions-Policy: microphone=()
     """
     response = await call_next(request)
 
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "microphone=()"
 
     # CSP: Allow Swagger UI/Redoc assets (CDN) + 'self'
     # script-src/style-src need 'unsafe-inline' for Swagger UI
