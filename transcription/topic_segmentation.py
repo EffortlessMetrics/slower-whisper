@@ -360,14 +360,17 @@ def cosine_similarity(vec1: dict[str, float], vec2: dict[str, float]) -> float:
     if not vec1 or not vec2:
         return 0.0
 
-    # Find common terms
-    common_terms = set(vec1.keys()) & set(vec2.keys())
+    # Bolt: O(n) sparse vector dot product by iterating over smaller dict
+    if len(vec1) > len(vec2):
+        vec1, vec2 = vec2, vec1
 
-    if not common_terms:
+    dot_product = 0.0
+    for k, v in vec1.items():
+        if k in vec2:
+            dot_product += v * vec2[k]
+
+    if not dot_product:
         return 0.0
-
-    # Compute dot product
-    dot_product = sum(vec1[t] * vec2[t] for t in common_terms)
 
     # Compute magnitudes
     mag1 = math.sqrt(sum(v**2 for v in vec1.values()))
