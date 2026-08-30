@@ -574,6 +574,13 @@ class TestQueryFilters:
         # Results should be different
         assert results1[0]["segment_id"] != results2[0]["segment_id"]
 
+    def test_order_by_sql_injection_prevention(self, store: ConversationStore) -> None:
+        """Test that invalid order_by columns raise QueryError."""
+        from transcription.store.types import QueryError, StoreQuery
+
+        with pytest.raises(QueryError, match="Invalid order_by column"):
+            store.search(StoreQuery(order_by="start_time; DROP TABLE segments;"))
+
     def test_legacy_query_api(self, store: ConversationStore, sample_transcript_json: Path) -> None:
         """Test the legacy query() API."""
         store.ingest(sample_transcript_json)
