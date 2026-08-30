@@ -1,0 +1,3 @@
+## 2026-03-23 - Regex Fast-Path Optimization in Semantic Annotator
+**Learning:** Keyword semantic annotators using regex boundary checks (`\bkeyword\b`) can be a performance bottleneck when scanning large transcripts. Since the regex pattern strictly requires the literal keyword, we can bypass the expensive regex engine entirely for most text by doing a fast O(N) literal string inclusion check (`keyword in text_lower`) first.
+**Action:** When implementing regex-based keyword searches, pre-compute the lowercase keyword and use a fast-path `kw_lower in text_lower` check before evaluating the full regex pattern, ensuring the literal string is strictly required by the regex to avoid skipping variations.
