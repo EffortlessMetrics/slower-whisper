@@ -88,10 +88,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files and application code
 # Using layer caching optimization: copy dependency files first
 COPY pyproject.toml uv.lock README.md ./
+COPY slower_whisper/ ./slower_whisper/
+
 COPY transcription/ ./transcription/
 COPY scripts/ ./scripts/
 COPY integrations/ ./integrations/
 COPY slower_whisper/ ./slower_whisper/
+
 
 # Install Python dependencies using uv
 # ARG INSTALL_MODE controls which dependencies to install
