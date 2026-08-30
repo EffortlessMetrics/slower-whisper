@@ -35,6 +35,7 @@ from transcription.store import (
     TimeRangeQuery,
     TranscriptQuery,
 )
+from transcription.store.types import QueryError
 
 # =============================================================================
 # Fixtures
@@ -904,6 +905,11 @@ class TestErrorHandling:
         query = StoreQuery()
         results = store.search(query)
         assert len(results) == 4
+
+        # Test invalid order_by
+        query_invalid = StoreQuery(order_by="start_time; DROP TABLE users;")
+        with pytest.raises(QueryError):
+            store.search(query_invalid)
 
 
 # =============================================================================
