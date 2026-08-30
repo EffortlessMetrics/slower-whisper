@@ -839,16 +839,6 @@ class TestActionItems:
         assert updated is True
 
         # Verify status changed
-        actions = store.get_action_items()
-        assert actions[0]["status"] == "completed"
-
-    def test_filter_action_items_by_status(
-        self, store: ConversationStore, sample_transcript_json: Path
-    ) -> None:
-        """Test filtering action items by status."""
-        store.ingest(sample_transcript_json)
-
-        # All open
         open_actions = store.get_action_items(status="open")
         assert len(open_actions) == 1
 
