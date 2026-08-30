@@ -57,6 +57,19 @@ class TestSamplesCopyUX:
         # Should verify it wasn't called a second time
         assert mock_copy.call_count == 1
 
+    def test_copy_conflict_interactive_keyboard_interrupt(self, mock_copy, tmp_path, capsys):
+        """Interactive copy with conflicts should handle KeyboardInterrupt cleanly."""
+        mock_copy.side_effect = SampleExistsError("Conflict", [Path("file1.wav")])
+
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                exit_code = main(["samples", "copy", "mini_diarization", "--root", str(tmp_path)])
+
+        assert exit_code == 130
+        captured = capsys.readouterr()
+        assert "Aborted." in captured.out
+        assert mock_copy.call_count == 1
+
     def test_copy_conflict_interactive_confirm(self, mock_copy, tmp_path):
         """Interactive copy with conflicts should prompt and retry if user says yes."""
         # First call raises error, second call succeeds

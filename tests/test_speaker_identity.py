@@ -282,6 +282,27 @@ class TestSpeakerRegistry:
         assert result is True
         assert registry.get_speaker(speaker_id) is None
 
+    def test_delete_speaker_cli_keyboard_interrupt(
+        self, registry: SpeakerRegistry, sample_embedding: np.ndarray, capsys
+    ):
+        """CLI should exit 130 on KeyboardInterrupt during deletion prompt."""
+        from transcription.cli import main
+
+        # Register a speaker first so there is something to delete
+        speaker_id = registry.register_speaker("AbortSpeaker", sample_embedding)
+
+        with patch("sys.stdin.isatty", return_value=True):
+            with patch("builtins.input", side_effect=KeyboardInterrupt):
+                exit_code = main(
+                    ["speakers", "delete", speaker_id, "--registry", str(registry.path)]
+                )
+
+        assert exit_code == 130
+        captured = capsys.readouterr()
+        assert "Aborted" in captured.out
+        # Speaker should still exist
+        assert registry.get_speaker(speaker_id) is not None
+
     def test_delete_nonexistent_speaker(self, registry: SpeakerRegistry):
         """Should return False when deleting nonexistent speaker."""
         result = registry.delete_speaker("nonexistent-id")
