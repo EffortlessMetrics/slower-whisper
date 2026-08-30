@@ -1604,3 +1604,48 @@ def _parse_sse_events(content: str) -> list[dict]:
                 pass
 
     return events
+
+
+class TestAudioValidationSecurity:
+    """Tests for audio validation security edge cases."""
+
+    def test_reject_option_injection(self) -> None:
+        """Test that paths mimicking options (e.g., -filename) are rejected."""
+        from pathlib import Path
+
+        import pytest
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(Path("-test.wav"))
+
+        assert exc_info.value.status_code == 400
+        assert "Invalid audio file name" in str(exc_info.value.detail)
+
+    def test_reject_option_injection_python_fallback(self) -> None:
+        """Test that paths mimicking options are rejected when ffprobe is missing."""
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import pytest
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            with pytest.raises(HTTPException) as exc_info:
+                validate_audio_format(Path("-test.wav"))
+
+            assert exc_info.value.status_code == 400
+            assert "Invalid audio file name" in str(exc_info.value.detail)
+
+        # Call the python fallback directly to cover it as well
+        from transcription.service_validation import _validate_audio_format_python
+
+        with pytest.raises(HTTPException) as exc_info_python:
+            _validate_audio_format_python(Path("-test.wav"))
+
+        assert exc_info_python.value.status_code == 400
+        assert "Invalid audio file name" in str(exc_info_python.value.detail)
