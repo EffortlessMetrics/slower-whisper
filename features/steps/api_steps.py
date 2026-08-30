@@ -56,7 +56,9 @@ def _build_stub_client(base_url: str = "http://localhost:8765"):
             )
         if method == "GET" and path == "/docs":
             return httpx.Response(
-                200, text="<html><body>Docs</body></html>", headers={"content-type": "text/html"}
+                200,
+                text='<html lang="en"><body><main>Docs</main></body></html>',
+                headers={"content-type": "text/html"},
             )
         if method == "GET" and path == "/openapi.json":
             return httpx.Response(
