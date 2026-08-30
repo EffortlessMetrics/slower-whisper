@@ -1039,6 +1039,26 @@ class TestAudioValidationEdgeCases:
         assert response.status_code == 400
 
 
+class TestAudioValidationSecurity:
+    """Security tests for audio validation."""
+
+    def test_option_injection_rejected(self) -> None:
+        """Test that option injection via leading dash is rejected."""
+        from fastapi import HTTPException
+
+        from transcription.service_validation import validate_audio_format
+
+        # Instantiate Path directly rather than using tmp_path since tmp_path
+        # creates an absolute path, invalidating the leading dash check.
+        unsafe_path = Path("-filename.wav")
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+
+        assert exc_info.value.status_code == 400
+        assert "Path cannot start with '-'" in exc_info.value.detail
+
+
 # =============================================================================
 # Test Query Parameter Validation
 # =============================================================================

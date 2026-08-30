@@ -117,7 +117,19 @@ def validate_audio_format(audio_path: Path) -> None:
     """
     import subprocess
 
+    from transcription.audio_io import _validate_path_safety
+
     try:
+        # Security fix: Prevent option injection before executing subprocess
+        try:
+            _validate_path_safety(audio_path)
+        except ValueError as e:
+            logger.warning("Invalid audio path: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
+
         # Use ffprobe to check if file is valid audio
         # -v error: only show errors
         # -show_entries format=format_name: show format info

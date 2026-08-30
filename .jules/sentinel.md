@@ -2,3 +2,7 @@
 **Vulnerability:** Missing security headers (X-Content-Type-Options, X-Frame-Options, CSP) in FastAPI service.
 **Learning:** Default strict CSP (`default-src 'self'`) breaks FastAPI's auto-generated docs (Swagger UI/Redoc) which rely on `cdn.jsdelivr.net` and `unsafe-inline` styles/scripts.
 **Prevention:** Use a middleware to add security headers, but ensure CSP explicitly allows `cdn.jsdelivr.net` and `fastapi.tiangolo.com` if API docs are enabled.
+## 2026-01-28 - Fast API Upload Option Injection Vulnerability
+**Vulnerability:** Fast API UploadFile to Local File with unvalidated path argument sent to Subprocess calls.
+**Learning:** Fast API creates temporary files which limits the surface for vulnerabilities but they don`t always strip leading dashes (`-`). When using `str(Path("-filename"))` into `subprocess.run(["ffprobe", ...])` it executes it as a flag.
+**Prevention:** `_validate_path_safety` must always be applied to external subprocesses to prevent Option Injection, even if an array structure is used to run the process.
