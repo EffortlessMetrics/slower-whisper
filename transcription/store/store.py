@@ -919,21 +919,35 @@ class SQLiteConversationStore:
                 params.append(query.date_range.before)
 
         # Order by
-        ALLOWED_ORDER_COLS = {
-            "rank": "rank",
-            "start_time": "s.start_time",
-            "end_time": "s.end_time",
-            "segment_index": "s.segment_index",
-            "speaker_id": "s.speaker_id",
-            "speaker_confidence": "s.speaker_confidence",
-            "text": "s.text",
-        }
+        if query.text:
+            order_col = "rank"
+        else:
+            allowed_order_cols = {
+                "start_time",
+                "end_time",
+                "segment_index",
+                "text",
+                "speaker_id",
+                "speaker_confidence",
+                "file_name",
+                "language",
+            }
+            if query.order_by not in allowed_order_cols:
+                raise QueryError(f"Invalid order_by column: {query.order_by}")
 
-        requested_col = "rank" if query.text else query.order_by
-        if requested_col not in ALLOWED_ORDER_COLS:
-            raise QueryError(f"Invalid order_by column: {requested_col}")
+            # Map logical column names to actual SQL table aliases
+            col_mapping = {
+                "start_time": "s.start_time",
+                "end_time": "s.end_time",
+                "segment_index": "s.segment_index",
+                "text": "s.text",
+                "speaker_id": "s.speaker_id",
+                "speaker_confidence": "s.speaker_confidence",
+                "file_name": "t.file_name",
+                "language": "t.language",
+            }
+            order_col = col_mapping.get(query.order_by, "s.start_time")
 
-        order_col = ALLOWED_ORDER_COLS[requested_col]
         order_dir = "DESC" if query.order_desc else "ASC"
         sql_parts.append(f"ORDER BY {order_col} {order_dir}")
 
