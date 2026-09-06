@@ -11,6 +11,14 @@ Main components:
 - IngestOptions, IngestResult: Ingestion configuration and results
 - ExportOptions, ExportResult: Export configuration and results
 
+Search ordering:
+- Non-text StoreQuery.order_by accepts these logical keys: start_time, end_time,
+  segment_index, text, speaker_id, speaker_confidence, file_name, and language.
+- Keys are mapped to fixed internal SQL expressions; SQL expressions, qualified
+  column names, and other caller-provided syntax are rejected with QueryError.
+- A non-empty TextQuery owns relevance ordering through the internal FTS rank
+  expression; callers do not provide that SQL expression themselves.
+
 Example usage:
     >>> from transcription.store import ConversationStore, StoreQuery, TextQuery
     >>> store = ConversationStore.open("transcripts.db")

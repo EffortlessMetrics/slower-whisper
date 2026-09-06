@@ -1048,3 +1048,39 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_sql_injection_order_by():
+    import os
+
+    from transcription.store import ConversationStore, QueryError, StoreQuery
+
+    db_path = "test_sqli_order.db"
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+    store = ConversationStore(db_path)
+
+    try:
+        # Invalid column should raise QueryError
+        query = StoreQuery()
+        query.order_by = "invalid_column_injection"
+
+        try:
+            store.search(query)
+            raise AssertionError("Should have raised QueryError")
+        except QueryError as e:
+            assert "Invalid order_by column" in str(e)
+
+        # SQL injection attempt should raise QueryError
+        query.order_by = "start_time; DROP TABLE segments;"
+        try:
+            store.search(query)
+            raise AssertionError("Should have raised QueryError")
+        except QueryError as e:
+            assert "Invalid order_by column" in str(e)
+
+    finally:
+        store.close()
+        if os.path.exists(db_path):
+            os.remove(db_path)

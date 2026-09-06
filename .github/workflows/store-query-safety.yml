@@ -1,0 +1,143 @@
+name: Store Query Safety
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: store-query-safety (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install project and contract tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --python ${{ matrix.python-version }}
+          uv pip install --python .venv/bin/python \
+            pytest==9.0.2 \
+            ruff==0.14.14
+
+      - name: Check focused formatting and lint
+        run: |
+          uv run --python ${{ matrix.python-version }} ruff check \
+            transcription/store/store.py \
+            transcription/store/__init__.py \
+            tests/test_conversation_store.py
+          uv run --python ${{ matrix.python-version }} ruff format --check \
+            transcription/store/store.py \
+            transcription/store/__init__.py \
+            tests/test_conversation_store.py
+
+      - name: Exercise source contract
+        run: |
+          uv run --python ${{ matrix.python-version }} \
+            pytest -q tests/test_conversation_store.py
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Install wheel outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$wheel"
+          venv="$RUNNER_TEMP/store-query-safety-${{ matrix.python-version }}"
+          uv venv "$venv" --python ${{ matrix.python-version }}
+          uv pip install --python "$venv/bin/python" "$wheel"
+          uv pip check --python "$venv/bin/python"
+          echo "STORE_QUERY_VENV=$venv" >> "$GITHUB_ENV"
+
+      - name: Exercise installed-wheel safety boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          "$STORE_QUERY_VENV/bin/python" -I - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          import transcription
+          from transcription.store import ConversationStore, QueryError, StoreQuery
+
+          package_path = Path(transcription.__file__).resolve()
+          assert "site-packages" in package_path.parts, package_path
+
+          supported = [
+              "start_time",
+              "end_time",
+              "segment_index",
+              "text",
+              "speaker_id",
+              "speaker_confidence",
+              "file_name",
+              "language",
+          ]
+          attacks = [
+              "rank",
+              "unknown_column",
+              "lower(text)",
+              "CASE WHEN 1=1 THEN start_time ELSE end_time END",
+              "(SELECT name FROM sqlite_master LIMIT 1)",
+              "start_time -- comment",
+              "start_time\nDESC",
+              "start_time; DROP TABLE segments; --",
+              "s.start_time",
+              "t.file_name",
+          ]
+
+          with TemporaryDirectory() as tmp:
+              store = ConversationStore(Path(tmp) / "store.db")
+              try:
+                  for order_by in supported:
+                      assert store.search(StoreQuery(order_by=order_by)) == []
+                  for payload in attacks:
+                      try:
+                          store.search(StoreQuery(order_by=payload))
+                      except QueryError as error:
+                          assert "Invalid order_by column" in str(error)
+                      else:
+                          raise AssertionError(f"unsafe order_by accepted: {payload!r}")
+                  assert store.stats()["segment_count"] == 0
+              finally:
+                  store.close()
+          PY
+
+  success:
+    name: store-query-safety
+    if: always()
+    needs: [contract]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require matrix success
+        env:
+          CONTRACT_RESULT: ${{ needs.contract.result }}
+        run: test "$CONTRACT_RESULT" = success
