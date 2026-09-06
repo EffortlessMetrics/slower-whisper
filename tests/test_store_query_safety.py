@@ -1,7 +1,7 @@
 """Security contract tests for ConversationStore query ordering."""
 
-import json
 from pathlib import Path
+import json
 
 import pytest
 
