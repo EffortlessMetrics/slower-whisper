@@ -30,8 +30,14 @@ jobs:
       - name: Install Python
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Install project and repository test tools
-        run: uv sync --dev --python ${{ matrix.python-version }}
+      - name: Install project and contract tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --python ${{ matrix.python-version }}
+          uv pip install --python .venv/bin/python \
+            pytest==9.0.2 \
+            ruff==0.14.14
 
       - name: Check focused formatting and lint
         run: |
