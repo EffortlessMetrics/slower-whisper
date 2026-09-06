@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -22,10 +25,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
       - name: Install Python
         run: uv python install ${{ matrix.python-version }}
@@ -43,9 +48,11 @@ jobs:
         run: |
           uv run --python ${{ matrix.python-version }} ruff check \
             transcription/store/store.py \
+            transcription/store/__init__.py \
             tests/test_conversation_store.py
           uv run --python ${{ matrix.python-version }} ruff format --check \
             transcription/store/store.py \
+            transcription/store/__init__.py \
             tests/test_conversation_store.py
 
       - name: Exercise source contract
@@ -84,7 +91,18 @@ jobs:
           package_path = Path(transcription.__file__).resolve()
           assert "site-packages" in package_path.parts, package_path
 
+          supported = [
+              "start_time",
+              "end_time",
+              "segment_index",
+              "text",
+              "speaker_id",
+              "speaker_confidence",
+              "file_name",
+              "language",
+          ]
           attacks = [
+              "rank",
               "unknown_column",
               "lower(text)",
               "CASE WHEN 1=1 THEN start_time ELSE end_time END",
@@ -93,12 +111,14 @@ jobs:
               "start_time\nDESC",
               "start_time; DROP TABLE segments; --",
               "s.start_time",
+              "t.file_name",
           ]
 
           with TemporaryDirectory() as tmp:
               store = ConversationStore(Path(tmp) / "store.db")
               try:
-                  assert store.search(StoreQuery(order_by="start_time")) == []
+                  for order_by in supported:
+                      assert store.search(StoreQuery(order_by=order_by)) == []
                   for payload in attacks:
                       try:
                           store.search(StoreQuery(order_by=payload))
