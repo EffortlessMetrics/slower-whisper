@@ -43,15 +43,15 @@ jobs:
         run: |
           uv run --python ${{ matrix.python-version }} ruff check \
             transcription/store/store.py \
-            tests/test_store_query_safety.py
+            tests/test_conversation_store.py
           uv run --python ${{ matrix.python-version }} ruff format --check \
             transcription/store/store.py \
-            tests/test_store_query_safety.py
+            tests/test_conversation_store.py
 
       - name: Exercise source contract
         run: |
           uv run --python ${{ matrix.python-version }} \
-            pytest -q tests/test_store_query_safety.py
+            pytest -q tests/test_conversation_store.py
 
       - name: Build wheel
         run: uv build --wheel
