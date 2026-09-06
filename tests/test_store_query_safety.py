@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from transcription.store import ConversationStore, QueryError, StoreQuery, TextQuery
+from transcription.store import (
+    ConversationStore,
+    QueryError,
+    StoreQuery,
+    TextQuery,
+)
 
 
 ATTACK_PAYLOADS = [
