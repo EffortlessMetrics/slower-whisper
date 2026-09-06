@@ -30,21 +30,21 @@ jobs:
       - name: Install Python
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Install base project
-        run: uv sync --no-dev --python ${{ matrix.python-version }}
+      - name: Install project and repository test tools
+        run: uv sync --dev --python ${{ matrix.python-version }}
 
       - name: Check focused formatting and lint
         run: |
-          uvx ruff@0.14.14 check \
+          uv run --python ${{ matrix.python-version }} ruff check \
             transcription/store/store.py \
             tests/test_store_query_safety.py
-          uvx ruff@0.14.14 format --check \
+          uv run --python ${{ matrix.python-version }} ruff format --check \
             transcription/store/store.py \
             tests/test_store_query_safety.py
 
       - name: Exercise source contract
         run: |
-          uv run --python ${{ matrix.python-version }} --with pytest==9.0.2 \
+          uv run --python ${{ matrix.python-version }} \
             pytest -q tests/test_store_query_safety.py
 
       - name: Build wheel
