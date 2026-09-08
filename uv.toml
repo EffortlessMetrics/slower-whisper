@@ -1,0 +1,2 @@
+# Hold newly uploaded distributions for 14 days before normal resolution.
+exclude-newer = "14 days"
