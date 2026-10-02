@@ -44,13 +44,11 @@ jobs:
           }
           if ! uv lock --check; then
             echo "::error::uv.lock is stale for pyproject.toml"
-            # Generate the repair artifact only after proving the committed lock
-            # exists; this keeps a deleted lock from being silently recreated.
+            # Generate the exact repair input and let the always-run artifact
+            # upload preserve it. Do not dump a megabyte-scale lock into logs.
             uv lock
-            echo "UV_LOCK_BASE64_BEGIN"
-            base64 -w0 uv.lock
-            echo
-            echo "UV_LOCK_BASE64_END"
+            sha256sum uv.lock
+            echo "Regenerated uv.lock will be uploaded as the qualification artifact."
             exit 1
           fi
 
