@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from integrations.langchain_loader import SlowerWhisperLoader
-from integrations.llamaindex_reader import SlowerWhisperReader
+from transcription.integrations.langchain_loader import SlowerWhisperLoader
+from transcription.integrations.llamaindex_reader import SlowerWhisperReader
 from transcription.chunking import ChunkingConfig
 from transcription.models import Segment, Transcript, Turn
 from transcription.writers import write_json
