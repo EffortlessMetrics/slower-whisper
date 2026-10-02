@@ -9,7 +9,7 @@ This module provides safety wrappers around LLM providers to enforce:
 
 Usage:
     from transcription.llm_guardrails import LLMGuardrails, GuardedLLMProvider
-    from transcription.historian.llm_client import create_llm_provider, LLMConfig
+    from transcription.llm_provider import create_llm_provider, LLMConfig
 
     config = LLMConfig(provider="openai", model="gpt-4o")
     provider = create_llm_provider(config)
@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from transcription.historian.llm_client import LLMProvider, LLMResponse
+    from transcription.llm_provider import LLMProvider, LLMResponse
 
 logger = logging.getLogger(__name__)
 
