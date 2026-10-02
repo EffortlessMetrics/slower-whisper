@@ -830,8 +830,10 @@ class SQLiteConversationStore:
         sql_parts = []
         params: list[Any] = []
 
-        # Base query depends on whether we have text search
-        if query.text and query.text.text.strip():
+        # Use the same predicate for FTS construction and relevance ordering.
+        has_text_search = bool(query.text and query.text.text.strip())
+        if has_text_search:
+            assert query.text is not None
             fts_query = query.text.to_fts_query()
             sql_parts.append(
                 """
@@ -919,22 +921,9 @@ class SQLiteConversationStore:
                 params.append(query.date_range.before)
 
         # Order by
-        if query.text:
+        if has_text_search:
             order_col = "rank"
         else:
-            allowed_order_cols = {
-                "start_time",
-                "end_time",
-                "segment_index",
-                "text",
-                "speaker_id",
-                "speaker_confidence",
-                "file_name",
-                "language",
-            }
-            if query.order_by not in allowed_order_cols:
-                raise QueryError(f"Invalid order_by column: {query.order_by}")
-
             # Map logical column names to actual SQL table aliases
             col_mapping = {
                 "start_time": "s.start_time",
@@ -946,7 +935,9 @@ class SQLiteConversationStore:
                 "file_name": "t.file_name",
                 "language": "t.language",
             }
-            order_col = col_mapping.get(query.order_by, "s.start_time")
+            if query.order_by not in col_mapping:
+                raise QueryError(f"Invalid order_by column: {query.order_by}")
+            order_col = col_mapping[query.order_by]
 
         order_dir = "DESC" if query.order_desc else "ASC"
         sql_parts.append(f"ORDER BY {order_col} {order_dir}")
