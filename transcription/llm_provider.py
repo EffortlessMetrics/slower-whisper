@@ -265,14 +265,17 @@ class OpenAIProvider(LLMProvider):
         response_text = ""
         tokens_used = None
 
-        async for chunk in stream:
-            if chunk.choices and len(chunk.choices) > 0:
-                delta = chunk.choices[0].delta
-                if delta and delta.content:
-                    response_text += delta.content
-            # Usage is included in the final chunk when stream_options.include_usage is True
-            if chunk.usage:
-                tokens_used = chunk.usage.prompt_tokens + chunk.usage.completion_tokens
+        try:
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta and delta.content:
+                        response_text += delta.content
+                # Usage is included in the final chunk when stream_options.include_usage is True
+                if chunk.usage:
+                    tokens_used = chunk.usage.prompt_tokens + chunk.usage.completion_tokens
+        except Exception as e:
+            raise RuntimeError(f"OpenAI API streaming call failed: {e}") from e
 
         duration_ms = int((time.time() - start_time) * 1000)
         return response_text, tokens_used, duration_ms

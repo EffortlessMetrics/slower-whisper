@@ -140,8 +140,10 @@ jobs:
           uv pip install --python "$venv/bin/python" 'pytest>=9.0.2'
           checks=$(mktemp -d "$RUNNER_TEMP/public-checks.XXXXXX")
           cp "$GITHUB_WORKSPACE/tests/test_semantic_async_bridge.py" "$checks/"
+          printf '[pytest]\n' > "$checks/pytest.ini"
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 "$venv/bin/python" -I -m pytest \
-            -q -W error -c /dev/null --confcutdir="$checks" --import-mode=importlib \
+            -q -W error -p no:cacheprovider -c "$checks/pytest.ini" \
+            --rootdir="$checks" --confcutdir="$checks" --import-mode=importlib \
             "$checks/test_semantic_async_bridge.py" \
             --junitxml="$RUNNER_TEMP/async-bridge-$kind.xml"
           rm -rf -- "$venv"

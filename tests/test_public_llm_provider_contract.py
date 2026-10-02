@@ -180,6 +180,29 @@ class TestOpenAIStreamingProviderContract:
 
         assert caught.value.__cause__ is upstream
 
+    @pytest.mark.asyncio
+    async def test_stream_iteration_failure_preserves_cause(self) -> None:
+        upstream = ConnectionError("stream interrupted")
+
+        async def chunks():
+            yield SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content="partial"))],
+                usage=None,
+            )
+            raise upstream
+
+        create = AsyncMock(return_value=chunks())
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        sdk = MagicMock()
+        sdk.AsyncOpenAI.return_value = client
+        provider = OpenAIProvider(LLMConfig(provider="openai", api_key="test-key"))
+
+        with patch.dict("sys.modules", {"openai": sdk}):
+            with pytest.raises(RuntimeError, match="OpenAI API streaming call failed") as caught:
+                await provider.complete_streaming("system", "user")
+
+        assert caught.value.__cause__ is upstream
+
 
 class TestLocalProviderLoadingContract:
     def test_missing_torch_raises_typed_dependency_error(self) -> None:
