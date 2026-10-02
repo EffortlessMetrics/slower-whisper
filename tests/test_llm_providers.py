@@ -19,6 +19,7 @@ from transcription.historian.llm_client import (
     AnthropicProvider,
     LLMConfig,
     LLMProvider,
+    LLMProviderDependencyError,
     LLMResponse,
     LocalLLMProvider,
     MockProvider,
@@ -435,9 +436,13 @@ class TestLocalLLMProvider:
         config = LLMConfig(provider="local")
         provider = LocalLLMProvider(config)
 
-        # Mock the import to fail
+        # The public provider boundary now exposes a typed dependency error with
+        # actionable installation guidance rather than the old implementation text.
         with patch.dict("sys.modules", {"transformers": None}):
-            with pytest.raises(ImportError, match="transformers package not installed"):
+            with pytest.raises(
+                LLMProviderDependencyError,
+                match=r"slower-whisper\[semantic-local\]",
+            ):
                 await provider._load_model()
 
     @pytest.mark.asyncio

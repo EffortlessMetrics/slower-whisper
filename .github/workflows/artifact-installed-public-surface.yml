@@ -38,9 +38,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv lock
-          if ! git diff --quiet -- uv.lock; then
+          git cat-file -e HEAD:uv.lock || {
+            echo "::error::uv.lock must be committed"
+            exit 1
+          }
+          if ! uv lock --check; then
             echo "::error::uv.lock is stale for pyproject.toml"
+            # Generate the repair artifact only after proving the committed lock
+            # exists; this keeps a deleted lock from being silently recreated.
+            uv lock
             echo "UV_LOCK_BASE64_BEGIN"
             base64 -w0 uv.lock
             echo
@@ -114,7 +120,7 @@ jobs:
           if [[ "$artifact" == *.tar.gz ]]; then kind=sdist; fi
           venv=$(mktemp -d "$RUNNER_TEMP/public-base.XXXXXX")
           uv venv "$venv" --python ${{ matrix.python-version }}
-          uv pip install --python "$venv/bin/python" "$artifact" pytest
+          uv pip install --python "$venv/bin/python" "$artifact"
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
           "$venv/bin/python" -I - <<'PY'
@@ -129,10 +135,16 @@ jobs:
           assert LocalKeywordAdapter().health_check().available
           PY
           "$venv/bin/slower-whisper" --help >/dev/null
+
+          # Add only the test runner after the base-artifact smoke check. Copy the
+          # regression outside the checkout so repository conftest/import paths
+          # cannot supply product modules that are absent from the artifact.
+          uv pip install --python "$venv/bin/python" 'pytest>=9.0.2'
           checks=$(mktemp -d "$RUNNER_TEMP/public-checks.XXXXXX")
           cp "$GITHUB_WORKSPACE/tests/test_semantic_async_bridge.py" "$checks/"
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 "$venv/bin/python" -I -m pytest \
-            -c /dev/null "$checks/test_semantic_async_bridge.py" -q \
+            -q -W error -c /dev/null --confcutdir="$checks" --import-mode=importlib \
+            "$checks/test_semantic_async_bridge.py" \
             --junitxml="$RUNNER_TEMP/async-bridge-$kind.xml"
           rm -rf -- "$venv"
           done
@@ -232,6 +244,9 @@ jobs:
           from pathlib import Path
           from tempfile import TemporaryDirectory
 
+          from langchain_core.documents import Document as LangChainDocument
+          from llama_index.core import Document as LlamaIndexDocument
+
           from transcription.integrations.langchain_loader import SlowerWhisperLoader
           from transcription.integrations.llamaindex_reader import SlowerWhisperReader
           from transcription.models import Segment, Transcript, Turn
@@ -262,6 +277,8 @@ jobs:
               llama_docs = SlowerWhisperReader(path).load_data()
               assert len(langchain_docs) == 1
               assert len(llama_docs) == 1
+              assert isinstance(langchain_docs[0], LangChainDocument)
+              assert isinstance(llama_docs[0], LlamaIndexDocument)
               assert langchain_docs[0].page_content == "hello"
               assert "hello" in str(llama_docs[0].text)
           PY
