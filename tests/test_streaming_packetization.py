@@ -18,6 +18,7 @@ from transcription import streaming_revision_controller as controller_module
 from transcription.exceptions import (
     ASRInferenceError,
     ASROutputError,
+    RuntimeNotReadyError,
     StreamingNegotiationError,
 )
 from transcription.incremental_asr import IncrementalASRConfig
@@ -91,9 +92,7 @@ async def run_partition(monkeypatch: pytest.MonkeyPatch, sizes: list[int]):
         sequence += 1
     events.extend(await controller.end())
     projection = [
-        (event.segment_id, dict(event.payload))
-        for event in events
-        if "revision" in event.payload
+        (event.segment_id, dict(event.payload)) for event in events if "revision" in event.payload
     ]
     return projection, backend.calls, asdict(controller.incremental.metrics), controller
 
@@ -105,7 +104,9 @@ async def test_default_public_controller_is_packetization_invariant(monkeypatch,
     actual = await run_partition(monkeypatch, sizes)
     assert actual[:3] == reference[:3]
     final = [payload for _segment, payload in actual[0] if payload["final"]]
-    assert [(item["start_sample"], item["end_sample"], item["final_reason"]) for item in final] == [
+    assert [
+        (item["start_sample"], item["end_sample"], item["final_reason"]) for item in final
+    ] == [
         (320, 1920, "max_utterance"),
         (1920, 2240, "vad_boundary"),
         (3200, 4320, "end_of_stream"),
@@ -143,13 +144,26 @@ async def test_all_silence_never_invokes_model_and_preserves_sample_count(monkey
 
 
 @pytest.mark.asyncio
-async def test_incomplete_final_sample_cannot_turn_into_success(monkeypatch) -> None:
+@pytest.mark.parametrize("audio", [b"\x01", pcm(319, 4000) + b"\x01"])
+async def test_incomplete_final_sample_cannot_turn_into_success(monkeypatch, audio) -> None:
     controller, backend, protocol = make_controller(monkeypatch)
     await controller.start({})
-    assert await controller.process_audio_chunk(b"\x01", 0) == []
+    assert await controller.process_audio_chunk(audio, 0) == []
     with pytest.raises(StreamingNegotiationError) as exc:
         await controller.end()
     assert exc.value.reason_code == "streaming_pcm_incomplete"
+    event = controller.terminal_error_event(exc.value)
+    assert event.payload == {
+        "code": "streaming_pcm_incomplete",
+        "message": "Streaming PCM ended with an incomplete sample",
+        "recoverable": False,
+        "context": {"violation": "incomplete_pcm_sample", "residual_bytes": len(audio)},
+    }
+    with pytest.raises(RuntimeNotReadyError) as retry:
+        await controller.end()
+    assert retry.value.context["failure_reason_code"] == "streaming_pcm_incomplete"
+    with pytest.raises(RuntimeNotReadyError):
+        await controller.process_audio_chunk(b"\x00", 1)
     assert backend.calls == []
     assert protocol.state is SessionState.ERROR
     assert controller.framing_metrics.residual_bytes == 0

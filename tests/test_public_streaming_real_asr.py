@@ -321,7 +321,34 @@ def test_public_route_default_classifier_is_packetization_invariant(sizes: list[
     assert observed[0] == observed[1]
     assert observed[1][1] == [16_000, 9_601]
     finals = [payload for _segment_id, payload in observed[1][0] if payload["final"]]
-    assert [(item["start_sample"], item["end_sample"], item["final_reason"]) for item in finals] == [
+    assert [
+        (item["start_sample"], item["end_sample"], item["final_reason"]) for item in finals
+    ] == [
         (320, 16_320, "vad_boundary"),
         (24_320, 33_921, "end_of_stream"),
     ]
+
+
+@pytest.mark.parametrize("audio", [b"\x01", pcm(319, 4000) + b"\x01"])
+def test_public_route_reports_truncated_pcm_without_model_work(audio: bytes) -> None:
+    reset_engine()
+    app, _runtime = app_with_engine(DeterministicEngine)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/stream") as websocket:
+            websocket.send_json(start_message())
+            receive_type(websocket, "SESSION_STARTED")
+            websocket.send_json(audio_message(audio, 0))
+            websocket.send_json({"type": "END_SESSION"})
+            error = receive_json_bounded(websocket)
+            assert event_type(error) == "ERROR", error
+
+    assert event_payload(error) == {
+        "code": "streaming_pcm_incomplete",
+        "message": "Streaming PCM ended with an incomplete sample",
+        "recoverable": False,
+        "context": {"violation": "incomplete_pcm_sample", "residual_bytes": len(audio)},
+    }
+    assert DeterministicEngine.calls == []
+    assert DeterministicEngine.instances == 1
+    assert DeterministicEngine.closes == 1

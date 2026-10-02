@@ -216,7 +216,12 @@ class RevisionStreamingController:
         self.session.stats.errors += 1
         self.session.stats.events_sent += 1
 
-        if isinstance(typed, StreamingNegotiationError):
+        if (
+            isinstance(typed, StreamingNegotiationError)
+            and typed.reason_code == "streaming_pcm_incomplete"
+        ):
+            message = "Streaming PCM ended with an incomplete sample"
+        elif isinstance(typed, StreamingNegotiationError):
             message = "Unsupported streaming audio configuration"
         elif isinstance(typed, RuntimeNotReadyError):
             message = "Streaming ASR runtime is not ready"
