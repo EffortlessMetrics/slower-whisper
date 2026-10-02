@@ -36,6 +36,8 @@ from .rag_export import (
     export_transcript_to_rag,
 )
 from .registry import SinkConfig, SinkRegistry
+from .langchain_loader import SlowerWhisperLoader
+from .llamaindex_reader import SlowerWhisperReader
 from .webhooks import (
     AuthConfig,
     DeadLetterEntry,
@@ -69,6 +71,9 @@ __all__ = [
     "RAGExporter",
     "RAGExporterConfig",
     "export_transcript_to_rag",
+    # RAG framework adapters
+    "SlowerWhisperLoader",
+    "SlowerWhisperReader",
     # Registry
     "SinkConfig",
     "SinkRegistry",
