@@ -65,13 +65,15 @@ def _run_async_safely[T](coro: Coroutine[Any, Any, T]) -> T:
 
     try:
         asyncio.get_running_loop()
-        # Already in async context - run in a thread to avoid blocking
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(asyncio.run, coro)
-            return future.result()
     except RuntimeError:
-        # No running loop - use asyncio.run directly
+        # Only loop discovery belongs in this catch. A provider's RuntimeError
+        # must propagate unchanged rather than rerunning an exhausted coroutine.
         return asyncio.run(coro)
+
+    # The caller already owns an event loop; execute on a separate thread.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, coro)
+        return future.result()
 
 
 # -----------------------------------------------------------------------------
