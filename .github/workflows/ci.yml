@@ -143,11 +143,42 @@ jobs:
           test "$expected_commits" -gt 0
 
           set +e
-          "$RUNNER_TEMP/gitleaks" git             --config .gitleaks.toml             --redact             --no-banner             --no-color             --log-opts="--full-history --all --diff-filter=tuxdb"             . 2>&1 | tee "$RUNNER_TEMP/gitleaks.log"
+          "$RUNNER_TEMP/gitleaks" git \
+            --config .gitleaks.toml \
+            --redact \
+            --no-banner \
+            --no-color \
+            --report-format json \
+            --report-path "$RUNNER_TEMP/gitleaks-report.json" \
+            --log-opts="--full-history --all --diff-filter=tuxdb" \
+            . 2>&1 | tee "$RUNNER_TEMP/gitleaks.log"
           status=${PIPESTATUS[0]}
           set -e
 
-          scanned_commits=$(sed -nE 's/.* ([0-9]+) commits scanned\..*/\1/p'             "$RUNNER_TEMP/gitleaks.log" | tail -1)
+          if [ -s "$RUNNER_TEMP/gitleaks-report.json" ]; then
+            echo "Redacted finding metadata (rule, file, commit):"
+            python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+report = Path(os.environ["RUNNER_TEMP"]) / "gitleaks-report.json"
+findings = json.loads(report.read_text())
+rows = {
+    (
+        str(finding.get("RuleID", "")),
+        str(finding.get("File", "")),
+        str(finding.get("Commit", "")),
+    )
+    for finding in findings
+}
+for rule, file_name, commit in sorted(rows):
+    print(f"{rule}\t{file_name}\t{commit}")
+PY
+          fi
+
+          scanned_commits=$(sed -nE 's/.* ([0-9]+) commits scanned\..*/\1/p' \
+            "$RUNNER_TEMP/gitleaks.log" | tail -1)
           if [ -z "$scanned_commits" ] || [ "$scanned_commits" -eq 0 ]; then
             echo "::error::Gitleaks did not prove that it scanned repository history."
             exit 2
