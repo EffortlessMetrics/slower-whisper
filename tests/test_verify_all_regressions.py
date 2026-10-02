@@ -50,6 +50,16 @@ def test_docker_uses_relocated_files_and_repository_context(
     ]
 
 
+def test_cpu_full_docker_bootstrap_resolves_torch_across_indexes() -> None:
+    dockerfile = (verify_all.ROOT / "config" / "Dockerfile").read_text(encoding="utf-8")
+    full_branch = dockerfile.split('elif [ "$INSTALL_MODE" = "full" ]; then', 1)[1]
+    torch_bootstrap = full_branch.split("uv pip install --system", 2)[1]
+
+    assert '--index-url "${TORCH_CPU_INDEX}"' in torch_bootstrap
+    assert '--extra-index-url "${PYPI_INDEX}"' in torch_bootstrap
+    assert "--index-strategy unsafe-best-match" in torch_bootstrap
+
+
 def test_docker_unavailable_does_not_attempt_subprocess(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
