@@ -104,9 +104,7 @@ async def test_default_public_controller_is_packetization_invariant(monkeypatch,
     actual = await run_partition(monkeypatch, sizes)
     assert actual[:3] == reference[:3]
     final = [payload for _segment, payload in actual[0] if payload["final"]]
-    assert [
-        (item["start_sample"], item["end_sample"], item["final_reason"]) for item in final
-    ] == [
+    assert [(item["start_sample"], item["end_sample"], item["final_reason"]) for item in final] == [
         (320, 1920, "max_utterance"),
         (1920, 2240, "vad_boundary"),
         (3200, 4320, "end_of_stream"),
