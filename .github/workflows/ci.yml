@@ -158,23 +158,23 @@ jobs:
           if [ -s "$RUNNER_TEMP/gitleaks-report.json" ]; then
             echo "Redacted finding metadata (rule, file, commit):"
             python3 - <<'PY'
-import json
-import os
-from pathlib import Path
+          import json
+          import os
+          from pathlib import Path
 
-report = Path(os.environ["RUNNER_TEMP"]) / "gitleaks-report.json"
-findings = json.loads(report.read_text())
-rows = {
-    (
-        str(finding.get("RuleID", "")),
-        str(finding.get("File", "")),
-        str(finding.get("Commit", "")),
-    )
-    for finding in findings
-}
-for rule, file_name, commit in sorted(rows):
-    print(f"{rule}\t{file_name}\t{commit}")
-PY
+          report = Path(os.environ["RUNNER_TEMP"]) / "gitleaks-report.json"
+          findings = json.loads(report.read_text())
+          rows = {
+              (
+                  str(finding.get("RuleID", "")),
+                  str(finding.get("File", "")),
+                  str(finding.get("Commit", "")),
+              )
+              for finding in findings
+          }
+          for rule, file_name, commit in sorted(rows):
+              print(f"{rule}\t{file_name}\t{commit}")
+          PY
           fi
 
           scanned_commits=$(sed -nE 's/.* ([0-9]+) commits scanned\..*/\1/p' \
