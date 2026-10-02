@@ -1,0 +1,238 @@
+name: Installed Public Surface
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  artifact-installed-public-surface:
+    name: artifact-installed-public-surface (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Build wheel and sdist once
+        run: uv build --wheel --sdist
+
+      - name: Assert artifact package inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          wheel = next(Path("dist").glob("*.whl"))
+          sdist = next(Path("dist").glob("*.tar.gz"))
+
+          with zipfile.ZipFile(wheel) as archive:
+              wheel_names = set(archive.namelist())
+          with tarfile.open(sdist) as archive:
+              sdist_names = {name.split("/", 1)[-1] for name in archive.getnames() if "/" in name}
+
+          required = {
+              "transcription/llm_provider.py",
+              "transcription/integrations/langchain_loader.py",
+              "transcription/integrations/llamaindex_reader.py",
+          }
+          for name in required:
+              assert name in wheel_names, (name, "wheel")
+              assert name in sdist_names, (name, "sdist")
+
+          forbidden_prefixes = (
+              "transcription/historian/",
+              "integrations/",
+              "scripts/",
+              "benchmarks/",
+              "examples/",
+          )
+          for name in wheel_names:
+              assert not name.startswith(forbidden_prefixes), name
+          for name in sdist_names:
+              assert not name.startswith(forbidden_prefixes), name
+          PY
+
+      - name: Install and exercise base artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
+          venv="$RUNNER_TEMP/public-base"
+          uv venv "$venv" --python ${{ matrix.python-version }}
+          uv pip install --python "$venv/bin/python" "$wheel"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          "$venv/bin/python" -I - <<'PY'
+          from pathlib import Path
+          import slower_whisper
+          import transcription
+          from transcription.semantic_adapter import LocalKeywordAdapter
+
+          for module in (slower_whisper, transcription):
+              path = Path(module.__file__).resolve()
+              assert "site-packages" in path.parts, path
+          assert LocalKeywordAdapter().health_check().available
+          PY
+          "$venv/bin/slower-whisper" --help >/dev/null
+
+      - name: Install and exercise OpenAI semantic extra
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
+          venv="$RUNNER_TEMP/public-openai"
+          uv venv "$venv" --python ${{ matrix.python-version }}
+          uv pip install --python "$venv/bin/python" "${wheel}[semantic-openai]"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          "$venv/bin/python" -I - <<'PY'
+          from types import SimpleNamespace
+          from unittest.mock import AsyncMock, MagicMock, patch
+
+          from transcription.semantic_adapter import ChunkContext, OpenAISemanticAdapter
+
+          payload = '{"topics":["release"],"intent":"statement","sentiment":"neutral","action_items":[],"risk_tags":[]}'
+          message = SimpleNamespace(content=payload)
+          response = SimpleNamespace(
+              choices=[SimpleNamespace(message=message)],
+              usage=SimpleNamespace(prompt_tokens=7, completion_tokens=5),
+          )
+          client = MagicMock()
+          client.chat.completions.create = AsyncMock(return_value=response)
+
+          adapter = OpenAISemanticAdapter(api_key="test-key", max_retries=0)
+          with patch("openai.AsyncOpenAI", return_value=client):
+              annotation = adapter.annotate_chunk(
+                  "The release artifact is ready.",
+                  ChunkContext(speaker_id="spk_0", start=0.0, end=2.0),
+              )
+          assert annotation.provider == "openai"
+          assert annotation.normalized.topics == ["release"]
+          assert type(adapter._provider).__module__ == "transcription.llm_provider"
+          PY
+
+      - name: Install and exercise Anthropic semantic extra
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
+          venv="$RUNNER_TEMP/public-anthropic"
+          uv venv "$venv" --python ${{ matrix.python-version }}
+          uv pip install --python "$venv/bin/python" "${wheel}[semantic-anthropic]"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          "$venv/bin/python" -I - <<'PY'
+          from types import SimpleNamespace
+          from unittest.mock import AsyncMock, MagicMock, patch
+
+          from transcription.semantic_adapter import AnthropicSemanticAdapter, ChunkContext
+
+          payload = '{"topics":["artifact"],"intent":"statement","sentiment":"neutral","action_items":[],"risk_tags":[]}'
+          response = SimpleNamespace(
+              content=[SimpleNamespace(type="text", text=payload)],
+              usage=SimpleNamespace(input_tokens=7, output_tokens=5),
+          )
+          client = MagicMock()
+          client.messages.create = AsyncMock(return_value=response)
+
+          adapter = AnthropicSemanticAdapter(api_key="test-key", max_retries=0)
+          with patch("anthropic.AsyncAnthropic", return_value=client):
+              annotation = adapter.annotate_chunk(
+                  "The artifact is installed.",
+                  ChunkContext(speaker_id="spk_0", start=0.0, end=2.0),
+              )
+          assert annotation.provider == "anthropic"
+          assert annotation.normalized.topics == ["artifact"]
+          assert type(adapter._provider).__module__ == "transcription.llm_provider"
+          PY
+
+      - name: Install and exercise integrations extra
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
+          venv="$RUNNER_TEMP/public-integrations"
+          uv venv "$venv" --python ${{ matrix.python-version }}
+          uv pip install --python "$venv/bin/python" "${wheel}[integrations]"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          "$venv/bin/python" -I - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          from transcription.integrations.langchain_loader import SlowerWhisperLoader
+          from transcription.integrations.llamaindex_reader import SlowerWhisperReader
+          from transcription.models import Segment, Transcript, Turn
+          from transcription.writers import write_json
+
+          with TemporaryDirectory() as tmp:
+              path = Path(tmp) / "sample.json"
+              transcript = Transcript(
+                  file_name="sample.wav",
+                  language="en",
+                  segments=[
+                      Segment(id=0, start=0.0, end=1.0, text="hello", speaker={"id": "spk_0"}),
+                  ],
+                  turns=[
+                      Turn(
+                          id="turn_0",
+                          speaker_id="spk_0",
+                          segment_ids=[0],
+                          start=0.0,
+                          end=1.0,
+                          text="hello",
+                          metadata={},
+                      )
+                  ],
+              )
+              write_json(transcript, path)
+              langchain_docs = SlowerWhisperLoader(path).load()
+              llama_docs = SlowerWhisperReader(path).load_data()
+              assert len(langchain_docs) == 1
+              assert len(llama_docs) == 1
+              assert langchain_docs[0].page_content == "hello"
+              assert "hello" in str(llama_docs[0].text)
+          PY
+
+      - name: Prove local semantic extra metadata and construction
+        if: matrix.python-version == '3.12'
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
+          venv="$RUNNER_TEMP/public-semantic-local"
+          uv venv "$venv" --python ${{ matrix.python-version }}
+          uv pip install --python "$venv/bin/python" "${wheel}[semantic-local]"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          "$venv/bin/python" -I - <<'PY'
+          from transcription.semantic_adapter import LocalLLMSemanticAdapter
+          from transcription.semantic_providers.local import is_available
+
+          adapter = LocalLLMSemanticAdapter()
+          assert adapter.model
+          assert is_available()
+          PY
