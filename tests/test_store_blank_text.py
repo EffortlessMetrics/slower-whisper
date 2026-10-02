@@ -36,20 +36,56 @@ def search_store(tmp_path: Path) -> Iterator[SQLiteConversationStore]:
                         "start": 40,
                         "end": 44,
                         "text": "alpha beta gamma delta",
-                        "speaker": "A",
+                        "speaker": {"id": "A", "confidence": 0.3},
                     },
-                    {"id": 1, "start": 5, "end": 7, "text": "alpha", "speaker": "A"},
-                    {"id": 2, "start": 25, "end": 31, "text": "omega", "speaker": "B"},
-                    {"id": 3, "start": 12, "end": 17, "text": "beta alpha alpha", "speaker": "A"},
-                    {"id": 4, "start": 60, "end": 70, "text": "kappa", "speaker": "B"},
+                    {
+                        "id": 1,
+                        "start": 5,
+                        "end": 7,
+                        "text": "alpha",
+                        "speaker": {"id": "A", "confidence": 0.9},
+                    },
+                    {
+                        "id": 2,
+                        "start": 25,
+                        "end": 31,
+                        "text": "omega",
+                        "speaker": {"id": "B", "confidence": 0.2},
+                    },
+                    {
+                        "id": 3,
+                        "start": 12,
+                        "end": 17,
+                        "text": "beta alpha alpha",
+                        "speaker": {"id": "A", "confidence": 0.8},
+                    },
+                    {
+                        "id": 4,
+                        "start": 60,
+                        "end": 70,
+                        "text": "kappa",
+                        "speaker": {"id": "B", "confidence": 0.1},
+                    },
                 ],
             },
             {
                 "file": "second.wav",
                 "language": "fr",
                 "segments": [
-                    {"id": 0, "start": 9, "end": 10, "text": "alpha delta", "speaker": "A"},
-                    {"id": 1, "start": 35, "end": 39, "text": "epsilon", "speaker": "C"},
+                    {
+                        "id": 0,
+                        "start": 9,
+                        "end": 10,
+                        "text": "alpha delta",
+                        "speaker": {"id": "A", "confidence": 0.7},
+                    },
+                    {
+                        "id": 1,
+                        "start": 35,
+                        "end": 39,
+                        "text": "epsilon",
+                        "speaker": {"id": "C", "confidence": 0.4},
+                    },
                 ],
             },
         ]
@@ -66,12 +102,21 @@ def search_store(tmp_path: Path) -> Iterator[SQLiteConversationStore]:
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t\n", "\u2003"])
-@pytest.mark.parametrize("order_by", ["start_time", "end_time", "segment_index"])
+@pytest.mark.parametrize(
+    "order_by",
+    ["start_time", "end_time", "segment_index", "speaker_id", "speaker_confidence"],
+)
 @pytest.mark.parametrize("descending", [False, True])
 def test_blank_search_honors_ordinary_sort(
     search_store: SQLiteConversationStore,
     blank: str,
-    order_by: Literal["start_time", "end_time", "segment_index"],
+    order_by: Literal[
+        "start_time",
+        "end_time",
+        "segment_index",
+        "speaker_id",
+        "speaker_confidence",
+    ],
     descending: bool,
 ) -> None:
     query = StoreQuery(order_by=order_by, order_desc=descending)
