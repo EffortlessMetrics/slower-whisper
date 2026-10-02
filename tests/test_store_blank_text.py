@@ -144,7 +144,8 @@ def test_nonempty_search_keeps_internal_rank_order(
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t\n", "\u2003"])
 @pytest.mark.parametrize(
-    "order_by", ["not_a_sort_key", "rank", "text", "file_name", "language"]
+    "order_by",
+    ["not_a_sort_key", "rank", "text", "file_name", "language"],
 )
 def test_blank_text_preserves_sort_key_validation(
     search_store: SQLiteConversationStore, blank: str, order_by: str
