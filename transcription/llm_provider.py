@@ -25,7 +25,6 @@ class LLMProviderConfigError(ValueError):
     """Provider configuration is incomplete or invalid."""
 
 
-
 @dataclass
 class LLMConfig:
     """Configuration for LLM providers."""
@@ -236,7 +235,7 @@ class OpenAIProvider(LLMProvider):
         # Resolve API key: config > env > error
         api_key = self.config.api_key or os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError(
+            raise LLMProviderConfigError(
                 "OpenAI API key not found. Set OPENAI_API_KEY env var or pass in config."
             )
 
@@ -478,6 +477,7 @@ def create_llm_provider(config: LLMConfig) -> LLMProvider:
         return MockProvider(config)
     else:
         raise ValueError(f"Unknown LLM provider: {config.provider}")
+
 
 __all__ = [
     "AnthropicProvider",
