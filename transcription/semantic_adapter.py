@@ -1234,8 +1234,8 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
         """
         import os
 
-        from .llm_provider import LLMConfig, OpenAIProvider
         from .llm_guardrails import GuardedLLMProvider
+        from .llm_provider import LLMConfig, OpenAIProvider
 
         super().__init__(
             guardrails=guardrails,
@@ -1396,8 +1396,8 @@ class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
         """
         import os
 
-        from .llm_provider import AnthropicProvider, LLMConfig
         from .llm_guardrails import GuardedLLMProvider
+        from .llm_provider import AnthropicProvider, LLMConfig
 
         super().__init__(
             guardrails=guardrails,
