@@ -132,7 +132,7 @@ jobs:
           cd "$RUNNER_TEMP"
           grep "  $archive$" "$checksums" | sha256sum --check -
           tar -xzf "$archive" gitleaks
-          install -m 0755 gitleaks "$RUNNER_TEMP/gitleaks"
+          chmod 0755 "$RUNNER_TEMP/gitleaks"
           "$RUNNER_TEMP/gitleaks" version
 
       - name: Run gitleaks
