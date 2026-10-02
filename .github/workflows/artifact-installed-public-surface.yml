@@ -18,6 +18,7 @@ jobs:
   artifact-installed-public-surface:
     name: artifact-installed-public-surface (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -55,12 +56,25 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import hashlib
+          import json
+          import os
           import tarfile
           import zipfile
           from pathlib import Path
 
-          wheel = next(Path("dist").glob("*.whl"))
-          sdist = next(Path("dist").glob("*.tar.gz"))
+          wheels = list(Path("dist").glob("*.whl"))
+          sdists = list(Path("dist").glob("*.tar.gz"))
+          assert len(wheels) == len(sdists) == 1, (wheels, sdists)
+          wheel, sdist = wheels[0], sdists[0]
+          receipt = {
+              "commit": os.environ["GITHUB_SHA"],
+              "artifacts": {
+                  path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in (wheel, sdist)
+              },
+          }
+          Path("dist/input-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
 
           with zipfile.ZipFile(wheel) as archive:
               wheel_names = set(archive.namelist())
@@ -93,10 +107,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
-          venv="$RUNNER_TEMP/public-base"
+          for artifact in "$GITHUB_WORKSPACE"/dist/*.whl "$GITHUB_WORKSPACE"/dist/*.tar.gz; do
+          test -f "$artifact"
+          echo "Testing $(basename "$artifact")"
+          kind=wheel
+          if [[ "$artifact" == *.tar.gz ]]; then kind=sdist; fi
+          venv=$(mktemp -d "$RUNNER_TEMP/public-base.XXXXXX")
           uv venv "$venv" --python ${{ matrix.python-version }}
-          uv pip install --python "$venv/bin/python" "$wheel"
+          uv pip install --python "$venv/bin/python" "$artifact" pytest
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
           "$venv/bin/python" -I - <<'PY'
@@ -111,15 +129,24 @@ jobs:
           assert LocalKeywordAdapter().health_check().available
           PY
           "$venv/bin/slower-whisper" --help >/dev/null
+          checks=$(mktemp -d "$RUNNER_TEMP/public-checks.XXXXXX")
+          cp "$GITHUB_WORKSPACE/tests/test_semantic_async_bridge.py" "$checks/"
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 "$venv/bin/python" -I -m pytest \
+            -c /dev/null "$checks/test_semantic_async_bridge.py" -q \
+            --junitxml="$RUNNER_TEMP/async-bridge-$kind.xml"
+          rm -rf -- "$venv"
+          done
 
       - name: Install and exercise OpenAI semantic extra
         shell: bash
         run: |
           set -euo pipefail
-          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
-          venv="$RUNNER_TEMP/public-openai"
+          for artifact in "$GITHUB_WORKSPACE"/dist/*.whl "$GITHUB_WORKSPACE"/dist/*.tar.gz; do
+          test -f "$artifact"
+          echo "Testing $(basename "$artifact")"
+          venv=$(mktemp -d "$RUNNER_TEMP/public-openai.XXXXXX")
           uv venv "$venv" --python ${{ matrix.python-version }}
-          uv pip install --python "$venv/bin/python" "${wheel}[semantic-openai]"
+          uv pip install --python "$venv/bin/python" "${artifact}[semantic-openai]"
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
           "$venv/bin/python" -I - <<'PY'
@@ -147,15 +174,19 @@ jobs:
           assert annotation.normalized.topics == ["release"]
           assert type(adapter._provider).__module__ == "transcription.llm_provider"
           PY
+          rm -rf -- "$venv"
+          done
 
       - name: Install and exercise Anthropic semantic extra
         shell: bash
         run: |
           set -euo pipefail
-          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
-          venv="$RUNNER_TEMP/public-anthropic"
+          for artifact in "$GITHUB_WORKSPACE"/dist/*.whl "$GITHUB_WORKSPACE"/dist/*.tar.gz; do
+          test -f "$artifact"
+          echo "Testing $(basename "$artifact")"
+          venv=$(mktemp -d "$RUNNER_TEMP/public-anthropic.XXXXXX")
           uv venv "$venv" --python ${{ matrix.python-version }}
-          uv pip install --python "$venv/bin/python" "${wheel}[semantic-anthropic]"
+          uv pip install --python "$venv/bin/python" "${artifact}[semantic-anthropic]"
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
           "$venv/bin/python" -I - <<'PY'
@@ -182,15 +213,19 @@ jobs:
           assert annotation.normalized.topics == ["artifact"]
           assert type(adapter._provider).__module__ == "transcription.llm_provider"
           PY
+          rm -rf -- "$venv"
+          done
 
       - name: Install and exercise integrations extra
         shell: bash
         run: |
           set -euo pipefail
-          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
-          venv="$RUNNER_TEMP/public-integrations"
+          for artifact in "$GITHUB_WORKSPACE"/dist/*.whl "$GITHUB_WORKSPACE"/dist/*.tar.gz; do
+          test -f "$artifact"
+          echo "Testing $(basename "$artifact")"
+          venv=$(mktemp -d "$RUNNER_TEMP/public-integrations.XXXXXX")
           uv venv "$venv" --python ${{ matrix.python-version }}
-          uv pip install --python "$venv/bin/python" "${wheel}[integrations]"
+          uv pip install --python "$venv/bin/python" "${artifact}[integrations]"
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
           "$venv/bin/python" -I - <<'PY'
@@ -230,23 +265,46 @@ jobs:
               assert langchain_docs[0].page_content == "hello"
               assert "hello" in str(llama_docs[0].text)
           PY
+          rm -rf -- "$venv"
+          done
 
       - name: Prove local semantic extra metadata and construction
         if: matrix.python-version == '3.12'
         shell: bash
         run: |
           set -euo pipefail
-          wheel=$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -name '*.whl' -print -quit)
-          venv="$RUNNER_TEMP/public-semantic-local"
+          for artifact in "$GITHUB_WORKSPACE"/dist/*.whl "$GITHUB_WORKSPACE"/dist/*.tar.gz; do
+          test -f "$artifact"
+          echo "Testing $(basename "$artifact")"
+          venv=$(mktemp -d "$RUNNER_TEMP/public-semantic-local.XXXXXX")
           uv venv "$venv" --python ${{ matrix.python-version }}
-          uv pip install --python "$venv/bin/python" "${wheel}[semantic-local]"
+          uv pip install --python "$venv/bin/python" "${artifact}[semantic-local]"
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
           "$venv/bin/python" -I - <<'PY'
+          import accelerate
+
+          from transcription.local_llm_provider import is_available
           from transcription.semantic_adapter import LocalLLMSemanticAdapter
-          from transcription.semantic_providers.local import is_available
 
           adapter = LocalLLMSemanticAdapter()
           assert adapter.model
           assert is_available()
+          assert accelerate.__version__
           PY
+          rm -rf -- "$venv"
+          done
+
+      - name: Preserve qualification inputs and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-surface-python-${{ matrix.python-version }}
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/input-receipt.json
+            uv.lock
+            ${{ runner.temp }}/async-bridge-*.xml
+          if-no-files-found: error
+          retention-days: 7
