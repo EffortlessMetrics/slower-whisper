@@ -27,6 +27,8 @@ from .events import (
     create_session_started_event,
     create_transcript_event,
 )
+from .langchain_loader import SlowerWhisperLoader
+from .llamaindex_reader import SlowerWhisperReader
 from .rag_export import (
     ChunkingStrategy,
     RAGBundle,
@@ -36,8 +38,6 @@ from .rag_export import (
     export_transcript_to_rag,
 )
 from .registry import SinkConfig, SinkRegistry
-from .langchain_loader import SlowerWhisperLoader
-from .llamaindex_reader import SlowerWhisperReader
 from .webhooks import (
     AuthConfig,
     DeadLetterEntry,
