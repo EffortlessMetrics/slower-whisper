@@ -23,7 +23,7 @@ class SlowerWhisperLoader:
 
     def _document_class(self):
         try:
-            from langchain_core.documents import Document  # type: ignore
+            from langchain_core.documents import Document
         except Exception as exc:  # noqa: BLE001
             raise ImportError(
                 'langchain-core is required for SlowerWhisperLoader; install with `uv sync --extra integrations` or `pip install "slower-whisper[integrations]"`.'
