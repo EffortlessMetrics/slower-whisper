@@ -263,8 +263,6 @@ class TestLocalProviderLoadingContract:
 
         result = await provider.complete("system", "user")
 
-        provider._generate_sync.assert_called_once_with(
-            "system\n\nUser: user\n\nAssistant:"
-        )
+        provider._generate_sync.assert_called_once_with("system\n\nUser: user\n\nAssistant:")
         assert result.text == "response"
         assert result.tokens_used == 2
