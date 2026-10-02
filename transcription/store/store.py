@@ -929,11 +929,8 @@ class SQLiteConversationStore:
                 "start_time": "s.start_time",
                 "end_time": "s.end_time",
                 "segment_index": "s.segment_index",
-                "text": "s.text",
                 "speaker_id": "s.speaker_id",
                 "speaker_confidence": "s.speaker_confidence",
-                "file_name": "t.file_name",
-                "language": "t.language",
             }
             if query.order_by not in col_mapping:
                 raise QueryError(f"Invalid order_by column: {query.order_by}")

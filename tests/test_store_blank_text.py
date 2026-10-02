@@ -66,12 +66,12 @@ def search_store(tmp_path: Path) -> Iterator[SQLiteConversationStore]:
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t\n", "\u2003"])
-@pytest.mark.parametrize("order_by", ["start_time", "end_time", "text"])
+@pytest.mark.parametrize("order_by", ["start_time", "end_time", "segment_index"])
 @pytest.mark.parametrize("descending", [False, True])
 def test_blank_search_honors_ordinary_sort(
     search_store: SQLiteConversationStore,
     blank: str,
-    order_by: Literal["start_time", "end_time", "text"],
+    order_by: Literal["start_time", "end_time", "segment_index"],
     descending: bool,
 ) -> None:
     query = StoreQuery(order_by=order_by, order_desc=descending)
@@ -143,7 +143,9 @@ def test_nonempty_search_keeps_internal_rank_order(
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t\n", "\u2003"])
-@pytest.mark.parametrize("order_by", ["not_a_sort_key", "rank"])
+@pytest.mark.parametrize(
+    "order_by", ["not_a_sort_key", "rank", "text", "file_name", "language"]
+)
 def test_blank_text_preserves_sort_key_validation(
     search_store: SQLiteConversationStore, blank: str, order_by: str
 ) -> None:

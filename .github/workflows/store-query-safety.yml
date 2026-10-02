@@ -98,14 +98,14 @@ jobs:
               "start_time",
               "end_time",
               "segment_index",
-              "text",
               "speaker_id",
               "speaker_confidence",
-              "file_name",
-              "language",
           ]
           attacks = [
               "rank",
+              "text",
+              "file_name",
+              "language",
               "unknown_column",
               "lower(text)",
               "CASE WHEN 1=1 THEN start_time ELSE end_time END",
