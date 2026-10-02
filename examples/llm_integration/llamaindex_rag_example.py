@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from integrations.llamaindex_reader import SlowerWhisperReader
+from transcription.integrations.llamaindex_reader import SlowerWhisperReader
 
 
 def main() -> None:

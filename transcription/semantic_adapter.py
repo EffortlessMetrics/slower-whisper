@@ -72,7 +72,12 @@ def _run_async_safely[T](coro: Coroutine[Any, Any, T]) -> T:
 
     # The caller already owns an event loop; execute on a separate thread.
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, coro)
+        try:
+            future = pool.submit(asyncio.run, coro)
+        except BaseException:
+            # Submission failed before the executor could take ownership.
+            coro.close()
+            raise
         return future.result()
 
 

@@ -153,15 +153,13 @@ def test_worker_submission_error_is_not_treated_as_loop_discovery(
 
     monkeypatch.setattr(concurrent.futures.ThreadPoolExecutor, "submit", fail_submission)
     coroutine = operation()
-    try:
-        if running_loop:
-            with pytest.raises(RuntimeError) as caught:
-                _call(lambda: _run_async_safely(coroutine), running_loop)
-            assert caught.value is error
-            assert executions == []
-        else:
-            assert _call(lambda: _run_async_safely(coroutine), running_loop) == "done"
-            assert executions == ["called"]
-    finally:
-        # A failed submission never took ownership of the coroutine.
-        coroutine.close()
+    if running_loop:
+        with pytest.raises(RuntimeError) as caught:
+            _call(lambda: _run_async_safely(coroutine), running_loop)
+        assert caught.value is error
+        assert executions == []
+    else:
+        assert _call(lambda: _run_async_safely(coroutine), running_loop) == "done"
+        assert executions == ["called"]
+
+    assert inspect.getcoroutinestate(coroutine) == inspect.CORO_CLOSED
