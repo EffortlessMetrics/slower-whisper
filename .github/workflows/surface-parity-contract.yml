@@ -1,0 +1,322 @@
+name: Surface Parity Contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  surface-parity-contract:
+    name: surface-parity-contract (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install locked test environment
+        run: uv sync --frozen --python ${{ matrix.python-version }} --extra dev --extra api
+
+      - name: Verify static surface contract
+        run: |
+          uv run ruff check \
+            transcription/api.py \
+            transcription/cli.py \
+            transcription/generation_receipt.py \
+            transcription/pipeline.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/service_serialization.py \
+            transcription/source_identity.py \
+            transcription/transcription_orchestrator.py \
+            transcription/writers.py \
+            tests/test_cli_surface_parity.py \
+            tests/test_generation_receipt.py \
+            tests/test_pipeline_surface_parity.py \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py
+          uv run ruff format --check \
+            transcription/api.py \
+            transcription/cli.py \
+            transcription/generation_receipt.py \
+            transcription/pipeline.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/service_serialization.py \
+            transcription/source_identity.py \
+            transcription/transcription_orchestrator.py \
+            transcription/writers.py \
+            tests/test_cli_surface_parity.py \
+            tests/test_generation_receipt.py \
+            tests/test_pipeline_surface_parity.py \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py
+          uv run mypy \
+            transcription/api.py \
+            transcription/cli.py \
+            transcription/generation_receipt.py \
+            transcription/pipeline.py \
+            transcription/service_runtime_transcribe.py \
+            transcription/service_serialization.py \
+            transcription/source_identity.py \
+            transcription/transcription_orchestrator.py \
+            transcription/writers.py
+
+      - name: Verify event diff hygiene
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --no-tags origin "$BASE_REF"
+            git diff --check "origin/$BASE_REF...HEAD"
+          else
+            before="$EVENT_BEFORE"
+            if [[ "$before" =~ ^0+$ ]] || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+              if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+                before="$(git rev-parse HEAD^)"
+              else
+                before="$(git hash-object -t tree /dev/null)"
+              fi
+            fi
+            git diff --check "$before" HEAD
+          fi
+
+      - name: Verify receipt and public-surface parity
+        run: |
+          uv run pytest -q \
+            tests/test_cli_surface_parity.py \
+            tests/test_generation_receipt.py \
+            tests/test_pipeline_surface_parity.py \
+            tests/test_pipeline.py \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py \
+            tests/test_api.py \
+            tests/test_service_runtime_transcribe.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py \
+            tests/test_writers.py
+
+      - name: Verify public documentation
+        run: |
+          grep -Fq 'temporary filenames are not a valid substitute' \
+            docs/SURFACE_PARITY_CONTRACT.md
+          grep -Fq 'one operation-owned engine across the batch' \
+            docs/SURFACE_PARITY_CONTRACT.md
+          grep -Fq 'transcription.cli.main()' \
+            docs/SURFACE_PARITY_CONTRACT.md
+          grep -Fq 'wheel-installed `slower-whisper transcribe`' \
+            docs/SURFACE_PARITY_CONTRACT.md
+
+  surface-parity-full-suite:
+    name: surface-parity-full-suite (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install locked development environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Verify full non-heavy repository suite
+        run: |
+          uv run pytest -q \
+            -m "not slow and not heavy and not requires_gpu" \
+            --no-cov
+
+  surface-parity-installed:
+    name: surface-parity-installed (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Build and install API wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          wheel=$(realpath "$(find dist -maxdepth 1 -name '*.whl' -print -quit)")
+          test -n "$wheel"
+          venv="$RUNNER_TEMP/surface-parity-${{ matrix.python-version }}"
+          uv venv "$venv" --python ${{ matrix.python-version }}
+          uv pip install --python "$venv/bin/python" "${wheel}[api]"
+          uv pip install --python "$venv/bin/python" \
+            pytest==9.0.2 \
+            jsonschema==4.26.0 \
+            httpx==0.28.1
+          uv pip check --python "$venv/bin/python"
+          test -x "$venv/bin/slower-whisper"
+          echo "SURFACE_PARITY_VENV=$venv" >> "$GITHUB_ENV"
+
+      - name: Exercise installed Python surfaces outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_root="$RUNNER_TEMP/surface-parity-test"
+          mkdir -p "$test_root"
+          cp \
+            tests/test_cli_surface_parity.py \
+            tests/test_pipeline_surface_parity.py \
+            tests/test_service_serialization.py \
+            tests/test_service_source_identity.py \
+            tests/test_surface_parity.py \
+            "$test_root/"
+          cd "$test_root"
+          unset PYTHONPATH
+          "$SURFACE_PARITY_VENV/bin/python" -c 'import fastapi, uvicorn'
+          "$SURFACE_PARITY_VENV/bin/python" -m pytest -q \
+            test_cli_surface_parity.py \
+            test_pipeline_surface_parity.py \
+            test_service_serialization.py \
+            test_service_source_identity.py \
+            test_surface_parity.py
+
+      - name: Exercise wheel-installed console outside checkout
+        shell: bash
+        env:
+          SLOWER_WHISPER_INSTALLED_CLI_PARITY: '1'
+        run: |
+          set -euo pipefail
+          test_root="$RUNNER_TEMP/surface-parity-test"
+          cd "$test_root"
+          unset PYTHONPATH
+          export PATH="$SURFACE_PARITY_VENV/bin:$PATH"
+          "$SURFACE_PARITY_VENV/bin/python" -m pytest -q \
+            test_cli_surface_parity.py \
+            -k wheel_installed_console_matches_canonical_file_surface
+          "$SURFACE_PARITY_VENV/bin/slower-whisper" --help >/dev/null
+          "$SURFACE_PARITY_VENV/bin/slower-whisper" transcribe --help >/dev/null
+
+      - name: Exercise installed receipt completion outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          "$SURFACE_PARITY_VENV/bin/python" - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          import transcription.generation_receipt as module
+          from transcription.models import Transcript
+          from transcription.writers import write_json
+
+          assert "site-packages" in Path(module.__file__).resolve().parts
+          transcript = Transcript(
+              file_name="clip.wav",
+              language="en",
+              segments=[],
+              meta={
+                  "generated_at": "2026-08-22T12:00:00Z",
+                  "audio_file": "clip.wav",
+                  "audio_duration_sec": 1.0,
+                  "model_name": "tiny",
+                  "device": "cuda",
+                  "compute_type": "float16",
+                  "beam_size": 5,
+                  "vad_min_silence_ms": 500,
+                  "language_hint": "en",
+                  "task": "transcribe",
+                  "pipeline_version": "2.0.2",
+                  "root": "/unrelated/caller",
+                  "asr_backend": "faster-whisper",
+                  "asr_device": "cpu",
+                  "asr_compute_type": "int8",
+                  "asr_model_load_attempts": [
+                      {
+                          "device": "cuda",
+                          "compute_type": "float16",
+                          "outcome": "failed",
+                          "reason_code": "asr_model_load_failed",
+                          "private_error": "/private/provider/path",
+                      },
+                      {
+                          "device": "cpu",
+                          "compute_type": "int8",
+                          "outcome": "selected",
+                          "reason_code": "ok",
+                      },
+                  ],
+              },
+          )
+          output = Path("clip.json")
+          write_json(transcript, output)
+          document = json.loads(output.read_text(encoding="utf-8"))
+          receipt = document["meta"]["receipt"]
+          assert receipt["model"] == "tiny"
+          assert receipt["device"] == "cpu"
+          assert receipt["compute_type"] == "int8"
+          assert "/unrelated/caller" not in json.dumps(receipt)
+          assert "/private/provider/path" not in json.dumps(document)
+          PY

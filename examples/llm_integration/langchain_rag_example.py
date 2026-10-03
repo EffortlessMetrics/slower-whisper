@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from integrations.langchain_loader import SlowerWhisperLoader
+from transcription.integrations.langchain_loader import SlowerWhisperLoader
 
 
 def main() -> None:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -189,3 +190,128 @@ def pytest_runtest_setup(item: Item) -> None:
     """Skip tests based on marker requirements and dependency availability."""
     if item.get_closest_marker("requires_diarization") and not PYANNOTE_AVAILABLE:
         pytest.skip("pyannote.audio not available; skipping diarization tests")
+
+
+# ============================================================================
+# Compatibility fixture for legacy global-app endpoint tests
+# ============================================================================
+
+_LEGACY_GLOBAL_APP_TESTS = {
+    "test_api_service.py",
+    "test_security_leak.py",
+    "test_service.py",
+    "test_telemetry.py",
+}
+
+
+class _LegacyServiceTestEngine:
+    def __init__(self) -> None:
+        self.cfg = SimpleNamespace(
+            model_name="large-v3",
+            device="cpu",
+            compute_type="int8",
+            language=None,
+            task="transcribe",
+            beam_size=5,
+            vad_min_silence_ms=500,
+            word_timestamps=False,
+        )
+        self.model_load_attempts = [
+            {
+                "device": "cpu",
+                "compute_type": "int8",
+                "outcome": "selected",
+                "reason_code": "ok",
+            }
+        ]
+
+    def transcribe_file(self, audio_path: Path):
+        from transcription.models import Transcript
+
+        return Transcript(
+            file_name=Path(audio_path).name,
+            language="en",
+            segments=[],
+            meta={
+                "asr_backend": "faster-whisper",
+                "asr_device": "cpu",
+                "asr_compute_type": "int8",
+                "asr_model_load_attempts": list(self.model_load_attempts),
+            },
+        )
+
+
+class _LegacyGlobalAppRuntime:
+    """Test-only ready runtime preserving old module patch points."""
+
+    def __init__(self) -> None:
+        from transcription.service_runtime import RuntimeProfile, RuntimeState
+
+        self.profile = RuntimeProfile(
+            model="large-v3",
+            device="cpu",
+            compute_type="int8",
+            language=None,
+            task="transcribe",
+            beam_size=5,
+            vad_min_silence_ms=500,
+            word_timestamps=False,
+        )
+        self.engine = _LegacyServiceTestEngine()
+        self.ready = True
+        self.state = RuntimeState.READY
+
+    def assert_profile(self, _config: Any) -> None:
+        return None
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "state": self.state.value,
+            "ready": True,
+            "profile": self.profile.to_dict(),
+            "selected": self.profile.to_dict(),
+            "attempts": list(self.engine.model_load_attempts),
+            "max_concurrency": 1,
+            "active_inferences": 0,
+            "max_observed_inferences": 1,
+            "error": None,
+        }
+
+    async def transcribe_file(
+        self,
+        transcribe,
+        *,
+        audio_path: Path,
+        root: Path,
+        config: Any,
+    ):
+        return transcribe(
+            audio_path,
+            root,
+            config,
+            _engine=self.engine,
+        )
+
+
+@pytest.fixture(autouse=True)
+def _install_runtime_for_legacy_global_app_tests(request):
+    """Supply lifecycle state only to tests that intentionally skip lifespan."""
+    if request.node.path.name not in _LEGACY_GLOBAL_APP_TESTS:
+        yield
+        return
+
+    try:
+        from transcription import service as service_module
+    except ImportError:
+        yield
+        return
+
+    previous_runtime = getattr(service_module.app.state, "asr_runtime", None)
+    previous_error = getattr(service_module.app.state, "asr_startup_error", None)
+    service_module.app.state.asr_runtime = _LegacyGlobalAppRuntime()
+    service_module.app.state.asr_startup_error = None
+    try:
+        yield
+    finally:
+        service_module.app.state.asr_runtime = previous_runtime
+        service_module.app.state.asr_startup_error = previous_error

@@ -1,31 +1,22 @@
-"""Health check routes for the API service."""
+"""Health routes grounded in the service-owned ASR runtime."""
 
 from __future__ import annotations
 
+import shutil
+from importlib import resources
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from . import __version__
+from .exceptions import TranscriptionError
 from .models import SCHEMA_VERSION
 
 router = APIRouter()
 
 
-# =============================================================================
-# Health Check Helpers
-# =============================================================================
-
-
 def _check_ffmpeg() -> dict[str, Any]:
-    """Check if ffmpeg is available on PATH.
-
-    Returns:
-        Dict with status and optional error message
-    """
-    import shutil
-
     ffmpeg_path = shutil.which("ffmpeg")
     if ffmpeg_path:
         return {"status": "ok", "path": ffmpeg_path}
@@ -33,33 +24,20 @@ def _check_ffmpeg() -> dict[str, Any]:
 
 
 def _check_faster_whisper() -> dict[str, Any]:
-    """Check if faster-whisper can be imported.
-
-    Returns:
-        Dict with status and optional error message
-    """
+    """Report importability; runtime state remains readiness authority."""
     try:
         from . import asr_engine
 
-        available = asr_engine._FASTER_WHISPER_AVAILABLE
-        if available:
+        if asr_engine._FASTER_WHISPER_AVAILABLE:
             return {"status": "ok"}
         return {"status": "error", "message": "faster-whisper import failed"}
-    except Exception as e:
-        return {"status": "error", "message": f"faster-whisper check failed: {str(e)}"}
+    except Exception:  # noqa: BLE001 - never expose import internals remotely
+        return {"status": "error", "message": "faster-whisper check failed"}
 
 
 def _check_cuda(device: str) -> dict[str, Any]:
-    """Check CUDA availability if device=cuda is expected.
-
-    Args:
-        device: Expected device from config (cuda/cpu)
-
-    Returns:
-        Dict with status and optional error/warning message
-    """
     if device != "cuda":
-        return {"status": "ok", "message": "CUDA not required (device=cpu)"}
+        return {"status": "ok", "message": f"CUDA not required (device={device})"}
 
     try:
         import torch
@@ -75,35 +53,21 @@ def _check_cuda(device: str) -> dict[str, Any]:
         return {"status": "warning", "message": "CUDA requested but not available"}
     except ImportError:
         return {"status": "warning", "message": "torch not installed, cannot check CUDA"}
-    except Exception as e:
-        return {"status": "error", "message": f"CUDA check failed: {str(e)}"}
+    except Exception:  # noqa: BLE001 - sanitized health surface
+        return {"status": "error", "message": "CUDA check failed"}
 
 
 def _check_disk_space() -> dict[str, Any]:
-    """Check disk space in cache directories.
-
-    Returns:
-        Dict with status and space information
-    """
-    import shutil
-
     try:
         from .cache import CachePaths
 
         paths = CachePaths.from_env()
         root_usage = shutil.disk_usage(paths.root.parent)
-
-        # Convert to GB
         free_gb = root_usage.free / (1024**3)
         total_gb = root_usage.total / (1024**3)
         used_gb = root_usage.used / (1024**3)
         percent_used = (used_gb / total_gb * 100) if total_gb > 0 else 0
-
-        # Warn if less than 5GB free
-        status = "ok"
-        if free_gb < 5.0:
-            status = "warning"
-
+        status = "warning" if free_gb < 5.0 else "ok"
         return {
             "status": status,
             "cache_root": str(paths.root),
@@ -112,31 +76,64 @@ def _check_disk_space() -> dict[str, Any]:
             "used_gb": round(used_gb, 2),
             "percent_used": round(percent_used, 1),
         }
-    except Exception as e:
-        return {"status": "error", "message": f"Disk space check failed: {str(e)}"}
+    except Exception:  # noqa: BLE001 - sanitized health surface
+        return {"status": "error", "message": "Disk space check failed"}
 
 
-# =============================================================================
-# Health Check Endpoints
-# =============================================================================
+def _check_package_resources() -> dict[str, Any]:
+    required = (
+        "schemas/transcript-v2.schema.json",
+        "schemas/stream_event.schema.json",
+    )
+    try:
+        package_root = resources.files("transcription")
+        missing = [name for name in required if not package_root.joinpath(name).is_file()]
+    except Exception:  # noqa: BLE001 - sanitized health surface
+        return {"status": "error", "message": "Package resource check failed"}
+    if missing:
+        return {
+            "status": "error",
+            "message": "Required package resources are missing",
+            "missing": missing,
+        }
+    return {"status": "ok", "resources": list(required)}
+
+
+def _runtime_check(request: Request) -> dict[str, Any]:
+    runtime = getattr(request.app.state, "asr_runtime", None)
+    if runtime is None:
+        startup_error = getattr(request.app.state, "asr_startup_error", None)
+        result: dict[str, Any] = {
+            "status": "error",
+            "state": "failed" if startup_error else "stopped",
+            "ready": False,
+        }
+        if isinstance(startup_error, TranscriptionError):
+            result["error"] = startup_error.public_details()
+        return result
+
+    status = runtime.status()
+    return {
+        "status": "ok" if status.get("ready") else "error",
+        **status,
+    }
+
+
+def _runtime_device(runtime_check: dict[str, Any]) -> str:
+    selected = runtime_check.get("selected") or {}
+    profile = runtime_check.get("profile") or {}
+    value = selected.get("device") or profile.get("device")
+    return value if isinstance(value, str) and value else "cpu"
 
 
 @router.get(
     "/health",
     summary="Health check (legacy)",
-    description="Simple health check (deprecated, use /health/live for liveness checks)",
+    description="Simple process health check (deprecated; use /health/live and /health/ready)",
     tags=["System"],
     deprecated=True,
 )
 async def health_check() -> dict[str, str]:
-    """
-    Legacy health check endpoint for service monitoring.
-
-    DEPRECATED: Use /health/live for liveness checks or /health/ready for readiness checks.
-
-    Returns:
-        Dictionary with status and version information.
-    """
     return {
         "status": "healthy",
         "service": "slower-whisper-api",
@@ -148,22 +145,11 @@ async def health_check() -> dict[str, str]:
 @router.get(
     "/health/live",
     summary="Liveness probe",
-    description="Check if the service is alive and responsive (Kubernetes liveness probe)",
+    description="Process-only liveness probe; it performs no model work",
     tags=["System"],
     status_code=200,
 )
 async def health_liveness() -> JSONResponse:
-    """
-    Liveness probe for Kubernetes/orchestration systems.
-
-    This endpoint performs minimal checks to verify the service process is alive
-    and responsive. It should NOT check external dependencies or heavy initialization.
-
-    Returns 200 if the service is running, even if not fully ready.
-
-    Returns:
-        JSONResponse with status "alive" and basic service info
-    """
     return JSONResponse(
         status_code=200,
         content={
@@ -178,76 +164,31 @@ async def health_liveness() -> JSONResponse:
 @router.get(
     "/health/ready",
     summary="Readiness probe",
-    description=(
-        "Check if the service is ready to handle requests "
-        "(Kubernetes readiness probe, load balancer health check)"
-    ),
+    description="Ready only when the configured process-owned ASR runtime is usable",
     tags=["System"],
-    responses={
-        200: {"description": "Service is ready"},
-        503: {"description": "Service is degraded or not ready"},
-    },
+    responses={200: {"description": "Service is ready"}, 503: {"description": "Not ready"}},
 )
-async def health_readiness() -> JSONResponse:
-    """
-    Readiness probe for Kubernetes/orchestration systems and load balancers.
-
-    This endpoint checks all critical dependencies and configuration:
-    - ffmpeg availability (required for audio normalization)
-    - faster-whisper import (required for transcription)
-    - CUDA availability (if device=cuda expected)
-    - Disk space in cache directories
-
-    Returns:
-        - 200 if all checks pass (service ready)
-        - 503 if any critical check fails (service not ready)
-
-    Response includes detailed status for each dependency.
-    """
-    checks: dict[str, Any] = {}
-    overall_status = "ready"
-    overall_healthy = True
-
-    # Check ffmpeg (critical)
-    checks["ffmpeg"] = _check_ffmpeg()
-    if checks["ffmpeg"]["status"] == "error":
-        overall_status = "degraded"
-        overall_healthy = False
-
-    # Check faster-whisper (critical)
-    checks["faster_whisper"] = _check_faster_whisper()
-    if checks["faster_whisper"]["status"] == "error":
-        overall_status = "degraded"
-        overall_healthy = False
-
-    # Check CUDA (warning only, not critical)
-    # In production, device should be read from config/env
-    # For now, default to cpu to avoid false negatives
-    device = "cpu"  # Could be read from env: os.environ.get("SLOWER_WHISPER_DEVICE", "cpu")
-    checks["cuda"] = _check_cuda(device)
-    if checks["cuda"]["status"] == "error":
-        overall_status = "degraded"
-        # Not marking as unhealthy - CUDA errors are warnings, CPU fallback works
-
-    # Check disk space (warning if low)
-    checks["disk_space"] = _check_disk_space()
-    if checks["disk_space"]["status"] == "error":
-        overall_status = "degraded"
-        # Disk check errors are warnings, not critical failures
-
-    # Determine HTTP status code
-    status_code = 200 if overall_healthy else 503
-
-    response_body = {
-        "status": overall_status,
-        "healthy": overall_healthy,
-        "service": "slower-whisper-api",
-        "version": __version__,
-        "schema_version": str(SCHEMA_VERSION),
-        "checks": checks,
+async def health_readiness(request: Request) -> JSONResponse:
+    runtime = _runtime_check(request)
+    checks: dict[str, Any] = {
+        "ffmpeg": _check_ffmpeg(),
+        "resources": _check_package_resources(),
+        "runtime": runtime,
+        "faster_whisper": _check_faster_whisper(),
+        "cuda": _check_cuda(_runtime_device(runtime)),
+        "disk_space": _check_disk_space(),
     }
 
+    critical_names = ("ffmpeg", "resources", "runtime")
+    healthy = all(checks[name]["status"] == "ok" for name in critical_names)
     return JSONResponse(
-        status_code=status_code,
-        content=response_body,
+        status_code=200 if healthy else 503,
+        content={
+            "status": "ready" if healthy else "degraded",
+            "healthy": healthy,
+            "service": "slower-whisper-api",
+            "version": __version__,
+            "schema_version": str(SCHEMA_VERSION),
+            "checks": checks,
+        },
     )

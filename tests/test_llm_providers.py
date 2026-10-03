@@ -11,14 +11,18 @@ Test coverage:
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from transcription.historian.llm_client import (
     AnthropicProvider,
+    ClaudeCodeProvider,
     LLMConfig,
     LLMProvider,
+    LLMProviderDependencyError,
     LLMResponse,
     LocalLLMProvider,
     MockProvider,
@@ -61,6 +65,14 @@ class TestLLMConfig:
 
 class TestCreateLLMProvider:
     """Tests for the factory function."""
+
+    def test_create_claude_code_provider(self) -> None:
+        """Historian factory keeps the repository-only Claude provider."""
+        config = LLMConfig(provider="claude-code")
+        provider = create_llm_provider(config)
+
+        assert isinstance(provider, ClaudeCodeProvider)
+        assert provider.config == config
 
     def test_create_openai_provider(self) -> None:
         """Test creating OpenAI provider."""
@@ -435,10 +447,54 @@ class TestLocalLLMProvider:
         config = LLMConfig(provider="local")
         provider = LocalLLMProvider(config)
 
-        # Mock the import to fail
+        # The public provider boundary now exposes a typed dependency error with
+        # actionable installation guidance rather than the old implementation text.
         with patch.dict("sys.modules", {"transformers": None}):
-            with pytest.raises(ImportError, match="transformers package not installed"):
+            with pytest.raises(
+                LLMProviderDependencyError,
+                match=r"slower-whisper\[semantic-local\]",
+            ):
                 await provider._load_model()
+
+    @pytest.mark.asyncio
+    async def test_concurrent_lazy_loads_share_single_model_load(self) -> None:
+        """A waiter that passed the outer check must reuse the first loaded model."""
+        config = LLMConfig(provider="local", model="test-model")
+        provider = LocalLLMProvider(config)
+        started = threading.Event()
+        release = threading.Event()
+        tokenizer = object()
+        model = object()
+
+        def load_model_sync(model_name: str) -> tuple[object, object, str]:
+            assert model_name == "test-model"
+            started.set()
+            assert release.wait(timeout=5)
+            return tokenizer, model, "cpu"
+
+        provider._load_model_sync = MagicMock(side_effect=load_model_sync)
+        transformers = MagicMock()
+
+        with patch.dict("sys.modules", {"transformers": transformers}):
+            first = asyncio.create_task(provider._load_model())
+            second = None
+            try:
+                assert await asyncio.to_thread(started.wait, 5)
+                second = asyncio.create_task(provider._load_model())
+                # Give the second caller a turn so it passes the outer None check
+                # and waits on the first caller's lock.
+                await asyncio.sleep(0)
+            finally:
+                release.set()
+
+            await first
+            assert second is not None
+            await second
+
+        provider._load_model_sync.assert_called_once_with("test-model")
+        assert provider._tokenizer is tokenizer
+        assert provider._model is model
+        assert provider._device == "cpu"
 
     @pytest.mark.asyncio
     async def test_complete_returns_llm_response(self) -> None:

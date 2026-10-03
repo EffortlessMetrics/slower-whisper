@@ -70,6 +70,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY transcription/ ./transcription/
 COPY scripts/ ./scripts/
 COPY integrations/ ./integrations/
+COPY slower_whisper/ ./slower_whisper/
 
 # Install Python dependencies using uv
 # ARG INSTALL_MODE controls which dependencies to install
@@ -100,6 +101,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         uv pip install --system \
             --index-url "${TORCH_CPU_INDEX}" \
             --extra-index-url "${PYPI_INDEX}" \
+            --index-strategy unsafe-best-match \
             "torch==${TORCH_VERSION}" \
             "torchaudio==${TORCHAUDIO_VERSION}"; \
         uv pip install --system \

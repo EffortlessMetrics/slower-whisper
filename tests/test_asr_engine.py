@@ -1,336 +1,388 @@
-"""Unit tests for ASR engine resilience and fallbacks."""
+"""Unit tests for fail-closed ASR truth and real fallback behavior."""
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
-import numpy as np
 import pytest
-import soundfile as sf
 
 import transcription.asr_engine as asr_engine
-from transcription.asr_engine import TranscriptionEngine
+from transcription.asr_engine import BackendFactory, TranscriptionEngine
 from transcription.config import AsrConfig
+from transcription.exceptions import (
+    ASRInferenceError,
+    ASRModelLoadError,
+    ASROutputError,
+    ASRUnavailableError,
+)
 from transcription.models import Transcript
+from transcription.writers import write_json, write_srt, write_txt
 
 
-def test_model_init_retries_on_cpu_when_cuda_load_fails(monkeypatch, caplog):
-    """If GPU init fails, the engine should retry on CPU before going dummy."""
+def audio_file(tmp_path: Path) -> Path:
+    path = tmp_path / "clip.wav"
+    path.write_bytes(b"test audio is not read by injected backends")
+    return path
+
+
+class StaticModel:
+    def __init__(
+        self,
+        segments: Any = None,
+        info: Any = None,
+    ) -> None:
+        self.segments = [] if segments is None else segments
+        self.info = SimpleNamespace(language="en") if info is None else info
+        self.calls: list[dict[str, Any]] = []
+
+    def transcribe(self, _audio_path: str, **kwargs: Any) -> tuple[Any, Any]:
+        self.calls.append(dict(kwargs))
+        return self.segments, self.info
+
+
+def static_factory(model: StaticModel) -> BackendFactory:
+    def factory(
+        _model_name: str,
+        _device: str,
+        _compute_type: str,
+        _download_root: Path,
+    ) -> StaticModel:
+        return model
+
+    return factory
+
+
+def config(
+    *,
+    device: str = "cpu",
+    compute_type: str = "int8",
+    language: str | None = None,
+    word_timestamps: bool = False,
+) -> AsrConfig:
+    return AsrConfig(
+        model_name="tiny",
+        device=device,
+        compute_type=compute_type,
+        language=language,
+        word_timestamps=word_timestamps,
+    )
+
+
+def segment(
+    *,
+    start: float = 0.0,
+    end: float = 0.5,
+    text: str = "real output",
+    **extra: Any,
+) -> SimpleNamespace:
+    return SimpleNamespace(start=start, end=end, text=text, **extra)
+
+
+def test_missing_backend_raises_typed_unavailable_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_error = ImportError("provider detail must remain chained")
+    monkeypatch.setattr(asr_engine, "_FASTER_WHISPER_AVAILABLE", False)
+    monkeypatch.setattr(asr_engine, "WhisperModel", None)
+    monkeypatch.setattr(
+        asr_engine,
+        "_FASTER_WHISPER_IMPORT_ERROR",
+        provider_error,
+    )
+
+    with pytest.raises(ASRUnavailableError) as raised:
+        TranscriptionEngine(config())
+
+    assert raised.value.reason_code == "asr_backend_unavailable"
+    assert raised.value.context == {"backend": "faster-whisper"}
+    assert raised.value.__cause__ is provider_error
+    assert "provider detail" not in str(raised.value.public_details())
+
+
+def test_cuda_load_failure_retries_real_cpu_backend(
+    tmp_path: Path,
+) -> None:
     attempts: list[tuple[str, str]] = []
 
-    class FlakyModel:
-        def __init__(self, model_name, device, compute_type, download_root):
-            attempts.append((device, compute_type))
-            if device != "cpu":
-                raise RuntimeError("CUDA unavailable")
-
-        def transcribe(self, *args, **kwargs):
-            return [], type("info", (), {"language": "en"})()
-
-    monkeypatch.setattr(asr_engine, "_FASTER_WHISPER_AVAILABLE", True)
-    monkeypatch.setattr(asr_engine, "WhisperModel", FlakyModel)
-
-    cfg = AsrConfig(model_name="tiny", device="cuda", compute_type="float16")
-
-    with caplog.at_level(logging.WARNING):
-        engine = asr_engine.TranscriptionEngine(cfg)
-
-    # GPU attempt then CPU fallback
-    assert attempts[0][0] == "cuda"
-    assert attempts[-1][0] == "cpu"
-    assert isinstance(engine.model, FlakyModel)
-    # Config should reflect the fallback device/compute_type
-    assert cfg.device == "cpu"
-    assert cfg.compute_type == "int8"
-    # Warn user about the retry
-    assert "Retrying on CPU" in caplog.text
-
-
-def test_model_init_retries_safer_compute_type_on_cpu(monkeypatch, caplog):
-    """CPU loads with aggressive compute_type should retry with int8 before dummy."""
-    attempts: list[tuple[str, str]] = []
-
-    class CpuSensitiveModel:
-        def __init__(self, model_name, device, compute_type, download_root):
-            attempts.append((device, compute_type))
-            if compute_type != "int8":
-                raise RuntimeError(f"{compute_type}-unsupported")
-
-        def transcribe(self, *args, **kwargs):
-            return [], type("info", (), {"language": "en"})()
-
-    monkeypatch.setattr(asr_engine, "_FASTER_WHISPER_AVAILABLE", True)
-    monkeypatch.setattr(asr_engine, "WhisperModel", CpuSensitiveModel)
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="float16")
-
-    with caplog.at_level(logging.WARNING):
-        engine = asr_engine.TranscriptionEngine(cfg)
-
-    assert attempts == [("cpu", "float16"), ("cpu", "int8")]
-    assert isinstance(engine.model, CpuSensitiveModel)
-    assert cfg.compute_type == "int8"  # Updated to reflect the successful fallback
-    assert engine.model_load_error is None
-    assert "compute_type=int8" in caplog.text
-
-
-def test_model_init_surfaces_load_warnings(monkeypatch, tmp_path):
-    """Load retries that succeed should still expose warnings in metadata."""
-    attempts: list[tuple[str, str]] = []
-
-    class FallbackModel:
-        def transcribe(self, *args, **kwargs):
-            seg = SimpleNamespace(start=0.0, end=0.5, text="ok")
-            return [seg], SimpleNamespace(language="en")
-
-    def flaky_loader(self, device, compute_type, download_root):
+    def factory(
+        _model_name: str,
+        device: str,
+        compute_type: str,
+        _download_root: Path,
+    ) -> StaticModel:
         attempts.append((device, compute_type))
         if device != "cpu":
-            raise RuntimeError("cuda unavailable")
-        return FallbackModel()
+            raise RuntimeError("local CUDA diagnostic")
+        return StaticModel([segment(text="cpu result")])
 
-    monkeypatch.setattr(asr_engine, "_FASTER_WHISPER_AVAILABLE", True)
-    monkeypatch.setattr(TranscriptionEngine, "_load_whisper_model", flaky_loader)
-
-    cfg = AsrConfig(model_name="tiny", device="cuda", compute_type="float16")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
+    cfg = config(device="cuda", compute_type="float16")
+    engine = TranscriptionEngine(cfg, backend_factory=factory)
+    transcript = engine.transcribe_file(audio_file(tmp_path))
 
     assert attempts == [("cuda", "float16"), ("cpu", "int8")]
-    assert engine.model_load_error is None
-    assert engine.model_load_warnings == ["cuda (float16) load failed: cuda unavailable"]
+    assert cfg.device == "cpu"
+    assert cfg.compute_type == "int8"
+    assert transcript.full_text == "cpu result"
     assert transcript.meta["asr_backend"] == "faster-whisper"
     assert transcript.meta["asr_device"] == "cpu"
     assert transcript.meta["asr_compute_type"] == "int8"
-    assert transcript.meta["asr_model_load_warnings"] == engine.model_load_warnings
+    assert transcript.meta["asr_model_load_attempts"] == [
+        {
+            "device": "cuda",
+            "compute_type": "float16",
+            "outcome": "failed",
+            "reason_code": "asr_model_load_failed",
+        },
+        {
+            "device": "cpu",
+            "compute_type": "int8",
+            "outcome": "selected",
+            "reason_code": "ok",
+        },
+    ]
+    assert transcript.meta["asr_model_load_warnings"] == ["cuda (float16) load failed"]
 
 
-def test_model_init_reports_cpu_fallback_failure(monkeypatch, tmp_path):
-    """Aggregated error message should include both GPU and CPU load failures."""
+def test_cpu_compute_fallback_is_ordered() -> None:
+    attempts: list[tuple[str, str]] = []
 
-    def failing_loader(self, device, compute_type, download_root):
-        raise RuntimeError(f"{device}-{compute_type}-boom")
+    def factory(
+        _model_name: str,
+        device: str,
+        compute_type: str,
+        _download_root: Path,
+    ) -> StaticModel:
+        attempts.append((device, compute_type))
+        if compute_type != "int8":
+            raise RuntimeError("unsupported compute")
+        return StaticModel()
 
-    monkeypatch.setattr(asr_engine, "_FASTER_WHISPER_AVAILABLE", True)
-    monkeypatch.setattr(TranscriptionEngine, "_load_whisper_model", failing_loader)
+    cfg = config(device="cpu", compute_type="float16")
+    engine = TranscriptionEngine(cfg, backend_factory=factory)
 
-    cfg = AsrConfig(model_name="tiny", device="cuda", compute_type="float16")
-    engine = TranscriptionEngine(cfg)
-
-    assert isinstance(engine.model, asr_engine.DummyWhisperModel)
-    assert "cuda (float16) load failed" in engine.model_load_error
-    assert "cpu (int8) load failed" in engine.model_load_error
-
-    # Transcription metadata should expose the aggregated failure message
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-    assert transcript.meta["asr_backend"] == "dummy"
-    assert "cpu (int8) load failed" in transcript.meta["asr_fallback_reason"]
+    assert attempts == [("cpu", "float16"), ("cpu", "int8")]
+    assert cfg.compute_type == "int8"
+    assert engine.model_load_attempts[-1]["outcome"] == "selected"
 
 
-def test_transcribe_falls_back_to_dummy_on_inference_error(tmp_path, monkeypatch, caplog):
-    """Runtime inference errors should return dummy output with a warning."""
+def test_all_real_load_attempts_raise_typed_model_error() -> None:
+    def factory(
+        _model_name: str,
+        device: str,
+        compute_type: str,
+        _download_root: Path,
+    ) -> StaticModel:
+        raise RuntimeError(f"sensitive provider detail for {device}/{compute_type}")
 
+    with pytest.raises(ASRModelLoadError) as raised:
+        TranscriptionEngine(
+            config(device="cuda", compute_type="float16"),
+            backend_factory=factory,
+        )
+
+    error = raised.value
+    assert error.reason_code == "asr_model_load_failed"
+    assert error.context["backend"] == "faster-whisper"
+    assert error.context["model"] == "tiny"
+    assert [item["outcome"] for item in error.context["attempts"]] == [
+        "failed",
+        "failed",
+    ]
+    assert "sensitive provider detail" not in str(error.public_details())
+    assert isinstance(error.__cause__, RuntimeError)
+
+
+def test_direct_inference_failure_is_not_a_transcript(
+    tmp_path: Path,
+) -> None:
     class BrokenModel:
-        def transcribe(self, *args, **kwargs):
+        def transcribe(self, _audio_path: str, **_kwargs: Any) -> Any:
             raise RuntimeError("decoder exploded")
 
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: BrokenModel())
+    with pytest.raises(ASRInferenceError) as raised:
+        TranscriptionEngine(
+            config(),
+            backend_factory=lambda *_args: BrokenModel(),
+        ).transcribe_file(audio_file(tmp_path))
 
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    with caplog.at_level(logging.WARNING):
-        transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.segments[0].text == "dummy segment"
-    assert engine.using_dummy is True
-    assert transcript.meta["asr_backend"] == "dummy"
-    assert "decoder exploded" in transcript.meta["asr_fallback_reason"]
-    assert "Falling back to dummy output" in caplog.text
+    assert raised.value.reason_code == "asr_inference_failed"
+    assert raised.value.context["phase"] == "transcribe"
+    assert isinstance(raised.value.__cause__, RuntimeError)
 
 
-def test_transcribe_meta_records_actual_backend_for_dummy(tmp_path, monkeypatch):
-    """Metadata should reflect the actual backend/device used when falling back."""
+def test_lazy_segment_failure_is_typed_inference_error(
+    tmp_path: Path,
+) -> None:
+    def failing_segments():
+        yield segment(text="partial provider output")
+        raise RuntimeError("iterator failed")
 
-    class BrokenModel:
-        def transcribe(self, *args, **kwargs):
-            raise RuntimeError("decoder exploded")
+    model = StaticModel(failing_segments())
 
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: BrokenModel())
+    with pytest.raises(ASRInferenceError) as raised:
+        TranscriptionEngine(
+            config(),
+            backend_factory=static_factory(model),
+        ).transcribe_file(audio_file(tmp_path))
 
-    cfg = AsrConfig(model_name="tiny", device="cuda", compute_type="float16")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.meta["asr_backend"] == "dummy"
-    assert transcript.meta["asr_device"] == "cpu"
-    assert transcript.meta["asr_compute_type"] == "n/a"
+    assert raised.value.context == {"phase": "segment_iteration"}
+    assert isinstance(raised.value.__cause__, RuntimeError)
 
 
-def test_transcribe_meta_records_actual_backend_for_real_model(tmp_path, monkeypatch):
-    """Metadata should capture the real backend details when inference succeeds."""
+@pytest.mark.parametrize(
+    ("result", "violation"),
+    [
+        (None, "result_shape"),
+        (([],), "result_shape"),
+        ((None, SimpleNamespace(language="en")), "segments_not_iterable"),
+        (("not segments", SimpleNamespace(language="en")), "segment_collection_type"),
+    ],
+)
+def test_invalid_result_shape_is_typed_output_error(
+    tmp_path: Path,
+    result: Any,
+    violation: str,
+) -> None:
+    class InvalidResultModel:
+        def transcribe(self, _audio_path: str, **_kwargs: Any) -> Any:
+            return result
 
-    class SimpleModel:
-        def transcribe(self, *args, **kwargs):
-            seg = SimpleNamespace(start=0.0, end=0.5, text="ok")
-            return [seg], SimpleNamespace(language="en")
+    with pytest.raises(ASROutputError) as raised:
+        TranscriptionEngine(
+            config(),
+            backend_factory=lambda *_args: InvalidResultModel(),
+        ).transcribe_file(audio_file(tmp_path))
 
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: SimpleModel())
+    assert raised.value.reason_code == "asr_output_invalid"
+    assert raised.value.context["violation"] == violation
 
-    cfg = AsrConfig(model_name="tiny", device="cuda", compute_type="float16")
-    engine = TranscriptionEngine(cfg)
 
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
+@pytest.mark.parametrize(
+    ("bad_segment", "violation"),
+    [
+        (SimpleNamespace(end=1.0, text="missing start"), "required_shape"),
+        (segment(start=float("nan")), "non_finite_timing"),
+        (segment(start=-0.1), "negative_timing"),
+        (segment(start=1.0, end=0.5), "end_before_start"),
+        (SimpleNamespace(start=0.0, end=1.0), "missing_text"),
+        (SimpleNamespace(start=0.0, end=1.0, text=123), "text_not_string"),
+    ],
+)
+def test_malformed_segment_is_typed_output_error(
+    tmp_path: Path,
+    bad_segment: SimpleNamespace,
+    violation: str,
+) -> None:
+    model = StaticModel([bad_segment])
+    with pytest.raises(ASROutputError) as raised:
+        TranscriptionEngine(
+            config(),
+            backend_factory=static_factory(model),
+        ).transcribe_file(audio_file(tmp_path))
 
-    transcript = engine.transcribe_file(wav_path)
+    assert raised.value.context == {
+        "segment_index": 0,
+        "violation": violation,
+    }
 
+
+def test_real_zero_segment_result_is_successful_empty_transcript(
+    tmp_path: Path,
+) -> None:
+    transcript = TranscriptionEngine(
+        config(language="en"),
+        backend_factory=static_factory(
+            StaticModel([], SimpleNamespace(language="en", duration_after_vad=0.0))
+        ),
+    ).transcribe_file(audio_file(tmp_path))
+
+    assert transcript.segments == []
+    assert transcript.full_text == ""
+    assert transcript.language == "en"
+    assert transcript.duration_after_vad == 0.0
     assert transcript.meta["asr_backend"] == "faster-whisper"
-    assert transcript.meta["asr_device"] == "cuda"
-    assert transcript.meta["asr_compute_type"] == "float16"
+    assert "asr_fallback_reason" not in transcript.meta
+    assert "asr_placeholder_segments" not in transcript.meta
 
 
-def test_using_dummy_resets_after_successful_retry(tmp_path, monkeypatch):
-    """using_dummy should reflect the last run, not stick after a single failure."""
+def test_empty_transcript_writers_emit_no_fabricated_content(
+    tmp_path: Path,
+) -> None:
+    transcript = Transcript(
+        file_name="silence.wav",
+        language="en",
+        segments=[],
+        meta={"asr_backend": "faster-whisper"},
+    )
+    json_path = tmp_path / "silence.json"
+    txt_path = tmp_path / "silence.txt"
+    srt_path = tmp_path / "silence.srt"
 
-    class FlakyModel:
-        def __init__(self):
-            self.calls = 0
+    write_json(transcript, json_path)
+    write_txt(transcript, txt_path)
+    write_srt(transcript, srt_path)
 
-        def transcribe(self, *args, **kwargs):
-            self.calls += 1
-            if self.calls == 1:
-                raise RuntimeError("first call fails")
-            return [], type("info", (), {"language": "en"})()
-
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: FlakyModel())
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    first = engine.transcribe_file(wav_path)
-    assert first.meta["asr_backend"] == "dummy"
-    assert engine.using_dummy is True
-
-    second = engine.transcribe_file(wav_path)
-    assert second.meta["asr_backend"] == "faster-whisper"
-    assert engine.using_dummy is False
+    assert '"segments": []' in json_path.read_text(encoding="utf-8")
+    assert txt_path.read_text(encoding="utf-8") == ("# File: silence.wav\n# Language: en\n\n")
+    assert srt_path.read_text(encoding="utf-8") == ""
 
 
-def test_transcribe_handles_generator_failure(tmp_path, monkeypatch, caplog):
-    """Errors raised while iterating segments should trigger dummy fallback."""
-
-    class StreamingModel:
-        def transcribe(self, *args, **kwargs):
-            def generator():
-                yield SimpleNamespace(start=0.0, end=0.5, text="ok")
-                raise RuntimeError("midstream failure")
-
-            return generator(), SimpleNamespace(language="es")
-
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: StreamingModel())
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    with caplog.at_level(logging.WARNING):
-        transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.meta["asr_backend"] == "dummy"
-    assert "midstream failure" in transcript.meta["asr_fallback_reason"]
-    assert transcript.language == "es"
-    assert engine.using_dummy is True
-    assert "Whisper inference failed" in caplog.text
-
-
-def test_transcribe_retries_without_vad_kwargs(tmp_path, monkeypatch):
-    """Legacy faster-whisper builds without VAD kwargs should succeed after retry."""
-
+def test_legacy_vad_kwargs_are_removed_without_hiding_real_output(
+    tmp_path: Path,
+) -> None:
     class LegacyModel:
-        def __init__(self):
-            self.calls = 0
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
 
-        def transcribe(self, *args, **kwargs):
-            self.calls += 1
+        def transcribe(
+            self,
+            _audio_path: str,
+            **kwargs: Any,
+        ) -> tuple[list[SimpleNamespace], SimpleNamespace]:
+            self.calls.append(dict(kwargs))
             if "vad_filter" in kwargs:
                 raise TypeError("transcribe() got an unexpected keyword argument 'vad_filter'")
-            seg = SimpleNamespace(start=0.0, end=1.0, text="hi")
-            return [seg], SimpleNamespace(language="en")
+            return [segment(text="legacy result")], SimpleNamespace(language="en")
 
     model = LegacyModel()
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: model)
+    transcript = TranscriptionEngine(
+        config(),
+        backend_factory=lambda *_args: model,
+    ).transcribe_file(audio_file(tmp_path))
 
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.meta["asr_backend"] == "faster-whisper"
-    assert engine.using_dummy is False
-    assert model.calls == 2  # initial attempt with VAD + retry without
+    assert transcript.full_text == "legacy result"
+    assert len(model.calls) == 2
+    assert "vad_filter" not in model.calls[-1]
+    assert "vad_parameters" in model.calls[-1]
 
 
-def test_transcribe_retains_supported_vad_filter(tmp_path, monkeypatch):
-    """If only vad_parameters are rejected, keep using vad_filter on retry."""
-
+def test_partial_vad_support_is_retained(
+    tmp_path: Path,
+) -> None:
     class PartialVadModel:
-        def __init__(self):
-            self.calls: list[dict] = []
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
 
-        def transcribe(self, *args, **kwargs):
-            self.calls.append(kwargs)
+        def transcribe(
+            self,
+            _audio_path: str,
+            **kwargs: Any,
+        ) -> tuple[list[SimpleNamespace], SimpleNamespace]:
+            self.calls.append(dict(kwargs))
             if "vad_parameters" in kwargs:
                 raise TypeError("transcribe() got an unexpected keyword argument 'vad_parameters'")
-            seg = SimpleNamespace(start=0.0, end=1.0, text="hi")
-            return [seg], SimpleNamespace(language="en")
+            return [segment(text="partial VAD")], SimpleNamespace(language="en")
 
     model = PartialVadModel()
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: model)
+    engine = TranscriptionEngine(
+        config(),
+        backend_factory=lambda *_args: model,
+    )
+    transcript = engine.transcribe_file(audio_file(tmp_path))
 
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.meta["asr_backend"] == "faster-whisper"
-    assert engine.using_dummy is False
+    assert transcript.full_text == "partial VAD"
     assert len(model.calls) == 2
     assert "vad_filter" in model.calls[-1]
     assert "vad_parameters" not in model.calls[-1]
@@ -338,236 +390,118 @@ def test_transcribe_retains_supported_vad_filter(tmp_path, monkeypatch):
     assert engine._supports_vad_parameters is False
 
 
-def test_transcribe_drops_all_vad_kwargs_when_both_rejected(tmp_path, monkeypatch):
-    """Sequential VAD kwarg errors should fall back to running without VAD instead of dummy."""
+@pytest.mark.parametrize(
+    ("info", "configured_language", "expected"),
+    [
+        (SimpleNamespace(language="es"), "fr", "es"),
+        ({"language": "de"}, "fr", "de"),
+        ("it", "fr", "it"),
+        (SimpleNamespace(language="   "), "fr", "fr"),
+        (SimpleNamespace(), None, "unknown"),
+    ],
+)
+def test_language_normalization(
+    tmp_path: Path,
+    info: Any,
+    configured_language: str | None,
+    expected: str,
+) -> None:
+    transcript = TranscriptionEngine(
+        config(language=configured_language),
+        backend_factory=static_factory(StaticModel([segment(text="language")], info)),
+    ).transcribe_file(audio_file(tmp_path))
 
-    class NoVadSupportModel:
-        def __init__(self):
-            self.calls: list[dict] = []
-
-        def transcribe(self, *args, **kwargs):
-            self.calls.append(kwargs)
-            if "vad_filter" in kwargs:
-                raise TypeError("transcribe() got an unexpected keyword argument 'vad_filter'")
-            if "vad_parameters" in kwargs:
-                raise TypeError("transcribe() got an unexpected keyword argument 'vad_parameters'")
-            seg = SimpleNamespace(start=0.0, end=1.0, text="hi")
-            return [seg], SimpleNamespace(language="en")
-
-    model = NoVadSupportModel()
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: model)
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.meta["asr_backend"] == "faster-whisper"
-    assert engine.using_dummy is False
-    assert len(model.calls) == 3  # initial with both VAD kwargs, then one, then none
-    assert "vad_filter" not in model.calls[-1]
-    assert "vad_parameters" not in model.calls[-1]
-    assert engine._supports_vad_filter is False
-    assert engine._supports_vad_parameters is False
+    assert transcript.language == expected
 
 
-def test_transcribe_recovers_from_invalid_segment_timings(tmp_path, monkeypatch):
-    """Bad start/end timestamps should trigger dummy fallback instead of corrupt output."""
+def test_segments_are_sorted_and_reidentified(
+    tmp_path: Path,
+) -> None:
+    transcript = TranscriptionEngine(
+        config(),
+        backend_factory=static_factory(
+            StaticModel(
+                [
+                    segment(start=2.0, end=3.0, text="second"),
+                    segment(start=0.0, end=1.0, text="first"),
+                ]
+            )
+        ),
+    ).transcribe_file(audio_file(tmp_path))
 
-    class BadSegmentsModel:
-        def transcribe(self, *args, **kwargs):
-            bad_seg = SimpleNamespace(start=1.0, end=0.5, text="oops")
-            return [bad_seg], SimpleNamespace(language="en")
-
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: BadSegmentsModel())
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.meta["asr_backend"] == "dummy"
-    assert "end < start" in transcript.meta["asr_fallback_reason"]
-    assert engine.using_dummy is True
+    assert [(item.id, item.text) for item in transcript.segments] == [
+        (0, "first"),
+        (1, "second"),
+    ]
 
 
-def test_transcribe_defaults_language_when_missing(tmp_path, monkeypatch):
-    """Missing language info should fall back to configured language or 'unknown'."""
+def test_word_timestamps_are_preserved(
+    tmp_path: Path,
+) -> None:
+    words = [
+        SimpleNamespace(
+            word=" hello",
+            start=0.0,
+            end=0.4,
+            probability=0.9,
+        )
+    ]
+    transcript = TranscriptionEngine(
+        config(word_timestamps=True),
+        backend_factory=static_factory(StaticModel([segment(text="hello", words=words)])),
+    ).transcribe_file(audio_file(tmp_path))
 
-    class NoLanguageModel:
-        def transcribe(self, *args, **kwargs):
-            seg = SimpleNamespace(start=0.0, end=1.0, text="hello")
-            return [seg], SimpleNamespace()  # no language attribute
-
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: NoLanguageModel())
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8", language="fr")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.language == "fr"
-    assert transcript.meta["asr_backend"] == "faster-whisper"
-    assert engine.using_dummy is False
+    assert transcript.segments[0].words is not None
+    assert transcript.segments[0].words[0].word == " hello"
 
 
-def test_transcribe_uses_language_from_mapping_info(tmp_path, monkeypatch):
-    """Language should be read from dict-like info objects too."""
+def test_missing_file_and_directory_fail_before_backend_dispatch(
+    tmp_path: Path,
+) -> None:
+    model = StaticModel([segment()])
+    engine = TranscriptionEngine(
+        config(),
+        backend_factory=static_factory(model),
+    )
 
-    class DictInfoModel:
-        def transcribe(self, *args, **kwargs):
-            seg = SimpleNamespace(start=0.0, end=1.0, text="hola")
-            return [seg], {"language": "es"}
-
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: DictInfoModel())
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8", language=None)
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.language == "es"
-    assert transcript.meta["asr_backend"] == "faster-whisper"
-    assert engine.using_dummy is False
-
-
-def test_transcribe_accepts_language_string_info(tmp_path, monkeypatch):
-    """Language string returned directly as info should be respected."""
-
-    class StringInfoModel:
-        def transcribe(self, *args, **kwargs):
-            seg = SimpleNamespace(start=0.0, end=1.0, text="hola")
-            return [seg], "es"
-
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: StringInfoModel())
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8", language="fr")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.language == "es"
-    assert transcript.meta["asr_backend"] == "faster-whisper"
-    assert engine.using_dummy is False
-
-
-def test_transcribe_trims_blank_language(tmp_path, monkeypatch):
-    """Whitespace-only language in info should fall back to configured language."""
-
-    class BlankLanguageModel:
-        def transcribe(self, *args, **kwargs):
-            seg = SimpleNamespace(start=0.0, end=1.0, text="bonjour")
-            return [seg], SimpleNamespace(language="   ")
-
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", lambda self: BlankLanguageModel())
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8", language="de")
-    engine = TranscriptionEngine(cfg)
-
-    wav_path = Path(tmp_path) / "clip.wav"
-    audio = np.zeros(16000, dtype=np.float32)
-    sf.write(wav_path, audio, 16000)
-
-    transcript = engine.transcribe_file(wav_path)
-
-    assert transcript.language == "de"
-    assert transcript.meta["asr_backend"] == "faster-whisper"
-    assert engine.using_dummy is False
-
-
-def test_transcribe_raises_for_missing_audio(tmp_path, monkeypatch):
-    """Engine should fail fast if the audio file path does not exist."""
-
-    def build_dummy(self):
-        return asr_engine.DummyWhisperModel(AsrConfig(device="cpu", compute_type="int8"))
-
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", build_dummy)
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8")
-    engine = TranscriptionEngine(cfg)
-
-    missing = tmp_path / "missing.wav"
     with pytest.raises(FileNotFoundError):
-        engine.transcribe_file(missing)
+        engine.transcribe_file(tmp_path / "missing.wav")
 
-
-def test_transcribe_rejects_directory_path(tmp_path, monkeypatch):
-    """Engine should not attempt transcription on a directory path."""
-
-    def build_dummy(self):
-        return asr_engine.DummyWhisperModel(AsrConfig(device="cpu", compute_type="int8"))
-
-    monkeypatch.setattr(TranscriptionEngine, "_init_model", build_dummy)
-
-    cfg = AsrConfig(model_name="tiny", device="cpu", compute_type="int8")
-    engine = TranscriptionEngine(cfg)
-
-    directory = tmp_path / "audio_dir.wav"
+    directory = tmp_path / "directory.wav"
     directory.mkdir()
-
     with pytest.raises(IsADirectoryError):
         engine.transcribe_file(directory)
 
+    assert model.calls == []
 
-def test_pipeline_meta_keeps_backend_details():
-    """Internal metadata builder should preserve ASR backend annotations."""
-    from transcription.config import AppConfig
-    from transcription.pipeline import _build_meta
 
-    transcript = Transcript(
-        file_name="example.wav",
-        language="en",
-        segments=[],
-        meta={"asr_backend": "dummy", "asr_fallback_reason": "missing faster-whisper"},
+def test_transcribe_many_propagates_typed_failure(
+    tmp_path: Path,
+) -> None:
+    first = audio_file(tmp_path)
+    second = tmp_path / "second.wav"
+    second.write_bytes(b"also not read")
+
+    class FailsSecond:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def transcribe(
+            self,
+            _audio_path: str,
+            **_kwargs: Any,
+        ) -> tuple[list[SimpleNamespace], SimpleNamespace]:
+            self.calls += 1
+            if self.calls == 2:
+                raise RuntimeError("second inference failed")
+            return [segment(text="first")], SimpleNamespace(language="en")
+
+    engine = TranscriptionEngine(
+        config(),
+        backend_factory=lambda *_args: FailsSecond(),
     )
-    meta = _build_meta(AppConfig(), transcript, Path("audio.wav"), 12.3)
+    iterator = iter(engine.transcribe_many([first, second]))
 
-    assert meta["asr_backend"] == "dummy"
-    assert "missing faster-whisper" in meta["asr_fallback_reason"]
-    assert meta["audio_file"] == "example.wav"
-
-
-def test_pipeline_meta_prefers_actual_asr_runtime():
-    """Metadata should record the actual device/compute_type used by ASR."""
-    from transcription.config import AppConfig
-    from transcription.pipeline import _build_meta
-
-    transcript = Transcript(
-        file_name="example.wav",
-        language="en",
-        segments=[],
-        meta={
-            "asr_backend": "dummy",
-            "asr_device": "cpu",
-            "asr_compute_type": "n/a",
-        },
-    )
-    cfg = AppConfig()
-    cfg.asr.device = "cuda"
-    cfg.asr.compute_type = "float16"
-
-    meta = _build_meta(cfg, transcript, Path("audio.wav"), 12.3)
-
-    assert meta["device"] == "cpu"
-    assert meta["compute_type"] == "n/a"
-    assert meta["asr_backend"] == "dummy"
+    assert next(iterator).full_text == "first"
+    with pytest.raises(ASRInferenceError):
+        next(iterator)

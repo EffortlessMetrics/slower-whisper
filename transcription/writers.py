@@ -23,6 +23,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .generation_receipt import ensure_generation_receipt
 from .models import SCHEMA_VERSION, Chunk, Segment, Transcript, Word
 
 if TYPE_CHECKING:
@@ -67,15 +68,11 @@ def write_json(transcript: Transcript, out_path: Path) -> None:
     - audio_state field for segments (v1.0+)
     - speakers and turns arrays (v1.1+, optional)
     """
-
     raw_meta: Any = transcript.meta
     if raw_meta is None:
         meta_out: dict[str, Any] = {}
     elif isinstance(raw_meta, dict):
         meta_out = dict(raw_meta)
-        diar_meta = meta_out.get("diarization")
-        if diar_meta is not None and not isinstance(diar_meta, dict):
-            meta_out["diarization"] = _to_dict(diar_meta)
     else:
         converted = _to_dict(raw_meta)
         if isinstance(converted, dict):
@@ -87,6 +84,13 @@ def write_json(transcript: Transcript, out_path: Path) -> None:
                 type(raw_meta).__name__,
             )
             meta_out = {}
+
+    diar_meta = meta_out.get("diarization")
+    if diar_meta is not None and not isinstance(diar_meta, dict):
+        meta_out["diarization"] = _to_dict(diar_meta)
+
+    meta_out = ensure_generation_receipt(meta_out)
+    transcript.meta = meta_out
 
     data = {
         "schema_version": SCHEMA_VERSION,

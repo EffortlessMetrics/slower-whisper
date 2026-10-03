@@ -1,0 +1,187 @@
+name: ASR Truth
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  asr-truth:
+    name: asr-truth (source + installed wheel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install base ASR test environment
+        run: |
+          uv sync
+          uv pip install --python .venv/bin/python pytest
+
+      - name: Show canonical formatting diff
+        run: |
+          uvx ruff@0.14.9 format --diff \
+            transcription/asr_engine.py \
+            tests/test_asr_engine.py \
+            tests/test_asr_vad_negotiation.py \
+            tests/test_smoke_asr.py
+
+      - name: Verify unit and source-policy truth contract
+        run: |
+          .venv/bin/python -m pytest -q \
+            tests/test_asr_engine.py \
+            tests/test_asr_vad_negotiation.py \
+            tests/test_asr_truth_policy.py
+
+      - name: Build and install wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          mapfile -t wheels < <(find dist -maxdepth 1 -type f -name '*.whl' -print)
+          test "${#wheels[@]}" -eq 1
+          WHEEL="${wheels[0]}"
+          VENV="$RUNNER_TEMP/asr-truth-wheel"
+          uv venv "$VENV" --python 3.12
+          uv pip install --python "$VENV/bin/python" "$WHEEL"
+          uv pip check --python "$VENV/bin/python"
+          echo "ASR_TRUTH_VENV=$VENV" >> "$GITHUB_ENV"
+
+      - name: Exercise installed ASR contract outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+
+          "$ASR_TRUTH_VENV/bin/python" - <<'PY'
+          from pathlib import Path
+          from types import SimpleNamespace
+
+          import transcription.asr_engine as module
+          from transcription.asr_engine import TranscriptionEngine
+          from transcription.config import AsrConfig
+          from transcription.exceptions import (
+              ASRInferenceError,
+              ASRModelLoadError,
+              ASROutputError,
+              ASRUnavailableError,
+          )
+
+          module_path = Path(module.__file__).resolve()
+          assert "site-packages" in module_path.parts, module_path
+          source = module_path.read_text(encoding="utf-8")
+          assert "DummyWhisperModel" not in source
+          assert "dummy segment" not in source
+
+          original_available = module._FASTER_WHISPER_AVAILABLE
+          original_model = module.WhisperModel
+          original_import_error = module._FASTER_WHISPER_IMPORT_ERROR
+          try:
+              module._FASTER_WHISPER_AVAILABLE = False
+              module.WhisperModel = None
+              module._FASTER_WHISPER_IMPORT_ERROR = ImportError("local detail")
+              try:
+                  TranscriptionEngine(
+                      AsrConfig(
+                          model_name="tiny",
+                          device="cpu",
+                          compute_type="int8",
+                      )
+                  )
+              except ASRUnavailableError as exc:
+                  assert exc.reason_code == "asr_backend_unavailable"
+                  assert "local detail" not in str(exc.public_details())
+              else:
+                  raise AssertionError("missing backend returned success")
+          finally:
+              module._FASTER_WHISPER_AVAILABLE = original_available
+              module.WhisperModel = original_model
+              module._FASTER_WHISPER_IMPORT_ERROR = original_import_error
+
+          def cfg(device="cpu", compute_type="int8"):
+              return AsrConfig(
+                  model_name="tiny",
+                  device=device,
+                  compute_type=compute_type,
+              )
+
+          def audio(name):
+              path = Path(name)
+              path.write_bytes(b"injected backends do not read audio")
+              return path
+
+          class SilenceModel:
+              def transcribe(self, _path, **_kwargs):
+                  return [], SimpleNamespace(language="en")
+
+          silence = TranscriptionEngine(
+              cfg(),
+              backend_factory=lambda *_args: SilenceModel(),
+          ).transcribe_file(audio("silence.wav"))
+          assert silence.segments == []
+          assert silence.meta["asr_backend"] == "faster-whisper"
+
+          class BrokenModel:
+              def transcribe(self, _path, **_kwargs):
+                  raise RuntimeError("provider detail")
+
+          try:
+              TranscriptionEngine(
+                  cfg(),
+                  backend_factory=lambda *_args: BrokenModel(),
+              ).transcribe_file(audio("broken.wav"))
+          except ASRInferenceError as exc:
+              assert exc.reason_code == "asr_inference_failed"
+          else:
+              raise AssertionError("inference failure returned success")
+
+          class InvalidModel:
+              def transcribe(self, _path, **_kwargs):
+                  bad = SimpleNamespace(start=1.0, end=0.0, text="bad")
+                  return [bad], SimpleNamespace(language="en")
+
+          try:
+              TranscriptionEngine(
+                  cfg(),
+                  backend_factory=lambda *_args: InvalidModel(),
+              ).transcribe_file(audio("invalid.wav"))
+          except ASROutputError as exc:
+              assert exc.context["violation"] == "end_before_start"
+          else:
+              raise AssertionError("invalid output returned success")
+
+          def load_failure(_model, device, compute_type, _root):
+              raise RuntimeError(f"provider detail {device}/{compute_type}")
+
+          try:
+              TranscriptionEngine(
+                  cfg("cuda", "float16"),
+                  backend_factory=load_failure,
+              )
+          except ASRModelLoadError as exc:
+              assert len(exc.context["attempts"]) == 2
+              assert "provider detail" not in str(exc.public_details())
+          else:
+              raise AssertionError("model load failure returned success")
+          PY

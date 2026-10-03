@@ -116,10 +116,74 @@ jobs:
         with:
           fetch-depth: 0  # full history for gitleaks
 
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+      - name: Install gitleaks CLI
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: "8.30.1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          checksums="gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+
+          curl --fail --silent --show-error --location             --output "$RUNNER_TEMP/$archive" "$base/$archive"
+          curl --fail --silent --show-error --location             --output "$RUNNER_TEMP/$checksums" "$base/$checksums"
+
+          cd "$RUNNER_TEMP"
+          grep "  $archive$" "$checksums" | sha256sum --check -
+          tar -xzf "$archive" gitleaks
+          chmod 0755 "$RUNNER_TEMP/gitleaks"
+          "$RUNNER_TEMP/gitleaks" version
+
+      - name: Run gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_commits=$(git rev-list --count --all)
+          test "$expected_commits" -gt 0
+
+          set +e
+          "$RUNNER_TEMP/gitleaks" git \
+            --config .gitleaks.toml \
+            --redact \
+            --no-banner \
+            --no-color \
+            --report-format json \
+            --report-path "$RUNNER_TEMP/gitleaks-report.json" \
+            --log-opts="--full-history --all --diff-filter=tuxdb" \
+            . 2>&1 | tee "$RUNNER_TEMP/gitleaks.log"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ -s "$RUNNER_TEMP/gitleaks-report.json" ]; then
+            echo "Redacted finding metadata (rule, file, commit):"
+            python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = Path(os.environ["RUNNER_TEMP"]) / "gitleaks-report.json"
+          findings = json.loads(report.read_text())
+          rows = {
+              (
+                  str(finding.get("RuleID", "")),
+                  str(finding.get("File", "")),
+                  str(finding.get("Commit", "")),
+              )
+              for finding in findings
+          }
+          for rule, file_name, commit in sorted(rows):
+              print(f"{rule}\t{file_name}\t{commit}")
+          PY
+          fi
+
+          scanned_commits=$(sed -nE 's/.* ([0-9]+) commits scanned\..*/\1/p' \
+            "$RUNNER_TEMP/gitleaks.log" | tail -1)
+          if [ -z "$scanned_commits" ] || [ "$scanned_commits" -eq 0 ]; then
+            echo "::error::Gitleaks did not prove that it scanned repository history."
+            exit 2
+          fi
+          exit "$status"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -181,7 +245,7 @@ jobs:
       - name: Install wheel in clean environment
         run: |
           uv venv .venv-smoke
-          .venv-smoke/bin/pip install dist/*.whl
+          uv pip install --python .venv-smoke dist/*.whl
 
       - name: Verify slower_whisper import (installed wheel)
         run: |

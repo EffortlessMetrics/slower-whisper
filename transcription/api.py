@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .config import EnrichmentConfig, TranscriptionConfig
+
+if TYPE_CHECKING:
+    from .asr_engine import TranscriptionEngine
 
 # --- Keep patch points stable for tests and downstream users ---
 from .diarization_orchestrator import _maybe_run_diarization
@@ -24,6 +28,7 @@ from .enrichment_orchestrator import (
     _run_speaker_analytics,
 )
 from .models import Transcript
+from .source_identity import safe_source_name
 from .transcript_io import load_transcript, save_transcript
 from .transcription_helpers import (
     _get_wav_duration_seconds,
@@ -58,8 +63,14 @@ def transcribe_file(
     audio_path: str | Path,
     root: str | Path,
     config: TranscriptionConfig,
+    *,
+    _engine: TranscriptionEngine | None = None,
 ) -> Transcript:
-    # Pass helpers at call-time so patching transcription.api.* keeps working.
+    """Transcribe one file.
+
+    ``_engine`` is a private service/runtime seam. Ordinary Python and CLI
+    callers omit it and retain operation-owned engine construction.
+    """
     return _transcribe_file_impl(
         audio_path=audio_path,
         root=root,
@@ -67,6 +78,7 @@ def transcribe_file(
         get_wav_duration_seconds=_get_wav_duration_seconds,
         maybe_run_diarization=_maybe_run_diarization,
         maybe_build_chunks=_maybe_build_chunks,
+        engine=_engine,
     )
 
 
@@ -85,9 +97,10 @@ def transcribe_bytes(
         audio_bytes: Raw audio bytes (any ffmpeg-supported format)
         config: Transcription configuration. If None, uses defaults from env
             via TranscriptionConfig.from_sources().
-        file_name: Filename to use in the transcript metadata. The extension
-            is used to hint at the audio format (e.g., "audio.mp3", "clip.wav").
-            Defaults to "audio.wav".
+        file_name: Caller-facing source filename. Path components and unsafe
+            characters are removed before it enters transcript metadata. The
+            extension is used to hint at the audio format. Defaults to
+            ``audio.wav``.
 
     Returns:
         Transcript object with transcription results
@@ -95,27 +108,12 @@ def transcribe_bytes(
     Raises:
         TranscriptionError: If transcription fails due to invalid audio,
             missing dependencies, or other errors.
-
-    Example:
-        >>> from transcription import transcribe_bytes
-        >>> with open("recording.wav", "rb") as f:
-        ...     audio_data = f.read()
-        >>> transcript = transcribe_bytes(audio_data)
-        >>> print(transcript.full_text)
-
-        >>> # With custom config
-        >>> from transcription import TranscriptionConfig
-        >>> config = TranscriptionConfig(model="base", device="cpu")
-        >>> transcript = transcribe_bytes(audio_data, config, file_name="meeting.wav")
     """
-    from pathlib import Path
-
-    # Use default config from environment if not provided
     if config is None:
         config = TranscriptionConfig.from_sources()
 
-    # Extract format hint from file_name extension
-    suffix = Path(file_name).suffix
+    source_name = safe_source_name(file_name)
+    suffix = Path(source_name).suffix
     format_hint = suffix.lstrip(".").lower() if suffix else "wav"
 
     transcript = _transcribe_bytes_impl(
@@ -126,10 +124,9 @@ def transcribe_bytes(
         maybe_run_diarization=_maybe_run_diarization,
         maybe_build_chunks=_maybe_build_chunks,
     )
-
-    # Set the file_name in the transcript metadata
-    transcript.file_name = file_name
-
+    transcript.file_name = source_name
+    transcript.meta = dict(transcript.meta or {})
+    transcript.meta["audio_file"] = source_name
     return transcript
 
 

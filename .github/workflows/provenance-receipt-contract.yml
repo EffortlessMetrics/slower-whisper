@@ -1,0 +1,294 @@
+name: Provenance Receipt Contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  provenance-receipt-contract:
+    name: provenance-receipt-contract (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install complete test environment
+        run: uv sync --python ${{ matrix.python-version }} --extra dev --extra api
+
+      - name: Verify static provenance contract
+        run: |
+          uv run ruff check \
+            scripts/write_build_info.py \
+            transcription/_build_info.py \
+            transcription/build_info.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py \
+            tests/test_build_info.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+          uv run ruff format --check \
+            scripts/write_build_info.py \
+            transcription/_build_info.py \
+            transcription/build_info.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py \
+            tests/test_build_info.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+          uv run mypy \
+            transcription/build_info.py \
+            transcription/meta_utils.py \
+            transcription/receipt.py
+          ! grep -Fq 'subprocess' transcription/receipt.py
+          git diff --check
+
+      - name: Verify build identity, receipt, schema, and public surfaces
+        run: |
+          uv run pytest -q \
+            tests/test_build_info.py \
+            tests/test_meta_utils.py \
+            tests/test_provenance_schema.py \
+            tests/test_provenance_surfaces.py \
+            tests/test_receipt.py
+
+      - name: Verify documentation contract
+        run: |
+          grep -Fq 'Runtime code never invokes `git`' docs/PROVENANCE.md
+          grep -Fq 'Every successful file, bytes, and batch REST transcription' \
+            docs/RUNTIME_SERVICE_CONTRACT.md
+          grep -Fq 'receipt-v1.schema.json' docs/PROVENANCE.md
+          grep -Fq 'receipt-v1.schema.json' transcription/schemas/README.md
+
+  provenance-artifact-installed:
+    name: provenance-artifact-installed (${{ matrix.artifact }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: [wheel, sdist]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Build wheel and sdist with explicit trusted identity
+        env:
+          BUILD_ID: provenance-${{ github.run_id }}-${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/write_build_info.py \
+            --source-commit "$GITHUB_SHA" \
+            --build-id "$BUILD_ID"
+          echo "EXPECTED_SOURCE_COMMIT=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+          echo "EXPECTED_BUILD_ID=$BUILD_ID" >> "$GITHUB_ENV"
+          uv build
+
+      - name: Install selected artifact outside the checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          VENV="$RUNNER_TEMP/provenance-${{ matrix.artifact }}"
+          uv venv "$VENV" --python 3.12
+          if [[ "${{ matrix.artifact }}" == "wheel" ]]; then
+            TARGET=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          else
+            TARGET=$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
+          fi
+          test -n "$TARGET"
+          uv pip install --python "$VENV/bin/python" "${TARGET}[api]"
+          uv pip install --python "$VENV/bin/python" pytest jsonschema httpx
+          uv pip check --python "$VENV/bin/python"
+          echo "PROVENANCE_VENV=$VENV" >> "$GITHUB_ENV"
+
+      - name: Prove installed identity is cwd and PATH independent
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/unrelated-caller"
+          mkdir -p "$WORK/.git" "$WORK/bin"
+          cat > "$WORK/bin/git" <<'SH'
+          #!/bin/sh
+          echo deadbeefdead
+          SH
+          chmod +x "$WORK/bin/git"
+          cd "$WORK"
+          unset PYTHONPATH
+          export PATH="$WORK/bin:$PATH"
+
+          "$PROVENANCE_VENV/bin/python" - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from importlib import resources
+          from pathlib import Path
+
+          from jsonschema import Draft7Validator, FormatChecker
+
+          import transcription
+          from transcription.build_info import get_package_build_info
+          from transcription.meta_utils import build_generation_metadata
+          from transcription.models import Transcript
+          from transcription.receipt import get_git_commit
+          from transcription.writers import write_json
+
+          package_path = Path(transcription.__file__).resolve()
+          assert "site-packages" in package_path.parts, package_path
+          info = get_package_build_info()
+          assert info.source_commit == os.environ["EXPECTED_SOURCE_COMMIT"]
+          assert info.build_id == os.environ["EXPECTED_BUILD_ID"]
+          assert get_git_commit() == os.environ["EXPECTED_SOURCE_COMMIT"]
+          assert get_git_commit() != "deadbeefdead"
+
+          transcript = Transcript(
+              file_name="silence.wav",
+              language="en",
+              segments=[],
+              meta={
+                  "asr_backend": "faster-whisper",
+                  "asr_model": "tiny",
+                  "asr_device": "cpu",
+                  "asr_compute_type": "int8",
+                  "asr_model_load_attempts": [
+                      {
+                          "device": "cuda",
+                          "compute_type": "float16",
+                          "outcome": "failed",
+                          "reason_code": "asr_model_load_failed",
+                          "private_error": "/private/provider/path",
+                      },
+                      {
+                          "device": "cpu",
+                          "compute_type": "int8",
+                          "outcome": "selected",
+                          "reason_code": "ok",
+                      },
+                  ],
+              },
+          )
+          transcript.meta = build_generation_metadata(
+              transcript,
+              duration_sec=0.01,
+              model_name="tiny",
+              config_device="cuda",
+              config_compute_type="float16",
+              beam_size=5,
+              vad_min_silence_ms=500,
+              language_hint="en",
+              task="transcribe",
+              pipeline_version="2.0.2",
+              root=Path.cwd(),
+          )
+          receipt = transcript.meta["receipt"]
+          assert receipt["device"] == "cpu"
+          assert receipt["compute_type"] == "int8"
+          assert receipt["git_commit"] == os.environ["EXPECTED_SOURCE_COMMIT"]
+          assert receipt["build_id"] == os.environ["EXPECTED_BUILD_ID"]
+          serialized_receipt = json.dumps(receipt)
+          assert str(Path.cwd()) not in serialized_receipt
+          assert "/private/provider/path" not in serialized_receipt
+
+          package_root = resources.files("transcription")
+          receipt_schema = json.loads(
+              package_root.joinpath("schemas/receipt-v1.schema.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert not list(
+              Draft7Validator(
+                  receipt_schema,
+                  format_checker=FormatChecker(),
+              ).iter_errors(receipt)
+          )
+
+          output = Path("installed-transcript.json")
+          write_json(transcript, output)
+          document = json.loads(output.read_text(encoding="utf-8"))
+          transcript_schema = json.loads(
+              package_root.joinpath("schemas/transcript-v2.schema.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert not list(
+              Draft7Validator(
+                  transcript_schema,
+                  format_checker=FormatChecker(),
+              ).iter_errors(document)
+          )
+          PY
+
+      - name: Exercise installed file, bytes, and REST surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_ROOT="$RUNNER_TEMP/provenance-surface-tests"
+          mkdir -p "$TEST_ROOT"
+          cp tests/test_provenance_surfaces.py "$TEST_ROOT/"
+          cd "$TEST_ROOT"
+          unset PYTHONPATH
+          "$PROVENANCE_VENV/bin/python" -m pytest -q test_provenance_surfaces.py
+
+      - name: Inspect generated metadata in each distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.artifact }}" == "wheel" ]]; then
+            python -m zipfile -l dist/*.whl > "$RUNNER_TEMP/wheel-contents.txt"
+            grep -q 'transcription/_build_info.py' "$RUNNER_TEMP/wheel-contents.txt"
+            grep -q 'transcription/schemas/receipt-v1.schema.json' \
+              "$RUNNER_TEMP/wheel-contents.txt"
+          else
+            tar -tzf dist/*.tar.gz > "$RUNNER_TEMP/sdist-contents.txt"
+            grep -q '/transcription/_build_info.py$' \
+              "$RUNNER_TEMP/sdist-contents.txt"
+            grep -q '/transcription/schemas/receipt-v1.schema.json$' \
+              "$RUNNER_TEMP/sdist-contents.txt"
+          fi

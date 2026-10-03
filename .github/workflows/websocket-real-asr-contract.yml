@@ -1,0 +1,183 @@
+name: WebSocket Real ASR Contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  websocket-real-asr-contract:
+    name: websocket-real-asr-contract (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install focused route environment
+        run: uv sync --frozen --python ${{ matrix.python-version }} --extra dev --extra api
+
+      - name: Verify static route ownership
+        run: |
+          uv run ruff check \
+            transcription/exceptions.py \
+            transcription/incremental_asr.py \
+            transcription/service.py \
+            transcription/service_runtime_streaming.py \
+            transcription/streaming_revision_controller.py \
+            transcription/streaming_runtime_asr.py \
+            tests/test_incremental_asr.py \
+            tests/test_public_streaming_real_asr.py \
+            tests/test_streaming_revision_controller.py \
+            tests/test_streaming_revision_edges.py \
+            tests/test_streaming_runtime_asr.py \
+            tests/test_websocket_real_asr_source_policy.py \
+            tests/test_websocket_streaming.py
+          uv run ruff format --check \
+            transcription/exceptions.py \
+            transcription/incremental_asr.py \
+            transcription/service.py \
+            transcription/service_runtime_streaming.py \
+            transcription/streaming_revision_controller.py \
+            transcription/streaming_runtime_asr.py \
+            tests/test_incremental_asr.py \
+            tests/test_public_streaming_real_asr.py \
+            tests/test_streaming_revision_controller.py \
+            tests/test_streaming_revision_edges.py \
+            tests/test_streaming_runtime_asr.py \
+            tests/test_websocket_real_asr_source_policy.py \
+            tests/test_websocket_streaming.py
+          uv run mypy \
+            transcription/service_runtime_streaming.py \
+            transcription/streaming_revision_controller.py \
+            transcription/streaming_runtime_asr.py
+          git diff --check
+
+      - name: Verify real route, revision, runtime, and source policy
+        run: |
+          uv run pytest -q \
+            tests/test_incremental_asr.py \
+            tests/test_public_streaming_real_asr.py \
+            tests/test_streaming_revision_controller.py \
+            tests/test_streaming_revision_edges.py \
+            tests/test_streaming_runtime_asr.py \
+            tests/test_websocket_real_asr_source_policy.py \
+            tests/test_websocket_streaming.py \
+            tests/test_streaming_ws.py
+
+      - name: Verify public documentation
+        run: |
+          grep -Fq 'The public `/stream` ASR path accepts' \
+            docs/INCREMENTAL_ASR_CONTRACT.md
+          grep -Fq 'No public transcript event may contain' \
+            docs/WEBSOCKET_REAL_ASR_CONTRACT.md
+          grep -Fq 'process-owned ASR runtime' \
+            docs/WEBSOCKET_REAL_ASR_CONTRACT.md
+
+  websocket-real-asr-full-suite:
+    name: websocket-real-asr-full-suite (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install full repository environment
+        run: uv sync --frozen --python 3.12 --extra dev --extra api
+
+      - name: Verify full non-heavy repository suite
+        run: |
+          uv run pytest -q \
+            -m "not slow and not heavy and not requires_gpu" \
+            --no-cov
+
+  websocket-real-asr-installed:
+    name: websocket-real-asr-installed (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Build and install API wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          VENV="$RUNNER_TEMP/websocket-real-asr-${{ matrix.python-version }}"
+          uv venv "$VENV" --python ${{ matrix.python-version }}
+          WHEEL=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$WHEEL"
+          uv pip install --python "$VENV/bin/python" "${WHEEL}[api]"
+          uv pip install --python "$VENV/bin/python" pytest httpx
+          uv pip check --python "$VENV/bin/python"
+          echo "REAL_ASR_VENV=$VENV" >> "$GITHUB_ENV"
+
+      - name: Exercise installed public route outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_ROOT="$RUNNER_TEMP/websocket-real-asr-tests-${{ matrix.python-version }}"
+          mkdir -p "$TEST_ROOT"
+          cp tests/test_public_streaming_real_asr.py "$TEST_ROOT/"
+          cp tests/test_websocket_real_asr_source_policy.py "$TEST_ROOT/"
+          cd "$TEST_ROOT"
+          unset PYTHONPATH
+          "$REAL_ASR_VENV/bin/python" -m pytest -q \
+            test_public_streaming_real_asr.py \
+            test_websocket_real_asr_source_policy.py

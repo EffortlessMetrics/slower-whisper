@@ -65,13 +65,20 @@ def _run_async_safely[T](coro: Coroutine[Any, Any, T]) -> T:
 
     try:
         asyncio.get_running_loop()
-        # Already in async context - run in a thread to avoid blocking
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(asyncio.run, coro)
-            return future.result()
     except RuntimeError:
-        # No running loop - use asyncio.run directly
+        # Only loop discovery belongs in this catch. A provider's RuntimeError
+        # must propagate unchanged rather than rerunning an exhausted coroutine.
         return asyncio.run(coro)
+
+    # The caller already owns an event loop; execute on a separate thread.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        try:
+            future = pool.submit(asyncio.run, coro)
+        except BaseException:
+            # Submission failed before the executor could take ownership.
+            coro.close()
+            raise
+        return future.result()
 
 
 # -----------------------------------------------------------------------------
@@ -1234,8 +1241,8 @@ class OpenAISemanticAdapter(CloudLLMSemanticAdapter):
         """
         import os
 
-        from .historian.llm_client import LLMConfig, OpenAIProvider
         from .llm_guardrails import GuardedLLMProvider
+        from .llm_provider import LLMConfig, OpenAIProvider
 
         super().__init__(
             guardrails=guardrails,
@@ -1396,8 +1403,8 @@ class AnthropicSemanticAdapter(CloudLLMSemanticAdapter):
         """
         import os
 
-        from .historian.llm_client import AnthropicProvider, LLMConfig
         from .llm_guardrails import GuardedLLMProvider
+        from .llm_provider import AnthropicProvider, LLMConfig
 
         super().__init__(
             guardrails=guardrails,

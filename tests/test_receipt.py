@@ -52,7 +52,7 @@ class TestReceiptRequiredFields:
             model="tiny",
             device="cpu",
             compute_type="int8",
-            config_hash="abcd1234efgh",
+            config_hash="abcd1234efab",
             run_id="run-20260128-120000-abc123",
             created_at="2024-01-01T00:00:00Z",
         )
@@ -199,7 +199,7 @@ class TestGitCommit:
             "model": "tiny",
             "device": "cpu",
             "compute_type": "int8",
-            "config_hash": "abcd1234efgh",
+            "config_hash": "abcd1234efab",
             "run_id": "run-20260128-120000-abc123",
             "created_at": "2024-01-01T00:00:00Z",
         }
@@ -271,7 +271,7 @@ class TestReceiptValidation:
             "model": "tiny",
             "device": "cpu",
             "compute_type": "int8",
-            "config_hash": "abcd1234efgh",
+            "config_hash": "abcd1234efab",
             "run_id": "run-20260128-120000-abc123",
             "created_at": "2024-01-01T00:00:00Z",
         }
@@ -286,7 +286,7 @@ class TestReceiptValidation:
             "model": "tiny",
             "device": "cpu",
             "compute_type": "int8",
-            "config_hash": "abcd1234efgh",
+            "config_hash": "abcd1234efab",
             "run_id": "run-20260128-120000-abc123",
             "created_at": "2024-01-01T00:00:00Z",
         }
@@ -316,7 +316,7 @@ class TestReceiptValidation:
             "model": "tiny",
             "device": "cpu",
             "compute_type": "int8",
-            "config_hash": "abcd1234efgh",
+            "config_hash": "abcd1234efab",
             "run_id": "550e8400-e29b-41d4-a716-446655440000",  # Legacy UUID format
             "created_at": "2024-01-01T00:00:00Z",
         }
@@ -366,7 +366,7 @@ class TestReceiptSerialization:
             model="tiny",
             device="cpu",
             compute_type="int8",
-            config_hash="abcd1234efgh",
+            config_hash="abcd1234efab",
             run_id="run-20260128-120000-abc123",
             created_at="2024-01-01T00:00:00Z",
             git_commit="abc1234",
@@ -461,3 +461,20 @@ class TestBuildReceiptWithCustomConfig:
             config=config,
         )
         assert r1.config_hash == r2.config_hash
+
+
+def test_invalid_model_load_reason_is_not_admitted_to_receipt() -> None:
+    receipt = build_receipt(
+        model="tiny",
+        device="cpu",
+        compute_type="int8",
+        model_load_attempts=[
+            {
+                "device": "cpu",
+                "compute_type": "int8",
+                "outcome": "selected",
+                "reason_code": "contains a space",
+            }
+        ],
+    )
+    assert "model_load_attempts" not in receipt.to_dict()

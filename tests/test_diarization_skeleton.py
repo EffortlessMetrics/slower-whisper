@@ -585,6 +585,17 @@ def test_synthetic_2speaker_diarization(tmp_path, monkeypatch):
 # ============================================================================
 
 
+def _assert_selected_real_asr(transcript: Transcript) -> None:
+    """Assert that silent audio was processed by a selected real backend."""
+    meta = transcript.meta or {}
+    assert meta.get("asr_backend") == "faster-whisper"
+    attempts = meta.get("asr_model_load_attempts")
+    assert isinstance(attempts, list) and attempts
+    assert any(attempt.get("outcome") == "selected" for attempt in attempts)
+    assert "asr_placeholder_segments" not in meta
+    assert "asr_fallback_reason" not in meta
+
+
 @pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not available")
 def test_transcribe_file_with_diarization_enabled(tmp_path, sample_audio_path):
     """
@@ -613,9 +624,9 @@ def test_transcribe_file_with_diarization_enabled(tmp_path, sample_audio_path):
     except Exception as e:
         pytest.fail(f"transcribe_file crashed with enable_diarization=True: {e}")
 
-    # Verify transcript structure
+    # Silence is a valid empty transcript; prove that real ASR ran instead.
     assert isinstance(transcript, Transcript)
-    assert len(transcript.segments) > 0
+    _assert_selected_real_asr(transcript)
 
     # Verify diarization behavior:
     # - When diarization succeeds on silent audio: speakers=[], turns=[], status="ok"
@@ -658,9 +669,9 @@ def test_transcribe_file_without_diarization(tmp_path, sample_audio_path):
         config=config,
     )
 
-    # Should complete normally
+    # Should complete normally; silence may legitimately produce no segments.
     assert isinstance(transcript, Transcript)
-    assert len(transcript.segments) > 0
+    _assert_selected_real_asr(transcript)
 
     assert transcript.speakers is None
     assert transcript.turns is None

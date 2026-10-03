@@ -1,241 +1,112 @@
-# JSON Schema Specifications
+# Installed JSON schemas
 
-This directory contains formal JSON Schema specifications for slower-whisper transcript files.
+The `transcription.schemas` package contains the public JSON contracts shipped
+inside every slower-whisper wheel and sdist. Runtime and artifact tests load
+these files through `importlib.resources`; consumers should not depend on a
+source-checkout-relative path.
 
-## Available Schemas
+## Active schemas
 
 ### `transcript-v2.schema.json`
 
-**Current Version:** 2
-**Status:** Active
-**Description:** Complete schema for transcripts with optional audio enrichment features
+The complete transcript document contract:
 
-This schema defines:
-- Transcript metadata (file, language, ASR settings)
-- Segment structure (id, start, end, text)
-- Word-level timestamps with optional speaker attribution (v1.8+)
-- Optional audio features (prosody, emotion)
-- Extraction status tracking
+- `schema_version`, source file, language, and segments;
+- segment and word timing;
+- optional speaker, tone, prosody, emotion, semantic, and extraction state;
+- open-ended `meta`, including the automatic `meta.receipt` extension.
 
-**Use cases:**
-- Validate transcript JSON files before processing
-- Generate documentation for external tools
-- IDE schema validation in JSON editors
-- API contract validation
+A successful transcript remains valid against this schema after its receipt is
+attached.
 
-## Using These Schemas
+### `receipt-v1.schema.json`
 
-### 1. Validate JSON Files (Python)
+The strict provenance/runtime evidence attached at `meta.receipt`:
+
+- package version and transcript schema version;
+- model, backend, optional model revision;
+- actual selected device and compute type;
+- ordered bounded model-load attempts;
+- canonical configuration hash;
+- run ID and creation time;
+- trusted package source commit and build ID when embedded.
+
+Unknown source/build identity is omitted. Runtime code never consults the
+caller’s repository, current working directory, `PATH`, or environment to
+manufacture those fields.
+
+### `stream_event.schema.json`
+
+The streaming event envelope used by the WebSocket protocol.
+
+## Load schemas from the installed package
 
 ```python
 import json
-import jsonschema
-from pathlib import Path
+from importlib import resources
 
-# Load schema
-schema_path = Path(__file__).parent / "schemas" / "transcript-v2.schema.json"
-with open(schema_path) as f:
-    schema = json.load(f)
-
-# Load transcript
-with open("transcript.json") as f:
-    transcript = json.load(f)
-
-# Validate
-try:
-    jsonschema.validate(transcript, schema)
-    print("✓ Valid transcript")
-except jsonschema.ValidationError as e:
-    print(f"✗ Validation error: {e.message}")
-    print(f"  Path: {'.'.join(str(p) for p in e.path)}")
+package_root = resources.files("transcription")
+transcript_schema = json.loads(
+    package_root.joinpath("schemas/transcript-v2.schema.json").read_text(
+        encoding="utf-8"
+    )
+)
+receipt_schema = json.loads(
+    package_root.joinpath("schemas/receipt-v1.schema.json").read_text(
+        encoding="utf-8"
+    )
+)
 ```
 
-### 2. Validate with slower-whisper CLI (requires `jsonschema` package)
-
-```bash
-uv run slower-whisper validate transcripts/example.json
-uv run slower-whisper validate transcripts/*.json --schema transcription/schemas/transcript-v2.schema.json
-```
-
-### 3. Validate with jsonschema CLI
-
-```bash
-# Install validator
-pip install jsonschema
-
-# Validate a file
-jsonschema -i transcript.json transcription/schemas/transcript-v2.schema.json
-```
-
-### 4. VS Code JSON Validation
-
-Add to your `transcript.json`:
-
-```json
-{
-  "$schema": "./transcription/schemas/transcript-v2.schema.json",
-  "schema_version": 2,
-  "file": "audio.wav",
-  ...
-}
-```
-
-VS Code will now provide:
-- Autocomplete for field names
-- Type checking
-- Inline validation errors
-- Documentation on hover
-
-### 4. Generate TypeScript Types (optional)
-
-```bash
-npm install -g json-schema-to-typescript
-
-json-schema-to-typescript \
-  transcription/schemas/transcript-v2.schema.json \
-  --output transcript.types.ts
-```
-
-## Schema Versioning
-
-### Version History
-
-| Version | Released | Status | Notes |
-|---------|----------|--------|-------|
-| 2 | 2025-01 | **Active** | Added audio_state for prosody/emotion |
-| 1 | 2024-XX | Legacy | Basic transcription only |
-
-### Migration
-
-Old v1 files are automatically migrated when loaded via `load_transcript_from_json()`.
-
-To manually migrate:
+## Validate a transcript and its receipt
 
 ```python
-from transcription.migrations import migrate_v1_to_v2
+from jsonschema import Draft7Validator, FormatChecker
 
-with open("old_transcript.json") as f:
-    old_data = json.load(f)
-
-new_data = migrate_v1_to_v2(old_data)
-
-with open("new_transcript.json", "w") as f:
-    json.dump(new_data, f, indent=2)
+receipt = transcript["meta"]["receipt"]
+assert not list(
+    Draft7Validator(
+        receipt_schema,
+        format_checker=FormatChecker(),
+    ).iter_errors(receipt)
+)
+assert not list(
+    Draft7Validator(
+        transcript_schema,
+        format_checker=FormatChecker(),
+    ).iter_errors(transcript)
+)
 ```
 
-## Schema Structure Overview
+The CLI can validate complete transcript documents:
 
-```
-transcript-v2.schema.json
-├── schema_version: 2
-├── file: string
-├── language: string
-├── meta: object (optional)
-│   ├── model_name
-│   ├── device
-│   ├── duration_sec
-│   └── audio_enrichment
-└── segments: array
-    └── segment
-        ├── id: int
-        ├── start: number
-        ├── end: number
-        ├── text: string
-        ├── words: array | null (v1.8+)
-        │   └── word
-        │       ├── word: string
-        │       ├── start: number
-        │       ├── end: number
-        │       ├── probability: number (optional)
-        │       └── speaker: string | null (optional)
-        ├── speaker: string | null
-        ├── tone: string | null
-        └── audio_state: object | null
-            ├── prosody
-            │   ├── pitch (level, mean_hz, std_hz, variation, contour)
-            │   ├── energy (level, db_rms, variation)
-            │   ├── rate (level, syllables_per_sec, words_per_sec)
-            │   └── pauses (count, longest_ms, density, density_per_sec)
-            ├── emotion
-            │   ├── valence (level, score)
-            │   ├── arousal (level, score)
-            │   ├── dominance (level, score)
-            │   └── categorical (primary, confidence, secondary, all_scores)
-            ├── rendering: string
-            └── extraction_status
-                ├── prosody: "success" | "failed" | "skipped"
-                ├── emotion_dimensional: "success" | "failed" | "skipped"
-                ├── emotion_categorical: "success" | "failed" | "skipped"
-                └── errors: array of strings
+```bash
+slower-whisper validate transcript.json
+slower-whisper validate transcript.json \
+  --schema transcription/schemas/transcript-v2.schema.json
 ```
 
-## Validation Rules
+## Versioning
 
-### Required Fields (Top Level)
-- `schema_version` (must be 2)
-- `file` (non-empty string)
-- `language` (2-letter code, e.g., "en")
-- `segments` (array)
+Schema files have independent contract versions. Breaking changes require a new
+schema filename or an explicit migration path; adding optional transcript
+metadata does not change the top-level transcript schema version.
 
-### Required Fields (Segment)
-- `id` (integer >= 0)
-- `start` (number >= 0)
-- `end` (number > start)
-- `text` (string)
+| Schema | Version | Status |
+|---|---:|---|
+| `transcript-v2.schema.json` | 2 | Active |
+| `receipt-v1.schema.json` | 1 | Active |
+| `stream_event.schema.json` | current protocol | Active |
 
-### Optional Fields
-- `speaker`, `tone` (segment level)
-- `audio_state` (entire structure is optional)
-- `meta` (all metadata)
+When changing an installed schema:
 
-### Validation Constraints
-- Times: `start >= 0`, `end > start`
-- Scores: `0.0 <= score <= 1.0` (emotion, confidence)
-- Frequencies: `mean_hz >= 0`, `std_hz >= 0`
-- Counts: `pause count >= 0`
-- Enums: Categorical levels must match defined values
+1. update or add the schema file;
+2. update this inventory and the relevant contract documentation;
+3. add source and installed-artifact validation;
+4. verify wheel and sdist contents;
+5. add a migration when existing persisted documents would otherwise become
+   unreadable.
 
-## Examples
-
-### Minimal Valid Transcript
-
-```json
-{
-  "schema_version": 2,
-  "file": "audio.wav",
-  "language": "en",
-  "segments": [
-    {
-      "id": 0,
-      "start": 0.0,
-      "end": 2.5,
-      "text": "Hello world"
-    }
-  ]
-}
-```
-
-### Enriched Transcript
-
-See `transcript-v2.schema.json` examples section for complete enriched example.
-
-## Contributing
-
-When updating schemas:
-
-1. **Increment version** if breaking changes
-2. **Add migration utility** in `transcription/migrations.py`
-3. **Update this README** with version history
-4. **Add tests** in `tests/test_schema.py`
-5. **Document changes** in `SCHEMA_CHANGELOG.md`
-
-## Tools & Resources
-
-- **JSON Schema Validator:** https://www.jsonschemavalidator.net/
-- **JSON Schema Docs:** https://json-schema.org/
-- **Python jsonschema:** https://python-jsonschema.readthedocs.io/
-- **Pydantic Models:** See `transcription/schema.py` for Python implementation
-
-## License
-
-Same as parent project (slower-whisper).
+See [`docs/PROVENANCE.md`](../../docs/PROVENANCE.md) for the receipt authority
+and artifact-build transaction, and [`docs/SCHEMA.md`](../../docs/SCHEMA.md) for
+transcript structure and compatibility guidance.
