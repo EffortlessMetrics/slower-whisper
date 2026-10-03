@@ -17,9 +17,8 @@ Pass `--skip-sync` to skip the sync step if the environment is already prepared.
 Usage:
     uv run python scripts/verify_all.py --quick
     uv run python scripts/verify_all.py --api
-    uv run slower-whisper-verify --quick  # if installed as script
-    uv run slower-whisper-verify --api
-    uv run slower-whisper-verify  # full suite (includes Docker/K8s)
+    uv run python -m scripts.verify_all --quick
+    uv run python scripts/verify_all.py  # full suite (includes Docker/K8s)
 """
 
 from __future__ import annotations
@@ -33,6 +32,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _has_pyannote_audio() -> bool:
+    """Probe the optional backend without failing when its parent is absent."""
+    try:
+        return importlib.util.find_spec("pyannote.audio") is not None
+    except (ImportError, ValueError):
+        # Dotted lookup imports the parent; mocked modules may lack __spec__.
+        return False
 
 
 def ensure_synced_env(*, include_api: bool) -> None:
@@ -164,7 +172,7 @@ def eval_diarization_real() -> None:
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     has_hf_token = bool(os.getenv("HF_TOKEN"))
-    has_pyannote = importlib.util.find_spec("pyannote.audio") is not None
+    has_pyannote = _has_pyannote_audio()
     dataset = ROOT / "benchmarks/data/diarization"
     manifest = dataset / "manifest.jsonl"
     output_md = ROOT / "benchmarks/DIARIZATION_REPORT_REAL.md"
@@ -379,7 +387,7 @@ def docker_smoke() -> None:
             "-t",
             "slower-whisper:test-cpu",
             "-f",
-            "Dockerfile",
+            "config/Dockerfile",
             ".",
         ]
     )
@@ -406,7 +414,7 @@ def docker_smoke() -> None:
             "-t",
             "slower-whisper:test-api",
             "-f",
-            "Dockerfile.api",
+            "config/Dockerfile.api",
             ".",
         ]
     )
@@ -488,11 +496,7 @@ def feature_summary() -> None:
 
     trans_cfg = TranscriptionConfig.from_env()
     diar_requested = bool(trans_cfg.enable_diarization)
-    try:
-        has_pyannote = importlib.util.find_spec("pyannote.audio") is not None
-    except ValueError:
-        # Some mocked modules may not set __spec__; treat as missing
-        has_pyannote = False
+    has_pyannote = _has_pyannote_audio()
     has_hf_token = bool(os.getenv("HF_TOKEN"))
     if not diar_requested:
         diar_status = "disabled"

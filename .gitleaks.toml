@@ -18,6 +18,8 @@ paths = [
   '''tests/test_semantic_cloud_providers\.py''',
   '''tests/test_llm_security\.py''',
   '''tests/test_llm_providers\.py''',
+  # detect-secrets baseline stores hashes and detector metadata, not credentials
+  '''\.secrets\.baseline''',
 ]
 
 regexes = [
@@ -30,6 +32,14 @@ regexes = [
   '''YOUR_TOKEN''',
   '''your-registry''',
   '''example\.com''',
+  # Exact placeholders from historical documentation.
+  '''hf_xyzabc123''',
+  '''hf_your_token_here''',
+  '''eyJhbGciOiJIUzI1NiIs\.\.\.''',
+  # Canonical fake credentials from Gitleaks' own README, accidentally copied
+  # into historical slower-whisper README commits.
+  '''AKIAIMNOJVGFDXXXE4OA''',
+  '''cafebabe:deadbeef''',
   # Nix store hashes (not secrets)
   '''/nix/store/[a-z0-9]{32}-''',
 ]
