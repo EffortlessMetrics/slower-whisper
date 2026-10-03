@@ -1048,3 +1048,31 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+
+def test_search_order_by_sql_injection():
+    """Test that order_by parameter is sanitized against SQL injection."""
+    import pytest
+
+    from transcription.store.store import SQLiteConversationStore
+    from transcription.store.types import StoreQuery
+
+    store = SQLiteConversationStore.open(":memory:")
+
+    # Insert a dummy record
+    store._conn.execute(
+        "INSERT INTO transcripts (transcript_id, file_name, ingested_at) VALUES ('t1', 'f1', '2023-01-01')"
+    )
+    store._conn.execute(
+        "INSERT INTO segments (id, transcript_id, segment_index, start_time, end_time, text, speaker_id) VALUES (1, 't1', 0, 0, 1, 'hello', 's1')"
+    )
+
+    # Valid column name
+    query = StoreQuery(order_by="start_time")
+    results = store.search(query)
+    assert len(results) > 0
+
+    # SQL injection attempt
+    query = StoreQuery(order_by="CASE WHEN 1=1 THEN abs(-9223372036854775808) ELSE start_time END")
+    with pytest.raises(Exception, match="Invalid order_by column"):
+        store.search(query)
