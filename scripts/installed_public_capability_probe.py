@@ -204,8 +204,19 @@ def _probe_api() -> None:
         )
 
     assert live.status_code == 200
-    assert ready.status_code == 200, ready.text
-    assert ready.json()["checks"]["runtime"]["ready"] is True
+    ready_body = ready.json()
+    assert ready_body["checks"]["runtime"]["ready"] is True
+    assert ready_body["checks"]["resources"]["status"] == "ok"
+    ffmpeg_status = ready_body["checks"]["ffmpeg"]["status"]
+    if ffmpeg_status == "ok":
+        assert ready.status_code == 200, ready.text
+        assert ready_body["status"] == "ready"
+        assert ready_body["healthy"] is True
+    else:
+        assert ffmpeg_status == "error", ready_body
+        assert ready.status_code == 503, ready.text
+        assert ready_body["status"] == "degraded"
+        assert ready_body["healthy"] is False
     assert stream_config.status_code == 200
     assert stream_config.json()["supported_audio_formats"] == ["pcm_s16le"]
     assert stream_config.json()["optional_live_enrichment"] is False
