@@ -101,6 +101,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         uv pip install --system \
             --index-url "${TORCH_CPU_INDEX}" \
             --extra-index-url "${PYPI_INDEX}" \
+            --index-strategy unsafe-best-match \
             "torch==${TORCH_VERSION}" \
             "torchaudio==${TORCHAUDIO_VERSION}"; \
         uv pip install --system \
