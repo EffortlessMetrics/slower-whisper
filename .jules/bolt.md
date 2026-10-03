@@ -1,0 +1,3 @@
+## 2024-06-04 - Vectorized RMS calculation for audio chunks
+**Learning:** When calculating the RMS energy of raw 16-bit PCM audio frames, unpacking bytes into tuples with `struct.unpack` and processing them using a Python `for` loop is a massive bottleneck. Vectorized calculation using `np.frombuffer`, truncating to an exact multiple of frame size, and calculating squared sums over a reshaped array (via `np.einsum` or `np.mean(..., axis=1)`) bypasses Python loop overhead entirely and prevents integer overflow.
+**Action:** Always process binary audio buffers directly into `numpy` arrays, cast to `np.float32`, and reshape to the target frame size for bulk aggregation.
