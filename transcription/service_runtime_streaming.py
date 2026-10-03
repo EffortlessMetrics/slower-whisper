@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -13,13 +15,26 @@ from . import service_streaming as _legacy_streaming
 from .exceptions import (
     ASRInferenceError,
     RuntimeNotReadyError,
+    StreamingInboundLimitError,
     StreamingNegotiationError,
+    StreamingSessionLimitError,
+    StreamingTransportCapacityError,
+    StreamingTransportDeliveryError,
     TranscriptionError,
 )
 from .service_runtime import ASRRuntime
 from .streaming_revision_controller import (
     RevisionStreamingController,
     SpeechClassifier,
+)
+from .streaming_transport import (
+    DEFAULT_STREAMING_TRANSPORT_LIMITS,
+    OutboundEventController,
+    StreamingAdmissionController,
+    StreamingTransportLimits,
+    decode_audio_chunk_bounded,
+    disable_legacy_replay,
+    session_deadline,
 )
 from .streaming_ws import (
     ClientMessageType,
@@ -28,7 +43,6 @@ from .streaming_ws import (
     SessionState,
     WebSocketSessionConfig,
     WebSocketStreamingSession,
-    decode_audio_chunk,
     parse_client_message,
 )
 
@@ -38,8 +52,21 @@ router = APIRouter()
 SpeechClassifierFactory = Callable[[], SpeechClassifier]
 
 
-async def _send(websocket: WebSocket, event: EventEnvelope) -> None:
-    await websocket.send_json(event.to_dict())
+async def _send(
+    transport: OutboundEventController,
+    event: EventEnvelope,
+    *,
+    replay_eligible: bool = True,
+) -> None:
+    await transport.publish(event, replay_eligible=replay_eligible)
+
+
+async def _send_terminal(
+    transport: OutboundEventController,
+    event: EventEnvelope,
+) -> None:
+    await transport.publish_terminal(event)
+    await transport.drain()
 
 
 def _application_state(websocket: WebSocket) -> Any:
@@ -65,6 +92,35 @@ def _classifier(websocket: WebSocket) -> SpeechClassifier | None:
     return cast(SpeechClassifierFactory, factory)()
 
 
+def _limits(websocket: WebSocket) -> StreamingTransportLimits:
+    configured = getattr(
+        _application_state(websocket),
+        "streaming_transport_limits",
+        None,
+    )
+    if configured is None:
+        return DEFAULT_STREAMING_TRANSPORT_LIMITS
+    if not isinstance(configured, StreamingTransportLimits):
+        raise TypeError("streaming_transport_limits must be StreamingTransportLimits")
+    return configured
+
+
+def _admission(
+    websocket: WebSocket,
+    limits: StreamingTransportLimits,
+) -> StreamingAdmissionController:
+    state = _application_state(websocket)
+    configured = getattr(state, "streaming_admission_controller", None)
+    if configured is None:
+        configured = StreamingAdmissionController(limits.max_active_sessions)
+        state.streaming_admission_controller = configured
+    if not isinstance(configured, StreamingAdmissionController):
+        raise TypeError(
+            "streaming_admission_controller must be StreamingAdmissionController"
+        )
+    return configured
+
+
 def _terminal_event(
     session: WebSocketStreamingSession,
     error: TranscriptionError,
@@ -76,6 +132,14 @@ def _terminal_event(
         message = "Unsupported streaming audio configuration"
     elif isinstance(error, RuntimeNotReadyError):
         message = "Streaming ASR runtime is not ready"
+    elif isinstance(error, StreamingInboundLimitError):
+        message = "Streaming audio message exceeds the server limit"
+    elif isinstance(error, StreamingSessionLimitError):
+        message = "Streaming session limit reached"
+    elif isinstance(error, StreamingTransportCapacityError):
+        message = "Streaming client is not consuming events fast enough"
+    elif isinstance(error, StreamingTransportDeliveryError):
+        message = "Streaming delivery failed"
     else:
         message = "Streaming ASR failed"
     return session._create_envelope(
@@ -102,6 +166,24 @@ def _recoverable_event(
     )
 
 
+def _resume_gap_event(
+    session: WebSocketStreamingSession,
+    *,
+    last_event_id: int,
+) -> EventEnvelope:
+    session.state = SessionState.ERROR
+    session.stats.errors += 1
+    return session._create_envelope(
+        ServerMessageType.ERROR,
+        {
+            "code": "RESUME_GAP",
+            "message": "Delivered replay history cannot satisfy the requested cursor",
+            "recoverable": False,
+            "context": {"requested_event_id": last_event_id},
+        },
+    )
+
+
 def _client_timestamp(payload: dict[str, Any]) -> int:
     timestamp = payload.get("timestamp", 0)
     try:
@@ -110,29 +192,75 @@ def _client_timestamp(payload: dict[str, Any]) -> int:
         return 0
 
 
+def _client_owned_limit_mismatches(config_data: dict[str, Any]) -> dict[str, str]:
+    return {
+        name: "server_owned"
+        for name in ("replay_buffer_size", "backpressure_threshold")
+        if name in config_data
+    }
+
+
 @router.websocket("/stream")
 async def websocket_stream(websocket: WebSocket) -> None:
-    """Run stable revision-aware ASR on one accepted WebSocket connection."""
+    """Run stable revision-aware ASR on one bounded WebSocket connection."""
+
     await websocket.accept()
+    limits = _limits(websocket)
+    transport = OutboundEventController(websocket.send_json, limits=limits)
+    await transport.start()
+    admission = _admission(websocket, limits)
+
     connection_controls = WebSocketStreamingSession()
+    disable_legacy_replay(connection_controls)
     session: WebSocketStreamingSession | None = None
     controller: RevisionStreamingController | None = None
+    admitted_stream_id: str | None = None
+    started_at: float | None = None
 
     try:
         while True:
             try:
-                message = await websocket.receive_json()
+                await transport.wait_below_pressure()
+                if started_at is None:
+                    message = await websocket.receive_json()
+                else:
+                    message = await asyncio.wait_for(
+                        websocket.receive_json(),
+                        timeout=session_deadline(started_at, limits=limits),
+                    )
             except WebSocketDisconnect:
+                raise
+            except (TimeoutError, StreamingSessionLimitError):
+                if session is None:
+                    raise
+                duration_error = StreamingSessionLimitError(
+                    "Streaming session duration limit reached",
+                    context={
+                        "max_session_duration_sec": limits.max_session_duration_sec,
+                    },
+                )
+                await _send_terminal(
+                    transport,
+                    (
+                        controller.terminal_error_event(duration_error)
+                        if controller is not None
+                        else _terminal_event(session, duration_error)
+                    ),
+                )
+                await websocket.close(code=1008)
+                return
+            except StreamingTransportDeliveryError:
                 raise
             except Exception as error:  # noqa: BLE001 - return bounded protocol detail
                 logger.warning("Failed to decode WebSocket message", exc_info=error)
                 await _send(
-                    websocket,
+                    transport,
                     _recoverable_event(
                         session or connection_controls,
                         code="invalid_message",
                         message="WebSocket message is invalid",
                     ),
+                    replay_eligible=session is not None,
                 )
                 continue
 
@@ -141,26 +269,30 @@ async def websocket_stream(websocket: WebSocket) -> None:
             except (TypeError, ValueError) as error:
                 logger.warning("Invalid WebSocket message type", exc_info=error)
                 await _send(
-                    websocket,
+                    transport,
                     _recoverable_event(
                         session or connection_controls,
                         code="invalid_message_type",
                         message="WebSocket message type is invalid",
                     ),
+                    replay_eligible=session is not None,
                 )
                 continue
 
             if message_type is ClientMessageType.PING:
                 await _send(
-                    websocket,
-                    (session or connection_controls).create_pong_event(_client_timestamp(payload)),
+                    transport,
+                    (session or connection_controls).create_pong_event(
+                        _client_timestamp(payload)
+                    ),
+                    replay_eligible=False,
                 )
                 continue
 
             if message_type is ClientMessageType.START_SESSION:
                 if session is not None:
                     await _send(
-                        websocket,
+                        transport,
                         _recoverable_event(
                             session,
                             code="session_already_started",
@@ -172,11 +304,30 @@ async def websocket_stream(websocket: WebSocket) -> None:
                 config_data = payload.get("config", {})
                 if not isinstance(config_data, dict):
                     session = WebSocketStreamingSession()
+                    disable_legacy_replay(session)
                     negotiation_error = StreamingNegotiationError(
                         "Streaming audio configuration is unsupported",
                         context={"mismatches": {"config": "must_be_object"}},
                     )
-                    await _send(websocket, _terminal_event(session, negotiation_error))
+                    await _send_terminal(
+                        transport,
+                        _terminal_event(session, negotiation_error),
+                    )
+                    await websocket.close(code=1003)
+                    return
+
+                mismatches = _client_owned_limit_mismatches(config_data)
+                if mismatches:
+                    session = WebSocketStreamingSession()
+                    disable_legacy_replay(session)
+                    negotiation_error = StreamingNegotiationError(
+                        "Streaming transport limits are server owned",
+                        context={"mismatches": mismatches},
+                    )
+                    await _send_terminal(
+                        transport,
+                        _terminal_event(session, negotiation_error),
+                    )
                     await websocket.close(code=1003)
                     return
 
@@ -185,15 +336,22 @@ async def websocket_stream(websocket: WebSocket) -> None:
                 except (TypeError, ValueError) as error:
                     logger.warning("Invalid streaming configuration", exc_info=error)
                     session = WebSocketStreamingSession()
+                    disable_legacy_replay(session)
                     negotiation_error = StreamingNegotiationError(
                         "Streaming audio configuration is unsupported",
                         context={"mismatches": {"config": "invalid"}},
                     )
-                    await _send(websocket, _terminal_event(session, negotiation_error))
+                    await _send_terminal(
+                        transport,
+                        _terminal_event(session, negotiation_error),
+                    )
                     await websocket.close(code=1003)
                     return
 
                 session = WebSocketStreamingSession(config=config)
+                disable_legacy_replay(session)
+                transport.bind_stream(session.stream_id)
+
                 runtime = _runtime(websocket)
                 if runtime is None or not runtime.ready:
                     state = runtime.state.value if runtime is not None else "missing"
@@ -201,20 +359,26 @@ async def websocket_stream(websocket: WebSocket) -> None:
                         "The process-owned ASR runtime is not ready",
                         context={"state": state},
                     )
-                    await _send(websocket, _terminal_event(session, readiness_error))
+                    await _send_terminal(
+                        transport,
+                        _terminal_event(session, readiness_error),
+                    )
                     await websocket.close(code=1013)
                     return
 
                 try:
+                    await admission.acquire(session.stream_id)
+                    admitted_stream_id = session.stream_id
                     controller = RevisionStreamingController(
                         session,
                         runtime,
                         classifier=_classifier(websocket),
                     )
-                    await _send(websocket, await controller.start(config_data))
+                    started_at = time.monotonic()
+                    await _send(transport, await controller.start(config_data))
                 except TranscriptionError as error:
-                    await _send(
-                        websocket,
+                    await _send_terminal(
+                        transport,
                         (
                             controller.terminal_error_event(error)
                             if controller is not None
@@ -227,26 +391,41 @@ async def websocket_stream(websocket: WebSocket) -> None:
 
             if session is None or controller is None:
                 await _send(
-                    websocket,
+                    transport,
                     _recoverable_event(
                         connection_controls,
                         code="no_session",
                         message="Send START_SESSION before this message",
                     ),
+                    replay_eligible=False,
                 )
                 continue
 
             if message_type is ClientMessageType.AUDIO_CHUNK:
                 try:
-                    audio_bytes, sequence = decode_audio_chunk(payload)
+                    audio_bytes, sequence = decode_audio_chunk_bounded(
+                        payload,
+                        max_decoded_bytes=limits.max_decoded_audio_message_bytes,
+                    )
                     events = await controller.process_audio_chunk(
                         audio_bytes,
                         sequence,
                     )
+                except StreamingInboundLimitError as error:
+                    logger.warning(
+                        "Streaming audio chunk exceeded the server limit",
+                        exc_info=error,
+                    )
+                    await _send_terminal(
+                        transport,
+                        controller.terminal_error_event(error),
+                    )
+                    await websocket.close(code=1009)
+                    return
                 except (TypeError, ValueError) as error:
                     logger.warning("Invalid streaming audio chunk", exc_info=error)
                     await _send(
-                        websocket,
+                        transport,
                         _recoverable_event(
                             session,
                             code="invalid_audio_chunk",
@@ -260,12 +439,14 @@ async def websocket_stream(websocket: WebSocket) -> None:
                         error.reason_code,
                         exc_info=error,
                     )
-                    await _send(websocket, controller.terminal_error_event(error))
+                    await _send_terminal(
+                        transport,
+                        controller.terminal_error_event(error),
+                    )
                     await websocket.close(code=1011)
                     return
 
-                for event in events:
-                    await _send(websocket, event)
+                await transport.publish_many(events)
                 continue
 
             if message_type is ClientMessageType.END_SESSION:
@@ -277,11 +458,15 @@ async def websocket_stream(websocket: WebSocket) -> None:
                         error.reason_code,
                         exc_info=error,
                     )
-                    await _send(websocket, controller.terminal_error_event(error))
+                    await _send_terminal(
+                        transport,
+                        controller.terminal_error_event(error),
+                    )
                     await websocket.close(code=1011)
                     return
-                for event in events:
-                    await _send(websocket, event)
+                await transport.publish_many(events)
+                await transport.drain()
+                await transport.close(drain=False)
                 await websocket.close(code=1000)
                 return
 
@@ -290,7 +475,7 @@ async def websocket_stream(websocket: WebSocket) -> None:
                 last_event_id = payload.get("last_event_id", 0)
                 if requested_session_id != session.stream_id:
                     await _send(
-                        websocket,
+                        transport,
                         _recoverable_event(
                             session,
                             code="session_mismatch",
@@ -302,7 +487,7 @@ async def websocket_stream(websocket: WebSocket) -> None:
                     cursor = int(last_event_id)
                 except (TypeError, ValueError):
                     await _send(
-                        websocket,
+                        transport,
                         _recoverable_event(
                             session,
                             code="invalid_resume_cursor",
@@ -310,13 +495,19 @@ async def websocket_stream(websocket: WebSocket) -> None:
                         ),
                     )
                     continue
-                replay, gap_detected = session.get_events_for_resume(cursor)
+                session.stats.resume_attempts += 1
+                replay, gap_detected = transport.replay_since(cursor)
                 if gap_detected:
-                    await _send(websocket, session.create_resume_gap_error(cursor))
+                    await _send_terminal(
+                        transport,
+                        _resume_gap_event(
+                            session,
+                            last_event_id=cursor,
+                        ),
+                    )
                     await websocket.close(code=1008)
                     return
-                for event in replay:
-                    await _send(websocket, event)
+                await transport.publish_replay(replay)
                 continue
 
             if message_type is ClientMessageType.TTS_STATE:
@@ -330,6 +521,14 @@ async def websocket_stream(websocket: WebSocket) -> None:
         )
         if controller is not None:
             controller.abort()
+    except StreamingTransportDeliveryError:
+        logger.exception("Stable WebSocket delivery authority failed")
+        if controller is not None:
+            controller.abort()
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            logger.debug("Failed to close failed WebSocket", exc_info=True)
     except Exception as error:  # noqa: BLE001 - log locally, sanitize remotely
         logger.exception("Unexpected error in stable WebSocket handler")
         if session is not None:
@@ -347,7 +546,7 @@ async def websocket_stream(websocket: WebSocket) -> None:
                     if controller is not None
                     else _terminal_event(session, typed)
                 )
-                await _send(websocket, event)
+                await _send_terminal(transport, event)
             except Exception:
                 logger.debug("Failed to send terminal WebSocket error", exc_info=True)
         try:
@@ -355,7 +554,13 @@ async def websocket_stream(websocket: WebSocket) -> None:
         except Exception:
             logger.debug("Failed to close failed WebSocket", exc_info=True)
     finally:
-        logger.info("Stable WebSocket connection closed")
+        if admitted_stream_id is not None:
+            await admission.release(admitted_stream_id)
+        await transport.abort()
+        logger.info(
+            "Stable WebSocket connection closed: transport=%s",
+            transport.metrics_receipt(),
+        )
 
 
 @router.get(
@@ -365,6 +570,8 @@ async def websocket_stream(websocket: WebSocket) -> None:
 )
 async def get_stream_config() -> JSONResponse:
     """Return the presently earned public streaming contract."""
+
+    limits = DEFAULT_STREAMING_TRANSPORT_LIMITS
     return JSONResponse(
         status_code=200,
         content={
@@ -373,6 +580,15 @@ async def get_stream_config() -> JSONResponse:
                 "sample_rate": 16_000,
                 "channels": 1,
                 "audio_format": "pcm_s16le",
+            },
+            "server_limits": {
+                "max_decoded_audio_message_bytes": (
+                    limits.max_decoded_audio_message_bytes
+                ),
+                "max_session_duration_sec": limits.max_session_duration_sec,
+                "max_active_sessions": limits.max_active_sessions,
+                "max_outbound_queue_events": limits.max_queue_events,
+                "max_outbound_queue_bytes": limits.max_queue_bytes,
             },
             "supported_audio_formats": ["pcm_s16le"],
             "supported_sample_rates": [16_000],
@@ -383,6 +599,7 @@ async def get_stream_config() -> JSONResponse:
                     "START_SESSION",
                     "AUDIO_CHUNK",
                     "END_SESSION",
+                    "RESUME_SESSION",
                     "PING",
                     "TTS_STATE",
                 ],

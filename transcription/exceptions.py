@@ -86,6 +86,36 @@ class StreamingNegotiationError(TranscriptionError):
     default_reason_code = "streaming_audio_unsupported"
 
 
+class StreamingTransportError(TranscriptionError):
+    """Base class for bounded public WebSocket transport failures."""
+
+    default_reason_code = "streaming_transport_failed"
+
+
+class StreamingTransportCapacityError(StreamingTransportError):
+    """Raised when durable outbound work cannot fit within server limits."""
+
+    default_reason_code = "streaming_transport_capacity_exceeded"
+
+
+class StreamingTransportDeliveryError(StreamingTransportError):
+    """Raised when the sole WebSocket writer cannot deliver an event."""
+
+    default_reason_code = "streaming_transport_delivery_failed"
+
+
+class StreamingInboundLimitError(StreamingTransportError):
+    """Raised before oversized encoded audio is decoded or retained."""
+
+    default_reason_code = "streaming_audio_message_too_large"
+
+
+class StreamingSessionLimitError(StreamingTransportError):
+    """Raised when process admission or session duration limits are reached."""
+
+    default_reason_code = "streaming_session_limit_exceeded"
+
+
 class EnrichmentError(SlowerWhisperError):
     """Raised when audio enrichment fails."""
 
