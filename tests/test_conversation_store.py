@@ -27,6 +27,7 @@ from transcription.store import (
     ExportFormat,
     ExportOptions,
     IngestOptions,
+    QueryError,
     QueryFilter,
     SpeakerQuery,
     StoreError,
@@ -1048,3 +1049,9 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+    def test_search_sql_injection_order_by(self, store_with_data: ConversationStore) -> None:
+        """Test that SQL injection in order_by raises QueryError."""
+        query = StoreQuery(order_by="start_time; DROP TABLE segments")
+        with pytest.raises(QueryError, match="Invalid order_by column"):
+            store_with_data.search(query)

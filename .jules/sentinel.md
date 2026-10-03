@@ -1,4 +1,9 @@
-## 2026-01-28 - FastAPI Security Headers & CSP
-**Vulnerability:** Missing security headers (X-Content-Type-Options, X-Frame-Options, CSP) in FastAPI service.
-**Learning:** Default strict CSP (`default-src 'self'`) breaks FastAPI's auto-generated docs (Swagger UI/Redoc) which rely on `cdn.jsdelivr.net` and `unsafe-inline` styles/scripts.
-**Prevention:** Use a middleware to add security headers, but ensure CSP explicitly allows `cdn.jsdelivr.net` and `fastapi.tiangolo.com` if API docs are enabled.
+## 2024-06-21 - SQL Injection in StoreQuery ORDER BY
+**Vulnerability:** The `ConversationStore.search()` method interpolates the `query.order_by` field directly into a SQL query string (`ORDER BY {order_col} {order_dir}`) without sanitizing it or ensuring it refers to an allowed column name.
+**Learning:** `order_by` fields supplied by the query model are vulnerable to SQL injection because standard parameterized queries (using `?`) can only be used for literal values, not column names or identifiers.
+**Prevention:** Use an explicit allowlist of valid column names to map the `order_by` field before interpolating it into the SQL query string.
+
+## 2024-06-21 - SQL Injection in StoreQuery ORDER BY
+**Vulnerability:** The `ConversationStore.search()` method interpolates the `query.order_by` field directly into a SQL query string (`ORDER BY {order_col} {order_dir}`) without sanitizing it or ensuring it refers to an allowed column name.
+**Learning:** `order_by` fields supplied by the query model are vulnerable to SQL injection because standard parameterized queries (using `?`) can only be used for literal values, not column names or identifiers.
+**Prevention:** Use an explicit allowlist of valid column names to map the `order_by` field before interpolating it into the SQL query string.
