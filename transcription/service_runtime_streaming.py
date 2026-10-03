@@ -113,7 +113,7 @@ def _admission(
     configured = getattr(state, "streaming_admission_controller", None)
     if configured is None:
         configured = StreamingAdmissionController(limits.max_active_sessions)
-        setattr(state, "streaming_admission_controller", configured)
+        state.streaming_admission_controller = configured
     if not isinstance(configured, StreamingAdmissionController):
         raise TypeError(
             "streaming_admission_controller must be StreamingAdmissionController"
