@@ -146,7 +146,8 @@ async def test_controller_emits_replacement_revisions_through_session_envelopes(
         protocol,
         runtime,
         config=incremental_config(),
-        classifier=SequenceClassifier([True, True, False]),
+        frame_samples=2,
+        classifier=SequenceClassifier([True, True, True, True, False]),
     )
     try:
         started = await controller.start(
@@ -205,6 +206,7 @@ async def test_continuous_silence_is_bounded_and_never_invokes_asr() -> None:
         protocol,
         runtime,
         config=incremental_config(max_chunk_bytes=64),
+        frame_samples=16,
         classifier=SequenceClassifier([False] * 100),
     )
     try:
@@ -225,6 +227,7 @@ async def test_finalized_revision_remains_before_later_terminal_error() -> None:
         protocol,
         runtime,
         config=incremental_config(minimum=4, interval=4, maximum=4),
+        frame_samples=4,
         classifier=SequenceClassifier([True, RuntimeError("classifier secret")]),
     )
     try:
@@ -253,6 +256,7 @@ async def test_inference_failure_is_one_sanitized_terminal_error() -> None:
         protocol,
         runtime,
         config=incremental_config(),
+        frame_samples=4,
         classifier=SequenceClassifier([True]),
     )
     try:
@@ -283,6 +287,7 @@ async def test_controller_end_emits_final_before_session_ended() -> None:
         protocol,
         runtime,
         config=incremental_config(),
+        frame_samples=4,
         classifier=SequenceClassifier([True]),
     )
     try:

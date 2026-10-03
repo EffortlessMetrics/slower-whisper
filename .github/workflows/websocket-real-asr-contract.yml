@@ -46,10 +46,13 @@ jobs:
             transcription/incremental_asr.py \
             transcription/service.py \
             transcription/service_runtime_streaming.py \
+            transcription/streaming_pcm.py \
             transcription/streaming_revision_controller.py \
             transcription/streaming_runtime_asr.py \
             tests/test_incremental_asr.py \
             tests/test_public_streaming_real_asr.py \
+            tests/test_streaming_pcm.py \
+            tests/test_streaming_packetization.py \
             tests/test_streaming_revision_controller.py \
             tests/test_streaming_revision_edges.py \
             tests/test_streaming_runtime_asr.py \
@@ -60,10 +63,13 @@ jobs:
             transcription/incremental_asr.py \
             transcription/service.py \
             transcription/service_runtime_streaming.py \
+            transcription/streaming_pcm.py \
             transcription/streaming_revision_controller.py \
             transcription/streaming_runtime_asr.py \
             tests/test_incremental_asr.py \
             tests/test_public_streaming_real_asr.py \
+            tests/test_streaming_pcm.py \
+            tests/test_streaming_packetization.py \
             tests/test_streaming_revision_controller.py \
             tests/test_streaming_revision_edges.py \
             tests/test_streaming_runtime_asr.py \
@@ -71,6 +77,7 @@ jobs:
             tests/test_websocket_streaming.py
           uv run mypy \
             transcription/service_runtime_streaming.py \
+            transcription/streaming_pcm.py \
             transcription/streaming_revision_controller.py \
             transcription/streaming_runtime_asr.py
           git diff --check
@@ -80,6 +87,8 @@ jobs:
           uv run pytest -q \
             tests/test_incremental_asr.py \
             tests/test_public_streaming_real_asr.py \
+            tests/test_streaming_pcm.py \
+            tests/test_streaming_packetization.py \
             tests/test_streaming_revision_controller.py \
             tests/test_streaming_revision_edges.py \
             tests/test_streaming_runtime_asr.py \

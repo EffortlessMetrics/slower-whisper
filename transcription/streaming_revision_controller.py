@@ -28,6 +28,7 @@ from .incremental_asr import (
     IncrementalASRSession,
 )
 from .service_runtime import ASRRuntime
+from .streaming_pcm import PCMFrameBuffer, PCMFramingMetrics
 from .streaming_runtime_asr import RuntimeIncrementalASRBackend
 from .streaming_ws import (
     EventEnvelope,
@@ -38,7 +39,7 @@ from .streaming_ws import (
 
 
 class SpeechClassifier(Protocol):
-    """Classify one boundary-homogeneous PCM chunk."""
+    """Classify one fixed PCM frame, or the short complete-sample EOF tail."""
 
     def is_speech(
         self,
@@ -49,7 +50,7 @@ class SpeechClassifier(Protocol):
 
 
 class PCMChunkEnergyClassifier:
-    """Bounded dependency-free RMS classifier for stable PCM input."""
+    """Dependency-free RMS classifier applied to deterministic PCM frames."""
 
     def __init__(self, *, threshold: float = 0.01) -> None:
         if not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
@@ -98,6 +99,7 @@ class RevisionStreamingController:
         *,
         config: IncrementalASRConfig | None = None,
         classifier: SpeechClassifier | None = None,
+        frame_samples: int = 320,
     ) -> None:
         if not runtime.ready:
             raise RuntimeNotReadyError(
@@ -111,6 +113,10 @@ class RevisionStreamingController:
             config=config,
         )
         self.classifier = classifier or PCMChunkEnergyClassifier()
+        self._pcm_frames = PCMFrameBuffer(
+            frame_samples=frame_samples,
+            max_chunk_bytes=self.incremental.config.max_chunk_bytes,
+        )
         self._pending_silence = bytearray()
         self._terminal_error: TranscriptionError | None = None
 
@@ -130,6 +136,10 @@ class RevisionStreamingController:
     @property
     def pending_silence_bytes(self) -> int:
         return len(self._pending_silence)
+
+    @property
+    def framing_metrics(self) -> PCMFramingMetrics:
+        return self._pcm_frames.metrics
 
     async def start(self, config_data: dict[str, Any]) -> EventEnvelope:
         """Validate the stable surface before starting protocol state."""
@@ -156,24 +166,9 @@ class RevisionStreamingController:
         self.session.stats.bytes_received += len(audio_data)
 
         try:
-            raw_decision = self.classifier.is_speech(
-                audio_data,
-                sample_rate=self.incremental.config.sample_rate,
-            )
-            decision = await raw_decision if inspect.isawaitable(raw_decision) else raw_decision
-            if not isinstance(decision, bool):
-                raise ASROutputError(
-                    "Streaming speech classifier returned invalid output",
-                    context={"violation": "speech_decision_not_boolean"},
-                )
-
             revisions: list[ASRRevision] = []
-            if decision:
-                bridge_silence = self.incremental.active_segment_id is not None
-                revisions.extend(await self._flush_pending_silence(as_speech=bridge_silence))
-                revisions.extend(await self.incremental.push_pcm(audio_data, speech=True))
-            else:
-                revisions.extend(await self._consume_silence(audio_data))
+            for frame in self._pcm_frames.feed(audio_data):
+                revisions.extend(await self._process_frame(frame))
         except Exception as error:  # noqa: BLE001 - converted to typed terminal state
             raise self._record_failure(error, phase="process_audio") from error
 
@@ -186,7 +181,10 @@ class RevisionStreamingController:
         self._require_active()
         self.session.state = SessionState.ENDING
         try:
-            revisions = list(await self._flush_pending_silence(as_speech=False))
+            revisions: list[ASRRevision] = []
+            for frame in self._pcm_frames.end():
+                revisions.extend(await self._process_frame(frame))
+            revisions.extend(await self._flush_pending_silence(as_speech=False))
             revisions.extend(await self.incremental.end())
         except Exception as error:  # noqa: BLE001 - converted to typed terminal state
             raise self._record_failure(error, phase="end_session") from error
@@ -213,11 +211,17 @@ class RevisionStreamingController:
         )
         self._terminal_error = typed
         self._pending_silence.clear()
+        self._pcm_frames.abort()
         self.session.state = SessionState.ERROR
         self.session.stats.errors += 1
         self.session.stats.events_sent += 1
 
-        if isinstance(typed, StreamingNegotiationError):
+        if (
+            isinstance(typed, StreamingNegotiationError)
+            and typed.reason_code == "streaming_pcm_incomplete"
+        ):
+            message = "Streaming PCM ended with an incomplete sample"
+        elif isinstance(typed, StreamingNegotiationError):
             message = "Unsupported streaming audio configuration"
         elif isinstance(typed, RuntimeNotReadyError):
             message = "Streaming ASR runtime is not ready"
@@ -237,9 +241,28 @@ class RevisionStreamingController:
     def abort(self) -> None:
         """Release bounded per-connection buffers after transport loss."""
         self._pending_silence.clear()
+        self._pcm_frames.abort()
         self.session._audio_buffer.clear()
         if self.session.state not in {SessionState.ENDED, SessionState.ERROR}:
             self.session.state = SessionState.ENDED
+
+    async def _process_frame(self, frame: bytes) -> list[ASRRevision]:
+        raw_decision = self.classifier.is_speech(
+            frame,
+            sample_rate=self.incremental.config.sample_rate,
+        )
+        decision = await raw_decision if inspect.isawaitable(raw_decision) else raw_decision
+        if not isinstance(decision, bool):
+            raise ASROutputError(
+                "Streaming speech classifier returned invalid output",
+                context={"violation": "speech_decision_not_boolean"},
+            )
+        if not decision:
+            return await self._consume_silence(frame)
+        bridge_silence = self.incremental.active_segment_id is not None
+        revisions = list(await self._flush_pending_silence(as_speech=bridge_silence))
+        revisions.extend(await self.incremental.push_pcm(frame, speech=True))
+        return revisions
 
     async def _consume_silence(self, audio_data: bytes) -> list[ASRRevision]:
         revisions: list[ASRRevision] = []
@@ -341,8 +364,6 @@ class RevisionStreamingController:
             raise TypeError("audio_data must be bytes")
         if len(audio_data) > self.incremental.config.max_chunk_bytes:
             raise ValueError("audio chunk exceeds max_chunk_bytes")
-        if len(audio_data) % self.incremental.config.bytes_per_sample_frame != 0:
-            raise ValueError("audio chunk must contain complete sample frames")
 
     def _validate_sequence(self, sequence: int) -> None:
         if isinstance(sequence, bool) or not isinstance(sequence, int):
@@ -385,5 +406,6 @@ class RevisionStreamingController:
             typed.__cause__ = error
         self._terminal_error = typed
         self._pending_silence.clear()
+        self._pcm_frames.abort()
         self.session.state = SessionState.ERROR
         return typed

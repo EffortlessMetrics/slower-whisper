@@ -89,7 +89,8 @@ async def test_short_leading_silence_advances_clock_without_joining_utterance() 
         protocol,
         runtime,
         config=core_config(),
-        classifier=SequenceClassifier([False, True]),
+        frame_samples=2,
+        classifier=SequenceClassifier([False, True, True]),
     )
     try:
         await controller.start({"max_gap_sec": 4 / 16_000})
@@ -114,6 +115,7 @@ async def test_present_unsupported_feature_requires_exact_false() -> None:
             WebSocketStreamingSession(),
             runtime,
             config=core_config(),
+            frame_samples=2,
         )
         with pytest.raises(StreamingNegotiationError) as exc_info:
             await rejected.start({"enable_prosody": "false"})
@@ -123,6 +125,7 @@ async def test_present_unsupported_feature_requires_exact_false() -> None:
             WebSocketStreamingSession(),
             runtime,
             config=core_config(),
+            frame_samples=2,
         )
         started = await accepted.start({"enable_prosody": False})
         assert started.type.value == "SESSION_STARTED"
