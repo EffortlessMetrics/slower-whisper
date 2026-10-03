@@ -574,6 +574,21 @@ class TestQueryFilters:
         # Results should be different
         assert results1[0]["segment_id"] != results2[0]["segment_id"]
 
+    def test_sql_injection_prevention(
+        self, store: ConversationStore, sample_transcript_json: Path
+    ) -> None:
+        """Test that SQL injection via order_by is prevented."""
+        store.ingest(sample_transcript_json)
+
+        # This malicious order_by should fall back to start_time safely
+        query = StoreQuery(order_by="start_time; DROP TABLE transcripts; --")
+        results = store.search(query)
+        assert len(results) == 4
+
+        # Verify store wasn't corrupted
+        stats = store.stats()
+        assert stats["transcript_count"] == 1
+
     def test_legacy_query_api(self, store: ConversationStore, sample_transcript_json: Path) -> None:
         """Test the legacy query() API."""
         store.ingest(sample_transcript_json)
