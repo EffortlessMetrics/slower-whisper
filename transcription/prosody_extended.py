@@ -374,25 +374,28 @@ def _linear_regression(x: np.ndarray, y: np.ndarray) -> tuple[float, float, floa
     x_mean = np.mean(x)
     y_mean = np.mean(y)
 
-    # Compute slope
-    numerator = np.sum((x - x_mean) * (y - y_mean))
-    denominator = np.sum((x - x_mean) ** 2)
+    x_centered = x - x_mean
+    y_centered = y - y_mean
+
+    # Compute slope using vdot to avoid intermediate array allocations
+    numerator = np.vdot(x_centered, y_centered)
+    denominator = np.vdot(x_centered, x_centered)
 
     if denominator == 0:
         return 0.0, y_mean, 0.0
 
-    slope = numerator / denominator
-    intercept = y_mean - slope * x_mean
+    slope = float(numerator / denominator)
+    intercept = float(y_mean - slope * x_mean)
 
     # Compute R-squared
-    y_pred = slope * x + intercept
-    ss_res = np.sum((y - y_pred) ** 2)
-    ss_tot = np.sum((y - y_mean) ** 2)
+    res = y_centered - slope * x_centered
+    ss_res = np.vdot(res, res)
+    ss_tot = np.vdot(y_centered, y_centered)
 
     if ss_tot == 0:
         r_squared = 0.0
     else:
-        r_squared = 1 - (ss_res / ss_tot)
+        r_squared = float(1 - (ss_res / ss_tot))
 
     return slope, intercept, max(0.0, r_squared)
 
