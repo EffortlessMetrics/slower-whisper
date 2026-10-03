@@ -176,7 +176,7 @@ def reset_engine() -> None:
 def test_public_route_emits_real_revisions_and_no_placeholder_text() -> None:
     reset_engine()
     app, runtime = app_with_engine(DeterministicEngine)
-    install_classifier(app, [True, False])
+    install_classifier(app, [True] * 50 + [False] * 25)
 
     with TestClient(app) as client:
         with client.websocket_connect("/stream") as websocket:
@@ -242,7 +242,7 @@ def test_public_route_rejects_unsupported_audio_before_engine_work() -> None:
 def test_public_route_maps_inference_failure_to_one_sanitized_terminal_error() -> None:
     reset_engine()
     app, _runtime = app_with_engine(FailingEngine)
-    install_classifier(app, [True])
+    install_classifier(app, [True] * 50)
 
     with TestClient(app) as client:
         with client.websocket_connect("/stream") as websocket:
@@ -279,3 +279,76 @@ def test_public_route_sanitizes_unexpected_classifier_failure() -> None:
         "violation": "unexpected_streaming_error",
     }
     assert "private classifier detail" not in str(error)
+
+
+@pytest.mark.parametrize("sizes", [[131072], [640], [639, 2, 641, 17], [2049, 7, 3]])
+def test_public_route_default_classifier_is_packetization_invariant(sizes: list[int]) -> None:
+    """Exercise the real route/runtime with default VAD and an explicit ASR double."""
+    audio = pcm(320, 0) + pcm(16_000, 4000) + pcm(8_000, 0) + pcm(9_601, 4000)
+    observed = []
+    for packet_sizes in ([640], sizes):
+        reset_engine()
+        app, runtime = app_with_engine(DeterministicEngine)
+        # Deliberately do not install a classifier: production framing/RMS must run.
+        with TestClient(app) as client:
+            with client.websocket_connect("/stream") as websocket:
+                websocket.send_json(start_message())
+                receive_type(websocket, "SESSION_STARTED")
+                offset = 0
+                sequence = 0
+                while offset < len(audio):
+                    size = packet_sizes[sequence % len(packet_sizes)]
+                    packet = audio[offset : offset + size]
+                    websocket.send_json(audio_message(packet, sequence))
+                    offset += len(packet)
+                    sequence += 1
+                websocket.send_json({"type": "END_SESSION"})
+                revisions = []
+                for _ in range(64):
+                    event = receive_json_bounded(websocket)
+                    assert event_type(event) != "ERROR", event
+                    if event_type(event) == "SESSION_ENDED":
+                        break
+                    if "revision" in event_payload(event):
+                        revisions.append((event.get("segment_id"), event_payload(event)))
+                else:
+                    raise AssertionError("SESSION_ENDED was not received")
+        observed.append((revisions, list(DeterministicEngine.calls)))
+        assert DeterministicEngine.instances == 1
+        assert DeterministicEngine.closes == 1
+        assert runtime.max_observed_inferences == 1
+
+    assert observed[0] == observed[1]
+    assert observed[1][1] == [16_000, 9_601]
+    finals = [payload for _segment_id, payload in observed[1][0] if payload["final"]]
+    assert [
+        (item["start_sample"], item["end_sample"], item["final_reason"]) for item in finals
+    ] == [
+        (320, 16_320, "vad_boundary"),
+        (24_320, 33_921, "end_of_stream"),
+    ]
+
+
+@pytest.mark.parametrize("audio", [b"\x01", pcm(319, 4000) + b"\x01"])
+def test_public_route_reports_truncated_pcm_without_model_work(audio: bytes) -> None:
+    reset_engine()
+    app, _runtime = app_with_engine(DeterministicEngine)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/stream") as websocket:
+            websocket.send_json(start_message())
+            receive_type(websocket, "SESSION_STARTED")
+            websocket.send_json(audio_message(audio, 0))
+            websocket.send_json({"type": "END_SESSION"})
+            error = receive_json_bounded(websocket)
+            assert event_type(error) == "ERROR", error
+
+    assert event_payload(error) == {
+        "code": "streaming_pcm_incomplete",
+        "message": "Streaming PCM ended with an incomplete sample",
+        "recoverable": False,
+        "context": {"violation": "incomplete_pcm_sample", "residual_bytes": len(audio)},
+    }
+    assert DeterministicEngine.calls == []
+    assert DeterministicEngine.instances == 1
+    assert DeterministicEngine.closes == 1
