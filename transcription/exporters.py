@@ -113,18 +113,20 @@ def export_html(transcript: Transcript, output_path: Path, unit: str = "segments
     output_path.parent.mkdir(parents=True, exist_ok=True)
     parts: list[str] = [
         "<!doctype html>",
-        "<html>",
+        f'<html lang="{html.escape(transcript.language) if transcript.language else "en"}">',
         "<head>",
         '<meta charset="utf-8" />',
         "<title>Transcript</title>",
         "<style>",
         "body { font-family: system-ui, sans-serif; color: #222; margin: 24px; }",
+        "main { max-width: 800px; margin: 0 auto; }",
         ".turn { padding: 6px 10px; border-radius: 8px; margin-bottom: 8px; }",
         ".speaker { font-weight: 600; margin-right: 8px; }",
         ".time { color: #666; font-size: 0.9em; margin-right: 6px; }",
         "</style>",
         "</head>",
         "<body>",
+        "<main>",
         f"<h2>{html.escape(transcript.file_name)}</h2>",
     ]
     for row in rows:
@@ -138,7 +140,7 @@ def export_html(transcript: Transcript, output_path: Path, unit: str = "segments
             f"<div>{html.escape(row['text'])}</div>"
             "</div>"
         )
-    parts.extend(["</body>", "</html>"])
+    parts.extend(["</main>", "</body>", "</html>"])
     output_path.write_text("\n".join(parts), encoding="utf-8")
 
 
