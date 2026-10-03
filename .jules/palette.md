@@ -5,3 +5,7 @@
 ## 2026-01-26 - Atomic Pre-flight Checks
 **Learning:** For bulk file operations (like copying samples), users prefer a "check-then-act" model where all conflicts are reported upfront, rather than failing on the first conflict.
 **Action:** Implement pre-flight checks that gather *all* conflicts and raise a custom error (like `SampleExistsError`) containing the full list, allowing the CLI to present a complete summary before asking for confirmation.
+
+## $(date -I) - Destructive Action Confirmation
+**Learning:** Destructive actions require distinct visual warnings in interactive prompts to enforce attention, as plain text is often missed.
+**Action:** Always use `Colors.red()` for critical warnings like "This cannot be undone." when prompting the user for confirmation on actions that delete or overwrite data.
