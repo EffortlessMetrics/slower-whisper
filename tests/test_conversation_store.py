@@ -1048,3 +1048,10 @@ class TestParquetExport:
         assert len(table) == 4
         assert "text" in table.column_names
         assert "transcript_id" in table.column_names
+
+    def test_search_order_by_sql_injection(self) -> None:
+        """Test that order_by parameter is safe from SQL injection."""
+        with ConversationStore(":memory:") as store:
+            query = StoreQuery(order_by="start_time; DROP TABLE transcripts; --")
+            with pytest.raises(ValueError, match="Invalid order_by column"):
+                store.search(query)
