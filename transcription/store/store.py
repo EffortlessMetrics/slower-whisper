@@ -64,6 +64,22 @@ from .types import (
     TranscriptSummary,
 )
 
+ALLOWED_ORDER_BY_COLUMNS: set[str] = {
+    "start_time",
+    "s.start_time",
+    "end_time",
+    "s.end_time",
+    "segment_index",
+    "s.segment_index",
+    "speaker_id",
+    "s.speaker_id",
+    "speaker_confidence",
+    "s.speaker_confidence",
+    "rank",
+    "id",
+    "s.id",
+}
+
 if TYPE_CHECKING:
     from ..models import Transcript
 
@@ -920,6 +936,9 @@ class SQLiteConversationStore:
 
         # Order by
         order_col = "rank" if query.text else query.order_by
+        if order_col not in ALLOWED_ORDER_BY_COLUMNS:
+            raise QueryError(f"Invalid order_by column: {order_col}")
+
         order_dir = "DESC" if query.order_desc else "ASC"
         sql_parts.append(f"ORDER BY {order_col} {order_dir}")
 
