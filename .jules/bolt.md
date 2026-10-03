@@ -1,0 +1,3 @@
+## 2024-06-13 - [Performance Optimization]
+**Learning:** Found potential performance optimization opportunities involving Root Mean Square (RMS) energy calculation using native loops or standard operations.
+**Action:** Replace slower Python native looping or element-wise numpy calculations for RMS energy across 2D or 1D structures with faster vectorized numpy routines. Specifically for multidimensional arrays, `np.sqrt(np.einsum('ij,ij->i', frames, frames) / frame_samples)` (for 2D arrays row-wise) or `np.vdot(array, array) / array.size` for general 1D arrays are highly optimized approaches and eliminate temporary array creation or shape regressions.
