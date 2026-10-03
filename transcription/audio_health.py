@@ -111,7 +111,8 @@ def analyze_chunk_health(
     clipping_ratio = float(clipped_count / n_samples)
 
     # 2. Compute RMS energy
-    rms_energy = float(np.sqrt(np.mean(samples_float**2)))
+    # ⚡ Bolt: np.dot is faster than np.mean(samples_float**2) for vector dot product
+    rms_energy = float(np.sqrt(np.dot(samples_float, samples_float) / n_samples))
 
     # 3. Compute SNR proxy (ratio of top 10% energy to bottom 10%)
     snr_proxy = _compute_snr_proxy(samples_float)
@@ -155,11 +156,13 @@ def _compute_snr_proxy(samples: np.ndarray) -> float:
         SNR proxy in dB. Returns 0.0 if computation fails.
     """
     # Compute energy of samples
-    energy = samples**2
+    # ⚡ Bolt: Use np.square which is slightly faster than **2
+    energy = np.square(samples)
 
     # Get percentiles
-    high_energy = np.percentile(energy, _SNR_PERCENTILE_HIGH)
-    low_energy = np.percentile(energy, _SNR_PERCENTILE_LOW)
+    # ⚡ Bolt: Compute both percentiles in a single call to save time
+    # This reduces Python overhead and internal sorting passes
+    low_energy, high_energy = np.percentile(energy, [_SNR_PERCENTILE_LOW, _SNR_PERCENTILE_HIGH])
 
     # Avoid division by zero and log of zero
     if low_energy < 1e-10:
