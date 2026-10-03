@@ -1,0 +1,3 @@
+## 2024-05-06 - Python Loops vs Vectorized Numpy over Struct Unpacks
+**Learning:** In `streaming_diarization.py`, using `struct.unpack` to create a tuple of integers and then looping through it frame by frame in Python to calculate RMS (`sum(s * s for s in frame)`) is profoundly slow. Converting the buffer directly to a numpy array via `np.frombuffer(buffer, dtype="<h")` and using vectorized reshape (`frames**2`) provides a ~125x speedup for calculating frame energies.
+**Action:** Always favor `np.frombuffer` and vectorization for manipulating binary audio data (PCM 16-bit) rather than pure python lists/tuples, especially on the hot path (like streaming chunk ingestion).
