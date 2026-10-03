@@ -38,6 +38,9 @@ Add what you need:
 | `diarization` | Speaker diarization (`pyannote.audio`) |
 | `full` | Everything above |
 | `api` | FastAPI service runtime |
+| `semantic-local` | Local semantic LLM runtime (PyTorch + Transformers) |
+| `semantic-openai` | OpenAI semantic provider SDK |
+| `semantic-anthropic` | Anthropic semantic provider SDK |
 | `integrations` | LangChain + LlamaIndex adapters |
 
 ```bash

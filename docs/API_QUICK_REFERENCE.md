@@ -1489,7 +1489,7 @@ slower-whisper provides pre-built loaders for popular RAG frameworks:
 
 ```python
 # LangChain integration
-from integrations.langchain_loader import SlowerWhisperLoader
+from transcription.integrations.langchain_loader import SlowerWhisperLoader
 
 loader = SlowerWhisperLoader(
     path="whisper_json/",
@@ -1498,7 +1498,7 @@ loader = SlowerWhisperLoader(
 documents = loader.load()  # Returns list of LangChain Document objects
 
 # LlamaIndex integration
-from integrations.llamaindex_reader import SlowerWhisperReader
+from transcription.integrations.llamaindex_reader import SlowerWhisperReader
 
 reader = SlowerWhisperReader(
     path="whisper_json/",

@@ -52,7 +52,7 @@ Conversation (for LLM input):
 **Prerequisites:**
 ```bash
 # Install Anthropic SDK
-uv pip install anthropic
+uv pip install "slower-whisper[semantic-anthropic]"
 
 # Set API key
 export ANTHROPIC_API_KEY="your-key-here"
@@ -182,14 +182,14 @@ print(response.content[0].text)
 ### Adapters for RAG (LangChain + LlamaIndex)
 
 ```python
-from integrations.langchain_loader import SlowerWhisperLoader
+from transcription.integrations.langchain_loader import SlowerWhisperLoader
 
 loader = SlowerWhisperLoader("whisper_json/sample.json")  # file or directory
 docs = loader.load()  # returns langchain_core.documents.Document[]
 ```
 
 ```python
-from integrations.llamaindex_reader import SlowerWhisperReader
+from transcription.integrations.llamaindex_reader import SlowerWhisperReader
 
 reader = SlowerWhisperReader("whisper_json/sample.json")
 docs = reader.load_data()  # returns llama_index.core.Document[]

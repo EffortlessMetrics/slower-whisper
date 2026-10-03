@@ -27,6 +27,8 @@ from .events import (
     create_session_started_event,
     create_transcript_event,
 )
+from .langchain_loader import SlowerWhisperLoader
+from .llamaindex_reader import SlowerWhisperReader
 from .rag_export import (
     ChunkingStrategy,
     RAGBundle,
@@ -69,6 +71,9 @@ __all__ = [
     "RAGExporter",
     "RAGExporterConfig",
     "export_transcript_to_rag",
+    # RAG framework adapters
+    "SlowerWhisperLoader",
+    "SlowerWhisperReader",
     # Registry
     "SinkConfig",
     "SinkRegistry",
