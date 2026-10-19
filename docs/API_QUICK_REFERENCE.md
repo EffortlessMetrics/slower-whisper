@@ -2073,6 +2073,10 @@ project_root/
 └── transcripts/         # Generated: TXT and SRT files
 ```
 
+SRT segment boundaries are rounded to the nearest millisecond before formatting
+`HH:MM:SS,mmm`, including carry into the next second, minute, or hour. For example,
+`1.001` seconds becomes `00:00:01,001` and `59.9996` becomes `00:01:00,000`.
+
 ## Speaker Analytics Models
 
 Speaker analytics models provide structured representations of conversational turns, speaker statistics, and diarization metadata. These are populated when diarization is enabled and turns/speaker stats are computed.
