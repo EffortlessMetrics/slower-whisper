@@ -88,6 +88,39 @@ def test_resume_continues_after_unreadable_json_and_keeps_legacy_skip(
     engine.close.assert_called_once_with()
 
 
+def test_resume_after_keyboard_interrupt_during_json_write(
+    resume_project: tuple[AppConfig, MagicMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg, engine = resume_project
+    add_normalized_audio(cfg.paths, "interrupted")
+    json_path = cfg.paths.json_dir / "interrupted.json"
+    write_text = Path.write_text
+
+    def interrupt_write(path: Path, data: str, *, encoding: str | None = None) -> int:
+        if path == json_path:
+            write_text(path, data[: len(data) // 2], encoding="utf-8")
+            raise KeyboardInterrupt
+        return write_text(path, data, encoding=encoding)
+
+    with monkeypatch.context() as during_write:
+        during_write.setattr(Path, "write_text", interrupt_write)
+        with pytest.raises(KeyboardInterrupt):
+            pipeline.run_pipeline(cfg)
+
+    interrupted_bytes = json_path.read_bytes()
+    assert interrupted_bytes
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(interrupted_bytes)
+    engine.close.assert_called_once_with()
+
+    result = pipeline.run_pipeline(cfg)
+
+    assert (result.failed, result.skipped, result.processed) == (1, 0, 0)
+    assert json_path.read_bytes() == interrupted_bytes
+    engine.transcribe_file.assert_called_once_with(cfg.paths.norm_dir / "interrupted.wav")
+    assert engine.close.call_count == 2
+
+
 def test_cli_resume_returns_failure_for_interrupted_json(
     resume_project: tuple[AppConfig, MagicMock],
     capsys: pytest.CaptureFixture[str],
