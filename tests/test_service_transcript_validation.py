@@ -33,6 +33,7 @@ INVALID_TRANSCRIPTS = [
 
 @pytest.mark.parametrize(("payload", "message"), INVALID_TRANSCRIPTS)
 def test_invalid_transcript_is_bad_request(payload: bytes, message: str) -> None:
+    """Reject invalid roots and byte encodings as client errors in the helper."""
     with pytest.raises(HTTPException) as exc_info:
         validate_transcript_json(payload)
 
@@ -42,6 +43,7 @@ def test_invalid_transcript_is_bad_request(payload: bytes, message: str) -> None
 
 @pytest.mark.parametrize(("payload", "message"), INVALID_TRANSCRIPTS)
 def test_enrich_rejects_invalid_transcript_before_processing(payload: bytes, message: str) -> None:
+    """Return structured HTTP 400 without invoking downstream audio or enrichment work."""
     client = TestClient(app, raise_server_exceptions=False)
     with (
         patch("transcription.service_enrich.save_upload_file_streaming") as save_audio,
@@ -71,6 +73,7 @@ def test_enrich_rejects_invalid_transcript_before_processing(payload: bytes, mes
 
 
 def test_decode_error_does_not_echo_uploaded_bytes(caplog: pytest.LogCaptureFixture) -> None:
+    """Keep submitted content out of decode-failure response details and logs."""
     with pytest.raises(HTTPException) as exc_info:
         validate_transcript_json(b'{"private-note": "private-content-\xff"}')
 
@@ -80,6 +83,7 @@ def test_decode_error_does_not_echo_uploaded_bytes(caplog: pytest.LogCaptureFixt
 
 
 def test_valid_unicode_object_is_accepted() -> None:
+    """Continue accepting UTF-8 objects with Unicode source names and segment text."""
     payload = json.dumps(
         {
             "file_name": "会議.wav",
