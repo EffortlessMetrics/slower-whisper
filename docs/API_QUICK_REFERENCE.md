@@ -852,6 +852,11 @@ uv run slower-whisper export transcript.json --format csv --unit turns  # csv/ht
 uv run slower-whisper validate transcript.json                          # uses built-in v2 schema
 ```
 
+WebVTT exports preserve segment or turn text whitespace. Embedded carriage returns
+and line feeds use character references so paragraphs remain inside their original
+cue; literal markup and entity text remain escaped. Speaker labels use the same
+escaping, and cue timestamps retain their existing millisecond rounding.
+
 More examples: metrics/KPIs (`docs/METRICS_EXAMPLES.md`) and PII masking (`docs/REDACTION.md`).
 
 ## Configuration
