@@ -230,6 +230,13 @@ Turns group contiguous segments by the same speaker into conversational units.
 | `text` | `string` | No | Concatenated text from all segments |
 | `metadata` | `object` | No | Turn-level enrichment metadata |
 
+Turn boundaries cover every member segment: `start` is the first segment's start
+in transcript order, and `end` is the latest member segment end. Nested or
+overlapping segments do not shorten the turn. When pause splitting is enabled,
+the gap is measured from that latest covered end; a gap at or above the configured
+threshold starts a new turn. Speaker changes still start a new turn even during
+overlap.
+
 ### Turn Metadata Fields
 
 | Key | Type | Description |
