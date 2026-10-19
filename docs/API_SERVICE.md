@@ -166,6 +166,10 @@ curl -X POST -F "audio=@meeting.wav" \
 
 Upload a transcript JSON and corresponding audio WAV to add prosodic and emotional features.
 
+The transcript must be a JSON object. Undecodable JSON uploads and non-object
+top-level values (including arrays, strings, numbers, booleans, and `null`) return
+HTTP `400` with the structured `bad_request` error before audio processing.
+
 **Parameters:**
 - `transcript` (file, required): Transcript JSON file (output from `/transcribe`)
 - `audio` (file, required): Audio WAV file (16kHz mono, matching the transcript)

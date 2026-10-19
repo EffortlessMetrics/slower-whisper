@@ -269,6 +269,12 @@ def validate_transcript_json(transcript_content: bytes) -> None:
     """
     try:
         data = json.loads(transcript_content)
+    except UnicodeDecodeError as e:
+        logger.warning("Invalid transcript JSON: unable to decode uploaded bytes")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid transcript JSON: unable to decode uploaded bytes.",
+        ) from e
     except json.JSONDecodeError as e:
         logger.warning("Invalid transcript JSON: %s", e)
         # Security fix: Provide safe parse error location without raw exception
@@ -276,6 +282,13 @@ def validate_transcript_json(transcript_content: bytes) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid transcript JSON: parse error at line {e.lineno}, column {e.colno}",
         ) from e
+
+    if not isinstance(data, dict):
+        logger.warning("Invalid transcript structure: top-level value is not an object")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid transcript structure: top-level value must be a JSON object.",
+        )
 
     # Validate required top-level fields
     required_fields = ["file_name", "segments"]
