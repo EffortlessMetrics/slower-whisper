@@ -28,7 +28,9 @@ def _coerce_speaker_id(value: Any) -> str:
     return get_speaker_label_or_id(value, fallback="unknown")
 
 
-def _collect_segments(transcript: Transcript, unit: str = "segments") -> list[dict[str, Any]]:
+def _collect_segments(
+    transcript: Transcript, unit: str = "segments", *, strip_text: bool = True
+) -> list[dict[str, Any]]:
     """Normalize transcript content into a list of rows."""
     rows: list[dict[str, Any]] = []
 
@@ -39,25 +41,27 @@ def _collect_segments(transcript: Transcript, unit: str = "segments") -> list[di
             except TypeError:
                 # Fallback for unsupported types
                 turn_dict = {"id": str(idx)}
+            text = str(turn_dict.get("text", ""))
             rows.append(
                 {
                     "id": turn_dict.get("id", f"turn_{idx}"),
                     "start": float(turn_dict.get("start", 0.0)),
                     "end": float(turn_dict.get("end", 0.0)),
                     "speaker": _coerce_speaker_id(turn_dict.get("speaker_id")),
-                    "text": str(turn_dict.get("text", "")).strip(),
+                    "text": text.strip() if strip_text else text,
                 }
             )
         return rows
 
     for seg in transcript.segments:
+        text = str(getattr(seg, "text", ""))
         rows.append(
             {
                 "id": getattr(seg, "id", len(rows)),
                 "start": float(getattr(seg, "start", 0.0)),
                 "end": float(getattr(seg, "end", 0.0)),
                 "speaker": _coerce_speaker_id(getattr(seg, "speaker", None)),
-                "text": str(getattr(seg, "text", "")).strip(),
+                "text": text.strip() if strip_text else text,
             }
         )
     return rows
@@ -84,8 +88,8 @@ def _format_ts(seconds: float) -> str:
 
 
 def export_vtt(transcript: Transcript, output_path: Path, unit: str = "segments") -> None:
-    """Write WebVTT subtitles."""
-    rows = _collect_segments(transcript, unit=unit)
+    """Write WebVTT subtitles, preserving text whitespace inside each cue."""
+    rows = _collect_segments(transcript, unit=unit, strip_text=False)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as f:
         f.write("WEBVTT\n\n")
@@ -95,7 +99,16 @@ def export_vtt(transcript: Transcript, output_path: Path, unit: str = "segments"
             speaker_safe = html.escape(row["speaker"]) if row.get("speaker") else ""
             prefix = f"{speaker_safe}: " if speaker_safe else ""
             text_safe = html.escape(row["text"])
-            f.write(f"{prefix}{text_safe}\n\n")
+            # Keep ordinary line breaks readable by converters such as FFmpeg.
+            # Blank or trailing lines can terminate/truncate a cue, so encode
+            # their boundaries. CR must be encoded to avoid parser normalization.
+            lines = f"{prefix}{text_safe}".replace("\r", "&#13;").split("\n")
+            parts = [lines[0]]
+            for previous, following in zip(lines, lines[1:], strict=False):
+                separator = "\n" if previous.strip() and following.strip() else "&#10;"
+                parts.extend((separator, following))
+            payload = "".join(parts)
+            f.write(f"{payload}\n\n")
 
 
 def _speaker_color(speaker: str) -> str:
