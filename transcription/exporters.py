@@ -99,9 +99,15 @@ def export_vtt(transcript: Transcript, output_path: Path, unit: str = "segments"
             speaker_safe = html.escape(row["speaker"]) if row.get("speaker") else ""
             prefix = f"{speaker_safe}: " if speaker_safe else ""
             text_safe = html.escape(row["text"])
-            # Raw blank lines terminate a WebVTT cue. Character references keep
-            # embedded CR/LF in the cue text rather than the file structure.
-            payload = f"{prefix}{text_safe}".replace("\r", "&#13;").replace("\n", "&#10;")
+            # Keep ordinary line breaks readable by converters such as FFmpeg.
+            # Blank or trailing lines can terminate/truncate a cue, so encode
+            # their boundaries. CR must be encoded to avoid parser normalization.
+            lines = f"{prefix}{text_safe}".replace("\r", "&#13;").split("\n")
+            parts = [lines[0]]
+            for previous, following in zip(lines, lines[1:], strict=False):
+                separator = "\n" if previous.strip() and following.strip() else "&#10;"
+                parts.extend((separator, following))
+            payload = "".join(parts)
             f.write(f"{payload}\n\n")
 
 

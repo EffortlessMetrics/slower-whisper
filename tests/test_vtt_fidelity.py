@@ -2,6 +2,8 @@
 
 import csv
 import html
+import shutil
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 
@@ -47,11 +49,16 @@ def _transcript(text: str, speaker: str, unit: str) -> Transcript:
         "first\r\n\r\nsecond",
         "first\r\rsecond",
         "first\nsecond",
+        "first\nsecond\nthird",
+        "first\n \t\nsecond",
+        "first\n",
+        "\nfirst",
         "\n\n  padded text  \n\n",
         "  padded text  ",
         "\t \n\r\n",
         "",
         "first\n\n00:00:07.000 --> 00:00:08.000\nsecond",
+        "first\n00:00:07.000 --> 00:00:08.000\nsecond",
         'naïve 日本語 &amp; &#10; <b>literal</b> "don\'t"',
     ],
 )
@@ -65,7 +72,7 @@ def test_vtt_preserves_text_within_its_cue(tmp_path: Path, text: str, unit: str)
     blocks = path.read_text(encoding="utf-8").split("\n\n")
     assert len(blocks) == 4  # header, two complete cues, final terminator
     assert blocks[0] == "WEBVTT"
-    timing, payload = blocks[1].split("\n")
+    timing, payload = blocks[1].split("\n", 1)
     assert timing == "00:00:01.000 --> 00:00:02.000"
     assert html.unescape(payload) == f"speaker: {text}"
     assert "<" not in payload  # literal tags must not become cue markup
@@ -85,7 +92,7 @@ def test_vtt_speaker_cannot_terminate_or_inject_cues(tmp_path: Path, unit: str) 
 
     blocks = path.read_text(encoding="utf-8").split("\n\n")
     assert len(blocks) == 4
-    timing, payload = blocks[1].split("\n")
+    timing, payload = blocks[1].split("\n", 1)
     assert timing == "00:00:01.000 --> 00:00:02.000"
     assert html.unescape(payload) == f"{speaker}: content"
     assert "<" not in payload and "\r" not in payload
@@ -102,3 +109,28 @@ def test_vtt_empty_transcript(tmp_path: Path) -> None:
     path = tmp_path / "empty.vtt"
     export_vtt(Transcript(file_name="silent.wav", language="en", segments=[]), path)
     assert path.read_bytes() == b"WEBVTT\n\n"
+
+
+@pytest.mark.parametrize("unit", ["segments", "turns", "dict_turns"])
+def test_vtt_single_line_feeds_survive_ffmpeg_conversion(tmp_path: Path, unit: str) -> None:
+    path = tmp_path / "transcript.vtt"
+    output = tmp_path / "transcript.srt"
+    export_vtt(
+        _transcript("first\nsecond\nthird", "speaker", unit),
+        path,
+        unit="segments" if unit == "segments" else "turns",
+    )
+    assert "speaker: first\nsecond\nthird\n\n" in path.read_text(encoding="utf-8")
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        pytest.skip("FFmpeg is required for subtitle conversion compatibility")
+    subprocess.run(
+        [ffmpeg, "-nostdin", "-v", "error", "-y", "-i", str(path), str(output)],
+        check=True,
+        capture_output=True,
+        timeout=15,
+    )
+    assert output.read_text(encoding="utf-8") == (
+        "1\n00:00:01,000 --> 00:00:02,000\nspeaker: first\nsecond\nthird\n\n"
+        "2\n00:00:03,000 --> 00:00:04,000\nnext: following cue\n\n"
+    )

@@ -852,10 +852,14 @@ uv run slower-whisper export transcript.json --format csv --unit turns  # csv/ht
 uv run slower-whisper validate transcript.json                          # uses built-in v2 schema
 ```
 
-WebVTT exports preserve segment or turn text whitespace. Embedded carriage returns
-and line feeds use character references so paragraphs remain inside their original
-cue; literal markup and entity text remain escaped. Speaker labels use the same
-escaping, and cue timestamps retain their existing millisecond rounding.
+WebVTT exports preserve segment or turn text whitespace. Ordinary line feeds remain
+raw for converter compatibility. Carriage returns and line feeds beside empty or
+whitespace-only lines use character references so paragraphs remain inside their
+original cue; literal markup and entity text remain escaped. FFmpeg 7.1.5 preserves
+ordinary line feeds but retains numeric references literally when converting to
+SRT, so paragraph/CR fidelity requires a reader supporting those references.
+Speaker labels use the same escaping, and cue timestamps retain their existing
+millisecond rounding.
 
 More examples: metrics/KPIs (`docs/METRICS_EXAMPLES.md`) and PII masking (`docs/REDACTION.md`).
 
