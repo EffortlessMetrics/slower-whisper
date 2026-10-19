@@ -7,6 +7,7 @@ from transcription.writers import _fmt_srt_ts, write_srt
 
 
 def test_fmt_srt_ts_basic() -> None:
+    """Keep zero and ordinary hour/minute/second formatting stable."""
     assert _fmt_srt_ts(0.0) == "00:00:00,000"
     # 1 hour, 2 minutes, 3.456 seconds
     t = 1 * 3600 + 2 * 60 + 3.456
@@ -15,6 +16,7 @@ def test_fmt_srt_ts_basic() -> None:
 
 @pytest.mark.parametrize("offset_ms", [0, 59_000, 3_599_000, 359_999_000])
 def test_fmt_srt_ts_preserves_integer_milliseconds(offset_ms: int) -> None:
+    """Retain every millisecond across representative clock boundaries."""
     for total_ms in range(offset_ms, offset_ms + 10_001):
         # Build the expected clock directly from integer input, without float math.
         seconds, ms = divmod(total_ms, 1000)
@@ -36,10 +38,12 @@ def test_fmt_srt_ts_preserves_integer_milliseconds(offset_ms: int) -> None:
     ],
 )
 def test_fmt_srt_ts_rounds_before_splitting_clock(seconds: float, expected: str) -> None:
+    """Round fractional milliseconds and carry into larger clock fields."""
     assert _fmt_srt_ts(seconds) == expected
 
 
 def test_write_srt_quantizes_segment_boundaries(tmp_path: Path) -> None:
+    """Write quantized cue endpoints without changing source timestamps."""
     transcript = Transcript(
         file_name="synthetic.wav",
         language="en",
