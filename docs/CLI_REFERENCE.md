@@ -72,12 +72,20 @@ slower-whisper transcribe [OPTIONS]
 | `--vad-min-silence-ms INT` | `500` | Minimum silence to split segments |
 | `--beam-size INT` | `5` | Beam search size |
 | `--word-timestamps / --no-word-timestamps` | `False` | Extract word-level timestamps (v1.8+) |
-| `--skip-existing-json / --no-skip-existing-json` | `True` | Skip files that already have JSON |
+| `--skip-existing-json / --no-skip-existing-json` | `True` | Skip files with existing, loadable transcript JSON |
 | `--enable-diarization` | `False` | Run experimental speaker diarization (pyannote) |
 | `--diarization-device {auto,cuda,cpu}` | `auto` | Device for diarization (auto selects cuda if available) |
 | `--min-speakers INT` | `None` | Speaker count hint (min) |
 | `--max-speakers INT` | `None` | Speaker count hint (max) |
 | `--overlap-threshold FLOAT` | `0.3` | Min overlap ratio to assign a speaker |
+
+When resuming with `--skip-existing-json`, an existing transcript must load
+successfully before it counts as skipped. Unreadable output (for example, truncated
+JSON left by an interrupted write) is reported as a per-file failure, and the
+batch continues with other files. The CLI exits with code `1` if any file fails.
+The failed output is preserved; inspect it before explicitly reprocessing with
+`--no-skip-existing-json`. This load check retains legacy transcript compatibility
+and is not full schema validation (`slower-whisper validate` performs that check).
 
 **Examples**
 

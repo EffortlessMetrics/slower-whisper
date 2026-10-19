@@ -316,6 +316,27 @@ def _run_normalized_files(
                     )
                 )
             else:
+                # An interrupted write can leave a JSON path that exists but
+                # cannot be reused. Report it just like a diarization load error.
+                try:
+                    writers.load_transcript_from_json(json_path)
+                except Exception as exc:
+                    logger.error(
+                        "Failed to load %s: %s",
+                        json_path.name,
+                        exc,
+                        exc_info=True,
+                    )
+                    failed += 1
+                    file_results.append(
+                        PipelineFileResult(
+                            file_name=source_name,
+                            status="error",
+                            error_message=f"Load failed: {exc}",
+                        )
+                    )
+                    continue
+
                 logger.debug(
                     "[skip-transcribe] %s because %s already exists",
                     wav.name,
