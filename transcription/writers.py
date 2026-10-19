@@ -214,18 +214,21 @@ def write_txt(transcript: Transcript, out_path: Path) -> None:
 
 def _fmt_srt_ts(t: float) -> str:
     """
-    Format seconds as SRT timestamp (HH:MM:SS,mmm).
+    Format seconds as SRT timestamp (HH:MM:SS,mmm), rounding to milliseconds.
     """
-    h = int(t // 3600)
-    m = int((t % 3600) // 60)
-    s = int(t % 60)
-    ms = int((t * 1000) % 1000)
+    total_ms = round(t * 1000)
+    h, remaining_ms = divmod(total_ms, 3_600_000)
+    m, remaining_ms = divmod(remaining_ms, 60_000)
+    s, ms = divmod(remaining_ms, 1000)
     return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
 
 def write_srt(transcript: Transcript, out_path: Path) -> None:
     """
     Write an SRT subtitle file for the transcript.
+
+    Segment boundaries are rounded to the nearest millisecond before splitting
+    clock fields, so rounding carries across second, minute, and hour boundaries.
     """
     with out_path.open("w", encoding="utf-8") as f:
         for idx, s in enumerate(transcript.segments, start=1):
