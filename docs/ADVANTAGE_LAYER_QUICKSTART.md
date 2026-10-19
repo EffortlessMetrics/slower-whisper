@@ -206,6 +206,11 @@ slower-whisper webhook retry \
   --dead-letter-path dead_letters.json
 ```
 
+When using `WebhookSink` from Python, `await sink.close()` drains pending background
+deliveries before closing the HTTP client. Subsequent `send_event()` and `send_batch()`
+calls raise `RuntimeError`, including empty batches in either blocking mode. Create a
+new sink to send more events after shutdown.
+
 ---
 
 ## Step 7: Export RAG Bundle

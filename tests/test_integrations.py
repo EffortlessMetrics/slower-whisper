@@ -329,6 +329,48 @@ class TestWebhookSink:
         await sink.close()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("blocking", [False, True])
+    @pytest.mark.parametrize("event_count", [0, 1])
+    async def test_batch_send_rejects_closed_sink(self, blocking: bool, event_count: int) -> None:
+        """Closed sinks reject every batch before attempting delivery."""
+        mock_client = AsyncMock()
+        mock_client.post.return_value = HttpResponse(status_code=200)
+        sink = WebhookSink(
+            WebhookConfig(url="https://example.invalid/webhook"), http_client=mock_client
+        )
+        await sink.close()
+        events = [create_session_started_event(f"sess-{i}") for i in range(event_count)]
+
+        with pytest.raises(RuntimeError, match="^WebhookSink is closed$"):
+            await sink.send_batch(events, blocking=blocking)
+
+        mock_client.post.assert_not_awaited()
+        mock_client.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_close_drains_nonblocking_batch_before_closing_client(self) -> None:
+        """A batch admitted while open finishes delivery before client shutdown."""
+        mock_client = AsyncMock()
+        mock_client.post.return_value = HttpResponse(status_code=200)
+        events = [create_session_started_event(f"sess-{i}") for i in range(2)]
+
+        async def close_client() -> None:
+            assert mock_client.post.await_count == len(events)
+
+        mock_client.close.side_effect = close_client
+        sink = WebhookSink(
+            WebhookConfig(url="https://example.invalid/webhook"), http_client=mock_client
+        )
+
+        assert await sink.send_batch(events, blocking=False) == [True, True]
+        await sink.close()
+
+        assert [call.kwargs["json"]["event_id"] for call in mock_client.post.await_args_list] == [
+            event.event_id for event in events
+        ]
+        mock_client.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_send_transcript(self, sample_transcript: Transcript) -> None:
         """Test send_transcript convenience method."""
         mock_client = AsyncMock()
