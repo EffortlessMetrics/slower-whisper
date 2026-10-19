@@ -38,7 +38,7 @@ regexes = [
   '''eyJhbGciOiJIUzI1NiIs\.\.\.''',
   # Canonical fake credentials from Gitleaks' own README, accidentally copied
   # into historical slower-whisper README commits.
-  '''AKIAIMNOJVGFDXXXE4OA''',
+  '''[A]KIAIMNOJVGFDXXXE4OA''',
   '''cafebabe:deadbeef''',
   # Nix store hashes (not secrets)
   '''/nix/store/[a-z0-9]{32}-''',
