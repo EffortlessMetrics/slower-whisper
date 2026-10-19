@@ -53,7 +53,8 @@ def build_turns(
     **v1.1 logic** (basic grouping):
     1. Group contiguous segments with same speaker_id
     2. Split on speaker changes
-    3. Optionally split on long pauses (>= pause_threshold)
+    3. Optionally split on long pauses (>= pause_threshold) after the latest
+       segment end in the current turn, including overlapping segments
 
     **v1.2 enhancement** (planned):
     - Populate metadata.question_count (regex scan for '?')
@@ -68,8 +69,9 @@ def build_turns(
                    Segments with speaker=None are skipped.
         pause_threshold: Minimum pause duration (seconds) to split turns for same speaker.
                         If None (default), only speaker changes trigger turn splits.
-                        If set (e.g., 2.0), a gap >= pause_threshold between segments
-                        will start a new turn even if the speaker remains the same.
+                        If set (e.g., 2.0), a gap >= pause_threshold after the latest
+                        covered end will start a new turn even if the speaker remains
+                        the same.
                         Must be >= 0.0 when provided.
 
     Returns:
@@ -112,6 +114,7 @@ def build_turns(
     turns: list[Turn | dict[str, Any]] = []
     current_turn_segments: list[Segment] = []
     current_speaker_id: str | None = None
+    current_turn_end = 0.0
 
     for segment, speaker_id in speaker_segments:
         if speaker_id != current_speaker_id:
@@ -121,13 +124,13 @@ def build_turns(
                 turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))
             current_turn_segments = [segment]
             current_speaker_id = speaker_id
+            current_turn_end = segment.end
         else:
             # Same speaker → check for pause-based split
             should_split_on_pause = False
             if pause_threshold is not None and current_turn_segments:
-                # Calculate gap between previous segment end and current segment start
-                previous_segment = current_turn_segments[-1]
-                gap = segment.start - previous_segment.end
+                # A nested segment must not move the covered end backwards.
+                gap = segment.start - current_turn_end
                 if gap >= pause_threshold:
                     should_split_on_pause = True
 
@@ -136,9 +139,11 @@ def build_turns(
                 assert current_speaker_id is not None
                 turns.append(_finalize_turn(len(turns), current_turn_segments, current_speaker_id))
                 current_turn_segments = [segment]
+                current_turn_end = segment.end
             else:
                 # Continue current turn
                 current_turn_segments.append(segment)
+                current_turn_end = max(current_turn_end, segment.end)
 
     # Finalize last turn
     if current_turn_segments and current_speaker_id is not None:
@@ -163,7 +168,7 @@ def _finalize_turn(turn_id: int, segments: list[Segment], speaker_id: str) -> di
     segment_ids = [seg.id for seg in segments]
     texts = [seg.text.strip() for seg in segments if seg.text.strip()]  # Skip empty text
     start = segments[0].start
-    end = segments[-1].end
+    end = max(seg.end for seg in segments)
 
     return {
         "id": f"turn_{turn_id}",
