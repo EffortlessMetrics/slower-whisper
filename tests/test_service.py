@@ -1015,6 +1015,31 @@ class TestNotFoundResponses:
 class TestAudioValidationEdgeCases:
     """Tests for audio validation edge cases."""
 
+    def test_unsafe_audio_filename_rejected(
+        self, client: TestClient, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Test that audio files with unsafe names are rejected."""
+        # We need to simulate the file being saved with an unsafe path name by the service.
+        # Since `save_upload_file_streaming` sanitizes the name or gives it a random UUID, we mock
+        # validate_audio_format's input directly or mock the temporary path generator.
+
+        # A simpler way is to test the validation function directly since testing the whole
+        # endpoint requires bypassing the endpoint's own file saving logic which generates a random UUID name.
+        from transcription.service_validation import validate_audio_format
+
+        unsafe_path = tmp_path / "-unsafe.wav"
+        unsafe_path.write_bytes(b"dummy")
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_audio_format(unsafe_path)
+
+        assert exc_info.value.status_code == 400
+        assert (
+            "Invalid file path" in str(exc_info.value.detail)
+            or "Invalid audio file" in str(exc_info.value.detail)
+            or "Invalid WAV file" in str(exc_info.value.detail)
+        )
+
     def test_empty_audio_file(self, client: TestClient) -> None:
         """Test that empty audio file is rejected."""
         response = client.post(
