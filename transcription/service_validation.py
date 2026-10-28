@@ -120,17 +120,18 @@ def validate_audio_format(audio_path: Path) -> None:
     try:
         # Use ffprobe to check if file is valid audio
         # -v error: only show errors
-        # -show_entries format=format_name: show format info
-        # -of default=noprint_wrappers=1: simple output format
+        # Select audio streams explicitly: a valid container can contain only video.
         result = subprocess.run(
             [
                 "ffprobe",
                 "-v",
                 "error",
+                "-select_streams",
+                "a:0",
                 "-show_entries",
-                "format=format_name,duration",
+                "stream=codec_type:format=duration",
                 "-of",
-                "default=noprint_wrappers=1:nokey=1",
+                "json",
                 str(audio_path),
             ],
             capture_output=True,
@@ -148,24 +149,32 @@ def validate_audio_format(audio_path: Path) -> None:
                 ),
             )
 
-        # Check that duration is present and reasonable
-        lines = result.stdout.strip().split("\n")
-        if len(lines) < 2:
-            logger.warning("Invalid audio file: missing duration information")
+        try:
+            probe = json.loads(result.stdout)
+            streams = probe.get("streams", [])
+            duration_text = probe.get("format", {}).get("duration")
+        except (ValueError, AttributeError, TypeError) as e:
+            logger.warning("Invalid audio file: cannot parse ffprobe output: %s", e)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid audio file: unable to determine audio duration.",
+                detail="Invalid audio file: unable to parse probe output.",
+            ) from e
+
+        if not any(stream.get("codec_type") == "audio" for stream in streams):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid audio file: no audio stream found.",
             )
 
         try:
-            duration = float(lines[1])
+            duration = float(duration_text)
             if duration <= 0:
                 logger.warning("Invalid audio file: zero or negative duration")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid audio file: audio has zero or negative duration.",
                 )
-        except (ValueError, IndexError) as e:
+        except (ValueError, TypeError) as e:
             logger.warning("Invalid audio file: cannot parse duration: %s", e)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
