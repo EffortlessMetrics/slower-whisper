@@ -7,6 +7,24 @@ import pytest
 
 from transcription import audio_io
 from transcription.config import Paths
+from transcription.exceptions import TranscriptionError
+
+
+@pytest.mark.parametrize("other_name", ["clip.flac", "CLIP.flac"])
+def test_normalize_all_rejects_colliding_stems_before_workers(tmp_path, monkeypatch, other_name):
+    paths = Paths(root=tmp_path)
+    audio_io.ensure_dirs(paths)
+    (paths.raw_dir / "clip.mp3").write_bytes(b"first")
+    (paths.raw_dir / other_name).write_bytes(b"second")
+    monkeypatch.setattr(audio_io, "check_ffmpeg_installation", lambda: None)
+    calls = []
+    monkeypatch.setattr(audio_io, "_normalize_one_file", lambda *args: calls.append(args))
+
+    with pytest.raises(TranscriptionError, match="would overwrite the same normalized WAV"):
+        audio_io.normalize_all(paths)
+
+    assert calls == []
+    assert list(paths.norm_dir.iterdir()) == []
 
 
 def test_normalize_all_refreshes_when_source_is_newer(tmp_path, monkeypatch):

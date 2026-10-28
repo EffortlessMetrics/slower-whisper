@@ -91,6 +91,10 @@ uv run slower-whisper benchmark run --track asr --dataset smoke
 uv run slower-whisper benchmark compare --track asr --dataset smoke --gate
 ```
 
+Files in `raw_audio/` must have distinct stems, ignoring case: for example,
+`clip.mp3` and `clip.flac` both map to `clip.wav` and are rejected before
+normalization. Rename one input before running the batch.
+
 ## What You Get
 
 - **Local-first** — all processing on your hardware. No accounts, no rate limits, no per-minute billing.

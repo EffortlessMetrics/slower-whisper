@@ -20,8 +20,7 @@ from typing import Any
 from . import __version__ as PIPELINE_VERSION
 from . import audio_io, writers
 from .asr_engine import TranscriptionEngine
-from .config import AppConfig, Paths, TranscriptionConfig
-from .exceptions import TranscriptionError
+from .config import AppConfig, TranscriptionConfig
 from .meta_utils import build_generation_metadata
 from .models import Transcript
 from .source_identity import safe_source_name
@@ -83,26 +82,6 @@ def _get_duration_seconds(path: Path) -> float:
         return 0.0
 
 
-def _raw_sources_by_stem(paths: Paths) -> dict[str, Path]:
-    """Index raw files by normalized output stem and reject collisions early."""
-    grouped: dict[str, list[Path]] = {}
-    for candidate in sorted(paths.raw_dir.iterdir()):
-        if candidate.is_file():
-            grouped.setdefault(candidate.stem.casefold(), []).append(candidate)
-
-    collisions = {stem: candidates for stem, candidates in grouped.items() if len(candidates) > 1}
-    if collisions:
-        details = "; ".join(
-            f"{stem}: {', '.join(candidate.name for candidate in candidates)}"
-            for stem, candidates in sorted(collisions.items())
-        )
-        raise TranscriptionError(
-            f"Raw audio files would overwrite the same normalized WAV: {details}"
-        )
-
-    return {stem: candidates[0] for stem, candidates in grouped.items()}
-
-
 def _source_name_for_normalized(
     raw_sources: dict[str, Path],
     wav: Path,
@@ -158,7 +137,7 @@ def run_pipeline(
     paths = cfg.paths
 
     audio_io.ensure_dirs(paths)
-    raw_sources = _raw_sources_by_stem(paths)
+    raw_sources = audio_io.raw_sources_by_stem(paths)
     audio_io.normalize_all(paths)
 
     norm_files = sorted(paths.norm_dir.glob("*.wav"))

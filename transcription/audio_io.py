@@ -18,6 +18,7 @@ from secrets import token_hex
 from typing import NamedTuple
 
 from .config import Paths
+from .exceptions import TranscriptionError
 
 logger = logging.getLogger(__name__)
 
@@ -537,6 +538,25 @@ def normalize_single(src: Path, dst: Path) -> None:
         raise FFmpegNotFoundError() from e
 
 
+def raw_sources_by_stem(paths: Paths) -> dict[str, Path]:
+    """Index raw files and reject names that map to the same normalized WAV."""
+    grouped: dict[str, list[Path]] = {}
+    for candidate in sorted(paths.raw_dir.iterdir()):
+        if candidate.is_file():
+            grouped.setdefault(candidate.stem.casefold(), []).append(candidate)
+
+    collisions = {stem: candidates for stem, candidates in grouped.items() if len(candidates) > 1}
+    if collisions:
+        details = "; ".join(
+            f"{stem}: {', '.join(candidate.name for candidate in candidates)}"
+            for stem, candidates in sorted(collisions.items())
+        )
+        raise TranscriptionError(
+            f"Raw audio files would overwrite the same normalized WAV: {details}"
+        )
+    return {stem: candidates[0] for stem, candidates in grouped.items()}
+
+
 def normalize_all(paths: Paths) -> None:
     """
     Convert all files in raw_dir to 16 kHz mono WAV in norm_dir using ffmpeg.
@@ -549,8 +569,12 @@ def normalize_all(paths: Paths) -> None:
 
     Raises:
         FFmpegNotFoundError: If ffmpeg is not installed or not on PATH.
+        TranscriptionError: If raw files have colliding output stems.
     """
     logger.info("Starting audio normalization with ffmpeg")
+
+    # Validate the whole batch before any worker can write an output.
+    raw_sources = raw_sources_by_stem(paths)
 
     # Check ffmpeg installation before spawning threads
     check_ffmpeg_installation()
@@ -565,10 +589,9 @@ def normalize_all(paths: Paths) -> None:
 
     # Collect files to process
     files_to_process: list[tuple[Path, Path]] = []
-    for src in sorted(paths.raw_dir.iterdir()):
-        if src.is_file():
-            dst = paths.norm_dir / f"{src.stem}.wav"
-            files_to_process.append((src, dst))
+    for src in sorted(raw_sources.values()):
+        dst = paths.norm_dir / f"{src.stem}.wav"
+        files_to_process.append((src, dst))
 
     if not files_to_process:
         logger.info("No files found in raw_audio/ directory")
