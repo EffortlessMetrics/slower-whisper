@@ -24,6 +24,7 @@ from transcription.streaming_client import (
     ClientStats,
     ConnectionError,
     EventType,
+    SessionError,
     StreamEvent,
     StreamingClient,
     StreamingConfig,
@@ -568,6 +569,71 @@ class TestClientIntegration:
 
         with pytest.raises(RuntimeError, match="Cannot ping in state"):
             await client.ping()
+
+    @pytest.mark.asyncio
+    async def test_ping_preserves_intervening_events(self) -> None:
+        client = StreamingClient()
+        client._state = ClientState.SESSION_ACTIVE
+
+        async def send(message: dict[str, Any]) -> None:
+            for event_id, event_type in [(1, "PARTIAL"), (2, "FINALIZED"), (3, "PONG")]:
+                payload = {"timestamp": message["timestamp"]} if event_type == "PONG" else {}
+                await client._handle_event(StreamEvent(event_id, "stream", event_type, 0, payload))
+
+        with patch.object(client, "_send_message", side_effect=send):
+            pong = await client.ping()
+
+        assert pong.event_id == 3
+        assert [client._event_queue.get_nowait().event_id for _ in range(2)] == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_ping_and_event_iterator_do_not_compete(self) -> None:
+        client = StreamingClient(StreamingConfig(ping_timeout=0.1))
+        client._state = ClientState.SESSION_ACTIVE
+        iterator = client.events()
+        next_event = asyncio.create_task(anext(iterator))
+        await asyncio.sleep(0)
+
+        async def send(message: dict[str, Any]) -> None:
+            await client._handle_event(
+                StreamEvent(1, "stream", "PONG", 0, {"timestamp": message["timestamp"]})
+            )
+            await asyncio.sleep(0.01)
+            await client._handle_event(StreamEvent(2, "stream", "FINALIZED", 0, {}))
+
+        with patch.object(client, "_send_message", side_effect=send):
+            pong = await client.ping()
+        assert pong.event_id == 1
+        assert (await asyncio.wait_for(next_event, 0.1)).event_id == 2
+        await iterator.aclose()
+
+    @pytest.mark.asyncio
+    async def test_late_pong_does_not_satisfy_next_ping(self) -> None:
+        client = StreamingClient(StreamingConfig(ping_timeout=0.01))
+        client._state = ClientState.CONNECTED
+        timestamps: list[int] = []
+
+        async def send(message: dict[str, Any]) -> None:
+            timestamps.append(message["timestamp"])
+            if len(timestamps) == 2:
+                await client._handle_event(
+                    StreamEvent(1, "stream", "PONG", 0, {"timestamp": timestamps[0]})
+                )
+                await client._handle_event(
+                    StreamEvent(2, "stream", "PONG", 0, {"timestamp": timestamps[1]})
+                )
+
+        with (
+            patch("time.time", return_value=1000),
+            patch.object(client, "_send_message", side_effect=send),
+        ):
+            with pytest.raises(SessionError, match="Timeout waiting for PONG"):
+                await client.ping()
+            pong = await client.ping()
+
+        assert timestamps[1] > timestamps[0]
+        assert pong.event_id == 2
+        assert client._event_queue.get_nowait().event_id == 1
 
     @pytest.mark.asyncio
     async def test_close_idempotent(self) -> None:

@@ -374,6 +374,9 @@ class StreamingClient:
 
         # Synchronization
         self._close_event = asyncio.Event()
+        self._ping_lock = asyncio.Lock()
+        self._ping_waiter: asyncio.Future[StreamEvent] | None = None
+        self._ping_timestamp = 0
 
         logger.debug("StreamingClient initialized with config: %s", self.config)
 
@@ -705,22 +708,26 @@ class StreamingClient:
 
         import time
 
-        timestamp = int(time.time() * 1000)
-        message = {
-            "type": "PING",
-            "timestamp": timestamp,
-        }
-
-        await self._send_message(message)
-        self.stats.ping_count += 1
-
-        # Wait for PONG
-        event = await self._wait_for_event_type("PONG", timeout=self.config.ping_timeout)
-        if event is None:
-            raise SessionError("Timeout waiting for PONG")
-
-        self.stats.pong_count += 1
-        return event
+        async with self._ping_lock:
+            # Distinct timestamps keep a late response from satisfying a later ping.
+            self._ping_timestamp = max(int(time.time() * 1000), self._ping_timestamp + 1)
+            waiter: asyncio.Future[StreamEvent] = asyncio.get_running_loop().create_future()
+            self._ping_waiter = waiter
+            try:
+                await self._send_message({"type": "PING", "timestamp": self._ping_timestamp})
+                self.stats.ping_count += 1
+                try:
+                    event = await asyncio.wait_for(waiter, timeout=self.config.ping_timeout)
+                except TimeoutError:
+                    raise SessionError("Timeout waiting for PONG") from None
+                if event.is_error:
+                    raise SessionError(
+                        f"Non-recoverable error: {event.payload.get('message', 'Unknown error')}"
+                    )
+                self.stats.pong_count += 1
+                return event
+            finally:
+                self._ping_waiter = None
 
     async def events(self) -> AsyncIterator[StreamEvent]:
         """Async iterator over received events.
@@ -860,8 +867,24 @@ class StreamingClient:
         elif event.type == EventType.ERROR.value:
             self.stats.errors_received += 1
 
-        # Put in queue for async iteration
-        await self._event_queue.put(event)
+        # Route the matching response to ping without competing with event iteration.
+        waiter = self._ping_waiter
+        if (
+            event.type == EventType.PONG.value
+            and event.payload.get("timestamp") == self._ping_timestamp
+            and waiter is not None
+            and not waiter.done()
+        ):
+            waiter.set_result(event)
+        else:
+            await self._event_queue.put(event)
+            if (
+                event.is_error
+                and not event.is_recoverable
+                and waiter is not None
+                and not waiter.done()
+            ):
+                waiter.set_result(event)
 
         # Invoke callbacks
         try:
