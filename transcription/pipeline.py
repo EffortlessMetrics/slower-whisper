@@ -11,6 +11,7 @@ and error recovery.
 """
 
 import logging
+import tempfile
 import time
 import wave
 from dataclasses import dataclass, field
@@ -379,9 +380,14 @@ def _run_normalized_files(
 
                 transcript = _maybe_build_chunks(transcript, diarization_config)
 
-        writers.write_json(transcript, json_path)
         writers.write_txt(transcript, txt_path)
         writers.write_srt(transcript, srt_path)
+        # JSON is the skip-existing marker. Publish it only after the other
+        # outputs succeed, and never expose a partially written marker.
+        with tempfile.TemporaryDirectory(dir=json_path.parent) as tmp_dir:
+            staged_json = Path(tmp_dir) / json_path.name
+            writers.write_json(transcript, staged_json)
+            staged_json.replace(json_path)
 
         logger.info("  → JSON: %s", json_path)
         logger.info("  → TXT:  %s", txt_path)

@@ -1566,3 +1566,102 @@ class TestPipelineModelConfiguration:
         # Verify engine was created with Spanish language config
         actual_cfg = mock_engine_class.call_args[0][0]
         assert actual_cfg.language == "es"
+
+
+@patch("transcription.pipeline.TranscriptionEngine")
+def test_interrupted_output_is_completed_on_retry(
+    mock_engine_class: MagicMock,
+    sample_app_config: AppConfig,
+    sample_transcript: Transcript,
+    create_wav_file: Any,
+) -> None:
+    """A failed subtitle write must not mark a new transcript complete."""
+    sample_app_config.skip_existing_json = True
+    create_wav_file(path=sample_app_config.paths.norm_dir / "interrupted.wav")
+    mock_engine_class.return_value.transcribe_file.return_value = sample_transcript
+
+    with patch("transcription.pipeline.writers.write_srt", side_effect=OSError("interrupted")):
+        try:
+            interrupted = run_pipeline(sample_app_config)
+        except OSError as exc:
+            assert str(exc) == "interrupted"
+        else:
+            assert interrupted.failed == 1
+
+    assert not (sample_app_config.paths.json_dir / "interrupted.json").exists()
+
+    result = run_pipeline(sample_app_config)
+    assert result.processed == 1
+    assert (sample_app_config.paths.json_dir / "interrupted.json").is_file()
+    assert "Hello world" in (sample_app_config.paths.transcripts_dir / "interrupted.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "Hello world" in (sample_app_config.paths.transcripts_dir / "interrupted.srt").read_text(
+        encoding="utf-8"
+    )
+
+
+@patch("transcription.pipeline.TranscriptionEngine")
+def test_interrupted_json_write_does_not_create_skip_marker(
+    mock_engine_class: MagicMock,
+    sample_app_config: AppConfig,
+    sample_transcript: Transcript,
+    create_wav_file: Any,
+) -> None:
+    sample_app_config.skip_existing_json = True
+    create_wav_file(path=sample_app_config.paths.norm_dir / "interrupted.wav")
+    mock_engine_class.return_value.transcribe_file.return_value = sample_transcript
+    json_path = sample_app_config.paths.json_dir / "interrupted.json"
+
+    def interrupted_write(_transcript: Transcript, path: Path) -> None:
+        path.write_text('{"segments": [', encoding="utf-8")
+        raise OSError("interrupted")
+
+    with patch("transcription.pipeline.writers.write_json", side_effect=interrupted_write):
+        try:
+            interrupted = run_pipeline(sample_app_config)
+        except OSError as exc:
+            assert str(exc) == "interrupted"
+        else:
+            assert interrupted.failed == 1
+    assert not json_path.exists()
+    assert list(sample_app_config.paths.json_dir.iterdir()) == []
+
+    result = run_pipeline(sample_app_config)
+    assert result.processed == 1
+    assert json.loads(json_path.read_text(encoding="utf-8"))["segments"]
+
+    # A completed JSON remains the normal skip marker on the next invocation.
+    transcriptions = mock_engine_class.return_value.transcribe_file.call_count
+    result = run_pipeline(sample_app_config)
+    assert result.skipped == 1
+    assert mock_engine_class.return_value.transcribe_file.call_count == transcriptions
+
+
+@patch("transcription.pipeline.TranscriptionEngine")
+def test_interrupted_json_replacement_preserves_existing_json(
+    mock_engine_class: MagicMock,
+    sample_app_config: AppConfig,
+    sample_transcript: Transcript,
+    create_wav_file: Any,
+) -> None:
+    create_wav_file(path=sample_app_config.paths.norm_dir / "interrupted.wav")
+    mock_engine_class.return_value.transcribe_file.return_value = sample_transcript
+    json_path = sample_app_config.paths.json_dir / "interrupted.json"
+    old_json = '{"file": "old.wav", "segments": []}'
+    json_path.write_text(old_json, encoding="utf-8")
+
+    def interrupted_write(_transcript: Transcript, path: Path) -> None:
+        path.write_text('{"segments": [', encoding="utf-8")
+        raise OSError("interrupted")
+
+    with patch("transcription.pipeline.writers.write_json", side_effect=interrupted_write):
+        try:
+            interrupted = run_pipeline(sample_app_config)
+        except OSError as exc:
+            assert str(exc) == "interrupted"
+        else:
+            assert interrupted.failed == 1
+
+    assert json_path.read_text(encoding="utf-8") == old_json
+    assert list(sample_app_config.paths.json_dir.iterdir()) == [json_path]
