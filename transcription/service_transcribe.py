@@ -540,6 +540,34 @@ async def transcribe_audio_streaming(
 
     task_value = cast(WhisperTask, task)
 
+    # Reject invalid configuration before saving or normalizing uploaded audio.
+    try:
+        # Create transcription config
+        extra_kwargs: dict[str, Any] = {}
+        if overlap_threshold is not None:
+            extra_kwargs["overlap_threshold"] = overlap_threshold
+
+        config = TranscriptionConfig(
+            model=model,
+            language=language,
+            device=device,
+            compute_type=normalized_compute_type,
+            task=task_value,
+            skip_existing_json=False,
+            enable_diarization=enable_diarization,
+            diarization_device=diarization_device,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+            word_timestamps=word_timestamps,
+            **extra_kwargs,
+        )
+    except (ConfigurationError, TypeError, ValueError) as error:
+        logger.warning("Invalid transcription configuration", exc_info=error)
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid transcription configuration. Check parameter values.",
+        ) from error
+
     # Create temporary directory for processing
     tmpdir = tempfile.mkdtemp()
     tmpdir_path = Path(tmpdir)
@@ -585,26 +613,6 @@ async def transcribe_audio_streaming(
                 status_code=500,
                 detail="Audio normalization failed: output file not created.",
             )
-
-        # Create transcription config
-        extra_kwargs: dict[str, Any] = {}
-        if overlap_threshold is not None:
-            extra_kwargs["overlap_threshold"] = overlap_threshold
-
-        config = TranscriptionConfig(
-            model=model,
-            language=language,
-            device=device,
-            compute_type=normalized_compute_type,
-            task=task_value,
-            skip_existing_json=False,
-            enable_diarization=enable_diarization,
-            diarization_device=diarization_device,
-            min_speakers=min_speakers,
-            max_speakers=max_speakers,
-            word_timestamps=word_timestamps,
-            **extra_kwargs,
-        )
 
         # Create async generator for SSE events
         async def generate_with_cleanup() -> AsyncGenerator[str, None]:

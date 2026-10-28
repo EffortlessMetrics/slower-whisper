@@ -576,6 +576,14 @@ The API returns appropriate HTTP status codes:
 - `422`: Validation error (missing required parameters)
 - `500`: Internal server error (transcription/enrichment failed)
 
+Unsupported model names are configuration errors: both `/transcribe` (with a
+ready service runtime) and `/transcribe/stream` return HTTP `400` with error type
+`bad_request`, a request ID, and a sanitized message. They reject the request
+before saving or normalizing the uploaded audio; SSE has not started yet, so its
+error response is JSON. The CLI reports the same invalid model as a user error
+(exit code `1`). A supported model that differs from the configured REST runtime
+profile remains HTTP `409` (`runtime_profile_mismatch`).
+
 **Example error response:**
 ```json
 {
