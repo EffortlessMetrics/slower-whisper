@@ -382,12 +382,20 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
 
     # Avoid ffmpeg and ASR work; we only want diarization to run
     monkeypatch.setattr("transcription.pipeline.audio_io.normalize_all", lambda _paths: None)
-    monkeypatch.setattr(
-        "transcription.pipeline.TranscriptionEngine.transcribe_file",
-        lambda self, wav: (_ for _ in ()).throw(
-            AssertionError("transcription should be skipped when JSON already exists")
-        ),
-    )
+    engine_calls = {"transcribe": 0, "close": 0}
+
+    class UnusedAsrEngine:
+        def __init__(self, cfg):
+            self.cfg = cfg
+
+        def transcribe_file(self, wav):
+            engine_calls["transcribe"] += 1
+            raise AssertionError("transcription should be skipped when JSON already exists")
+
+        def close(self):
+            engine_calls["close"] += 1
+
+    monkeypatch.setattr("transcription.pipeline.TranscriptionEngine", UnusedAsrEngine)
 
     diarization_calls: dict[str, bool] = {}
 
@@ -424,6 +432,7 @@ def test_diarization_runs_when_json_exists(monkeypatch, tmp_path):
 
     assert diarization_calls.get("called") is True
     assert result.failed == 0
+    assert engine_calls == {"transcribe": 0, "close": 1}
     updated = writers.load_transcript_from_json(paths.json_dir / "existing.json")
     assert updated.speakers is not None
     assert updated.turns is not None

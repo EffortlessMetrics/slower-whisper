@@ -233,9 +233,10 @@ run_check "Type-check (mypy)" \
         tests/test_turn_helpers.py \
         tests/test_audio_state_schema.py
 
-# Check 4: Fast tests
-run_check "Fast tests (pytest -m 'not slow and not heavy')" \
-    uv run pytest -q -m "not slow and not heavy"
+# Check 4: Unit/fast phase, matching the declared test tiers. Real-model smoke
+# runs separately below; BDD verification still requires its real ASR assets.
+run_check "Fast tests (excluding slow, heavy, smoke and e2e)" \
+    uv run pytest -q -m "not slow and not heavy and not smoke and not e2e"
 
 # Check 4b: Smoke tests (real tiny model) - only in full mode
 if [ "$MODE" != "fast" ]; then
