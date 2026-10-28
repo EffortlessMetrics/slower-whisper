@@ -13,8 +13,23 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from _pytest.mark.expression import Expression
 
 from scripts import verify_all
+
+
+def test_unit_selector_preserves_separate_bdd_acceptance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Changing the unit tier must not remove the real-backend BDD gate."""
+    calls: list[list[str]] = []
+    monkeypatch.setattr(verify_all, "run", lambda command: calls.append(command))
+    verify_all.run_tests_fast()
+    unit = calls[-1]
+    selector = Expression.compile(unit[unit.index("-m") + 1])
+    assert selector.evaluate(lambda name: name == "unit")
+    for tier in ("slow", "heavy", "requires_gpu", "smoke", "e2e"):
+        assert not selector.evaluate(lambda name, selected=tier: name == selected), tier
+    verify_all.verify_bdd()
+    assert calls[-1] == ["uv", "run", "pytest", "tests/steps/", "-v"]
 
 
 def test_docker_uses_relocated_files_and_repository_context(

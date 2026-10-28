@@ -114,7 +114,7 @@ def run_tests_fast() -> None:
             "run",
             "pytest",
             "-m",
-            "not slow and not requires_gpu",
+            "not slow and not heavy and not requires_gpu and not smoke and not e2e",
             "--cov=transcription",
             "--cov-report=term-missing",
         ]
