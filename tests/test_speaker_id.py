@@ -118,8 +118,6 @@ class TestGetSpeakerIdDataclassHandling:
             speaker_id: str
             id: str
 
-        # Implementation uses: data.get("speaker_id") or data.get("id")
-        # So speaker_id is preferred
         result = get_speaker_id(Speaker(speaker_id="primary", id="secondary"))
         assert result == "primary"
 
@@ -361,7 +359,6 @@ class TestGetSpeakerLabelOrIdDataclassHandling:
             id: str
             speaker_id: str
 
-        # Implementation: data.get("id") or data.get("speaker_id")
         result = get_speaker_label_or_id(Speaker(id="primary", speaker_id="secondary"))
         assert result == "primary"
 
@@ -510,6 +507,20 @@ class TestEdgeCases:
         """Zero as ID should convert to string '0', not be treated as falsy."""
         assert get_speaker_id({"id": 0}) == "0"
         assert get_speaker_label_or_id({"id": 0}) == "0"
+
+    def test_dataclass_falsy_ids_are_preserved(self):
+        """A present falsy ID must not be replaced by a secondary ID or fallback."""
+
+        @dataclass
+        class Speaker:
+            speaker_id: int | str | None = None
+            id: int | str | None = None
+
+        for value in (0, ""):
+            assert get_speaker_id(Speaker(speaker_id=value, id="secondary")) == str(value)
+            assert get_speaker_label_or_id(Speaker(id=value, speaker_id="secondary")) == str(value)
+            assert get_speaker_id(Speaker(speaker_id=value)) == str(value)
+            assert get_speaker_label_or_id(Speaker(id=value)) == str(value)
 
     def test_false_id(self):
         """False as ID should convert to string 'False', not be treated as falsy."""
