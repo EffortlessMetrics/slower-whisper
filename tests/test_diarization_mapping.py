@@ -7,8 +7,8 @@ Uses synthetic SpeakerTurn and Segment data to exercise all edge cases.
 
 import pytest
 
-from transcription.diarization import SpeakerTurn, assign_speakers
-from transcription.models import Segment, Transcript
+from transcription.diarization import SpeakerTurn, assign_speakers, assign_speakers_to_words
+from transcription.models import Segment, Transcript, Word
 
 
 # Test fixtures: synthetic speaker turns
@@ -29,6 +29,38 @@ def make_transcript(segments: list[Segment]) -> Transcript:
 
 class TestAssignSpeakers:
     """Tests for assign_speakers() overlap-based mapping."""
+
+    @pytest.mark.parametrize(
+        "start, end, expected",
+        [
+            (2.0, 2.299999, False),
+            (2.0, 2.2999999999999994, False),
+            (2.0, 2.3, True),
+            (2.0, 2.300001, True),
+            (1000.0, 1000.2999999999998, False),
+            (1000.0, 1000.3, True),
+        ],
+    )
+    @pytest.mark.parametrize("mode", ["segment", "word", "word_fallback"])
+    def test_threshold_boundary_with_decimal_timestamps(self, start, end, expected, mode):
+        """A 30% overlap meets the inclusive threshold in each assignment path."""
+        words = (
+            [Word(word="Hello", start=start, end=start + 1.0, probability=1.0)]
+            if mode == "word"
+            else None
+        )
+        segment = Segment(id=0, start=start, end=start + 1.0, text="Hello", words=words)
+        transcript = make_transcript([segment])
+        turns = [make_speaker_turn(start, end, "raw_spk_A")]
+
+        if mode == "segment":
+            assign_speakers(transcript, turns, overlap_threshold=0.3)
+        else:
+            assign_speakers_to_words(transcript, turns, overlap_threshold=0.3)
+
+        assert (segment.speaker is not None) is expected
+        if mode == "word":
+            assert (words[0].speaker is not None) is expected
 
     def test_perfect_alignment(self):
         """Segment fully contained in speaker turn → confidence = 1.0."""

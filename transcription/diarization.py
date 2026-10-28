@@ -27,10 +27,12 @@ the `speakers[]` and `segment.speaker` fields in the transcript schema.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -403,6 +405,43 @@ def _compute_overlap(seg_start: float, seg_end: float, turn_start: float, turn_e
     return max(0.0, overlap_end - overlap_start)
 
 
+def _meets_overlap_threshold(
+    overlap_ratio: float,
+    threshold: float,
+    start: float,
+    end: float,
+    speaker_id: str,
+    turns: list[SpeakerTurn],
+    first_turn: int = 0,
+) -> bool:
+    """Resolve borderline comparisons using the decimal timestamp representations."""
+    if overlap_ratio <= 0 or threshold <= 0:
+        return overlap_ratio >= threshold
+    # Recheck only when timestamp subtraction could explain the difference.
+    timestamp_error = 2 * math.ulp(max(abs(start), abs(end))) / (end - start) + 2 * math.ulp(
+        threshold
+    )
+    if abs(threshold - overlap_ratio) > timestamp_error:
+        return overlap_ratio >= threshold
+
+    decimal_start, decimal_end = Fraction(str(start)), Fraction(str(end))
+    required = Fraction(str(threshold)) * (decimal_end - decimal_start)
+    for i in range(first_turn, len(turns)):
+        turn = turns[i]
+        if turn.start >= end:
+            break
+        if turn.end <= start:
+            continue
+        if turn.speaker_id != speaker_id:
+            continue
+        overlap = min(decimal_end, Fraction(str(turn.end))) - max(
+            decimal_start, Fraction(str(turn.start))
+        )
+        if overlap > 0 and overlap >= required:
+            return True
+    return False
+
+
 def assign_speakers(
     transcript: Transcript,
     speaker_turns: list[SpeakerTurn],
@@ -421,6 +460,9 @@ def assign_speakers(
        - Compute overlap_ratio = overlap_duration / segment_duration
     2. If overlap_ratio >= threshold: assign speaker
     3. Else: segment.speaker = None (unknown)
+
+    Comparisons near the threshold use the decimal representations of the
+    input timestamps to avoid binary floating-point boundary errors.
 
     **Edge cases**:
     - No overlap: segment.speaker = None
@@ -512,7 +554,15 @@ def assign_speakers(
         overlap_ratio = max_overlap_duration / seg_duration if seg_duration > 0 else 0.0
 
         # Assign if above threshold
-        if overlap_ratio >= overlap_threshold and best_speaker_id is not None:
+        if best_speaker_id is not None and _meets_overlap_threshold(
+            overlap_ratio,
+            overlap_threshold,
+            seg_start,
+            seg_end,
+            best_speaker_id,
+            sorted_turns,
+            turn_idx,
+        ):
             normalized_id = _normalize_speaker_id(best_speaker_id, speaker_map)
             segment.speaker = {"id": normalized_id, "confidence": overlap_ratio}
 
@@ -556,6 +606,9 @@ def assign_speakers_to_words(
        - Compute overlap_ratio = overlap_duration / word_duration
     2. If overlap_ratio >= threshold: assign speaker to word
     3. Else: word.speaker = None
+
+    Comparisons near the threshold use the decimal representations of the
+    input timestamps to avoid binary floating-point boundary errors.
 
     **Note**: This function also updates segment.speaker based on the
     dominant word-level speaker (most common speaker among words).
@@ -626,7 +679,14 @@ def assign_speakers_to_words(
             )
             overlap_ratio = max_overlap / seg_duration if seg_duration > 0 else 0.0
 
-            if overlap_ratio >= overlap_threshold and best_speaker_id is not None:
+            if best_speaker_id is not None and _meets_overlap_threshold(
+                overlap_ratio,
+                overlap_threshold,
+                segment.start,
+                segment.end,
+                best_speaker_id,
+                relevant_turns,
+            ):
                 normalized_id = _normalize_speaker_id(best_speaker_id, speaker_map)
                 segment.speaker = {"id": normalized_id, "confidence": overlap_ratio}
                 _update_speaker_stats(speaker_stats, normalized_id, seg_duration)
@@ -646,7 +706,14 @@ def assign_speakers_to_words(
             best_speaker_id, max_overlap = _find_best_speaker(word.start, word.end, relevant_turns)
             overlap_ratio = max_overlap / word_duration if word_duration > 0 else 0.0
 
-            if overlap_ratio >= overlap_threshold and best_speaker_id is not None:
+            if best_speaker_id is not None and _meets_overlap_threshold(
+                overlap_ratio,
+                overlap_threshold,
+                word.start,
+                word.end,
+                best_speaker_id,
+                relevant_turns,
+            ):
                 normalized_id = _normalize_speaker_id(best_speaker_id, speaker_map)
                 word.speaker = normalized_id
                 word_speaker_counts[normalized_id] = word_speaker_counts.get(normalized_id, 0) + 1
