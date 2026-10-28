@@ -286,6 +286,14 @@ The `speaker_stats` array provides aggregated analytics per speaker.
 
 Chunks provide RAG-friendly slices of the transcript for retrieval pipelines.
 
+For start-ordered input, a chunk starts at its first member and ends at the latest
+end of all its turns (or segments when turns are unavailable). Nested or overlapping
+members do not shorten that interval. Duration limits and pause-based splitting
+use this covered end, so an apparent gap after a short nested member is not treated
+as silence while another member is still active. Member IDs and text retain their
+input order. A single indivisible unit may exceed the configured hard duration
+limit; it is kept in its own chunk.
+
 ### Chunk Shape
 
 ```json
