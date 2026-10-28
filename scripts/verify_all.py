@@ -10,6 +10,9 @@ Runs a suite of checks to validate:
 - Docker image build + CLI smoke tests
 - Kubernetes manifest validation (kubectl dry-run)
 
+Real-model smoke/e2e acceptance is run separately by `scripts/ci-local.sh` in
+full mode. Neither quick nor non-quick standalone verification selects that tier.
+
 Pre-flight: runs `uv sync --locked` with dev/full/diarization/integrations extras
 (and api unless `--skip-api` is provided).
 Pass `--skip-sync` to skip the sync step if the environment is already prepared.
@@ -18,7 +21,7 @@ Usage:
     uv run python scripts/verify_all.py --quick
     uv run python scripts/verify_all.py --api
     uv run python -m scripts.verify_all --quick
-    uv run python scripts/verify_all.py  # full suite (includes Docker/K8s)
+    uv run python scripts/verify_all.py  # verification suite (Docker/K8s; no real-model smoke)
 """
 
 from __future__ import annotations

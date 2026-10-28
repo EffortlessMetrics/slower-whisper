@@ -22,14 +22,23 @@ def test_unit_selector_preserves_separate_bdd_acceptance(monkeypatch: pytest.Mon
     """Changing the unit tier must not remove the real-backend BDD gate."""
     calls: list[list[str]] = []
     monkeypatch.setattr(verify_all, "run", lambda command: calls.append(command))
-    verify_all.run_tests_fast()
-    unit = calls[-1]
+    for name in (
+        "check_ruff",
+        "check_mypy",
+        "validate_schema_samples",
+        "check_diarization_stub",
+        "feature_summary",
+    ):
+        monkeypatch.setattr(verify_all, name, lambda: None)
+    assert verify_all.main(["--quick", "--skip-sync", "--skip-api"]) == 0
+    unit = next(command for command in calls if "-m" in command)
     selector = Expression.compile(unit[unit.index("-m") + 1])
     assert selector.evaluate(lambda name: name == "unit")
     for tier in ("slow", "heavy", "requires_gpu", "smoke", "e2e"):
         assert not selector.evaluate(lambda name, selected=tier: name == selected), tier
-    verify_all.verify_bdd()
-    assert calls[-1] == ["uv", "run", "pytest", "tests/steps/", "-v"]
+    bdd = ["uv", "run", "pytest", "tests/steps/", "-v"]
+    assert bdd in calls
+    assert calls.index(unit) < calls.index(bdd)
 
 
 def test_docker_uses_relocated_files_and_repository_context(
