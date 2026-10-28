@@ -815,6 +815,53 @@ class TestPipelineDiarization:
         assert result.processed == 0  # Not a new transcription
 
     @patch("transcription.pipeline.TranscriptionEngine")
+    def test_diarization_output_failure_does_not_abort_batch(
+        self,
+        mock_engine_class: MagicMock,
+        sample_app_config: AppConfig,
+        create_wav_file: Any,
+    ) -> None:
+        """An output failure is reported while the next upgrade succeeds."""
+        sample_app_config.skip_existing_json = True
+        for name in ("a_failure", "b_success"):
+            create_wav_file(path=sample_app_config.paths.norm_dir / f"{name}.wav")
+            (sample_app_config.paths.json_dir / f"{name}.json").write_text(
+                json.dumps({"file": f"{name}.wav", "language": "en", "meta": {}, "segments": []}),
+                encoding="utf-8",
+            )
+
+        from transcription import writers
+
+        write_txt = writers.write_txt
+
+        def write_or_fail(transcript: Transcript, path: Path) -> None:
+            if path.stem == "a_failure":
+                raise OSError("cannot write text")
+            write_txt(transcript, path)
+
+        def diarize(
+            transcript: Transcript, wav_path: Path, config: TranscriptionConfig
+        ) -> Transcript:
+            transcript.meta = {"diarization": {"status": "success"}}
+            return transcript
+
+        with (
+            patch(
+                "transcription.diarization_orchestrator._maybe_run_diarization", side_effect=diarize
+            ),
+            patch("transcription.pipeline.writers.write_txt", side_effect=write_or_fail),
+        ):
+            result = run_pipeline(
+                sample_app_config, diarization_config=TranscriptionConfig(enable_diarization=True)
+            )
+
+        assert (result.failed, result.diarized_only) == (1, 1)
+        assert [item.status for item in result.file_results] == ["error", "diarized_only"]
+        assert "cannot write text" in (result.file_results[0].error_message or "")
+        failed_json = sample_app_config.paths.json_dir / "a_failure.json"
+        assert json.loads(failed_json.read_text(encoding="utf-8"))["meta"] == {}
+
+    @patch("transcription.pipeline.TranscriptionEngine")
     def test_skip_already_diarized_transcript(
         self,
         mock_engine_class: MagicMock,
@@ -1665,3 +1712,72 @@ def test_interrupted_json_replacement_preserves_existing_json(
 
     assert json_path.read_text(encoding="utf-8") == old_json
     assert list(sample_app_config.paths.json_dir.iterdir()) == [json_path]
+
+
+@patch("transcription.pipeline.TranscriptionEngine")
+def test_batch_retry_after_partial_json_write_continues_other_file(
+    mock_engine_class: MagicMock,
+    sample_app_config: AppConfig,
+    sample_transcript: Transcript,
+    create_wav_file: Any,
+) -> None:
+    from transcription import writers
+
+    sample_app_config.skip_existing_json = True
+    for name in ("a_failure", "b_success"):
+        create_wav_file(path=sample_app_config.paths.norm_dir / f"{name}.wav")
+    mock_engine_class.return_value.transcribe_file.return_value = sample_transcript
+    write_json = writers.write_json
+
+    def fail_first(transcript: Transcript, path: Path) -> None:
+        if path.stem == "a_failure":
+            path.write_text('{"segments": [', encoding="utf-8")
+            raise OSError("interrupted JSON")
+        write_json(transcript, path)
+
+    with patch("transcription.pipeline.writers.write_json", side_effect=fail_first):
+        first = run_pipeline(sample_app_config)
+    assert (first.failed, first.processed) == (1, 1)
+    assert [result.status for result in first.file_results] == ["error", "success"]
+    assert not (sample_app_config.paths.json_dir / "a_failure.json").exists()
+    successful_json = sample_app_config.paths.json_dir / "b_success.json"
+    before_retry = successful_json.read_bytes()
+
+    retry = run_pipeline(sample_app_config)
+    assert (retry.processed, retry.skipped, retry.failed) == (1, 1, 0)
+    assert [result.status for result in retry.file_results] == ["success", "skipped"]
+    assert successful_json.read_bytes() == before_retry
+    assert json.loads((sample_app_config.paths.json_dir / "a_failure.json").read_text())["segments"]
+    assert mock_engine_class.return_value.transcribe_file.call_count == 3
+
+
+@patch("transcription.pipeline.TranscriptionEngine")
+def test_diarization_interrupted_json_preserves_original(
+    mock_engine_class: MagicMock,
+    sample_app_config: AppConfig,
+    create_wav_file: Any,
+) -> None:
+    sample_app_config.skip_existing_json = True
+    create_wav_file(path=sample_app_config.paths.norm_dir / "upgrade.wav")
+    json_path = sample_app_config.paths.json_dir / "upgrade.json"
+    original = '{"file":"upgrade.wav","language":"en","meta":{},"segments":[]}'
+    json_path.write_text(original, encoding="utf-8")
+
+    def fail_write(_transcript: Transcript, path: Path) -> None:
+        path.write_text('{"segments": [', encoding="utf-8")
+        raise OSError("interrupted JSON")
+
+    with (
+        patch(
+            "transcription.diarization_orchestrator._maybe_run_diarization",
+            side_effect=lambda **kwargs: kwargs["transcript"],
+        ),
+        patch("transcription.pipeline.writers.write_json", side_effect=fail_write),
+    ):
+        result = run_pipeline(
+            sample_app_config, diarization_config=TranscriptionConfig(enable_diarization=True)
+        )
+    assert result.failed == 1
+    assert json_path.read_text(encoding="utf-8") == original
+    assert list(sample_app_config.paths.json_dir.iterdir()) == [json_path]
+    mock_engine_class.return_value.transcribe_file.assert_not_called()

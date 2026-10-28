@@ -291,24 +291,37 @@ def test_batch_closes_engine_after_inference_failure(
     assert ParityEngine.closes == 1
 
 
-def test_batch_closes_engine_when_writer_raises(
+@pytest.mark.parametrize("writer_name", ["write_json", "write_txt", "write_srt"])
+def test_batch_reports_writer_failure_and_continues(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    writer_name: str,
 ) -> None:
     reset_engine()
     install_runtime_patches(monkeypatch)
-    paths = prepare_project(tmp_path, "writer.wav")
+    paths = prepare_project(tmp_path, "a_failure.wav", "b_success.wav")
+    from transcription import writers
 
-    def fail_write(_transcript: Transcript, _path: Path) -> None:
-        raise RuntimeError("writer failed")
+    write_output = getattr(writers, writer_name)
 
-    monkeypatch.setattr("transcription.pipeline.writers.write_json", fail_write)
+    def fail_first_write(transcript: Transcript, path: Path) -> None:
+        if path.stem == "a_failure":
+            raise OSError("disk write failed")
+        write_output(transcript, path)
 
-    with pytest.raises(RuntimeError, match="writer failed"):
-        run_pipeline(app_config(paths), diarization_config=None)
+    monkeypatch.setattr(writers, writer_name, fail_first_write)
+    result = run_pipeline(app_config(paths), diarization_config=None)
 
+    assert (result.total_files, result.failed, result.processed) == (2, 1, 1)
+    assert [(item.file_name, item.status) for item in result.file_results] == [
+        ("a_failure.wav", "error"),
+        ("b_success.wav", "success"),
+    ]
+    assert "disk write failed" in (result.file_results[0].error_message or "")
+    assert (paths.json_dir / "b_success.json").exists()
+    assert not (paths.json_dir / "a_failure.json").exists()
     assert ParityEngine.instances == 1
-    assert ParityEngine.calls == 1
+    assert ParityEngine.calls == 2
     assert ParityEngine.closes == 1
 
 

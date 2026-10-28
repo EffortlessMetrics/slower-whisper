@@ -191,6 +191,14 @@ def run_pipeline(
         _close_operation_engine(engine)
 
 
+def _write_batch_json(transcript: Transcript, json_path: Path) -> None:
+    """Publish the skip marker only when its complete JSON is ready."""
+    with tempfile.TemporaryDirectory(dir=json_path.parent) as tmp_dir:
+        staged_json = Path(tmp_dir) / json_path.name
+        writers.write_json(transcript, staged_json)
+        staged_json.replace(json_path)
+
+
 def _run_normalized_files(
     cfg: AppConfig,
     diarization_config: TranscriptionConfig | None,
@@ -302,9 +310,21 @@ def _run_normalized_files(
                     )
                     continue
 
-                writers.write_json(transcript, json_path)
-                writers.write_txt(transcript, txt_path)
-                writers.write_srt(transcript, srt_path)
+                try:
+                    writers.write_txt(transcript, txt_path)
+                    writers.write_srt(transcript, srt_path)
+                    _write_batch_json(transcript, json_path)
+                except Exception as exc:
+                    logger.error("Failed to write outputs for %s: %s", wav.name, exc, exc_info=True)
+                    failed += 1
+                    file_results.append(
+                        PipelineFileResult(
+                            file_name=source_name,
+                            status="error",
+                            error_message=f"Output write failed: {exc}",
+                        )
+                    )
+                    continue
 
                 diarized_only += 1
                 logger.info("  → [diarization-only] %s", json_path)
@@ -380,14 +400,21 @@ def _run_normalized_files(
 
                 transcript = _maybe_build_chunks(transcript, diarization_config)
 
-        writers.write_txt(transcript, txt_path)
-        writers.write_srt(transcript, srt_path)
-        # JSON is the skip-existing marker. Publish it only after the other
-        # outputs succeed, and never expose a partially written marker.
-        with tempfile.TemporaryDirectory(dir=json_path.parent) as tmp_dir:
-            staged_json = Path(tmp_dir) / json_path.name
-            writers.write_json(transcript, staged_json)
-            staged_json.replace(json_path)
+        try:
+            writers.write_txt(transcript, txt_path)
+            writers.write_srt(transcript, srt_path)
+            _write_batch_json(transcript, json_path)
+        except Exception as exc:
+            logger.error("Failed to write outputs for %s: %s", wav.name, exc, exc_info=True)
+            failed += 1
+            file_results.append(
+                PipelineFileResult(
+                    file_name=source_name,
+                    status="error",
+                    error_message=f"Output write failed: {exc}",
+                )
+            )
+            continue
 
         logger.info("  → JSON: %s", json_path)
         logger.info("  → TXT:  %s", txt_path)
