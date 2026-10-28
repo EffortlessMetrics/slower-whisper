@@ -156,7 +156,9 @@ def _handle_dump_bundle(args: argparse.Namespace) -> None:
     # Output
     output = json.dumps(bundle.to_dict(), indent=2)
 
-    if args.output:
+    if args.dry_run:
+        print(output)
+    elif args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w") as f:
             f.write(output)
@@ -211,7 +213,9 @@ def _handle_analyze(args: argparse.Namespace) -> None:
     # Output
     output = json.dumps(synthesis.dossier, indent=2)
 
-    if args.output:
+    if args.dry_run:
+        print(output)
+    elif args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w") as f:
             f.write(output)
@@ -285,7 +289,9 @@ def _handle_raw(args: argparse.Namespace) -> None:
 
     output = json.dumps(data, indent=2)
 
-    if args.output:
+    if args.dry_run:
+        print(output)
+    elif args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w") as f:
             f.write(output)
@@ -304,7 +310,9 @@ def _handle_legacy_prompt(args: argparse.Namespace) -> None:
 
     output = _generate_analysis_prompt(data)
 
-    if args.output:
+    if args.dry_run:
+        print(output)
+    elif args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w") as f:
             f.write(output)
