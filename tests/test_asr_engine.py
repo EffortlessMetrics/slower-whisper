@@ -435,6 +435,27 @@ def test_segments_are_sorted_and_reidentified(
     ]
 
 
+def test_sort_preserves_backend_order_for_equal_start_times(tmp_path: Path) -> None:
+    transcript = TranscriptionEngine(
+        config(),
+        backend_factory=static_factory(
+            StaticModel(
+                [
+                    segment(start=1.0, end=3.0, text="first at one"),
+                    segment(start=1.0, end=2.0, text="second at one"),
+                    segment(start=0.0, end=0.5, text="earlier"),
+                ]
+            )
+        ),
+    ).transcribe_file(audio_file(tmp_path))
+
+    assert [(item.id, item.text) for item in transcript.segments] == [
+        (0, "earlier"),
+        (1, "first at one"),
+        (2, "second at one"),
+    ]
+
+
 def test_word_timestamps_are_preserved(
     tmp_path: Path,
 ) -> None:

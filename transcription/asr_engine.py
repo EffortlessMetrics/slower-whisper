@@ -463,7 +463,7 @@ class TranscriptionEngine:
             )
 
         if not all(validated[i][0] <= validated[i + 1][0] for i in range(len(validated) - 1)):
-            validated = sorted(validated, key=lambda segment: (segment[0], segment[1]))
+            validated = sorted(validated, key=lambda segment: segment[0])
 
         return [
             Segment(
