@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -70,6 +72,94 @@ def reset_singleton():
     emotion._recognizer_instance = None
     yield
     emotion._recognizer_instance = None
+
+
+@pytest.fixture
+def dummy_recognizer(monkeypatch):
+    """Exercise singleton wrappers independently of installed model extras."""
+    monkeypatch.setattr(emotion, "EMOTION_AVAILABLE", False)
+
+
+class FakeTensor:
+    """NumPy-backed operations used by the CPU emotion formatting paths."""
+
+    def __init__(self, values):
+        self.values = np.asarray(values, dtype=np.float32)
+
+    def __getitem__(self, index):
+        return FakeTensor(self.values[index])
+
+    def to(self, device):
+        assert device == "cpu"
+        return self
+
+    def float(self):
+        return self
+
+    def cpu(self):
+        return self
+
+    def numpy(self):
+        return self.values
+
+
+@pytest.fixture
+def synthetic_emotion_models(monkeypatch, tmp_path):
+    """Keep real extraction/formatting while replacing only model dependencies."""
+    calls = []
+
+    def softmax(tensor, dim):
+        values = tensor.values
+        numerators = np.exp(values - values.max(axis=dim, keepdims=True))
+        return FakeTensor(numerators / numerators.sum(axis=dim, keepdims=True))
+
+    class FeatureExtractor:
+        @classmethod
+        def from_pretrained(cls, name, **kwargs):
+            calls.append(("extractor", name))
+            return cls()
+
+        def __call__(self, audio, **kwargs):
+            assert kwargs == {
+                "sampling_rate": 16000,
+                "return_tensors": "pt",
+                "padding": True,
+            }
+            return {"input_values": FakeTensor(np.asarray(audio)[None, :])}
+
+    class AudioClassifier:
+        @classmethod
+        def from_pretrained(cls, name, **kwargs):
+            calls.append(("model", name))
+            return cls(name)
+
+        def __init__(self, name):
+            self.dimensional = name == emotion.EmotionRecognizer.DIMENSIONAL_MODEL
+            self.config = SimpleNamespace(id2label={0: "neutral", 1: "happy", 2: "sad"})
+
+        def to(self, device):
+            assert device == "cpu"
+            return self
+
+        def eval(self):
+            return self
+
+        def __call__(self, **kwargs):
+            # Dimensional output order: arousal, dominance, valence.
+            values = [-0.25, 1.3, 0.6] if self.dimensional else [0.0, 2.0, -1.0]
+            return SimpleNamespace(logits=FakeTensor([values]))
+
+    fake_torch = SimpleNamespace(
+        cuda=SimpleNamespace(is_available=lambda: False),
+        inference_mode=nullcontext,
+        nn=SimpleNamespace(functional=SimpleNamespace(softmax=softmax)),
+    )
+    monkeypatch.setenv("SLOWER_WHISPER_CACHE_ROOT", str(tmp_path / "model-cache"))
+    monkeypatch.setattr(emotion, "EMOTION_AVAILABLE", True)
+    monkeypatch.setattr(emotion, "torch", fake_torch)
+    monkeypatch.setattr(emotion, "Wav2Vec2FeatureExtractor", FeatureExtractor)
+    monkeypatch.setattr(emotion, "AutoModelForAudioClassification", AudioClassifier)
+    return calls
 
 
 # ============================================================================
@@ -312,6 +402,7 @@ class TestSingletonManagement:
 # ============================================================================
 
 
+@pytest.mark.usefixtures("dummy_recognizer")
 class TestConvenienceFunctions:
     """Tests for convenience functions that use the singleton."""
 
@@ -400,7 +491,7 @@ class TestThreadSafety:
         assert len(errors) == 0
         assert emotion._recognizer_instance is None
 
-    def test_concurrent_extraction_with_dummy(self, sample_audio):
+    def test_concurrent_extraction_with_dummy(self, sample_audio, dummy_recognizer):
         """Concurrent extraction calls should work safely with dummy recognizer."""
         errors = []
         results = []
@@ -667,7 +758,7 @@ class TestModuleConstants:
 class TestReturnValueStructure:
     """Tests verifying return value structure compliance."""
 
-    def test_dimensional_result_structure(self, sample_audio):
+    def test_dimensional_result_structure(self, sample_audio, synthetic_emotion_models):
         """Dimensional result should have correct structure."""
         result = emotion.extract_emotion_dimensional(sample_audio, 16000)
 
@@ -680,8 +771,15 @@ class TestReturnValueStructure:
             assert "score" in result[dim]
             assert isinstance(result[dim]["level"], str)
             assert isinstance(result[dim]["score"], (int, float))
+        assert [result[key]["score"] for key in ("valence", "arousal", "dominance")] == [
+            0.6,
+            0.0,
+            1.0,
+        ]
+        emotion.extract_emotion_dimensional(sample_audio, 16000)
+        assert len(synthetic_emotion_models) == 2  # One extractor/model load, then cached.
 
-    def test_categorical_result_structure(self, sample_audio):
+    def test_categorical_result_structure(self, sample_audio, synthetic_emotion_models):
         """Categorical result should have correct structure."""
         result = emotion.extract_emotion_categorical(sample_audio, 16000)
 
@@ -700,6 +798,10 @@ class TestReturnValueStructure:
         assert cat["secondary"] is None or isinstance(cat["secondary"], str)
         assert isinstance(cat["secondary_confidence"], (int, float))
         assert isinstance(cat["all_scores"], dict)
+        assert cat["primary"] == "happy"
+        assert cat["secondary"] == "neutral"
+        emotion.extract_emotion_categorical(sample_audio, 16000)
+        assert len(synthetic_emotion_models) == 2
 
 
 # ============================================================================
@@ -730,7 +832,7 @@ class TestEdgeCases:
         assert recognizer._classify_dominance(0.6) == "dominant"
         assert recognizer._classify_dominance(0.7) == "very_dominant"
 
-    def test_zero_audio_values(self, sample_audio):
+    def test_zero_audio_values(self, sample_audio, synthetic_emotion_models):
         """Test with all-zero audio (silence)."""
         silence = np.zeros(16000, dtype=np.float32)
         result = emotion.extract_emotion_dimensional(silence, 16000)
@@ -740,7 +842,7 @@ class TestEdgeCases:
         assert "arousal" in result
         assert "dominance" in result
 
-    def test_very_long_audio(self):
+    def test_very_long_audio(self, synthetic_emotion_models):
         """Test with very long audio segment."""
         # 60 seconds of audio
         long_audio = np.random.randn(16000 * 60).astype(np.float32)

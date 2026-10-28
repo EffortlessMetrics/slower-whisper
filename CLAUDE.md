@@ -21,6 +21,12 @@ nix-clean run .#verify -- --quick
 
 **PR requirement:** Paste gate receipts before merging.
 
+The unit/fast phases exclude heavy, smoke and e2e tests. The full local gate runs
+real-model smoke separately with `SLOWER_WHISPER_TEST_REAL=1`. Fast mode still
+runs BDD verification and real-ASR integration contracts, so it requires their
+model assets; it is not an offline qualification route. Keep those real-backend
+assertions intact when testing wrapper logic with fakes.
+
 ---
 
 ## Invariants (don't break)

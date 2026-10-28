@@ -5,6 +5,7 @@ def test_colors_enabled_forced(monkeypatch):
     """Test that colors are enabled when FORCE_COLOR is set."""
     monkeypatch.setenv("FORCE_COLOR", "1")
     monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm")
 
     assert Colors._should_use_color() is True
     assert Colors.red("test") == "\033[31mtest\033[0m"
@@ -33,6 +34,7 @@ def test_colors_methods(monkeypatch):
     """Test all color methods produce correct output."""
     monkeypatch.setenv("FORCE_COLOR", "1")
     monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm")
 
     assert Colors.green("test") == "\033[32mtest\033[0m"
     assert Colors.yellow("test") == "\033[33mtest\033[0m"
