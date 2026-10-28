@@ -91,10 +91,10 @@ def export_vtt(transcript: Transcript, output_path: Path, unit: str = "segments"
         f.write("WEBVTT\n\n")
         for row in rows:
             f.write(f"{_format_ts(row['start'])} --> {_format_ts(row['end'])}\n")
-            # WebVTT spec allows HTML tags, so escape to prevent XSS
-            speaker_safe = html.escape(row["speaker"]) if row.get("speaker") else ""
+            # WebVTT cue text supports &amp;, &lt;, and &gt;, but not HTML quote entities.
+            speaker_safe = html.escape(row["speaker"], quote=False) if row.get("speaker") else ""
             prefix = f"{speaker_safe}: " if speaker_safe else ""
-            text_safe = html.escape(row["text"])
+            text_safe = html.escape(row["text"], quote=False)
             f.write(f"{prefix}{text_safe}\n\n")
 
 

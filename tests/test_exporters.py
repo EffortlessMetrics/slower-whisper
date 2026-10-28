@@ -154,3 +154,26 @@ def test_xss_protection(tmp_path: Path) -> None:
     malicious_text_escaped = malicious_text.replace('"', "''")
     assert malicious_speaker_escaped in tg_content
     assert malicious_text_escaped in tg_content
+
+
+def test_vtt_preserves_quotes_and_escapes_markup(tmp_path: Path) -> None:
+    transcript = Transcript(
+        file_name="test.wav",
+        language="en",
+        segments=[
+            Segment(
+                id=0,
+                start=0.0,
+                end=1.0,
+                text='I\'m saying "<hello> & goodbye"',
+                speaker={"id": 'O\'Brien "<host>" & co'},
+            )
+        ],
+        meta={},
+    )
+    path = tmp_path / "quotes.vtt"
+    export_vtt(transcript, path)
+    assert path.read_text(encoding="utf-8") == (
+        "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n"
+        'O\'Brien "&lt;host&gt;" &amp; co: I\'m saying "&lt;hello&gt; &amp; goodbye"\n\n'
+    )
