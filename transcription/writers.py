@@ -214,12 +214,12 @@ def write_txt(transcript: Transcript, out_path: Path) -> None:
 
 def _fmt_srt_ts(t: float) -> str:
     """
-    Format seconds as SRT timestamp (HH:MM:SS,mmm).
+    Format seconds as an SRT timestamp rounded to the nearest millisecond.
     """
-    h = int(t // 3600)
-    m = int((t % 3600) // 60)
-    s = int(t % 60)
-    ms = int((t * 1000) % 1000)
+    total_ms = round(t * 1000)
+    total_seconds, ms = divmod(total_ms, 1000)
+    total_minutes, s = divmod(total_seconds, 60)
+    h, m = divmod(total_minutes, 60)
     return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
 
