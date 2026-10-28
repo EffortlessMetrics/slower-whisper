@@ -97,6 +97,9 @@ Tests are organized into tiers that run at different stages. The `ci-success` ga
 | **Nightly** | Weekly schedule | Diarization (real pyannote), benchmark gate | No (alerts) |
 | **Release** | Tag push | All of the above | PyPI publish |
 
+PRs also collect the heavy selection with the declared emotion and dev extras, without
+executing model tests. Main and manual CI runs execute that same heavy selection.
+
 ---
 
 ## Key Surfaces
