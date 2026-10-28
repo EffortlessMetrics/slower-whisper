@@ -230,7 +230,7 @@ def _finalize_chunk(idx: int, units: list[dict[str, Any]], config: ChunkingConfi
         Chunk dataclass with aggregated metadata and text.
     """
     start = units[0]["start"]
-    end = units[-1]["end"]
+    end = max(unit["end"] for unit in units)
     text = " ".join(u["text"].strip() for u in units if u.get("text", "").strip())
     segment_ids: list[int] = []
     turn_ids: list[str] = []
@@ -410,6 +410,7 @@ def build_chunks(transcript: Transcript, config: ChunkingConfig) -> list[Chunk]:
     chunks: list[Chunk] = []
     current: list[dict[str, Any]] = []
     chunk_start = 0.0
+    chunk_end = 0.0
     token_estimate = 0
 
     for idx, unit in enumerate(units):
@@ -417,11 +418,8 @@ def build_chunks(transcript: Transcript, config: ChunkingConfig) -> list[Chunk]:
 
         # Check if we should split before adding this unit
         if current:
-            gap_prev = max(
-                0.0,
-                unit.get("start", 0.0) - current[-1].get("end", unit.get("start", 0.0)),
-            )
-            current_duration = max(current[-1].get("end", chunk_start) - chunk_start, 0.0)
+            gap_prev = max(0.0, unit.get("start", 0.0) - chunk_end)
+            current_duration = max(chunk_end - chunk_start, 0.0)
 
             # Check for turn boundary at this position
             is_boundary = _is_turn_boundary(current[-1], unit)
@@ -461,8 +459,10 @@ def build_chunks(transcript: Transcript, config: ChunkingConfig) -> list[Chunk]:
 
         if not current:
             chunk_start = unit.get("start", 0.0)
+            chunk_end = chunk_start
 
-        prospective_duration = max(unit.get("end", chunk_start) - chunk_start, 0.0)
+        prospective_end = max(chunk_end, unit.get("end", chunk_start))
+        prospective_duration = max(prospective_end - chunk_start, 0.0)
         prospective_tokens = token_estimate + unit_tokens
 
         # Hard limit check - must split if exceeded
@@ -475,17 +475,20 @@ def build_chunks(transcript: Transcript, config: ChunkingConfig) -> list[Chunk]:
             current = []
             token_estimate = 0
             chunk_start = unit.get("start", 0.0)
+            prospective_end = unit.get("end", chunk_start)
             prospective_tokens = unit_tokens
 
         current.append(unit)
+        # Start-ordered units can have nested intervals whose ends move backwards.
+        chunk_end = prospective_end
         token_estimate = prospective_tokens
 
         # Look ahead: should we split after this unit?
         if idx + 1 < len(units):
             next_unit = units[idx + 1]
             next_start = next_unit.get("start", unit.get("end", chunk_start))
-            gap_next = max(0.0, next_start - unit.get("end", next_start))
-            current_duration = max(unit.get("end", chunk_start) - chunk_start, 0.0)
+            gap_next = max(0.0, next_start - chunk_end)
+            current_duration = max(chunk_end - chunk_start, 0.0)
 
             is_boundary = _is_turn_boundary(unit, next_unit)
 
