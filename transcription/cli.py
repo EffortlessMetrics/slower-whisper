@@ -158,20 +158,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     # Skip existing transcripts flag - aliased for consistency with enrich command
     skip_existing_group = p_trans.add_mutually_exclusive_group()
-    skip_existing_group.add_argument(
-        "--skip-existing-json",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        dest="skip_existing_json",
-        help="Skip files with existing JSON in whisper_json/ (default: True).",
-    )
-    skip_existing_group.add_argument(
-        "--skip-existing",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        dest="skip_existing_json",
-        help="Alias for --skip-existing-json (for consistency with enrich command).",
-    )
+    for option, value, help_text in (
+        (
+            "--skip-existing-json",
+            True,
+            "Skip files with existing JSON in whisper_json/ (default: True).",
+        ),
+        ("--no-skip-existing-json", False, "Do not skip files with existing JSON."),
+        ("--skip-existing", True, "Alias for --skip-existing-json."),
+        ("--no-skip-existing", False, "Alias for --no-skip-existing-json."),
+    ):
+        skip_existing_group.add_argument(
+            option,
+            action="store_const",
+            const=value,
+            default=None,
+            dest="skip_existing_json",
+            help=help_text,
+        )
     p_trans.add_argument(
         "--progress",
         action="store_true",

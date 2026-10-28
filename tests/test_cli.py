@@ -1044,6 +1044,20 @@ class TestChunkingOptions:
 class TestSkipExistingAlias:
     """Test --skip-existing alias for transcribe command."""
 
+    @pytest.mark.parametrize(
+        "first,second",
+        [
+            ("--skip-existing-json", "--no-skip-existing-json"),
+            ("--no-skip-existing", "--skip-existing"),
+            ("--no-skip-existing-json", "--skip-existing"),
+        ],
+    )
+    def test_conflicting_options_name_actual_flags(self, first, second, capsys) -> None:
+        with pytest.raises(SystemExit) as exc:
+            build_parser().parse_args(["transcribe", first, second])
+        assert exc.value.code == 2
+        assert f"argument {second}: not allowed with argument {first}" in capsys.readouterr().err
+
     def test_skip_existing_alias_works(self) -> None:
         """--skip-existing is alias for --skip-existing-json."""
         parser = build_parser()
