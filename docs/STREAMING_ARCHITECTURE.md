@@ -371,6 +371,15 @@ final_events = session.end_of_stream()
 | `text` | str | Aggregated text |
 | `speaker_id` | str \| None | Speaker identifier |
 | `audio_state` | dict \| None | Audio enrichment data (v1.7+) |
+| `segment_id` | str \| None | Stable segment identity when `StreamConfig.emit_ids=True` |
+
+With `emit_ids=True`, core and enrichment sessions preserve one `segment_id`
+across all partial updates and the final event for that segment. Event IDs remain
+monotonically increasing within the same `stream_id`, including finalization by
+gap, speaker change, or end-of-stream and graceful enrichment failures. Consumers
+can persist these fields and match partials to finals by `(stream_id, segment_id)`.
+Calling `StreamingEnrichmentSession.reset()` starts a new stream identity and
+restarts its event and segment counters; it does not restore a persisted session.
 
 ### StreamingEnrichmentSession
 
