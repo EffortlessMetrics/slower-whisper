@@ -1191,9 +1191,16 @@ class TestTranscribeBytes:
             # Should NOT be a format validation error
             assert "Invalid audio format hint" not in str(e)
 
-    def test_unusual_but_valid_formats_via_file_name(self) -> None:
+    def test_unusual_but_valid_formats_via_file_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that unusual but valid ffmpeg formats are accepted via file_name."""
         config = TranscriptionConfig()
+
+        def isolated_model(*args, **kwargs):
+            # Some ffmpeg builds accept the sample bytes as a raw codec. Format
+            # validation must remain independent of whether ASR assets exist.
+            raise RuntimeError("ASR model loading is outside this format-validation test")
+
+        monkeypatch.setattr("transcription.asr_engine.WhisperModel", isolated_model)
 
         # These are real formats ffmpeg supports
         unusual_formats = ["3gp", "amr", "au", "caf", "gsm"]
