@@ -336,7 +336,7 @@ class TranscriptionConfig:
             config_dict["task"] = task
 
         # Boolean fields
-        if skip_existing := os.getenv(f"{prefix}SKIP_EXISTING_JSON"):
+        if (skip_existing := os.getenv(f"{prefix}SKIP_EXISTING_JSON")) is not None:
             skip_existing_lower = skip_existing.lower()
             if skip_existing_lower in ("true", "1", "yes", "on"):
                 config_dict["skip_existing_json"] = True
@@ -344,10 +344,10 @@ class TranscriptionConfig:
                 config_dict["skip_existing_json"] = False
             else:
                 raise ValueError(
-                    f"Invalid {prefix}SKIP_EXISTING_JSON: {skip_existing}. "
+                    f"Invalid {prefix}SKIP_EXISTING_JSON: {skip_existing!r}. "
                     "Must be true/false, 1/0, yes/no, or on/off"
                 )
-        if word_timestamps := os.getenv(f"{prefix}WORD_TIMESTAMPS"):
+        if (word_timestamps := os.getenv(f"{prefix}WORD_TIMESTAMPS")) is not None:
             word_timestamps_lower = word_timestamps.lower()
             if word_timestamps_lower in ("true", "1", "yes", "on"):
                 config_dict["word_timestamps"] = True
@@ -355,10 +355,10 @@ class TranscriptionConfig:
                 config_dict["word_timestamps"] = False
             else:
                 raise ValueError(
-                    f"Invalid {prefix}WORD_TIMESTAMPS: {word_timestamps}. "
+                    f"Invalid {prefix}WORD_TIMESTAMPS: {word_timestamps!r}. "
                     "Must be true/false, 1/0, yes/no, or on/off"
                 )
-        if enable_chunking := os.getenv(f"{prefix}ENABLE_CHUNKING"):
+        if (enable_chunking := os.getenv(f"{prefix}ENABLE_CHUNKING")) is not None:
             enable_lower = enable_chunking.lower()
             if enable_lower in ("true", "1", "yes", "on"):
                 config_dict["enable_chunking"] = True
@@ -366,7 +366,7 @@ class TranscriptionConfig:
                 config_dict["enable_chunking"] = False
             else:
                 raise ValueError(
-                    f"Invalid {prefix}ENABLE_CHUNKING: {enable_chunking}. "
+                    f"Invalid {prefix}ENABLE_CHUNKING: {enable_chunking!r}. "
                     "Must be true/false, 1/0, yes/no, or on/off"
                 )
 
@@ -408,7 +408,7 @@ class TranscriptionConfig:
                 ) from e
 
         # Diarization fields
-        if enable_diar := os.getenv(f"{prefix}ENABLE_DIARIZATION"):
+        if (enable_diar := os.getenv(f"{prefix}ENABLE_DIARIZATION")) is not None:
             enable_lower = enable_diar.lower()
             if enable_lower in ("true", "1", "yes", "on"):
                 config_dict["enable_diarization"] = True
@@ -416,7 +416,7 @@ class TranscriptionConfig:
                 config_dict["enable_diarization"] = False
             else:
                 raise ValueError(
-                    f"Invalid {prefix}ENABLE_DIARIZATION: {enable_diar}. "
+                    f"Invalid {prefix}ENABLE_DIARIZATION: {enable_diar!r}. "
                     "Must be true/false, 1/0, yes/no, or on/off"
                 )
 

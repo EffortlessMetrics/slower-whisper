@@ -248,7 +248,7 @@ class EnrichmentConfig:
         }
 
         for env_suffix, field_name in bool_mapping.items():
-            if value := os.getenv(f"{prefix}{env_suffix}"):
+            if (value := os.getenv(f"{prefix}{env_suffix}")) is not None:
                 value_lower = value.lower()
                 if value_lower in ("true", "1", "yes", "on"):
                     config_dict[field_name] = True
@@ -256,7 +256,7 @@ class EnrichmentConfig:
                     config_dict[field_name] = False
                 else:
                     raise ValueError(
-                        f"Invalid {prefix}{env_suffix}: {value}. "
+                        f"Invalid {prefix}{env_suffix}: {value!r}. "
                         "Must be true/false, 1/0, yes/no, or on/off"
                     )
 

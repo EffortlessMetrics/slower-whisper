@@ -1422,12 +1422,12 @@ export SLOWER_WHISPER_device=cuda  # Case-sensitive (must be uppercase)
 
 **Symptom:**
 ```
-ValueError: Invalid SLOWER_WHISPER_SKIP_EXISTING_JSON: maybe.
+ValueError: Invalid SLOWER_WHISPER_SKIP_EXISTING_JSON: 'maybe'.
 Must be true/false, 1/0, yes/no, or on/off
 ```
 
 **Solution:**
-Use only recognized boolean values:
+Use only recognized boolean values (case-insensitive). An empty value is invalid; unset the variable to use the default:
 ```bash
 # Valid
 export SLOWER_WHISPER_SKIP_EXISTING_JSON=true      # or: false
@@ -1437,7 +1437,7 @@ export SLOWER_WHISPER_SKIP_EXISTING_JSON=on        # or: off
 
 # Invalid
 export SLOWER_WHISPER_SKIP_EXISTING_JSON=maybe     # Not recognized
-export SLOWER_WHISPER_SKIP_EXISTING_JSON=True      # Case-sensitive (must be lowercase)
+export SLOWER_WHISPER_SKIP_EXISTING_JSON=          # Empty value
 ```
 
 ### Diarization errors
