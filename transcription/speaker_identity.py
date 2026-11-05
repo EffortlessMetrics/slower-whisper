@@ -1551,6 +1551,8 @@ def _handle_delete(registry: SpeakerRegistry, args: Any) -> int:
     """Handle the delete subcommand."""
     import sys
 
+    from transcription.color_utils import Colors
+
     # Check if speaker exists
     speaker = registry.get_speaker(args.speaker_id)
     if speaker is None:
@@ -1563,7 +1565,9 @@ def _handle_delete(registry: SpeakerRegistry, args: Any) -> int:
             print("Error: Delete requires --force in non-interactive mode.", file=sys.stderr)
             return 1
 
-        confirm = input(f"Delete speaker '{speaker.name}' ({speaker.id})? [y/N] ")
+        y_opt = Colors.red("y")
+        n_opt = Colors.green("N")
+        confirm = input(f"Delete speaker '{speaker.name}' ({speaker.id})? [{y_opt}/{n_opt}] ")
         if confirm.lower() not in ("y", "yes"):
             print("Aborted.")
             return 0
