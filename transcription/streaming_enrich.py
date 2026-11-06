@@ -18,7 +18,7 @@ See docs/STREAMING_ARCHITECTURE.md for architecture details.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -267,9 +267,7 @@ class StreamingEnrichmentSession:
                     event.segment,
                     trailing_silence_ms=trailing_silence_ms,
                 )
-                enriched_events.append(
-                    StreamEvent(type=StreamEventType.FINAL_SEGMENT, segment=enriched_segment)
-                )
+                enriched_events.append(replace(event, segment=enriched_segment))
                 self._segment_count += 1
                 logger.debug(
                     "Finalized and enriched segment %d: [%.2fs - %.2fs] '%s' (trailing_silence=%.0fms)",
@@ -333,9 +331,7 @@ class StreamingEnrichmentSession:
                 event.segment,
                 trailing_silence_ms=end_of_stream_silence_ms,
             )
-            enriched_events.append(
-                StreamEvent(type=StreamEventType.FINAL_SEGMENT, segment=enriched_segment)
-            )
+            enriched_events.append(replace(event, segment=enriched_segment))
             self._segment_count += 1
 
             # Track speaker turns for this segment (same as ingest_chunk)
@@ -516,13 +512,7 @@ class StreamingEnrichmentSession:
                     logger.warning("Post-processing failed for segment: %s", pe)
 
             # Return new StreamSegment with audio_state
-            return StreamSegment(
-                start=segment.start,
-                end=segment.end,
-                text=segment.text,
-                speaker_id=segment.speaker_id,
-                audio_state=audio_state,
-            )
+            return replace(segment, audio_state=audio_state)
 
         except Exception as e:
             # Graceful degradation on enrichment failure
@@ -541,11 +531,8 @@ class StreamingEnrichmentSession:
             invoke_callback_safely(self._callbacks, "on_error", error)
 
             # Return segment with error audio_state
-            return StreamSegment(
-                start=segment.start,
-                end=segment.end,
-                text=segment.text,
-                speaker_id=segment.speaker_id,
+            return replace(
+                segment,
                 audio_state={
                     "prosody": None,
                     "emotion": None,

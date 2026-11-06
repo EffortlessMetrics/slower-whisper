@@ -218,4 +218,5 @@ class StreamingSession:
             end=segment.end,
             text=segment.text,
             speaker_id=segment.speaker_id,
+            segment_id=segment.segment_id,
         )
