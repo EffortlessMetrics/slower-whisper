@@ -1,0 +1,107 @@
+name: Installed Capability Completion
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  artifact-installed-core-capabilities:
+    name: artifact-installed-core-capabilities (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Require committed lock and build wheel plus sdist
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv build --wheel --sdist
+          test "$(find dist -maxdepth 1 -name '*.whl' | wc -l)" -eq 1
+          test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 1
+
+      - name: Exercise installed compatibility and API surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe=$(mktemp "$RUNNER_TEMP/installed-capability-probe.XXXXXX.py")
+          cp scripts/installed_public_capability_probe.py "$probe"
+
+          for artifact in "$GITHUB_WORKSPACE"/dist/*.whl "$GITHUB_WORKSPACE"/dist/*.tar.gz; do
+            test -f "$artifact"
+            echo "Testing $(basename "$artifact")"
+            venv=$(mktemp -d "$RUNNER_TEMP/public-core.XXXXXX")
+            uv venv "$venv" --python ${{ matrix.python-version }}
+            uv pip install --python "$venv/bin/python" "${artifact}[api]"
+            cd "$RUNNER_TEMP"
+            unset PYTHONPATH
+            "$venv/bin/python" -I "$probe" --profile core
+            rm -rf -- "$venv"
+          done
+
+  artifact-installed-heavy-capabilities:
+    name: artifact-installed-heavy-capabilities (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Require committed lock and build wheel plus sdist
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv build --wheel --sdist
+          test "$(find dist -maxdepth 1 -name '*.whl' | wc -l)" -eq 1
+          test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 1
+
+      - name: Exercise installed local semantic, diarization, and emotion surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe=$(mktemp "$RUNNER_TEMP/installed-capability-probe.XXXXXX.py")
+          cp scripts/installed_public_capability_probe.py "$probe"
+
+          for artifact in "$GITHUB_WORKSPACE"/dist/*.whl "$GITHUB_WORKSPACE"/dist/*.tar.gz; do
+            test -f "$artifact"
+            echo "Testing $(basename "$artifact")"
+            venv=$(mktemp -d "$RUNNER_TEMP/public-heavy.XXXXXX")
+            uv venv "$venv" --python 3.12
+            uv pip install --python "$venv/bin/python" \
+              "${artifact}[semantic-local,diarization,emotion]"
+            cd "$RUNNER_TEMP"
+            unset PYTHONPATH
+            "$venv/bin/python" -I "$probe" --profile heavy
+            rm -rf -- "$venv"
+          done
