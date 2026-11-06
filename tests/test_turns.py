@@ -4,6 +4,8 @@ Unit tests for conversational turn structure.
 Tests the turn building logic that groups contiguous segments by speaker.
 """
 
+from pathlib import Path
+
 import pytest
 
 from transcription.models import Segment, Transcript
@@ -29,6 +31,102 @@ def make_transcript(segments: list[Segment]) -> Transcript:
         for sid in sorted(speaker_ids)
     ]
     return Transcript(file_name="test.wav", language="en", segments=segments, speakers=speakers)
+
+
+class TestOverlappingTurnBoundaries:
+    """Nested segment intervals must not shrink a turn or manufacture silence."""
+
+    @pytest.mark.parametrize(
+        "intervals, expected_start",
+        [([(0.0, 10.0), (1.0, 2.0)], 0.0), ([(0.0, 10.0), (0.0, 2.0)], 0.0)],
+    )
+    def test_nested_segments_retain_outer_end(self, intervals, expected_start):
+        segments = [
+            make_segment(i, start, end, f"part {i}", "spk_0")
+            for i, (start, end) in enumerate(intervals)
+        ]
+        transcript = make_transcript(segments)
+
+        build_turns(transcript)
+
+        assert transcript.turns == [
+            {
+                "id": "turn_0",
+                "speaker_id": "spk_0",
+                "start": expected_start,
+                "end": 10.0,
+                "segment_ids": [0, 1],
+                "text": "part 0 part 1",
+            }
+        ]
+        assert transcript.segments == segments
+
+    @pytest.mark.parametrize("next_start, split", [(4.0, False), (11.999, False), (12.0, True)])
+    def test_pause_is_measured_after_latest_covered_end(self, next_start, split):
+        transcript = make_transcript(
+            [
+                make_segment(0, 0.0, 10.0, "outer", "spk_0"),
+                make_segment(1, 1.0, 2.0, "nested", "spk_0"),
+                make_segment(2, next_start, next_start + 1.0, "next", "spk_0"),
+            ]
+        )
+
+        build_turns(transcript, pause_threshold=2.0)
+
+        assert [turn["segment_ids"] for turn in transcript.turns] == (
+            [[0, 1], [2]] if split else [[0, 1, 2]]
+        )
+        assert transcript.turns[0]["end"] == (10.0 if split else max(10.0, next_start + 1.0))
+
+    def test_speaker_change_resets_pause_extent(self):
+        transcript = make_transcript(
+            [
+                make_segment(0, 0.0, 10.0, "outer", "spk_0"),
+                make_segment(1, 1.0, 2.0, "nested", "spk_0"),
+                make_segment(2, 3.0, 4.0, "reply", "spk_1"),
+                make_segment(3, 6.0, 7.0, "after pause", "spk_1"),
+            ]
+        )
+
+        build_turns(transcript, pause_threshold=2.0)
+
+        assert [turn["segment_ids"] for turn in transcript.turns] == [[0, 1], [2], [3]]
+        assert [(turn["start"], turn["end"]) for turn in transcript.turns] == [
+            (0.0, 10.0),
+            (3.0, 4.0),
+            (6.0, 7.0),
+        ]
+
+    def test_enrichment_and_json_preserve_nested_turn_extent(self, tmp_path: Path):
+        from transcription.config import EnrichmentConfig
+        from transcription.enrichment_orchestrator import _run_speaker_analytics
+        from transcription.validation import validate_transcript_json
+        from transcription.writers import load_transcript_from_json, write_json
+
+        transcript = make_transcript(
+            [
+                make_segment(0, 0.0, 10.0, "outer", "spk_0"),
+                make_segment(1, 1.0, 2.0, "nested", "spk_0"),
+                make_segment(2, 4.0, 5.0, "still covered", "spk_0"),
+            ]
+        )
+        config = EnrichmentConfig(enable_turn_metadata=True, pause_threshold=2.0)
+
+        _run_speaker_analytics(transcript, config)
+        out_path = tmp_path / "nested.json"
+        write_json(transcript, out_path)
+
+        assert validate_transcript_json(out_path) == (True, [])
+        loaded = load_transcript_from_json(out_path)
+        assert len(loaded.turns) == 1
+        assert loaded.turns[0]["start"] == 0.0
+        assert loaded.turns[0]["end"] == 10.0
+        assert loaded.turns[0]["segment_ids"] == [0, 1, 2]
+        assert [(segment.start, segment.end) for segment in loaded.segments] == [
+            (0.0, 10.0),
+            (1.0, 2.0),
+            (4.0, 5.0),
+        ]
 
 
 class TestBuildTurns:
@@ -119,8 +217,8 @@ class TestBuildTurns:
         assert result.turns[0]["segment_ids"] == [0]
         assert result.turns[1]["segment_ids"] == [2]
 
-    def test_turn_boundaries_from_first_last_segment(self):
-        """Turn start/end derived from first/last segment in turn."""
+    def test_turn_boundaries_from_first_start_and_latest_end(self):
+        """Turn start/end derived from first start and latest end in turn."""
         segments = [
             make_segment(0, 1.5, 3.0, "A1", "spk_0"),
             make_segment(1, 3.2, 5.7, "A2", "spk_0"),
