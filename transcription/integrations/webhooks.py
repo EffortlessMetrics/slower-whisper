@@ -380,7 +380,13 @@ class WebhookSink:
 
         Returns:
             List of success status for each event (only meaningful when blocking=True).
+
+        Raises:
+            RuntimeError: If the sink is closed, including for an empty batch.
         """
+        if self._closed:
+            raise RuntimeError("WebhookSink is closed")
+
         if blocking:
             results = await asyncio.gather(
                 *[self._send_with_retry(e) for e in events],

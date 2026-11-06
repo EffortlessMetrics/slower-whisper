@@ -10,6 +10,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -327,6 +328,68 @@ class TestWebhookSink:
         assert all(results)
         assert mock_client.post.call_count == 2
         await sink.close()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("blocking", [False, True])
+    @pytest.mark.parametrize("event_count", [0, 1])
+    async def test_batch_send_rejects_closed_sink(self, blocking: bool, event_count: int) -> None:
+        """Closed sinks reject every batch before attempting delivery."""
+        mock_client = AsyncMock()
+        mock_client.post.return_value = HttpResponse(status_code=200)
+        sink = WebhookSink(
+            WebhookConfig(url="https://example.invalid/webhook"), http_client=mock_client
+        )
+        await sink.close()
+        events = [create_session_started_event(f"sess-{i}") for i in range(event_count)]
+
+        with pytest.raises(RuntimeError, match="^WebhookSink is closed$"):
+            await sink.send_batch(events, blocking=blocking)
+
+        mock_client.post.assert_not_awaited()
+        mock_client.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_close_drains_nonblocking_batch_before_closing_client(self) -> None:
+        """A batch admitted while open finishes delivery before client shutdown."""
+        mock_client = AsyncMock()
+        events = [create_session_started_event(f"sess-{i}") for i in range(2)]
+        posts_started = asyncio.Event()
+        release_posts = asyncio.Event()
+        completed_posts: list[str] = []
+
+        async def post(*args, **kwargs) -> HttpResponse:
+            if mock_client.post.await_count == len(events):
+                posts_started.set()
+            await release_posts.wait()
+            completed_posts.append(kwargs["json"]["event_id"])
+            return HttpResponse(status_code=200)
+
+        async def close_client() -> None:
+            assert len(completed_posts) == len(events)
+
+        mock_client.post.side_effect = post
+        mock_client.close.side_effect = close_client
+        sink = WebhookSink(
+            WebhookConfig(url="https://example.invalid/webhook"), http_client=mock_client
+        )
+
+        assert await sink.send_batch(events, blocking=False) == [True, True]
+        close_task = asyncio.create_task(sink.close())
+        try:
+            await asyncio.wait_for(posts_started.wait(), timeout=1.0)
+            await asyncio.sleep(0)
+            assert not close_task.done()
+            mock_client.close.assert_not_awaited()
+            release_posts.set()
+            await asyncio.wait_for(close_task, timeout=1.0)
+        finally:
+            release_posts.set()
+            await asyncio.gather(close_task, return_exceptions=True)
+
+        assert [call.kwargs["json"]["event_id"] for call in mock_client.post.await_args_list] == [
+            event.event_id for event in events
+        ]
+        mock_client.close.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_send_transcript(self, sample_transcript: Transcript) -> None:
