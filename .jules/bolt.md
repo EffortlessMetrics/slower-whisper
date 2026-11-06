@@ -1,0 +1,3 @@
+## 2024-05-30 - [Performance bottleneck specific to this codebase's architecture]
+**Learning:** The `StreamingASRAdapter._detect_speech_frames` method uses a python loop that iterates frame by frame to calculate energy and detect speech, which adds up as a CPU bottleneck for long streaming audio inputs because Python loop execution is slow compared to a vectorized numpy operation.
+**Action:** Always vectorize iterative numpy array operations where possible. Specifically, the audio frames can be sliced/reshaped and energies calculated using `np.mean` and `np.sqrt` with an `axis` argument to process all frames natively in C with numpy.
