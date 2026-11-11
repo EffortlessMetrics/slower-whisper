@@ -184,7 +184,8 @@ class StreamingASRAdapter:
         """
         if len(audio) == 0:
             return 0.0
-        return float(np.sqrt(np.mean(audio**2)))
+        # Optimized with np.dot instead of np.mean(x**2) to avoid temporary array allocation
+        return float(np.sqrt(np.dot(audio, audio) / len(audio)))
 
     def _detect_speech_frames(self, audio: np.ndarray, frame_size_ms: int = 30) -> list[bool]:
         """Detect speech in audio using frame-wise energy analysis.
