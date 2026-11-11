@@ -5,3 +5,7 @@
 ## 2026-01-26 - Atomic Pre-flight Checks
 **Learning:** For bulk file operations (like copying samples), users prefer a "check-then-act" model where all conflicts are reported upfront, rather than failing on the first conflict.
 **Action:** Implement pre-flight checks that gather *all* conflicts and raise a custom error (like `SampleExistsError`) containing the full list, allowing the CLI to present a complete summary before asking for confirmation.
+
+## 2026-06-08 - Accessible HTML Exports
+**Learning:** Generated HTML exports often lack basic accessibility landmarks and document language definitions, making them difficult for screen reader users to navigate.
+**Action:** Ensure all dynamically generated HTML documents include a `lang` attribute on the `<html>` element (derived from the data if possible) and wrap primary content in a `<main>` landmark.
