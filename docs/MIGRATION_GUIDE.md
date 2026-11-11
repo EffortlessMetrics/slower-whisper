@@ -1,97 +1,66 @@
-# Migration Guide: Project Structure Changes
+# Migration Guide: Project Structure and v2 CLI
 
-This guide documents the project structure changes made to improve organization and maintainability.
+The project moved scripts, documentation and deployment files into dedicated
+folders during v1. Those file moves are historical: **v2 removed the legacy
+transcription and enrichment scripts**, including their `scripts.*` module paths.
+Use the unified CLI below. For all v2 changes, see [MIGRATION_V2.md](MIGRATION_V2.md).
 
-## Overview
+## Current v2 Workflow
 
-The slower-whisper project has been reorganized to follow Python project best practices:
+Install the package with the dependencies needed for transcription and enrichment
+(see [INSTALL.md](INSTALL.md)). From your project root, place recordings in
+`raw_audio/`, then run:
 
-- Scripts moved from root to `scripts/` directory
-- Documentation consolidated in `docs/` directory
-- Deployment files organized in new `config/` directory
-- Removed empty directories
-
-## Changed File Locations
-
-### Moved Scripts
-- `audio_enrich.py` → `scripts/audio_enrich.py`
-- `transcribe_pipeline.py` → `scripts/transcribe_pipeline.py`
-- `verify_ami_setup.sh` → `scripts/verify_ami_setup.sh`
-
-### Moved Documentation
-- `INSTALL.md` → `docs/INSTALL.md`
-- `TIER2_IMPLEMENTATION_PLAN.md` → `docs/TIER2_IMPLEMENTATION_PLAN.md`
-- `turn_integration_summary.txt` → `docs/turn_integration_summary.txt`
-- `integration_report.md` → `docs/integration_report.md`
-
-### New Configuration Directory
-Created `config/` directory containing:
-- `docker-compose.yml` - Main Docker Compose configuration
-- `docker-compose.api.yml` - API service configuration
-- `docker-compose.dev.yml` - Development overrides
-- `Dockerfile` - Standard Docker image
-- `Dockerfile.api` - FastAPI service image
-- `Dockerfile.gpu` - GPU-enabled image
-- `.dockerignore` - Docker build exclusions
-
-See `config/README.md` for detailed usage instructions.
-
-## Impact on Workflows
-
-### Running Scripts Directly
-
-**Before:**
 ```bash
-python audio_enrich.py
-python transcribe_pipeline.py
+slower-whisper transcribe --root .
+slower-whisper enrich --root .
 ```
 
-**After:**
+Transcription prepares normalized audio in `input_audio/` and writes transcripts
+to `whisper_json/`. Enrichment updates those JSON files in place. To operate on
+another project, pass that directory to `--root` for both commands.
+
+| Removed v1 interface | Current v2 replacement |
+| --- | --- |
+| `transcribe_pipeline.py` or `scripts/transcribe_pipeline.py` | `slower-whisper transcribe` |
+| `audio_enrich.py` or `scripts/audio_enrich.py` | `slower-whisper enrich` |
+| `python -m scripts.transcribe_pipeline` | `slower-whisper transcribe` |
+| `python -m scripts.audio_enrich` | `slower-whisper enrich` |
+| `slower-whisper-enrich` | `slower-whisper enrich` |
+| `--enrich-config FILE` | `--config FILE` |
+
+The CLI processes a project directory; do not carry over old single-file
+`--audio` or `--file` arguments. For supported options, run:
+
 ```bash
-python -m scripts.audio_enrich
-python -m scripts.transcribe_pipeline
+slower-whisper transcribe --help
+slower-whisper enrich --help
 ```
 
-### Docker Commands
+## Historical v1 File Moves
 
-**Before:**
-```bash
-docker compose up
-```
+These locations explain older instructions; they do not restore removed v2
+commands or imply that compatibility wrappers still exist.
 
-**After:**
-```bash
-docker compose up  # Still works with docker-compose.yml in root
-# OR
-docker compose -f config/docker-compose.yml up
-```
+### Scripts
 
-### Import Paths
+- `audio_enrich.py` moved to `scripts/audio_enrich.py` in v1, then was removed in v2.
+- `transcribe_pipeline.py` moved to `scripts/transcribe_pipeline.py` in v1, then was removed in v2.
+- `verify_ami_setup.sh` moved to `scripts/verify_ami_setup.sh`.
 
-Python scripts now properly handle imports with the `scripts/` module structure. No changes needed for imports.
+### Documentation
 
-## Backward Compatibility
+Documentation was consolidated under `docs/`. Use the current
+[documentation index](INDEX.md) rather than historical root-level paths.
 
-All existing workflows continue to work:
-- Docker commands using default files work unchanged
-- Script execution via module path works correctly
-- Documentation links are updated to point to new locations
+### Deployment Configuration
 
-## Migration Timeline
+Docker and Compose files were organized under `config/`. See
+[config/README.md](../config/README.md) for current deployment commands.
 
-- **Phase 1** (Immediate): File moves and directory creation
-- **Phase 2** (Following releases): Update documentation references
-- **Phase 3** (Future): Remove backward compatibility shims
+## Checking Your Migration
 
-## Questions?
-
-If you encounter issues with these changes, please:
-1. Check this migration guide
-2. Verify you're using the correct command syntax
-3. Open an issue on GitHub
-
-## Rollback
-
-If needed, rollback with:
-```bash
-git revert HEAD~1  # Undo file moves
+Update automation to use the current commands above. Do not restore the old
+wrappers or revert an unrelated commit to recover removed scripts. If an
+example still points to a removed command, report its file and command in a
+[GitHub issue](https://github.com/EffortlessMetrics/slower-whisper/issues).

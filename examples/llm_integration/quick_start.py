@@ -249,19 +249,26 @@ print(f"Tokens used: {result['usage']['total_tokens']}")
     print("   $ python comparison_demo.py --demo")
     print()
     print("2. Process your own transcript:")
-    print("   # First, enrich your transcript")
-    print("   $ python audio_enrich.py your_audio.wav")
+    print("   # From the repository root, put your_audio.wav in raw_audio/ first")
+    print("   $ slower-whisper transcribe --root .")
+    print("   $ slower-whisper enrich --root .")
     print()
     print("   # Then build prompts")
-    print("   $ python prompt_builder.py output/your_audio.json")
+    print("   $ python examples/llm_integration/prompt_builder.py whisper_json/your_audio.json")
     print()
     print("3. Generate specific queries:")
-    print("   $ python analysis_queries.py output/your_audio.json --query escalation")
-    print("   $ python analysis_queries.py output/your_audio.json --query sarcasm")
+    print(
+        "   $ python examples/llm_integration/analysis_queries.py whisper_json/your_audio.json --query escalation"
+    )
+    print(
+        "   $ python examples/llm_integration/analysis_queries.py whisper_json/your_audio.json --query sarcasm"
+    )
     print()
     print("4. Integrate with LLM (set API key first):")
     print("   $ export OPENAI_API_KEY='your-key-here'")
-    print("   $ python llm_integration_demo.py output/your_audio.json --provider openai")
+    print(
+        "   $ python examples/llm_integration/llm_integration_demo.py whisper_json/your_audio.json --provider openai"
+    )
     print()
     print("5. Read the full documentation:")
     print("   $ cat README.md")

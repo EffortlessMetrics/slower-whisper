@@ -492,8 +492,11 @@ def process_podcast(
         transcript = load_transcript_from_json(json_path)
     else:
         logger.error("Transcript not found. Please run transcription and enrichment first:")
-        logger.error("  1. python transcribe_pipeline.py")
-        logger.error("  2. python audio_enrich.py")
+        logger.error("  Place %s in raw_audio/ under your project root.", audio_path)
+        logger.error("  From that root, run:")
+        logger.error("  1. slower-whisper transcribe --root .")
+        logger.error("  2. slower-whisper enrich --root .")
+        logger.error("  Then rerun this workflow; it reads the JSON from whisper_json/.")
         return
 
     # Analyze podcast

@@ -9,7 +9,7 @@ The CLI now uses a single entry point with subcommands:
 - `slower-whisper cache` — Inspect or clear model caches
 - `slower-whisper samples` — List/download/copy/generate sample datasets
 
-The legacy `slower-whisper-enrich` script still exists for backward compatibility, but the unified CLI is the recommended interface.
+The legacy `slower-whisper-enrich` entry point was removed in v2.0.0. Use `slower-whisper enrich`; see [the v2 migration guide](MIGRATION_V2.md) for other removed commands and their replacements.
 
 ---
 

@@ -560,6 +560,10 @@ def process_meeting(audio_path: Path, output_dir: Path, config: MeetingConfig):
 
     base_name = audio_path.stem
     json_path = output_dir / f"{base_name}.json"
+    if not json_path.exists():
+        pipeline_json_path = Path("whisper_json") / f"{base_name}.json"
+        if pipeline_json_path.exists():
+            json_path = pipeline_json_path
 
     logger.info(f"Processing meeting: {audio_path.name}")
 
@@ -569,9 +573,14 @@ def process_meeting(audio_path: Path, output_dir: Path, config: MeetingConfig):
         transcript = load_transcript_from_json(json_path)
     else:
         logger.error("Transcript not found. Please run transcription pipeline first:")
-        logger.error(f"  python transcribe_pipeline.py --audio {audio_path}")
+        logger.error("  Place %s in raw_audio/ under your project root, then run:", audio_path)
+        logger.error("  slower-whisper transcribe --root .")
         logger.error("Then run enrichment:")
-        logger.error(f"  python audio_enrich.py --file {json_path}")
+        logger.error("  slower-whisper enrich --root .")
+        logger.error("Run these commands from the project root, then rerun this workflow.")
+        logger.error(
+            "It reads whisper_json/ and writes reports to the separate --output directory."
+        )
         return
 
     # Step 2: Analyze meeting
@@ -657,9 +666,11 @@ Examples:
   python meeting_transcription.py --audio meeting.mp3 --output outputs/meetings
 
 Prerequisites:
-  1. Run transcription: python transcribe_pipeline.py
-  2. Run enrichment: python audio_enrich.py
-  3. Run this workflow for analysis
+  From your project root, with the recording in raw_audio/:
+  1. Run transcription: slower-whisper transcribe --root .
+  2. Run enrichment: slower-whisper enrich --root .
+  3. Run this workflow; it reads the generated JSON from whisper_json/
+     and writes analysis reports to the separate --output directory
         """,
     )
 

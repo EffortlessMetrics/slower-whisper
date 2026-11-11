@@ -88,7 +88,7 @@ The following table summarizes all breaking changes from v1.x to v2.0.0:
 
 The deprecated items followed our standard deprecation policy:
 
-```text
+```text historical
 v1.3.0: Legacy scripts deprecated (announcement + warning)
 v1.8.0: --enrich-config deprecated (announcement + warning)
 v1.9.0: Deprecation warnings logged during usage
@@ -119,7 +119,7 @@ Replace deprecated CLI patterns:
 
 **Before (v1.x):**
 
-```bash
+```bash historical
 # Legacy scripts (REMOVED in v2.0.0)
 python scripts/transcribe_pipeline.py --language en
 python scripts/audio_enrich.py --skip-existing
@@ -219,21 +219,31 @@ print(f"Schema version: {transcript.meta.get('schema_version', 'unknown')}")
 
 **Transcription:**
 
-```bash
-# v1.x (deprecated)
-python scripts/transcribe_pipeline.py --language en --model large-v3
+**Before (v1.x, removed in v2):**
 
+```bash historical
+python scripts/transcribe_pipeline.py --language en --model large-v3
+```
+
+**Current v2 command:**
+
+```bash
 # v2.0.0 (current)
 slower-whisper transcribe --language en --model large-v3
 ```
 
 **Enrichment:**
 
-```bash
-# v1.x (deprecated)
+**Before (v1.x, removed in v2):**
+
+```bash historical
 python scripts/audio_enrich.py --skip-existing --enrich-config config.json
 slower-whisper-enrich --enable-prosody
+```
 
+**Current v2 commands:**
+
+```bash
 # v2.0.0 (current)
 slower-whisper enrich --skip-existing --config config.json
 slower-whisper enrich --enable-prosody
@@ -714,11 +724,11 @@ cp -r whisper_json_backup_v1/ whisper_json/
 
 ### Q: What happens if I use the removed `--enrich-config` flag?
 
-**A**: v2.0.0 will display an error message:
+**A**: v2.0.0 rejects the removed flag as an unrecognized argument. Replace it
+with `--config`:
 
-```
-Error: No such option: --enrich-config
-Hint: Use --config instead (--enrich-config was removed in v2.0.0)
+```bash
+slower-whisper enrich --config config.json
 ```
 
 ### Q: Can I use both v1.x and v2.0.0 in the same project?

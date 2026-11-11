@@ -226,11 +226,12 @@ pip install openai anthropic
 ### Workflow 1: Analyze Single Transcript
 
 ```bash
-# 1. Enrich transcript (if not already enriched)
-python audio_enrich.py audio.wav
+# 1. From the repository root, put audio.wav in raw_audio/ first
+slower-whisper transcribe --root .
+slower-whisper enrich --root .
 
 # 2. Generate analysis prompt
-python analysis_queries.py output/audio.json --query emotional_arc > prompt.txt
+python examples/llm_integration/analysis_queries.py whisper_json/audio.json --query emotional_arc > prompt.txt
 
 # 3. Send to LLM (manual or via integration)
 # Manual: Copy prompt.txt to ChatGPT/Claude
@@ -329,7 +330,8 @@ export ANTHROPIC_API_KEY="your-key"
 ### Issue: No audio features
 Check that transcript is enriched:
 ```bash
-python audio_enrich.py audio.wav  # Creates enriched JSON
+# From the project root containing input_audio/ and whisper_json/:
+slower-whisper enrich --root .  # Updates transcripts in whisper_json/ in place
 ```
 
 ## Performance Tips

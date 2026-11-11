@@ -8,8 +8,15 @@ and docs/API_QUICK_REFERENCE.md and validates them for:
 - Import correctness (matching actual exports)
 - Function signature correctness
 - Variable name consistency
+
+Also rejects removed v2 CLI commands in current README/docs/example code,
+including Python help and error strings. docs/archive/ and docs/releases/ are
+historical. Migration snippets may opt out with a ``historical`` fence suffix
+(for example, ``bash historical``), alongside a visible v1/removed label.
+Use --legacy-cli-only to run this dependency-free check on its own.
 """
 
+import argparse
 import ast
 import re
 import sys
@@ -30,6 +37,7 @@ class CodeExample:
     code: str
     language: str
     context: str = ""
+    historical: bool = False
 
 
 @dataclass
@@ -56,12 +64,12 @@ class ExampleExtractor:
             content = f.read()
 
         # Find code blocks with ```language and ```
-        pattern = r"```(\w+)?\n(.*?)```"
+        pattern = r"```(\w+)?([^\n]*)\n(.*?)```"
         matches = re.finditer(pattern, content, re.DOTALL)
 
         for match in matches:
             language = match.group(1) or "text"
-            code = match.group(2)
+            code = match.group(3)
 
             # Get line number
             line_number = content[: match.start()].count("\n") + 1
@@ -69,14 +77,15 @@ class ExampleExtractor:
             # Get context (previous heading)
             context = self._get_context(content, match.start())
 
-            if language in ("python", "py", "bash", "sh", "json", "text"):
+            if language in ("python", "py", "bash", "sh", "shell", "console", "json", "text"):
                 examples.append(
                     CodeExample(
-                        source_file=file_path.name,
+                        source_file=str(file_path),
                         line_number=line_number,
                         code=code,
                         language=language,
                         context=context,
+                        historical="historical" in match.group(2).split(),
                     )
                 )
 
@@ -92,6 +101,85 @@ class ExampleExtractor:
         if matches:
             return matches[-1].group(1).strip()
         return ""
+
+
+_REMOVED_CLI_PATTERNS = (
+    (
+        re.compile(
+            r"\bpython(?:\d+(?:\.\d+)?)?\s+(?:\./)?(?:scripts/)?"
+            r"(?:transcribe_pipeline|audio_enrich)\.py\b"
+        ),
+        "Use slower-whisper transcribe / slower-whisper enrich --root PROJECT_DIR",
+    ),
+    (
+        re.compile(
+            r"\bpython(?:\d+(?:\.\d+)?)?\s+-m\s+"
+            r"(?:scripts\.(?:transcribe_pipeline|audio_enrich)|"
+            r"transcription\.(?:audio_enrich_cli|cli_legacy_transcribe))\b"
+        ),
+        "Use the unified slower-whisper CLI",
+    ),
+    (
+        re.compile(r"(?<![\w-])slower-whisper-enrich(?![\w-])"),
+        "Use slower-whisper enrich",
+    ),
+    (re.compile(r"(?<![\w-])--enrich-config(?![\w-])"), "Use --config"),
+)
+
+
+def validate_current_cli(example: CodeExample) -> list[ValidationIssue]:
+    """Reject removed commands, preserving explicitly historical snippets."""
+    if example.historical:
+        return []
+
+    issues = []
+    for offset, line in enumerate(example.code.splitlines()):
+        # Migration instructions search for old commands rather than execute them.
+        if example.language in ("bash", "sh", "shell") and re.match(r"\s*(?:grep|rg)\s", line):
+            continue
+        for pattern, replacement in _REMOVED_CLI_PATTERNS:
+            if match := pattern.search(line):
+                issues.append(
+                    ValidationIssue(
+                        example=CodeExample(
+                            source_file=example.source_file,
+                            line_number=example.line_number + offset,
+                            code=line,
+                            language=example.language,
+                            context=example.context,
+                        ),
+                        severity="error",
+                        message=f"Removed v2 CLI command or flag: {match.group()}",
+                        suggestion=replacement,
+                    )
+                )
+    return issues
+
+
+def check_current_cli(root: Path) -> list[ValidationIssue]:
+    """Check current docs and executable examples without importing ML packages."""
+    issues = []
+    extractor = ExampleExtractor()
+    markdown_files = set(root.glob("README*.md"))
+    for directory in ("docs", "examples"):
+        markdown_files.update((root / directory).rglob("*.md"))
+
+    for path in sorted(markdown_files):
+        relative = path.relative_to(root)
+        if relative.parts[:2] in (("docs", "archive"), ("docs", "releases")):
+            continue
+        for example in extractor.extract_from_file(path):
+            # The extractor reports the opening fence; the first code line is next.
+            example.line_number += 1
+            issues.extend(validate_current_cli(example))
+
+    for path in sorted((root / "examples").rglob("*.py")):
+        issues.extend(
+            validate_current_cli(
+                CodeExample(str(path), 1, path.read_text(encoding="utf-8"), "python")
+            )
+        )
+    return issues
 
 
 class CodeValidator:
@@ -217,35 +305,7 @@ class CodeValidator:
 
     def validate_bash_code(self, example: CodeExample) -> list[ValidationIssue]:
         """Validate a bash/shell code example."""
-        issues = []
-
-        # Check for common issues
-        lines = example.code.strip().split("\n")
-
-        for line in lines:
-            # Check if using old CLI style
-            if "python transcribe_pipeline.py" in line or "python audio_enrich.py" in line:
-                issues.append(
-                    ValidationIssue(
-                        example=example,
-                        severity="warning",
-                        message="Using legacy CLI style",
-                        suggestion="Consider using: uv run slower-whisper transcribe/enrich",
-                    )
-                )
-
-            # Check for deprecated command
-            if "slower-whisper-enrich" in line:
-                issues.append(
-                    ValidationIssue(
-                        example=example,
-                        severity="warning",
-                        message="Using deprecated 'slower-whisper-enrich' command",
-                        suggestion="Use: uv run slower-whisper enrich",
-                    )
-                )
-
-        return issues
+        return validate_current_cli(example)
 
     def validate_example(self, example: CodeExample) -> list[ValidationIssue]:
         """Validate a code example based on its language."""
@@ -257,8 +317,19 @@ class CodeValidator:
             return []
 
 
-def main():
+def main(argv: list[str] | None = None):
     """Main validation script."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--legacy-cli-only", action="store_true")
+    args = parser.parse_args(argv)
+    cli_issues = check_current_cli(Path.cwd())
+    if args.legacy_cli_only:
+        for issue in cli_issues:
+            print(f"{issue.example.source_file}:{issue.example.line_number}: {issue.message}")
+            print(f"  {issue.suggestion}")
+        print(f"Current CLI examples: {len(cli_issues)} error(s)")
+        return 1 if cli_issues else 0
+
     print("=" * 80)
     print("CODE EXAMPLE VALIDATION REPORT")
     print("=" * 80)
@@ -296,7 +367,7 @@ def main():
 
     # Validate
     validator = CodeValidator()
-    all_issues = []
+    all_issues = list(cli_issues)
 
     print("=" * 80)
     print("VALIDATION RESULTS")
@@ -384,7 +455,7 @@ def main():
             print(f"  Issues: {len(issues)} ({', '.join(i.severity for i in issues)})")
         print()
 
-    return 0 if not errors else 1
+    return 1 if any(issue.severity == "error" for issue in all_issues) else 0
 
 
 if __name__ == "__main__":
