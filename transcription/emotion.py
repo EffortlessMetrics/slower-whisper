@@ -66,7 +66,7 @@ try:
     warnings.filterwarnings("ignore", message=".*FFmpeg.*")
 
     import torch
-    from transformers import AutoModelForAudioClassification, Wav2Vec2FeatureExtractor
+    from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
     EMOTION_AVAILABLE = True
 except Exception:
@@ -135,7 +135,7 @@ class EmotionRecognizer:
 
                     paths = CachePaths.from_env().ensure_dirs()
                     logger.info(f"Loading dimensional model: {self.DIMENSIONAL_MODEL}")
-                    self._dimensional_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
+                    self._dimensional_feature_extractor = AutoFeatureExtractor.from_pretrained(
                         self.DIMENSIONAL_MODEL, cache_dir=str(paths.emotion_root)
                     )
                     self._dimensional_model = AutoModelForAudioClassification.from_pretrained(
@@ -154,7 +154,7 @@ class EmotionRecognizer:
 
                     paths = CachePaths.from_env().ensure_dirs()
                     logger.info(f"Loading categorical model: {self.CATEGORICAL_MODEL}")
-                    self._categorical_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
+                    self._categorical_feature_extractor = AutoFeatureExtractor.from_pretrained(
                         self.CATEGORICAL_MODEL, cache_dir=str(paths.emotion_root)
                     )
                     self._categorical_model = AutoModelForAudioClassification.from_pretrained(
