@@ -1,0 +1,3 @@
+## 2026-06-06 - [Vectorized Audio Frame Energy Processing]
+**Learning:** Performing sequential slicing and basic arithmetic (e.g., RMS energy) on small audio frames inside a pure-Python loop is extremely slow and acts as a massive CPU bottleneck for real-time streaming operations like EnergyVAD. Python's loop overhead and `struct.unpack` costs far outweigh the computation itself.
+**Action:** Always parse raw PCM bytes directly into `numpy` arrays (`np.frombuffer`), truncate to exact frame multiples, and use `reshape` combined with vectorized operations like `np.einsum` or `np.mean` along an axis to bypass Python-level iteration completely.

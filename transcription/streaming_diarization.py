@@ -433,11 +433,11 @@ class EnergyVADDiarizer:
         Returns:
             List of SpeakerAssignment objects for speech regions.
         """
-        import struct
+        import numpy as np
 
-        # Convert bytes to samples
-        num_samples = len(audio_buffer) // 2
-        samples = struct.unpack(f"<{num_samples}h", audio_buffer)
+        # Convert bytes directly to a numpy array for vectorized processing
+        samples = np.frombuffer(audio_buffer, dtype="<h")
+        num_samples = len(samples)
 
         # Calculate frame parameters
         frame_samples = int(sample_rate * self.config.frame_duration_ms / 1000)
@@ -446,16 +446,18 @@ class EnergyVADDiarizer:
         if num_frames == 0:
             return []
 
-        # Calculate RMS energy per frame
-        frame_energies = []
-        for i in range(num_frames):
-            start = i * frame_samples
-            end = start + frame_samples
-            frame = samples[start:end]
-            rms = (sum(s * s for s in frame) / len(frame)) ** 0.5
-            # Normalize to 0-1 range (assuming 16-bit audio)
-            normalized_rms = rms / 32768.0
-            frame_energies.append(normalized_rms)
+        # Vectorized RMS energy calculation per frame
+        # Truncate to exact multiple of frame_samples
+        truncated_samples = samples[: num_frames * frame_samples]
+
+        # Reshape to (num_frames, frame_samples) and cast to float32 to prevent overflow during squaring
+        frames = truncated_samples.reshape(-1, frame_samples).astype(np.float32)
+
+        # Highly optimized vectorized RMS calculation: sqrt(mean(frame^2))
+        rms = np.sqrt(np.einsum("ij,ij->i", frames, frames) / frame_samples)
+
+        # Normalize to 0-1 range (assuming 16-bit audio)
+        frame_energies = (rms / 32768.0).tolist()
 
         # Find speech regions
         is_speech = [e > self.config.energy_threshold for e in frame_energies]
