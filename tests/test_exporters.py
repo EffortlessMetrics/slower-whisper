@@ -53,6 +53,8 @@ def test_export_formats(tmp_path: Path) -> None:
     html_text = html_path.read_text(encoding="utf-8")
     assert "Hello there" in html_text and "General Kenobi" in html_text
     assert "turn" in html_text
+    assert '<html lang="en">' in html_text
+    assert "<main>" in html_text
 
     vtt_path = tmp_path / "out.vtt"
     export_vtt(transcript, vtt_path, unit="segments")
