@@ -374,27 +374,28 @@ def _linear_regression(x: np.ndarray, y: np.ndarray) -> tuple[float, float, floa
     x_mean = np.mean(x)
     y_mean = np.mean(y)
 
-    # Compute slope
-    numerator = np.sum((x - x_mean) * (y - y_mean))
-    denominator = np.sum((x - x_mean) ** 2)
+    # Optimized with np.vdot to avoid creating intermediate arrays
+    x_centered = x - x_mean
+    y_centered = y - y_mean
 
-    if denominator == 0:
-        return 0.0, y_mean, 0.0
+    ss_xx = np.vdot(x_centered, x_centered)
 
-    slope = numerator / denominator
+    if ss_xx == 0:
+        return 0.0, float(y_mean), 0.0
+
+    ss_xy = np.vdot(x_centered, y_centered)
+
+    slope = ss_xy / ss_xx
     intercept = y_mean - slope * x_mean
 
-    # Compute R-squared
-    y_pred = slope * x + intercept
-    ss_res = np.sum((y - y_pred) ** 2)
-    ss_tot = np.sum((y - y_mean) ** 2)
+    ss_yy = np.vdot(y_centered, y_centered)
 
-    if ss_tot == 0:
+    if ss_yy == 0:
         r_squared = 0.0
     else:
-        r_squared = 1 - (ss_res / ss_tot)
+        r_squared = float((ss_xy**2) / (ss_xx * ss_yy))
 
-    return slope, intercept, max(0.0, r_squared)
+    return float(slope), float(intercept), max(0.0, r_squared)
 
 
 def extract_prosody_extended(
