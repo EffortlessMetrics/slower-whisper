@@ -374,9 +374,13 @@ def _linear_regression(x: np.ndarray, y: np.ndarray) -> tuple[float, float, floa
     x_mean = np.mean(x)
     y_mean = np.mean(y)
 
+    # Pre-center arrays for optimized vdot operations
+    x_centered = x - x_mean
+    y_centered = y - y_mean
+
     # Compute slope
-    numerator = np.sum((x - x_mean) * (y - y_mean))
-    denominator = np.sum((x - x_mean) ** 2)
+    numerator = np.vdot(x_centered, y_centered)
+    denominator = np.vdot(x_centered, x_centered)
 
     if denominator == 0:
         return 0.0, y_mean, 0.0
