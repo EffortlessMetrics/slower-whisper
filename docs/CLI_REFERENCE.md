@@ -64,6 +64,7 @@ slower-whisper transcribe [OPTIONS]
 |------|---------|-------------|
 | `--root PATH` | `.` | Project root containing `raw_audio/` and output folders |
 | `--config FILE` | `None` | Transcription config JSON (merged with env + CLI) |
+| `--dry-run` | `False` | Preview files, skip decisions, and total audio duration without writing outputs |
 | `--model NAME` | `large-v3` | Whisper model |
 | `--device {cuda,cpu}` | `cuda` | Device for ASR (Whisper) inference |
 | `--compute-type TYPE` | auto | faster-whisper compute type (float16, float32, int8, int8_float16) |
@@ -111,6 +112,7 @@ slower-whisper enrich [OPTIONS]
 |------|---------|-------------|
 | `--root PATH` | `.` | Project root |
 | `--config FILE` | `None` | Enrichment config JSON (merged with env + CLI) |
+| `--dry-run` | `False` | Preview files, skip decisions, and total audio duration without writing outputs |
 | `--skip-existing / --no-skip-existing` | `True` | Skip segments that already have `audio_state` |
 | `--enable-prosody / --no-enable-prosody` | `True` | Extract prosody features |
 | `--enable-emotion / --no-enable-emotion` | `True` | Extract dimensional emotion |
@@ -137,6 +139,34 @@ slower-whisper enrich --config config/enrich.json --skip-existing
 # Enable speaker analytics (turn metadata + speaker stats)
 slower-whisper enrich --enable-speaker-analytics
 ```
+
+---
+
+## Preview batch work without processing
+
+```bash
+slower-whisper transcribe --root /path/to/project --dry-run
+slower-whisper enrich --root /path/to/project --dry-run
+# Include already-transcribed files in the preview:
+slower-whisper transcribe --root /path/to/project --dry-run --no-skip-existing
+```
+
+Dry runs use the normal config precedence and skip settings, list files in
+stable order, and sum the known audio durations of files that would be processed.
+Transcription previews include normalization, chunk updates, and diarization of
+existing transcripts, even when ASR itself would be skipped. Enrichment skips
+only transcripts with nonempty segments that all have `audio_state`, as in a
+normal run. Missing audio and unreadable required transcripts are reported per
+file; a preview with these failures exits with code 1, otherwise code 0.
+
+No audio is normalized, no model is loaded or downloaded, no device is probed,
+and no transcript outputs or project output directories are created or changed.
+Normal startup may still create empty model-cache and store directories. WAV
+metadata is read directly; other formats use `ffprobe` when available with a
+five-second timeout per file and network protocols disabled. Unavailable or
+invalid durations are marked unknown and excluded from the reported total.
+The total is audio length, not an estimate of processing time. Transcription
+previews assume normalization succeeds and do not validate model availability.
 
 ---
 

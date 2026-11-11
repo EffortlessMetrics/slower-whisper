@@ -18,6 +18,7 @@ from secrets import token_hex
 from typing import NamedTuple
 
 from .config import Paths
+from .exceptions import TranscriptionError
 
 logger = logging.getLogger(__name__)
 
@@ -607,3 +608,26 @@ def normalize_all(paths: Paths) -> None:
         raise abort_error
 
     logger.info("Audio normalization complete")
+
+
+def index_raw_sources(paths: Paths) -> dict[str, Path]:
+    """Index raw files by normalized output stem and reject collisions early."""
+    if not paths.raw_dir.exists():
+        return {}
+
+    grouped: dict[str, list[Path]] = {}
+    for candidate in sorted(paths.raw_dir.iterdir()):
+        if candidate.is_file():
+            grouped.setdefault(candidate.stem.casefold(), []).append(candidate)
+
+    collisions = {stem: candidates for stem, candidates in grouped.items() if len(candidates) > 1}
+    if collisions:
+        details = "; ".join(
+            f"{stem}: {', '.join(candidate.name for candidate in candidates)}"
+            for stem, candidates in sorted(collisions.items())
+        )
+        raise TranscriptionError(
+            f"Raw audio files would overwrite the same normalized WAV: {details}"
+        )
+
+    return {stem: candidates[0] for stem, candidates in grouped.items()}

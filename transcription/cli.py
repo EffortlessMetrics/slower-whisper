@@ -173,6 +173,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Alias for --skip-existing-json (for consistency with enrich command).",
     )
     p_trans.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview files and audio duration without processing or writing outputs.",
+    )
+    p_trans.add_argument(
         "--progress",
         action="store_true",
         default=False,
@@ -271,6 +276,11 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Skip segments that already have audio_state (default: True).",
+    )
+    p_enrich.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview files and audio duration without processing or writing outputs.",
     )
     p_enrich.add_argument(
         "--progress",
@@ -941,6 +951,11 @@ def _handle_transcribe_command(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as e:
         raise ConfigurationError(f"Invalid transcription configuration: {e}") from e
 
+    if getattr(args, "dry_run", False):
+        from .cli_commands.dry_run import preview_transcription
+
+        return preview_transcription(Paths(root=Path(args.root)), cfg)
+
     # Configure progress logging based on --progress flag
     _setup_progress_logging(args.progress)
 
@@ -1042,6 +1057,11 @@ def _handle_enrich_command(args: argparse.Namespace) -> int:
         enrich_cfg = _config_from_enrich_args(args)
     except (OSError, ValueError) as e:
         raise ConfigurationError(f"Invalid enrichment configuration: {e}") from e
+
+    if getattr(args, "dry_run", False):
+        from .cli_commands.dry_run import preview_enrichment
+
+        return preview_enrichment(Paths(root=Path(args.root)), enrich_cfg)
 
     # Resolve "auto" device for emotion inference (uses torch, not ctranslate2)
     if enrich_cfg.device in (None, "auto"):
