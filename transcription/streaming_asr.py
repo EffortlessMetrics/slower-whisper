@@ -182,9 +182,9 @@ class StreamingASRAdapter:
         Returns:
             RMS energy value (0.0-1.0 for normalized audio).
         """
-        if len(audio) == 0:
+        if audio.size == 0:
             return 0.0
-        return float(np.sqrt(np.mean(audio**2)))
+        return float(np.sqrt(np.vdot(audio, audio) / audio.size))
 
     def _detect_speech_frames(self, audio: np.ndarray, frame_size_ms: int = 30) -> list[bool]:
         """Detect speech in audio using frame-wise energy analysis.
