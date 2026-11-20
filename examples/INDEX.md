@@ -2,6 +2,37 @@
 
 This directory contains comprehensive examples demonstrating the complete audio transcription and analysis workflow.
 
+## Speaker labels for one recording
+
+[diarization_standalone.py](diarization_standalone.py) prints timestamped ASR
+segments and the turns built from them. A label such as `spk_0` identifies a
+voice within this recording. Listen to the audio before assigning a name.
+An unassigned segment has no matching speaker label.
+
+Install FFmpeg and the diarization extra, accept the gated model terms, and set
+`HF_TOKEN` as described in the [diarization setup guide](../docs/SPEAKER_DIARIZATION.md).
+Run the example from the repository root with a fresh output directory:
+
+```bash
+uv run --extra diarization python examples/diarization_standalone.py meeting.wav --root meeting-output
+```
+
+The script uses the public Python call
+`transcribe_file(audio_path=args.audio, root=args.root, config=config)`, with
+`enable_diarization=True` in `TranscriptionConfig`. To produce the same JSON
+through the package CLI, place the recording in its project input directory:
+
+```bash
+mkdir -p meeting-cli/raw_audio
+cp meeting.wav meeting-cli/raw_audio/
+uv run --extra diarization slower-whisper transcribe --root meeting-cli --model base \
+  --device cpu --compute-type int8 --enable-diarization --diarization-device cpu
+```
+
+Open `meeting-cli/whisper_json/meeting.json`. Each labeled segment's
+`speaker.id` corresponds to a turn's `speaker_id`. The turn's `segment_ids`
+identify the segments grouped together.
+
 ## New Scripts (Created)
 
 ### 1. complete_workflow.py (625 lines, 24KB)
