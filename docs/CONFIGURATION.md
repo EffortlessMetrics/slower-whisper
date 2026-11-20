@@ -255,6 +255,10 @@ Environment variables override defaults but are overridden by config files and C
 | `SLOWER_WHISPER_CHUNK_TARGET_TOKENS` | int | `400` | Max tokens before split |
 | `SLOWER_WHISPER_CHUNK_PAUSE_SPLIT_THRESHOLD_S` | float | `1.5` | Split on pauses >= threshold (seconds) |
 
+Omit a numeric environment setting to use its default. An empty VAD silence,
+overlap, or chunking number is invalid. Chunk durations and pause thresholds
+accept finite values in seconds.
+
 **Enrichment variables (prefix: `SLOWER_WHISPER_ENRICH_`):**
 
 | Variable | Type | Example | Notes |

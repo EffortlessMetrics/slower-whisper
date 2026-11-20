@@ -4,6 +4,18 @@ from transcription import cache
 from transcription.cache import CachePaths, configure_global_cache_env
 
 
+def test_cachepaths_empty_mapping_uses_defaults(monkeypatch, tmp_path):
+    monkeypatch.setenv("SLOWER_WHISPER_CACHE_ROOT", str(tmp_path / "root"))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
+    monkeypatch.setenv("TORCH_HOME", str(tmp_path / "torch"))
+
+    paths = CachePaths.from_env({})
+    assert paths.root == cache.DEFAULT_ROOT
+    assert paths.hf_home == cache.DEFAULT_ROOT / "hf"
+    assert paths.torch_home == cache.DEFAULT_ROOT / "torch"
+    assert CachePaths.from_env().root == tmp_path / "root"
+
+
 def test_cachepaths_from_env_and_ensure_dirs(tmp_path):
     env = {
         "SLOWER_WHISPER_CACHE_ROOT": str(tmp_path / "root"),

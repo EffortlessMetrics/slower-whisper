@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .config_merge import _merge_enrich_configs
+from .config_validation import is_finite_number
 from .exceptions import ConfigurationError
 
 if TYPE_CHECKING:
@@ -68,6 +69,8 @@ class EnrichmentConfig:
 
     def __post_init__(self):
         """Validate configuration values."""
+        if self.pause_threshold is not None and not is_finite_number(self.pause_threshold):
+            raise ConfigurationError("pause_threshold must be a finite number or null")
         if self.pause_threshold is not None and self.pause_threshold < 0.0:
             raise ConfigurationError(f"pause_threshold must be >= 0.0, got {self.pause_threshold}")
         if self.turn_taking_policy not in ("aggressive", "balanced", "conservative"):
@@ -149,17 +152,6 @@ class EnrichmentConfig:
                     f"{field_name} must be a boolean, got {type(data[field_name]).__name__}"
                 )
 
-        # Validate pause_threshold if present
-        if "pause_threshold" in data:
-            pause_val = data["pause_threshold"]
-            if pause_val is not None:
-                if isinstance(pause_val, bool) or not isinstance(pause_val, int | float):
-                    raise ValueError(
-                        f"pause_threshold must be a number or null, got {type(pause_val).__name__}"
-                    )
-                if pause_val < 0.0:
-                    raise ValueError(f"pause_threshold must be >= 0.0, got {pause_val}")
-
         # Validate turn_taking_policy if present
         if "turn_taking_policy" in data:
             policy = data["turn_taking_policy"]
@@ -195,7 +187,7 @@ class EnrichmentConfig:
             # Track which fields were explicitly set from file
             config._source_fields = set(filtered_data.keys())
             return config
-        except TypeError as e:
+        except (TypeError, ConfigurationError) as e:
             raise ValueError(f"Invalid configuration data: {e}") from e
 
     @classmethod
@@ -303,7 +295,10 @@ class EnrichmentConfig:
                 )
             config_dict["turn_taking_policy"] = policy.lower()
 
-        config = cls(**config_dict)
+        try:
+            config = cls(**config_dict)
+        except ConfigurationError as e:
+            raise ValueError(str(e)) from e
         # Track which fields were explicitly set from environment
         config._source_fields = set(config_dict.keys())
         return config

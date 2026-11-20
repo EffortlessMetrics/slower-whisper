@@ -66,7 +66,8 @@ class CachePaths:
         Returns:
             CachePaths with resolved paths
         """
-        env = env or os.environ
+        if env is None:
+            env = os.environ
         root = Path(env.get("SLOWER_WHISPER_CACHE_ROOT", DEFAULT_ROOT)).expanduser()
 
         # Respect HF_HOME / TORCH_HOME if user set them explicitly

@@ -19,6 +19,7 @@ Constants:
 
 from __future__ import annotations
 
+import math
 from typing import Literal
 
 from .exceptions import ConfigurationError
@@ -53,6 +54,13 @@ ALLOWED_WHISPER_MODELS: set[str] = {
 # ============================================================================
 # Validation Functions
 # ============================================================================
+
+
+def is_finite_number(value: object) -> bool:
+    """Accept integers and finite floats for numeric configuration settings."""
+    return (isinstance(value, int) and not isinstance(value, bool)) or (
+        isinstance(value, float) and math.isfinite(value)
+    )
 
 
 def validate_model_name(model_name: str) -> str:

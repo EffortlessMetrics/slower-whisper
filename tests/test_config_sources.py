@@ -938,3 +938,65 @@ class TestFromSourcesEdgeCases:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "VAD_MIN_SILENCE_MS",
+        "CHUNK_TARGET_TOKENS",
+        "OVERLAP_THRESHOLD",
+        "CHUNK_TARGET_DURATION_S",
+        "CHUNK_MAX_DURATION_S",
+        "CHUNK_PAUSE_SPLIT_THRESHOLD_S",
+    ],
+)
+def test_empty_required_numeric_env_is_rejected(monkeypatch, field):
+    monkeypatch.setenv(f"TEST_{field}", "")
+    with pytest.raises(ValueError, match=f"TEST_{field}"):
+        TranscriptionConfig.from_sources(env_prefix="TEST_")
+
+
+@pytest.mark.parametrize(
+    ("config_class", "field"),
+    [
+        (TranscriptionConfig, "chunk_target_duration_s"),
+        (TranscriptionConfig, "chunk_max_duration_s"),
+        (TranscriptionConfig, "chunk_pause_split_threshold_s"),
+        (EnrichmentConfig, "pause_threshold"),
+    ],
+)
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_nonfinite_seconds_are_rejected(monkeypatch, config_class, field, value):
+    monkeypatch.setenv(f"TEST_{field.upper()}", value)
+    with pytest.raises(ValueError, match=f"(?i){field}"):
+        config_class.from_sources(env_prefix="TEST_")
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("vad_min_silence_ms", -1),
+        ("chunk_target_tokens", 2.5),
+        ("chunk_target_tokens", True),
+        ("chunk_max_duration_s", True),
+    ],
+)
+def test_invalid_numeric_override_is_rejected(field, invalid):
+    with pytest.raises(ConfigurationError, match=field):
+        TranscriptionConfig.from_sources(env_prefix="TEST_", **{field: invalid})
+
+
+@pytest.mark.parametrize(
+    ("config_class", "field", "json_value"),
+    [
+        (TranscriptionConfig, "chunk_target_duration_s", "1e999"),
+        (TranscriptionConfig, "chunk_target_tokens", "2.5"),
+        (EnrichmentConfig, "pause_threshold", "1e999"),
+    ],
+)
+def test_invalid_numeric_json_is_rejected(tmp_path, config_class, field, json_value):
+    path = tmp_path / "config.json"
+    path.write_text(f'{{"{field}": {json_value}}}', encoding="utf-8")
+    with pytest.raises(ValueError, match=field):
+        config_class.from_sources(config_file=path, env_prefix="TEST_")

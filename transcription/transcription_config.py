@@ -29,6 +29,7 @@ from .config_merge import _merge_configs
 from .config_validation import (
     WhisperTask,
     auto_derive_compute_type,
+    is_finite_number,
     validate_compute_type,
     validate_diarization_settings,
     validate_model_name,
@@ -93,14 +94,35 @@ class TranscriptionConfig:
         validated_compute_type = auto_derive_compute_type(self.device, self.compute_type)
         object.__setattr__(self, "compute_type", validated_compute_type)
 
-        if self.chunk_target_duration_s <= 0 or self.chunk_max_duration_s <= 0:
-            raise ConfigurationError("Chunk durations must be positive")
+        if (
+            isinstance(self.vad_min_silence_ms, bool)
+            or not isinstance(self.vad_min_silence_ms, int)
+            or self.vad_min_silence_ms < 0
+        ):
+            raise ConfigurationError(
+                f"vad_min_silence_ms must be a non-negative integer, got {self.vad_min_silence_ms}"
+            )
+        for name, duration in (
+            ("chunk_target_duration_s", self.chunk_target_duration_s),
+            ("chunk_max_duration_s", self.chunk_max_duration_s),
+        ):
+            if not is_finite_number(duration) or duration <= 0:
+                raise ConfigurationError(f"{name} must be a finite positive number")
         if self.chunk_max_duration_s < self.chunk_target_duration_s:
             object.__setattr__(self, "chunk_max_duration_s", self.chunk_target_duration_s)
-        if self.chunk_target_tokens <= 0:
-            raise ConfigurationError("chunk_target_tokens must be positive")
-        if self.chunk_pause_split_threshold_s < 0:
-            raise ConfigurationError("chunk_pause_split_threshold_s cannot be negative")
+        if (
+            isinstance(self.chunk_target_tokens, bool)
+            or not isinstance(self.chunk_target_tokens, int)
+            or self.chunk_target_tokens <= 0
+        ):
+            raise ConfigurationError("chunk_target_tokens must be a positive integer")
+        if (
+            not is_finite_number(self.chunk_pause_split_threshold_s)
+            or self.chunk_pause_split_threshold_s < 0
+        ):
+            raise ConfigurationError(
+                "chunk_pause_split_threshold_s must be finite and non-negative"
+            )
 
     @classmethod
     def from_file(cls, path: str | Path) -> TranscriptionConfig:
@@ -192,14 +214,6 @@ class TranscriptionConfig:
                     f"{field_name} must be a boolean, got {type(data[field_name]).__name__}"
                 )
 
-        # Validate numeric fields
-        if "vad_min_silence_ms" in data:
-            vad_value = data["vad_min_silence_ms"]
-            if isinstance(vad_value, bool) or not isinstance(vad_value, int) or vad_value < 0:
-                raise ValueError(
-                    f"vad_min_silence_ms must be a non-negative integer, got {data['vad_min_silence_ms']}"
-                )
-
         if "beam_size" in data:
             beam_value = data["beam_size"]
             if isinstance(beam_value, bool) or not isinstance(beam_value, int) or beam_value < 1:
@@ -255,7 +269,7 @@ class TranscriptionConfig:
             # This is used by _merge_configs to implement correct precedence
             config._source_fields = set(filtered_data.keys())
             return config
-        except TypeError as e:
+        except (TypeError, ConfigurationError) as e:
             raise ValueError(f"Invalid configuration data: {e}") from e
 
     @classmethod
@@ -371,7 +385,7 @@ class TranscriptionConfig:
                 )
 
         # Integer fields
-        if vad_silence := os.getenv(f"{prefix}VAD_MIN_SILENCE_MS"):
+        if (vad_silence := os.getenv(f"{prefix}VAD_MIN_SILENCE_MS")) is not None:
             try:
                 vad_value = int(vad_silence)
                 if vad_value < 0:
@@ -394,7 +408,7 @@ class TranscriptionConfig:
                 raise ValueError(
                     f"Invalid {prefix}BEAM_SIZE: {beam_size}. Must be a positive integer."
                 ) from e
-        if chunk_tokens := os.getenv(f"{prefix}CHUNK_TARGET_TOKENS"):
+        if (chunk_tokens := os.getenv(f"{prefix}CHUNK_TARGET_TOKENS")) is not None:
             try:
                 token_value = int(chunk_tokens)
                 if token_value <= 0:
@@ -460,7 +474,7 @@ class TranscriptionConfig:
                     f"Invalid {prefix}MAX_SPEAKERS: {max_speakers}. Must be a positive integer."
                 ) from e
 
-        if overlap := os.getenv(f"{prefix}OVERLAP_THRESHOLD"):
+        if (overlap := os.getenv(f"{prefix}OVERLAP_THRESHOLD")) is not None:
             try:
                 overlap_value = float(overlap)
                 if not 0.0 <= overlap_value <= 1.0:
@@ -473,7 +487,7 @@ class TranscriptionConfig:
                     f"Invalid {prefix}OVERLAP_THRESHOLD: {overlap}. "
                     "Must be a floating point value between 0.0 and 1.0"
                 ) from e
-        if chunk_target := os.getenv(f"{prefix}CHUNK_TARGET_DURATION_S"):
+        if (chunk_target := os.getenv(f"{prefix}CHUNK_TARGET_DURATION_S")) is not None:
             try:
                 target_value = float(chunk_target)
                 if target_value <= 0:
@@ -486,7 +500,7 @@ class TranscriptionConfig:
                     f"Invalid {prefix}CHUNK_TARGET_DURATION_S: {chunk_target}. Must be a positive float."
                 ) from e
 
-        if chunk_max := os.getenv(f"{prefix}CHUNK_MAX_DURATION_S"):
+        if (chunk_max := os.getenv(f"{prefix}CHUNK_MAX_DURATION_S")) is not None:
             try:
                 chunk_max_val = float(chunk_max)
                 if chunk_max_val <= 0:
@@ -499,7 +513,7 @@ class TranscriptionConfig:
                     f"Invalid {prefix}CHUNK_MAX_DURATION_S: {chunk_max}. Must be a positive float."
                 ) from e
 
-        if pause_thresh := os.getenv(f"{prefix}CHUNK_PAUSE_SPLIT_THRESHOLD_S"):
+        if (pause_thresh := os.getenv(f"{prefix}CHUNK_PAUSE_SPLIT_THRESHOLD_S")) is not None:
             try:
                 pause_value = float(pause_thresh)
                 if pause_value < 0:
@@ -512,7 +526,10 @@ class TranscriptionConfig:
                     f"Invalid {prefix}CHUNK_PAUSE_SPLIT_THRESHOLD_S: {pause_thresh}. Must be a float."
                 ) from e
 
-        config = cls(**config_dict)
+        try:
+            config = cls(**config_dict)
+        except ConfigurationError as e:
+            raise ValueError(str(e)) from e
         # Track which fields were explicitly set from environment
         # This is used by _merge_configs to implement correct precedence
         config._source_fields = set(config_dict.keys())
