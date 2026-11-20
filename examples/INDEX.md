@@ -2,6 +2,18 @@
 
 This directory contains comprehensive examples demonstrating the complete audio transcription and analysis workflow.
 
+## Export and validate a transcript
+
+Run the [export and validation example](export_validate_example.sh) from the repository root:
+
+```sh
+uv run sh examples/export_validate_example.sh
+```
+
+The script validates a one-segment transcript and prints its WebVTT export (both
+commands exit 0). It then removes the required `language` field and checks that
+validation exits 1. The example exits 0 when all three commands behave as expected.
+
 ## New Scripts (Created)
 
 ### 1. complete_workflow.py (625 lines, 24KB)
