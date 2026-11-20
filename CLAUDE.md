@@ -93,9 +93,12 @@ Tests are organized into tiers that run at different stages. The `ci-success` ga
 |------|------|------|---------------|
 | **Fast** | Every PR | Unit tests, lint, type-check, format | Yes |
 | **Smoke** | Every PR | Real tiny model ASR + compat + pipeline + writers + streaming envelope | Yes |
-| **Heavy** | Main only | Emotion models (`continue-on-error` on PRs, hard fail on main) | No (informational on PR) |
+| **Heavy** | Collection on PRs; model tests on main/manual | Emotion models (hard fail on main) | No (outside `ci-success`) |
 | **Nightly** | Weekly schedule | Diarization (real pyannote), benchmark gate | No (alerts) |
 | **Release** | Tag push | All of the above | PyPI publish |
+
+PRs also collect the heavy selection with the declared emotion and dev extras, without
+executing model tests. Main and manual CI runs execute that same heavy selection.
 
 ---
 
