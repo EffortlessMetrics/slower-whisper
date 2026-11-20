@@ -210,7 +210,7 @@ async def transcribe_audio(
         runtime.assert_profile(config)
     except TranscriptionError as error:
         return _typed_error_response(request, error)
-    except (TypeError, ValueError) as error:
+    except (ConfigurationError, TypeError, ValueError) as error:
         logger.warning("Invalid transcription configuration", exc_info=error)
         raise HTTPException(
             status_code=400,
