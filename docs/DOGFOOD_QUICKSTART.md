@@ -143,7 +143,7 @@ Quality metrics for quick assessment:
 
 ```
 === Speakers ===
-Total speakers: 2
+Labeled speakers: 2
 1. spk_0 - Speech time: 6.0s, Talk %: 47.6%, Segments: 2
 2. spk_1 - Speech time: 6.6s, Talk %: 52.4%, Segments: 2
 
@@ -152,7 +152,7 @@ Labeled:   4/4 segments
 Coverage:  100.0%
 
 === Turn Structure ===
-Total turns: 4
+Labeled turns: 4
 First 4 turns: spk_0 → spk_1 → spk_0 → spk_1
 
 === Quality Checks ===
@@ -160,6 +160,12 @@ First 4 turns: spk_0 → spk_1 → spk_0 → spk_1
 ✓ Good labeling coverage (100.0%)
 ✓ Good turn alternation (0 repeats)
 ```
+
+The report shows the diarization status recorded in the transcript. A disabled,
+skipped, or failed run shows `N/A` for quality checks (`null` in saved JSON).
+Counts describe the labels present in the file. Older transcripts without a
+status can still be assessed from their labels. Turn alternation needs at least
+two labeled segments.
 
 **Interpretation:**
 - ✅ All checks passing = ready to ship

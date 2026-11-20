@@ -100,6 +100,7 @@ def compute_diarization_stats(json_path: Path) -> dict[str, Any]:
             "file_name": str,
             "duration": float,
             "num_segments": int,
+            "diarization_status": str | None,
             "num_speakers": int,
             "speaker_stats": [
                 {"id": str, "speech_time": float, "talk_percentage": float, "num_segments": int},
@@ -116,9 +117,9 @@ def compute_diarization_stats(json_path: Path) -> dict[str, Any]:
                 "repeated_speakers": int,  # consecutive turns by same speaker
             },
             "quality_checks": {
-                "speaker_count_reasonable": bool,  # 1-10 speakers
-                "good_labeling_coverage": bool,  # >80% labeled
-                "good_turn_alternation": bool,  # <20% repeated
+                "speaker_count_reasonable": bool | None,  # 1-10 speakers
+                "good_labeling_coverage": bool | None,  # >=80% labeled
+                "good_turn_alternation": bool | None,  # <20% repeated
             },
         }
     """
@@ -181,14 +182,16 @@ def compute_diarization_stats(json_path: Path) -> dict[str, Any]:
     num_turns = len(turns)
 
     # Quality checks
-    speaker_count_reasonable = 1 <= num_speakers <= 10
-    good_labeling_coverage = coverage_pct >= 80.0
-    good_turn_alternation = (repeated_speakers / num_turns * 100) < 20.0 if num_turns > 0 else True
+    diarization = (transcript.meta or {}).get("diarization")
+    status = diarization.get("status") if isinstance(diarization, dict) else None
+    # Older transcripts can have usable speaker labels without run metadata.
+    assess_quality = status in ("ok", "success") or (status is None and labeled_count > 0)
 
     return {
         "file_name": transcript.file_name,
         "duration": round(duration, 2),
         "num_segments": num_segments,
+        "diarization_status": status,
         "num_speakers": num_speakers,
         "speaker_stats": speaker_stats,
         "labeling_coverage": {
@@ -202,9 +205,15 @@ def compute_diarization_stats(json_path: Path) -> dict[str, Any]:
             "repeated_speakers": repeated_speakers,
         },
         "quality_checks": {
-            "speaker_count_reasonable": speaker_count_reasonable,
-            "good_labeling_coverage": good_labeling_coverage,
-            "good_turn_alternation": good_turn_alternation,
+            "speaker_count_reasonable": 1 <= num_speakers <= 10 if assess_quality else None,
+            "good_labeling_coverage": coverage_pct >= 80.0
+            if assess_quality and num_segments
+            else None,
+            "good_turn_alternation": (
+                (repeated_speakers / num_turns * 100) < 20.0
+                if assess_quality and labeled_count >= 2
+                else None
+            ),
         },
     }
 
@@ -229,10 +238,11 @@ def print_diarization_stats(stats: dict[str, Any]) -> None:
     print(f"=== Diarization Stats: {stats['file_name']} ===")
     print(f"Duration: {stats['duration']}s")
     print(f"Segments: {stats['num_segments']}")
+    print(f"Diarization status: {stats.get('diarization_status') or 'unreported'}")
     print()
 
     print("=== Speakers ===")
-    print(f"Total speakers: {stats['num_speakers']}")
+    print(f"Labeled speakers: {stats['num_speakers']}")
     for i, speaker in enumerate(stats["speaker_stats"], 1):
         print(
             f"{i}. {speaker['id']} - "
@@ -250,7 +260,7 @@ def print_diarization_stats(stats: dict[str, Any]) -> None:
 
     print("=== Turn Structure ===")
     turn = stats["turn_stats"]
-    print(f"Total turns: {turn['num_turns']}")
+    print(f"Labeled turns: {turn['num_turns']}")
     if turn["turn_sequence"]:
         seq_str = " → ".join(turn["turn_sequence"])
         print(f"First {len(turn['turn_sequence'])} turns: {seq_str}")
@@ -261,18 +271,19 @@ def print_diarization_stats(stats: dict[str, Any]) -> None:
 
     print("=== Quality Checks ===")
     checks = stats["quality_checks"]
-    print(
-        f"{'✓' if checks['speaker_count_reasonable'] else '✗'} "
-        f"Speaker count reasonable ({stats['num_speakers']})"
-    )
-    print(
-        f"{'✓' if checks['good_labeling_coverage'] else '✗'} "
-        f"Good labeling coverage ({cov['coverage_percentage']}%)"
-    )
-    print(
-        f"{'✓' if checks['good_turn_alternation'] else '✗'} "
-        f"Good turn alternation ({turn['repeated_speakers']} repeats)"
-    )
+    for result, description in (
+        (checks["speaker_count_reasonable"], f"Speaker count reasonable ({stats['num_speakers']})"),
+        (
+            checks["good_labeling_coverage"],
+            f"Good labeling coverage ({cov['coverage_percentage']}%)",
+        ),
+        (
+            checks["good_turn_alternation"],
+            f"Good turn alternation ({turn['repeated_speakers']} repeats)",
+        ),
+    ):
+        mark = {True: "✓", False: "✗", None: "N/A"}[result]
+        print(f"{mark} {description}")
 
 
 def save_dogfood_results(
